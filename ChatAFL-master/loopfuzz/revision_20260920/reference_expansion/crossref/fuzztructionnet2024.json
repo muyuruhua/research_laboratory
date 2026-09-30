@@ -1,0 +1,1916 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=No+Peer+no+Cry+Network+Application+Fuzzing+via+Fault+Injection&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 4157528,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                2
+              ]
+            ],
+            "date-time": "2026-07-02T15:56:42Z",
+            "timestamp": 1783007802582,
+            "version": "3.54.5"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 45,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    12,
+                    2
+                  ]
+                ],
+                "date-time": "2024-12-02T00:00:00Z",
+                "timestamp": 1733097600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "name": "German Federal Ministry of Education and Research (BMBF)",
+              "award": [
+                "16KIS1899"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "16KIS1899"
+                  ]
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100006374",
+              "name": "European Research Council",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "101045669"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "101045669"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100006374",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "DOI": "10.1145/3658644.3690274",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ],
+            "date-time": "2024-12-09T12:19:20Z",
+            "timestamp": 1733746760000
+          },
+          "page": "750-764",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 6,
+          "title": [
+            "No Peer, no Cry: Network Application Fuzzing via Fault Injection"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0001-5179-4002",
+              "authenticated-orcid": false,
+              "given": "Nils",
+              "family": "Bars",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Saarbrücken, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1630-1687",
+              "authenticated-orcid": false,
+              "given": "Moritz",
+              "family": "Schloegel",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Saarbrücken, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0004-6401-5989",
+              "authenticated-orcid": false,
+              "given": "Nico",
+              "family": "Schiller",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Saarbrücken, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0005-8564-1476",
+              "authenticated-orcid": false,
+              "given": "Lukas",
+              "family": "Bernhard",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Saarbrücken, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-2783-1264",
+              "authenticated-orcid": false,
+              "given": "Thorsten",
+              "family": "Holz",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Saarbrücken, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534376"
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In Symposium on Network and Distributed System Security (NDSS), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "Abhik Roychoudhury. Stateful Greybox Fuzzing. In USENIX Security Symposium",
+              "author": "Ba Jinsheng",
+              "year": "2022",
+              "unstructured": "Jinsheng Ba, Marcel Böhme, Zahra Mirzamomen, and Abhik Roychoudhury. Stateful Greybox Fuzzing. In USENIX Security Symposium, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Bars Nils",
+              "year": "2023",
+              "unstructured": "Nils Bars, Moritz Schloegel, Tobias Scharnowski, Nico Schiller, and Thorsten Holz. Fuzztruction: Using Fault Injection-based Fuzzing to Leverage Implicit Domain Knowledge. In USENIX Security Symposium, 2023."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "volume-title": "Exploit Programming: From Buffer Overflows to 'Weird Machines?\" and Theory of Computation. Usenix",
+              "author": "Bratus Sergej",
+              "year": "2011",
+              "unstructured": "Sergej Bratus, Michael E. Locasto, Meredith L. Patterson, Len Sassaman, and Anna Shubina. Exploit Programming: From Buffer Overflows to 'Weird Machines?\" and Theory of Computation. Usenix; Login, 2011."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409748"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "Jonathan Metzman. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ACM/IEEE International Conference on Automated Software Engineering (ASE)",
+              "author": "Böhme Marcel",
+              "year": "2022",
+              "unstructured": "Marcel Böhme, László Szekeres, and Jonathan Metzman. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ACM/IEEE International Conference on Automated Software Engineering (ASE), 2022."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "Thorsten Holz. On the Challenges of Automata Reconstruction in LTE Networks. In ACM Conference on Security and Privacy in Wireless and Mobile Networks (WiSec)",
+              "author": "Chlosta Merlin",
+              "year": "2021",
+              "unstructured": "Merlin Chlosta, David Rupprecht, and Thorsten Holz. On the Challenges of Automata Reconstruction in LTE Networks. In ACM Conference on Security and Privacy in Wireless and Mobile Networks (WiSec), 2021."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "Joeri de Ruiter. Inferring OpenVPN State Machines Using Protocol State Fuzzing. In IEEE European Symposium on Security and Privacy Workshops (EuroS&PW)",
+              "author": "Daniel Lesly-Ann",
+              "year": "2018",
+              "unstructured": "Lesly-Ann Daniel, Erik Poll, and Joeri de Ruiter. Inferring OpenVPN State Machines Using Protocol State Fuzzing. In IEEE European Symposium on Security and Privacy Workshops (EuroS&PW), 2018."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "Seyed Behnam Andarzian, and Erik Poll. Fuzzers for Stateful Systems: Survey and Research Directions. ACM Computing Surveys (CSUR), 56(9)",
+              "author": "Daniele Cristian",
+              "year": "2024",
+              "unstructured": "Cristian Daniele, Seyed Behnam Andarzian, and Erik Poll. Fuzzers for Stateful Systems: Survey and Research Directions. ACM Computing Surveys (CSUR), 56(9), 2024."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "volume-title": "De Ruiter and Erik Poll. Protocol State Fuzzing of TLS Implementations. In USENIX Security Symposium",
+              "author": "Joeri",
+              "year": "2015",
+              "unstructured": "Joeri De Ruiter and Erik Poll. Protocol State Fuzzing of TLS Implementations. In USENIX Security Symposium, 2015."
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "volume-title": "Peach Fuzzer: Discover Unknown Vulnerabilities. https: //peachtech.gitlab.io/peach-fuzzer-community/",
+              "author": "Eddington Michael",
+              "year": "2004",
+              "unstructured": "Michael Eddington. Peach Fuzzer: Discover Unknown Vulnerabilities. https: //peachtech.gitlab.io/peach-fuzzer-community/, 2004."
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460120.3484543"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "volume-title": "USENIX Workshop on Offensive Technologies (WOOT)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. AFL : Combining Incremental Steps of Fuzzing Research. In USENIX Workshop on Offensive Technologies (WOOT), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "ACM Conference on Computer and Communications Security (CCS)",
+              "author": "Fioraldi Andrea",
+              "year": "2022",
+              "unstructured": "Andrea Fioraldi, Dominik Christian Maier, Dongjia Zhang, and Davide Balzarotti. LibAFL: A Framework to Build Modular and Reusable Fuzzers. In ACM Conference on Computer and Communications Security (CCS), 2022."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "Juraj Somorovsky. Analysis of DTLS Implementations Using Protocol State Fuzzing. In USENIX Security Symposium",
+              "author": "Fiterau-Brostean Paul",
+              "year": "2020",
+              "unstructured": "Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri de Ruiter, Konstantinos Sagonas, and Juraj Somorovsky. Analysis of DTLS Implementations Using Protocol State Fuzzing. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "Juraj Somorovsky. Analysis of DTLS Implementations Using Protocol State Fuzzing. In USENIX Security Symposium",
+              "author": "Fiterau-Brostean Paul",
+              "year": "2020",
+              "unstructured": "Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri De Ruiter, Konstantinos Sagonas, and Juraj Somorovsky. Analysis of DTLS Implementations Using Protocol State Fuzzing. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "unstructured": "Google. Honggfuzz."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "unstructured": "Google. OSS-Fuzz: Continuous Fuzzing for Open Source Software."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "unstructured": "Google. Fuzzer-Test-Suite 2016."
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "volume-title": "Magma: A Ground-Truth Fuzzing Benchmark. ACM on Measurement and Analysis of Computing Systems (POMACS), 4(3):49:1--49:29",
+              "author": "Hazimeh Ahmad",
+              "year": "2020",
+              "unstructured": "Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. Magma: A Ground-Truth Fuzzing Benchmark. ACM on Measurement and Analysis of Computing Systems (POMACS), 4(3):49:1--49:29, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "volume-title": "Using Formal Specifications to Support Testing. ACM Computing Surveys (CSUR), 41(2)",
+              "author": "Hierons Robert M",
+              "year": "2009",
+              "unstructured": "Robert M Hierons, Kirill Bogdanov, Jonathan P Bowen, Rance Cleaveland, John Derrick, Jeremy Dick, Marian Gheorghe, Mark Harman, Kalpesh Kapoor, Paul Krause, et al. Using Formal Specifications to Support Testing. ACM Computing Surveys (CSUR), 41(2), 2009."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Jiang Zu-Ming",
+              "year": "2020",
+              "unstructured": "Zu-Ming Jiang, Jia-Ju Bai, Kangjie Lu, and Shi-Min Hu. Fuzzing Error Handling Code using Context-Sensitive Software Fault Injection. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "unstructured": "Joshua Pereyda et al. boofuzz: Network Protocol Fuzzing for Humans. https: //github.com/jtpereyda/boofuzz."
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "volume-title": "Michael Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and Communications Security (CCS)",
+              "author": "Klees George",
+              "year": "2018",
+              "unstructured": "George Klees, Andrew Ruef, Benji Cooper, ShiyiWei, and Michael Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and Communications Security (CCS), 2018."
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "unstructured": "lafintel. laf-intel - Circumventing Fuzzing Roadblocks with Compiler Transformations. https://lafintel.wordpress.com."
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE51524.2021.9678785"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "Jiaguang Sun. Bleem: Packet Sequence Oriented Fuzzing for Protocol Implementations. In USENIX Security Symposium",
+              "author": "Luo Zhengxiong",
+              "year": "2023",
+              "unstructured": "Zhengxiong Luo, Junze Yu, Feilong Zuo, Jianzhong Liu, Yu Jiang, Ting Chen, Abhik Roychoudhury, and Jiaguang Sun. Bleem: Packet Sequence Oriented Fuzzing for Protocol Implementations. In USENIX Security Symposium, 2023."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "Raheem Beyah. MOPT: Optimized Mutation Scheduling for Fuzzers. In USENIX Security Symposium",
+              "author": "Lyu Chenyang",
+              "year": "2019",
+              "unstructured": "Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and Raheem Beyah. MOPT: Optimized Mutation Scheduling for Fuzzers. In USENIX Security Symposium, 2019."
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "volume-title": "Abhishek Arya. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE)",
+              "author": "Metzman Jonathan",
+              "year": "2021",
+              "unstructured": "Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE), 2021."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/s10664-022-10233-3"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "Natella and Van-Thuan Pham. ProFuzzBench: A Benchmark for Stateful Protocol Fuzzing. In International Symposium on Software Testing and Analysis (ISSTA)",
+              "author": "Roberto",
+              "year": "2021",
+              "unstructured": "Roberto Natella and Van-Thuan Pham. ProFuzzBench: A Benchmark for Stateful Protocol Fuzzing. In International Symposium on Software Testing and Analysis (ISSTA), 2021."
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "volume-title": "Abhik Roychoudhury. AFLNet: A Greybox Fuzzer for Network Protocols. In IEEE International Conference on Software Testing, Validation and Verification (ICST)",
+              "author": "Pham Van-Thuan",
+              "year": "2020",
+              "unstructured": "Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. AFLNet: A Greybox Fuzzer for Network Protocols. In IEEE International Conference on Software Testing, Validation and Verification (ICST), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "volume-title": "Thorsten Holz. SoK: Prudent Evaluation Practices for Fuzzing. In IEEE Symposium on Security and Privacy (S&P)",
+              "author": "Schloegel Moritz",
+              "year": "2024",
+              "unstructured": "Moritz Schloegel, Nils Bars, Nico Schiller, Lukas Bernhard, Tobias Scharnowski, Addison Crump, Arash Ale-Ebrahim, Nicolai Bissantz, Marius Muench, and Thorsten Holz. SoK: Prudent Evaluation Practices for Fuzzing. In IEEE Symposium on Security and Privacy (S&P), 2024."
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "Thorsten Holz. Nyx-Net: Network Fuzzing with Incremental Snapshots. In European Conference on Computer Systems (EuroSys)",
+              "author": "Schumilo Sergej",
+              "year": "2022",
+              "unstructured": "Sergej Schumilo, Cornelius Aschermann, Andrea Jemmett, Ali Abbasi, and Thorsten Holz. Nyx-Net: Network Fuzzing with Incremental Snapshots. In European Conference on Computer Systems (EuroSys), 2022."
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3634737.3637650"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.17487/RFC7616"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "volume-title": "NetAFL: WinAFL Patch. https://github.com/intelpt/winafl-intelpt",
+              "author": "Shudrak M.",
+              "year": "2018",
+              "unstructured": "M. Shudrak. NetAFL: WinAFL Patch. https://github.com/intelpt/winafl-intelpt, 2018."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "Somorovsky. Systematic Fuzzing and Testing of TLS Libraries. In ACM Conference on Computer and Communications Security (CCS)",
+              "author": "Juraj",
+              "year": "2016",
+              "unstructured": "Juraj Somorovsky. Systematic Fuzzing and Testing of TLS Libraries. In ACM Conference on Computer and Communications Security (CCS), 2016."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-642-21455-4_8"
+            },
+            {
+              "issue": "2",
+              "key": "e_1_3_2_1_41_1",
+              "first-page": "101",
+              "article-title": "A Critique and Improvement of the CL Common Language Effect Size Statistics of McGraw and Wong",
+              "volume": "25",
+              "author": "Vargha András",
+              "year": "2000",
+              "unstructured": "András Vargha and Harold D Delaney. A Critique and Improvement of the CL Common Language Effect Size Statistics of McGraw and Wong. Journal of Educational and Behavioral Statistics, 25(2):101--132, 2000.",
+              "journal-title": "Journal of Educational and Behavioral Statistics"
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "volume-title": "Taesoo Kim. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX Security Symposium",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX Security Symposium, 2018."
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "volume-title": "American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/",
+              "year": "2013",
+              "unstructured": "Micha? Zalewski. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/, 2013."
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "volume-title": "Chao Zhang. StateFuzz: System Call-Based State-Aware Linux Driver Fuzzing. In USENIX Security Symposium",
+              "author": "Zhao Bodong",
+              "year": "2022",
+              "unstructured": "Bodong Zhao, Zheming Li, Shisong Qin, Zheyu Ma, Ming Yuan, Wenyu Zhu, Zhihong Tian, and Chao Zhang. StateFuzz: System Call-Based State-Aware Linux Driver Fuzzing. In USENIX Security Symposium, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "volume-title": "Fuzzing: A Survey for Roadmap. ACM Computing Surveys (CSUR), 54(11s):1--36",
+              "author": "Zhu Xiaogang",
+              "year": "2022",
+              "unstructured": "Xiaogang Zhu, Sheng Wen, Seyit Camtepe, and Yang Xiang. Fuzzing: A Survey for Roadmap. ACM Computing Surveys (CSUR), 54(11s):1--36, 2022."
+            }
+          ],
+          "event": {
+            "name": "CCS '24: ACM SIGSAC Conference on Computer and Communications Security",
+            "location": "Salt Lake City UT USA",
+            "acronym": "CCS '24",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3690274",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3658644.3690274",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2025-08-22T06:20:53Z",
+            "timestamp": 1755843653000
+          },
+          "score": 59.303917,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3690274"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "references-count": 45,
+          "alternative-id": [
+            "10.1145/3658644.3690274",
+            "10.1145/3658644"
+          ],
+          "URL": "https://doi.org/10.1145/3658644.3690274",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-12-09",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                2
+              ]
+            ],
+            "date-time": "2026-07-02T07:03:29Z",
+            "timestamp": 1782975809576,
+            "version": "3.54.5"
+          },
+          "reference-count": 68,
+          "publisher": "IEEE",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2026,
+                    5,
+                    18
+                  ]
+                ],
+                "date-time": "2026-05-18T00:00:00Z",
+                "timestamp": 1779062400000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-029"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2026,
+                    5,
+                    18
+                  ]
+                ],
+                "date-time": "2026-05-18T00:00:00Z",
+                "timestamp": 1779062400000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-037"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2026,
+                5,
+                18
+              ]
+            ]
+          },
+          "DOI": "10.1109/sp63933.2026.00237",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                1
+              ]
+            ],
+            "date-time": "2026-07-01T19:34:20Z",
+            "timestamp": 1782934460000
+          },
+          "page": "4165-4184",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Web Application Vulnerability Repair Via Context-Aware Fault Localization and Directed Differential Fuzzing"
+          ],
+          "prefix": "10.1109",
+          "author": [
+            {
+              "given": "Chenlin",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "The Chinese University of Hong Kong"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Wei",
+              "family": "Meng",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "The Chinese University of Hong Kong"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "key": "ref1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSP.2017.14"
+            },
+            {
+              "key": "ref2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3548606.3559367"
+            },
+            {
+              "key": "ref3",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2022.3147265"
+            },
+            {
+              "key": "ref4",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2022.3156637"
+            },
+            {
+              "key": "ref5",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46214.2022.9833597"
+            },
+            {
+              "key": "ref6",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-540-78800-3_24"
+            },
+            {
+              "key": "ref7",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/226295.226310"
+            },
+            {
+              "key": "ref8",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23126"
+            },
+            {
+              "key": "ref9",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40001.2021.00022"
+            },
+            {
+              "key": "ref10",
+              "article-title": "Learning to repair software vulnerabilities with generative adversarial networks",
+              "author": "Harer",
+              "year": "2018",
+              "journal-title": "Advances in neural information processing systems"
+            },
+            {
+              "key": "ref11",
+              "article-title": "A survey on automated program repair techniques",
+              "author": "Huang",
+              "year": "2023",
+              "journal-title": "arXiv preprint arXiv"
+            },
+            {
+              "key": "ref12",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2013.6606626"
+            },
+            {
+              "key": "ref13",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2007.20"
+            },
+            {
+              "key": "ref14",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2012.6227211"
+            },
+            {
+              "key": "ref15",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2011.104"
+            },
+            {
+              "key": "ref16",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP54263.2024.00197"
+            },
+            {
+              "key": "ref17",
+              "article-title": "Sok: Towards effective automated vulnerability repair",
+              "author": "Li",
+              "year": "2025",
+              "journal-title": "arXiv preprint arXiv"
+            },
+            {
+              "key": "ref18",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3548606.3559391"
+            },
+            {
+              "key": "ref19",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TR.2015.2457411"
+            },
+            {
+              "key": "ref20",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2566486.2568024"
+            },
+            {
+              "key": "ref21",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/icse48619.2023.00127"
+            },
+            {
+              "key": "ref22",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ISSREW.2019.00098"
+            },
+            {
+              "key": "ref23",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597503.3623321"
+            },
+            {
+              "key": "ref24",
+              "article-title": "Appatch: Automated adaptive prompting large language models for real-world software vulnerability patching",
+              "volume-title": "Proceedings of the 34th USENIX Security Symposium (Security)",
+              "author": "Nong"
+            },
+            {
+              "key": "ref25",
+              "article-title": "{Spider-Scents}: Grey-box databaseaware web scanning for stored XSS",
+              "volume-title": "Proceedings of the 33rd USENIX Security Symposium (Security)",
+              "author": "Olsson"
+            },
+            {
+              "key": "ref26",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP61157.2025.00136"
+            },
+            {
+              "key": "ref27",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46215.2023.10179420"
+            },
+            {
+              "key": "ref28",
+              "article-title": "Xssky: Detecting xss vulnerabilities through local path-persistent fuzzing",
+              "volume-title": "Proceedings of the 34th USENIX Security Symposium (Security)",
+              "author": "Shi"
+            },
+            {
+              "key": "ref29",
+              "article-title": "Backporting security patches of web applications: A prototype design and implementation on injection vulnerability patches",
+              "volume-title": "Proceedings of the 31st USENIX Security Symposium (Security)",
+              "author": "Shi"
+            },
+            {
+              "key": "ref30",
+              "article-title": "Fix me up: Repairing access-control bugs in web applications",
+              "volume-title": "Proceedings of the 20th Annual Network and Distributed System Security Symposium (NDSS)",
+              "author": "Son"
+            },
+            {
+              "key": "ref31",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46215.2023.10179317"
+            },
+            {
+              "key": "ref32",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1543135.1542486"
+            },
+            {
+              "key": "ref33",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP61157.2025.00066"
+            },
+            {
+              "key": "ref34",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP54263.2024.00198"
+            },
+            {
+              "key": "ref35",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2009.5070536"
+            },
+            {
+              "key": "ref36",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3715718"
+            },
+            {
+              "key": "ref37",
+              "article-title": "Racing on the negative force: Efficient vulnerability {Root-Cause} analysis through reinforcement learning on counterexamples",
+              "volume-title": "Proceedings of the 33rd USENIX Security Symposium (Security)",
+              "author": "Xu"
+            },
+            {
+              "key": "ref38",
+              "article-title": "Patchagent: A practical program repair agent mimicking human expertise",
+              "volume-title": "Proceedings of the 34th USENIX Security Symposium (Security)",
+              "author": "Yu"
+            },
+            {
+              "key": "ref39",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3799693"
+            },
+            {
+              "key": "ref40",
+              "volume-title": "Addresssanitizerleaksanitizer",
+              "year": "2017"
+            },
+            {
+              "key": "ref41",
+              "volume-title": "Awesome web pocs",
+              "year": "2025"
+            },
+            {
+              "key": "ref42",
+              "volume-title": "Claude documentation",
+              "year": "2025"
+            },
+            {
+              "key": "ref43",
+              "volume-title": "Cve - common vulnerabilities and exposures",
+              "year": "2025"
+            },
+            {
+              "key": "ref44",
+              "volume-title": "Prompthub - deepseek-v3 model card",
+              "year": "2025"
+            },
+            {
+              "key": "ref45",
+              "volume-title": "Doctor appointment booking system",
+              "year": "2020"
+            },
+            {
+              "key": "ref46",
+              "volume-title": "Friendsofphp security advisories",
+              "year": "2025"
+            },
+            {
+              "key": "ref47",
+              "volume-title": "Github advisory database",
+              "year": "2025"
+            },
+            {
+              "key": "ref48",
+              "volume-title": "Google deepmind",
+              "year": "2025"
+            },
+            {
+              "key": "ref49",
+              "volume-title": "Hospital management system",
+              "year": "2019"
+            },
+            {
+              "key": "ref50",
+              "volume-title": "Huntr - vulnerability disclosure platform",
+              "year": "2025"
+            },
+            {
+              "key": "ref51",
+              "volume-title": "Joomla!",
+              "year": "2025"
+            },
+            {
+              "key": "ref52",
+              "volume-title": "Joomla security announcements",
+              "year": "2025"
+            },
+            {
+              "key": "ref53",
+              "volume-title": "User login management system",
+              "year": "2020"
+            },
+            {
+              "key": "ref54",
+              "volume-title": "Nvd - national vulnerability database",
+              "year": "2025"
+            },
+            {
+              "key": "ref55",
+              "volume-title": "Openai documentation",
+              "year": "2025"
+            },
+            {
+              "key": "ref56",
+              "volume-title": "Openemr",
+              "year": "2025"
+            },
+            {
+              "key": "ref57",
+              "volume-title": "Openemr security announcements",
+              "year": "2025"
+            },
+            {
+              "key": "ref58",
+              "volume-title": "phpipam",
+              "year": "2025"
+            },
+            {
+              "key": "ref59",
+              "volume-title": "phpmyadmin",
+              "year": "2025"
+            },
+            {
+              "key": "ref60",
+              "volume-title": "Php-parser",
+              "year": "2025"
+            },
+            {
+              "key": "ref61",
+              "volume-title": "Piwigo",
+              "year": "2025"
+            },
+            {
+              "key": "ref62",
+              "volume-title": "rconfig, fig 2025xs"
+            },
+            {
+              "key": "ref63",
+              "volume-title": "Uk cyber security survey",
+              "year": "2025"
+            },
+            {
+              "key": "ref64",
+              "volume-title": "Usage statistics of server-side programming languages for websites",
+              "year": "2025"
+            },
+            {
+              "key": "ref65",
+              "volume-title": "Webchess",
+              "year": "2025"
+            },
+            {
+              "key": "ref66",
+              "volume-title": "Webid",
+              "year": "2025"
+            },
+            {
+              "key": "ref67",
+              "volume-title": "Wordpress",
+              "year": "2025"
+            },
+            {
+              "key": "ref68",
+              "volume-title": "Xdebug",
+              "year": "2025"
+            }
+          ],
+          "event": {
+            "name": "2026 IEEE Symposium on Security and Privacy (SP)",
+            "location": "San Francisco, CA, USA",
+            "start": {
+              "date-parts": [
+                [
+                  2026,
+                  5,
+                  18
+                ]
+              ]
+            },
+            "end": {
+              "date-parts": [
+                [
+                  2026,
+                  5,
+                  21
+                ]
+              ]
+            }
+          },
+          "container-title": [
+            "2026 IEEE Symposium on Security and Privacy (SP)"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/11573355/11573356/11573512.pdf?arnumber=11573512",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                2
+              ]
+            ],
+            "date-time": "2026-07-02T05:35:45Z",
+            "timestamp": 1782970545000
+          },
+          "score": 26.081345,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/11573512/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2026,
+                5,
+                18
+              ]
+            ]
+          },
+          "references-count": 68,
+          "URL": "https://doi.org/10.1109/sp63933.2026.00237",
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                5,
+                18
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                5,
+                8
+              ]
+            ],
+            "date-time": "2026-05-08T03:36:59Z",
+            "timestamp": 1778211419511,
+            "version": "3.51.4"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 81,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    7,
+                    1
+                  ]
+                ],
+                "date-time": "2024-07-01T00:00:00Z",
+                "timestamp": 1719792000000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100000001",
+              "name": "NSF (National Science Foundation)",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "CNS-2247686"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CNS-2247686"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/100000185",
+              "name": "Defense Advanced Research Projects Agency",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "N6600120C4031"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "N6600120C4031"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000185",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/100000185",
+              "name": "Defense Advanced Research Projects Agency",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "N660012224037"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "N660012224037"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000185",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "name": "Amazon Rosearch Awards (ARA)"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                7
+              ]
+            ]
+          },
+          "DOI": "10.1145/3634737.3637650",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                6,
+                28
+              ]
+            ],
+            "date-time": "2024-06-28T11:51:38Z",
+            "timestamp": 1719575498000
+          },
+          "page": "1495-1509",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 5,
+          "title": [
+            "Fuzzing API Error Handling Behaviors using Coverage Guided Fault Injection"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0005-4149-884X",
+              "authenticated-orcid": false,
+              "given": "Shashank",
+              "family": "Sharma",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Purdue University, West Lafayette, Indiana, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0008-6428-0511",
+              "authenticated-orcid": false,
+              "given": "Sai Ritvik",
+              "family": "Tanksalkar",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Purdue University, West Lafayette, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0002-7199-1879",
+              "authenticated-orcid": false,
+              "given": "Sourag",
+              "family": "Cherupattamoolayil",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Purdue University, West Lafayette, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-5124-6818",
+              "authenticated-orcid": false,
+              "given": "Aravind",
+              "family": "Machiry",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Purdue University, West Lafayette, United States of America"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                7
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2023. AWS IOT Device SDK: always false condition. https://github.com/aws/aws-iot-device-sdk-embedded-C/pull/1861/commits/f312ea3eaaec04d09cfbe4fda0daf89e995da454"
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "2023. Nvidia open-gpu kernel modules: always false condition. https://github.com/NVIDIA/open-gpu-kernel-modules/pull/493/commits/527cb9d50c42a3fa91946e67eaa085f8eeb71ce5"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "Proceedings of the the 6th joint meeting of the European software engineering conference and the ACM SIGSOFT symposium on The Foundations of Software Engineering (FSE). 25--34",
+              "author": "Acharya Mithun",
+              "year": "2007",
+              "unstructured": "Mithun Acharya, Tao Xie, Jian Pei, and Jun Xu. 2007. Mining API patterns as partial orders from source code: from usage scenarios to specifications. In Proceedings of the the 6th joint meeting of the European software engineering conference and the ACM SIGSOFT symposium on The Foundations of Software Engineering (FSE). 25--34."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICCKE48569.2019.8964875"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "30th USENIX Security Symposium (USENIX Security 21)",
+              "author": "Ahmadi Mansour",
+              "year": "2021",
+              "unstructured": "Mansour Ahmadi, Reza Mirzazade Farkhani, Ryan Williams, and Long Lu. 2021. Finding bugs using your own code: detecting functionally-similar yet inconsistent code. In 30th USENIX Security Symposium (USENIX Security 21). 2025--2040."
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/3220904.3221145"
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "first-page": "1",
+              "article-title": "REDQUEEN: Fuzzing with Input-to-State Correspondence",
+              "volume": "19",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS, Vol. 19. 1--15.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.infsof.2016.01.018"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "2016 USENIX Annual Technical Conference (USENIX ATC 16)",
+              "author": "Bai Jia-Ju",
+              "year": "2016",
+              "unstructured": "Jia-Ju Bai, Yu-Ping Wang, Jie Yin, and Shi-Min Hu. 2016. Testing error handling code in device drivers using characteristic fault injection. In 2016 USENIX Annual Technical Conference (USENIX ATC 16). 635--647."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1214/ss/1177011077"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1646353.1646374"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3236024.3236032"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "crossref",
+              "first-page": "984",
+              "DOI": "10.1109/TSE.2018.2816639",
+              "article-title": "Detecting bugs by discovering expectations and their violations",
+              "volume": "45",
+              "author": "Bian Pan",
+              "year": "2018",
+              "unstructured": "Pan Bian, Bin Liang, Yan Zhang, Chaoqun Yang, Wenchang Shi, and Yan Cai. 2018. Detecting bugs by discovering expectations and their violations. IEEE Transactions on Software Engineering 45, 10 (2018), 984--1001.",
+              "journal-title": "IEEE Transactions on Software Engineering"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security (CCS). 1032--1043",
+              "author": "Böhme Marcel",
+              "year": "2016",
+              "unstructured": "Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2016. Coverage-based greybox fuzzing as markov chain. In Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security (CCS). 1032--1043."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1541880.1541882"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "Proceedings of the 9th ACM conference on Computer and communications security (CCS). 235--244",
+              "author": "Chen Hao",
+              "year": "2002",
+              "unstructured": "Hao Chen and David Wagner. 2002. MOPS: an infrastructure for examining security properties of software. In Proceedings of the 9th ACM conference on Computer and communications security (CCS). 235--244."
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "volume-title": "Proceedings of the 34th ACM SIGPLAN conference on Programming Language Design and Implementation (PLDI). 197--208",
+              "author": "Chen Yang",
+              "year": "2013",
+              "unstructured": "Yang Chen, Alex Groce, Chaoqiang Zhang, Weng-Keen Wong, Xiaoli Fern, Eric Eide, and John Regehr. 2013. Taming compiler fuzzers. In Proceedings of the 34th ACM SIGPLAN conference on Programming Language Design and Implementation (PLDI). 197--208."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ISSRE55969.2022.00035"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2970276.2970347"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2771783.2771811"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (CCS). 2123--2138",
+              "author": "Corina Jake",
+              "year": "2017",
+              "unstructured": "Jake Corina, Aravind Machiry, Christopher Salls, Yan Shoshitaishvili, Shuang Hao, Christopher Kruegel, and Giovanni Vigna. 2017. Difuze: Interface aware fuzzing for kernel drivers. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (CCS). 2123--2138."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/502059.502041"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/24039.24041"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "volume-title": "14th USENIX Workshop on Offensive Technologies (WOOT 20)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. {AFL++}: Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on Offensive Technologies (WOOT 20)."
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1007512.1007516"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "unstructured": "José Angel Galindo David Benavides and Sergio Segura. 2010. Debian Packages Repositories as Software Product Line Models. Towards Automated Analysis.. In ACoTA. 29--34."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00040"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "unstructured": "GitHub. 2017. Discover vulnerabilities across a codebase with CodeQL. https://securitylab.github.com/tools/codeql."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "unstructured": "GitHub. 2017. Semmle - A code analysis platform for finding zero-days and automating variant analysis. https://semmle.com/."
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3363824"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1375581.1375607"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "volume-title": "Honggfuzz: A security oriented, feedback-driven, evolutionary, easy-to-use fuzzer. https://github.com/google/honggfuzz.",
+              "year": "2022",
+              "unstructured": "Google. 2022. Honggfuzz: A security oriented, feedback-driven, evolutionary, easy-to-use fuzzer. https://github.com/google/honggfuzz."
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "2019 41st International Conference on Software Engineering: Companion Proceedings (ICSE-Companion). IEEE, 91--94",
+              "author": "Gu Zuxing",
+              "year": "2019",
+              "unstructured": "Zuxing Gu, Jiecheng Wu, Chi Li, Min Zhou, Yu Jiang, Ming Gu, and Jiaguang Sun. 2019. Vetting api usages in c programs with imchecker. In 2019 41st International Conference on Software Engineering: Companion Proceedings (ICSE-Companion). IEEE, 91--94."
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/COMPSAC.2019.00012"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "unstructured": "Red Hat. 2010. Advanced Package Tool. http://apt-rpm.org/scripting.shtml."
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Jiang Zu-Ming",
+              "year": "2020",
+              "unstructured": "Zu-Ming Jiang, Jia-Ju Bai, Kangjie Lu, and Shi-Min Hu. 2020. Fuzzing Error Handling Code using Context-Sensitive Software Fault Injection. In 29th USENIX Security Symposium (USENIX Security 20). 2595--2612."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "Proceedings of the Joint Meeting on Foundations of Software Engineering (FSE).",
+              "author": "Kang Yuan",
+              "year": "2016",
+              "unstructured": "Yuan Kang, Baishakhi Ray, and Suman Jana. 2016. APEx: Automated inference of error specifications for C APIs. In Proceedings of the Joint Meeting on Foundations of Software Engineering (FSE)."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ISSREW.2014.104"
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "volume-title": "Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security (CCS). 2123--2138",
+              "author": "Klees George",
+              "year": "2018",
+              "unstructured": "George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018. Evaluating fuzz testing. In Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security (CCS). 2123--2138."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "volume-title": "Proceedings of the 7th symposium on Operating systems design and implementation. 161--176",
+              "author": "Kremenek Ted",
+              "year": "2006",
+              "unstructured": "Ted Kremenek, Paul Twohey, Godmar Back, Andrew Ng, and Dawson Engler. 2006. From uncertainty to belief: Inferring the specification within. In Proceedings of the 7th symposium on Operating systems design and implementation. 161--176."
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238176"
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40001.2021.00090"
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1095430.1081755"
+            },
+            {
+              "key": "e_1_3_2_1_46_1",
+              "volume-title": "Vuldeepecker: A deep learning-based system for vulnerability detection. arXiv preprint arXiv:1801.01681",
+              "author": "Li Zhen",
+              "year": "2018",
+              "unstructured": "Zhen Li, Deqing Zou, Shouhuai Xu, Xinyu Ou, Hai Jin, Sujuan Wang, Zhijun Deng, and Yuyi Zhong. 2018. Vuldeepecker: A deep learning-based system for vulnerability detection. arXiv preprint arXiv:1801.01681 (2018)."
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1543135.1542485"
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1095430.1081754"
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "volume-title": "Computer Security - ESORICS",
+              "author": "Lu Kangjie",
+              "year": "2019",
+              "unstructured": "Kangjie Lu, Aditya Pakki, and Qiushi Wu. 2019. Automatically Identifying Security Checks for Detecting Kernel Semantic Bugs. In Computer Security - ESORICS 2019, Kazue Sako, Steve Schneider, and Peter Y. A. Ryan (Eds.). Springer International Publishing, Cham, 3--25."
+            },
+            {
+              "key": "e_1_3_2_1_50_1",
+              "volume-title": "28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Lyu Chenyang",
+              "year": "2019",
+              "unstructured": "Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and Raheem Beyah. 2019. {MOPT}: Optimized mutation scheduling for fuzzers. In 28th USENIX Security Symposium (USENIX Security 19). 1949--1966."
+            },
+            {
+              "key": "e_1_3_2_1_51_1",
+              "volume-title": "2020 IEEE Symposium on Security and Privacy (SP). IEEE, 1562--1579",
+              "author": "Machiry Aravind",
+              "year": "2020",
+              "unstructured": "Aravind Machiry, Nilo Redini, Eric Camellini, Christopher Kruegel, and Giovanni Vigna. 2020. Spider: Enabling fast patch propagation in related software repositories. In 2020 IEEE Symposium on Security and Privacy (SP). IEEE, 1562--1579."
+            },
+            {
+              "key": "e_1_3_2_1_52_1",
+              "volume-title": "2009 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 379--388",
+              "author": "Paul",
+              "unstructured": "Paul D. Marinescu and George Candea. 2009. LFI: A practical and general librarylevel fault injector. In 2009 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 379--388."
+            },
+            {
+              "key": "e_1_3_2_1_53_1",
+              "volume-title": "2009 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 379--388",
+              "author": "Paul",
+              "unstructured": "Paul D. Marinescu and George Candea. 2009. LFI: A practical and general librarylevel fault injector. In 2009 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 379--388."
+            },
+            {
+              "key": "e_1_3_2_1_54_1",
+              "unstructured": "MaskRay. 2022. Challenges in Building glibc with clang. https://maskray.me/blog/2021-09-05-build-glibc-with-lld."
+            },
+            {
+              "key": "e_1_3_2_1_55_1",
+              "volume-title": "2010 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 437--446",
+              "author": "Natella Roberto",
+              "year": "2010",
+              "unstructured": "Roberto Natella, Domenico Cotroneo, Joao Duraes, and Henrique Madeira. 2010. Representativeness analysis of injected software faults in complex software. In 2010 IEEE/IFIP International Conference on Dependable Systems & Networks (DSN). 437--446."
+            },
+            {
+              "key": "e_1_3_2_1_56_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2841425"
+            },
+            {
+              "key": "e_1_3_2_1_57_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2635868.2635924"
+            },
+            {
+              "key": "e_1_3_2_1_58_1",
+              "volume-title": "Proceedings of the 2020 ACM SIGSAC Conference on Computer and Communications Security (CCS). 1203--1218",
+              "author": "Pakki Aditya",
+              "year": "2020",
+              "unstructured": "Aditya Pakki and Kangjie Lu. 2020. Exaggerated Error Handling Hurts! An In-Depth Study and Context-Aware Detection. In Proceedings of the 2020 ACM SIGSAC Conference on Computer and Communications Security (CCS). 1203--1218."
+            },
+            {
+              "key": "e_1_3_2_1_59_1",
+              "volume-title": "Yves Le Traon, and Mark Harman",
+              "author": "Papadakis Mike",
+              "year": "2019",
+              "unstructured": "Mike Papadakis, Marinos Kintis, Jie Zhang, Yue Jia, Yves Le Traon, and Mark Harman. 2019. Mutation testing advances: an analysis and survey. In Advances in Computers. Vol. 112. Elsevier, 275--378."
+            },
+            {
+              "key": "e_1_3_2_1_60_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TKDE.2006.172"
+            },
+            {
+              "key": "e_1_3_2_1_61_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2810103.2813604"
+            },
+            {
+              "key": "e_1_3_2_1_62_1",
+              "first-page": "1980",
+              "article-title": "Smart greybox fuzzing",
+              "volume": "47",
+              "author": "Pham Van-Thuan",
+              "year": "2019",
+              "unstructured": "Van-Thuan Pham, Marcel Böhme, Andrew E Santosa, Alexandru Răzvan Căciulescu, and Abhik Roychoudhury. 2019. Smart greybox fuzzing. IEEE Transactions on Software Engineering 47, 9 (2019), 1980--1997.",
+              "journal-title": "IEEE Transactions on Software Engineering"
+            },
+            {
+              "key": "e_1_3_2_1_63_1",
+              "first-page": "1",
+              "article-title": "VUzzer: Application-aware Evolutionary Fuzzing",
+              "volume": "17",
+              "author": "Rawat Sanjay",
+              "year": "2017",
+              "unstructured": "Sanjay Rawat, Vivek Jain, Ashish Kumar, Lucian Cojocar, Cristiano Giuffrida, and Herbert Bos. 2017. VUzzer: Application-aware Evolutionary Fuzzing.. In NDSS, Vol. 17. 1--14.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_64_1",
+              "unstructured": "John Regehr. 2013. Use of Goto in Systems Code. https://blog.regehr.org/archives/894"
+            },
+            {
+              "key": "e_1_3_2_1_65_1",
+              "volume-title": "FTCS-23 The Twenty-Third International Symposium on Fault-Tolerant Computing. IEEE, 208--217",
+              "author": "Rosenberg Harold A",
+              "year": "1993",
+              "unstructured": "Harold A Rosenberg and Kang G Shin. 1993. Software fault injection and its application in distributed systems. In FTCS-23 The Twenty-Third International Symposium on Fault-Tolerant Computing. IEEE, 208--217."
+            },
+            {
+              "key": "e_1_3_2_1_66_1",
+              "volume-title": "2020 IEEE Conference on Communications and Network Security (CNS). IEEE, 1--9.",
+              "author": "Salls Christopher",
+              "year": "2020",
+              "unstructured": "Christopher Salls, Aravind Machiry, Adam Doupe, Yan Shoshitaishvili, Christopher Kruegel, and Giovanni Vigna. 2020. Exploring abstraction functions in fuzzing. In 2020 IEEE Conference on Communications and Network Security (CNS). IEEE, 1--9."
+            },
+            {
+              "key": "e_1_3_2_1_67_1",
+              "first-page": "1",
+              "article-title": "Driller: Augmenting fuzzing through selective symbolic execution",
+              "volume": "16",
+              "author": "Stephens Nick",
+              "year": "2016",
+              "unstructured": "Nick Stephens, John Grosen, Christopher Salls, Andrew Dutcher, Ruoyu Wang, Jacopo Corbetta, Yan Shoshitaishvili, Christopher Kruegel, and Giovanni Vigna. 2016. Driller: Augmenting fuzzing through selective symbolic execution.. In NDSS, Vol. 16. 1--16.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_68_1",
+              "volume-title": "Advanced C and C++ Compiling",
+              "author": "Stevanovic Milan",
+              "unstructured": "Milan Stevanovic. 2014. Locating the Libraries. In Advanced C and C++ Compiling. Springer, 115--135."
+            },
+            {
+              "key": "e_1_3_2_1_69_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2892208.2892235"
+            },
+            {
+              "key": "e_1_3_2_1_70_1",
+              "volume-title": "Proceedings of the Joint Meeting on Foundations of Software Engineering (FSE).",
+              "author": "Tian Yuchi",
+              "year": "2017",
+              "unstructured": "Yuchi Tian and Baishakhi Ray. 2017. Automatically diagnosing and repairing error handling bugs in C. In Proceedings of the Joint Meeting on Foundations of Software Engineering (FSE)."
+            },
+            {
+              "key": "e_1_3_2_1_71_1",
+              "unstructured": "travitch. 2015. Whole Program LLVM. https://github.com/travitch/whole-program-llvm."
+            },
+            {
+              "key": "e_1_3_2_1_72_1",
+              "volume-title": "Efficient Algorithms for Discovering Association Rules. In KDD Workshop.",
+              "author": "Verkamo A Inkeri",
+              "year": "1994",
+              "unstructured": "A Inkeri Verkamo. 1994. Efficient Algorithms for Discovering Association Rules. In KDD Workshop."
+            },
+            {
+              "key": "e_1_3_2_1_73_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2017.23"
+            },
+            {
+              "key": "e_1_3_2_1_74_1",
+              "volume-title": "2015 IEEE Symposium on Security and Privacy (SP). IEEE, 797--812",
+              "author": "Yamaguchi Fabian",
+              "year": "2015",
+              "unstructured": "Fabian Yamaguchi, Alwin Maier, Hugo Gascon, and Konrad Rieck. 2015. Automatic inference of search patterns for taint-style vulnerabilities. In 2015 IEEE Symposium on Security and Privacy (SP). IEEE, 797--812."
+            },
+            {
+              "key": "e_1_3_2_1_75_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2508859.2516665"
+            },
+            {
+              "key": "e_1_3_2_1_76_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1993498.1993532"
+            },
+            {
+              "key": "e_1_3_2_1_77_1",
+              "volume-title": "27th USENIX Security Symposium (USENIX Security 18)",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. 2018. {QSYM}: A practical concolic execution engine tailored for hybrid fuzzing. In 27th USENIX Security Symposium (USENIX Security 18). 745--761."
+            },
+            {
+              "key": "e_1_3_2_1_78_1",
+              "volume-title": "25th USENIX Security Symposium (USENIX Security 16)",
+              "author": "Yun Insu",
+              "year": "2016",
+              "unstructured": "Insu Yun, Changwoo Min, Xujie Si, Yeongjin Jang, Taesoo Kim, and Mayur Naik. 2016. APISan: Sanitizing {API} Usages through Semantic Cross-Checking. In 25th USENIX Security Symposium (USENIX Security 16). 363--378."
+            },
+            {
+              "key": "e_1_3_2_1_79_1",
+              "unstructured": "Michal Zalewski. 2018. AFL Technical Details. https://lcamtuf.coredump.cx/afl/technical_details.txt"
+            },
+            {
+              "key": "e_1_3_2_1_80_1",
+              "volume-title": "2012 34th International Conference on Software Engineering (ICSE). IEEE, 595--605",
+              "author": "Zhang Pingyu",
+              "year": "2012",
+              "unstructured": "Pingyu Zhang and Sebastian Elbaum. 2012. Amplifying tests to validate exception handling code. In 2012 34th International Conference on Software Engineering (ICSE). IEEE, 595--605."
+            },
+            {
+              "key": "e_1_3_2_1_81_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.cose.2014.02.008"
+            },
+            {
+              "key": "e_1_3_2_1_82_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3512345"
+            }
+          ],
+          "event": {
+            "name": "ASIA CCS '24: 19th ACM Asia Conference on Computer and Communications Security",
+            "location": "Singapore Singapore",
+            "acronym": "ASIA CCS '24",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 19th ACM Asia Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3634737.3637650",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                18
+              ]
+            ],
+            "date-time": "2025-06-18T23:44:06Z",
+            "timestamp": 1750290246000
+          },
+          "score": 25.87345,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3634737.3637650"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                7
+              ]
+            ]
+          },
+          "references-count": 81,
+          "alternative-id": [
+            "10.1145/3634737.3637650",
+            "10.1145/3634737"
+          ],
+          "URL": "https://doi.org/10.1145/3634737.3637650",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                7
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-07-01",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

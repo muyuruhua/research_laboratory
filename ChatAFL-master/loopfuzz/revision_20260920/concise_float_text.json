@@ -1,0 +1,2595 @@
+{
+  "backup": "float_concision_20260930/before",
+  "snapshot": "2026-09-30",
+  "rule": "Concise captions and table cells. Preserve measured values, denominators, missingness, uncertainty, references, and independent code/IPSM semantics. Unknown text requires review.",
+  "floats": [
+    {
+      "file": "main.revised.tex",
+      "label": "tab:boundary",
+      "caption": {
+        "old": "Motivating hypotheses and current evidence.",
+        "new": "Motivating hypotheses and current evidence.",
+        "accepted": [
+          "Motivating hypotheses and current evidence.",
+          "Motivating mismatch hypotheses and their present evidential boundary."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Forked-daapd",
+          "row_names": [
+            "Forked-daapd"
+          ],
+          "column": 1,
+          "old": "Overestimation: IPSM growth without downstream code gain.",
+          "new": "Overestimation: IPSM-only growth.",
+          "accepted": [
+            "Overestimation: IPSM growth without downstream code gain.",
+            "Overestimation: IPSM state-edge growth without downstream code gain."
+          ]
+        },
+        {
+          "row": "Forked-daapd",
+          "row_names": [
+            "Forked-daapd"
+          ],
+          "column": 2,
+          "old": "Growing IPSM structure with low episode code reward.",
+          "new": "IPSM growth; low code reward.",
+          "accepted": [
+            "Growing IPSM structure with low episode code reward.",
+            "Selected-state episodes with growing IPSM structure and low code reward."
+          ]
+        },
+        {
+          "row": "Forked-daapd",
+          "row_names": [
+            "Forked-daapd"
+          ],
+          "column": 3,
+          "old": "Prior endpoint code regression not reproduced.",
+          "new": "Code regression not reproduced.",
+          "accepted": [
+            "Prior endpoint code regression not reproduced.",
+            "The new archive does not reproduce the older endpoint code regression."
+          ]
+        },
+        {
+          "row": "Lighttpd1",
+          "row_names": [
+            "Lighttpd1"
+          ],
+          "column": 1,
+          "old": "Underestimation: code progress within shallow response states.",
+          "new": "Underestimation: weak state signal.",
+          "accepted": [
+            "Underestimation: code progress within shallow response states.",
+            "Underestimation: code exploration within a shallow response abstraction."
+          ]
+        },
+        {
+          "row": "Lighttpd1",
+          "row_names": [
+            "Lighttpd1"
+          ],
+          "column": 2,
+          "old": "Code-branch gain with little IPSM gain, linked to executions.",
+          "new": "Code gain with little IPSM growth.",
+          "accepted": [
+            "Code-branch gain with little IPSM gain, linked to executions.",
+            "Code-branch gain with little IPSM state-edge gain, joined to executions."
+          ]
+        },
+        {
+          "row": "Lighttpd1",
+          "row_names": [
+            "Lighttpd1"
+          ],
+          "column": 3,
+          "old": "Both endpoints increase; hidden productivity remains unverified.",
+          "new": "Both endpoints increase; mechanism unverified.",
+          "accepted": [
+            "Both endpoints increase; hidden productivity remains unverified.",
+            "Both native endpoint metrics increase; their aggregate changes do not establish hidden productive states."
+          ]
+        },
+        {
+          "row": "LightFTP",
+          "row_names": [
+            "LightFTP"
+          ],
+          "column": 1,
+          "old": "Saturation: IPSM novelty after code progress plateaus.",
+          "new": "Saturation: IPSM growth after code plateau.",
+          "accepted": [
+            "Saturation: IPSM novelty after code progress plateaus.",
+            "Saturation mismatch: response novelty persists after code progress plateaus."
+          ]
+        },
+        {
+          "row": "LightFTP",
+          "row_names": [
+            "LightFTP"
+          ],
+          "column": 2,
+          "old": "Aligned code/IPSM trajectories across saturation.",
+          "new": "Aligned code/IPSM saturation trajectories.",
+          "accepted": [
+            "Aligned code/IPSM trajectories across saturation.",
+            "Aligned code-branch and IPSM state-edge trajectories before and after saturation."
+          ]
+        },
+        {
+          "row": "LightFTP",
+          "row_names": [
+            "LightFTP"
+          ],
+          "column": 3,
+          "old": "Near-equal endpoints; matched-version trajectories still needed.",
+          "new": "Near-equal code endpoints; matched-version trajectories needed.",
+          "accepted": [
+            "Near-equal endpoints; matched-version trajectories still needed.",
+            "Near-equal native code endpoints motivate the test; current-build trajectories are still required."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:mismatch",
+      "caption": {
+        "old": "A/D code and IPSM endpoints (mean $\\pm$ SD; actual $n$ shown).",
+        "new": "A/D code-branch and IPSM state-edge endpoints (mean $\\pm$ SD; actual $n$).",
+        "accepted": [
+          "A/D code and IPSM endpoints (mean $\\pm$ SD; actual $n$ shown).",
+          "Observed native terminal code-branch and IPSM state-edge counts for the three motivating targets (mean and sample standard deviation (SD); observed run counts are labeled; nominal target $N=10$). All available A and D observations are retained. Runtime and provenance differences prevent a matched-horizon causal interpretation. This figure tests the earlier narrative against current observations: it does not assert that all three hypothesized mismatch types were reproduced."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:novelty",
+      "caption": {
+        "old": "Prior mechanisms and novelty boundaries.",
+        "new": "Prior mechanisms and novelty boundaries.",
+        "accepted": [
+          "Prior mechanisms and novelty boundaries.",
+          "Prior work and novelty boundary. This compares mechanisms, not measured performance."
+        ]
+      },
+      "cells": [
+        {
+          "row": "AFLNet; StateAFL; NSFuzz",
+          "row_names": [
+            "AFLNet; StateAFL; NSFuzz"
+          ],
+          "column": 2,
+          "old": "Calibrate the response proxy; no semantic-state recovery.",
+          "new": "Proxy calibration, not semantic-state recovery.",
+          "accepted": [
+            "Calibrate the response proxy; no semantic-state recovery.",
+            "Calibrate a retained response proxy without claiming semantic-state recovery."
+          ]
+        },
+        {
+          "row": "ChatAFL; LLM synthesis",
+          "row_names": [
+            "ChatAFL; LLM synthesis"
+          ],
+          "column": 1,
+          "old": "Protocol-informed message/sequence generation.",
+          "new": "Protocol-guided message/sequence generation.",
+          "accepted": [
+            "Protocol-informed message/sequence generation.",
+            "Protocol-informed message/sequence proposals."
+          ]
+        },
+        {
+          "row": "ChatAFL; LLM synthesis",
+          "row_names": [
+            "ChatAFL; LLM synthesis"
+          ],
+          "column": 2,
+          "old": "Execute-before-promote; bounded provisional validation.",
+          "new": "Execute-before-promote; bounded provisional validation.",
+          "accepted": [
+            "Execute-before-promote; bounded provisional validation.",
+            "Execute-before-promote and bounded provisional validation."
+          ]
+        },
+        {
+          "row": "The Bandit's States~\\cite{bandits_states2023}",
+          "row_names": [
+            "The Bandit's States~\\cite{bandits_states2023}"
+          ],
+          "column": 2,
+          "old": "Established selection framework; coupled proxy calibration and admission here.",
+          "new": "Couple proxy calibration with admission.",
+          "accepted": [
+            "Established selection framework; coupled proxy calibration and admission here.",
+            "Bandit formulation is prior art; independent reward and queue evidence are the focus.",
+            "Prior bandit formulation; independent reward and queue evidence here."
+          ]
+        },
+        {
+          "row": "T-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020}",
+          "row_names": [
+            "T-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020}"
+          ],
+          "column": 2,
+          "old": "Established allocation methods; response-proxy calibration here.",
+          "new": "Calibrate response proxies.",
+          "accepted": [
+            "Established allocation methods; response-proxy calibration here."
+          ]
+        },
+        {
+          "row": "Magma~\\cite{magma2020}; evaluation methodology",
+          "row_names": [
+            "Magma~\\cite{magma2020}; evaluation methodology",
+            "Magma~\\cite{magma2020}; evaluation studies"
+          ],
+          "column": 0,
+          "old": "Magma~\\cite{magma2020}; evaluation methodology",
+          "new": "Magma~\\cite{magma2020}; evaluation studies",
+          "accepted": [
+            "Magma~\\cite{magma2020}; evaluation methodology"
+          ]
+        },
+        {
+          "row": "Magma~\\cite{magma2020}; evaluation methodology",
+          "row_names": [
+            "Magma~\\cite{magma2020}; evaluation methodology",
+            "Magma~\\cite{magma2020}; evaluation studies"
+          ],
+          "column": 1,
+          "old": "Ground-truth bug conditions; repeated evaluation.",
+          "new": "Ground-truth bug oracles; repeated trials.",
+          "accepted": [
+            "Ground-truth bug conditions; repeated evaluation.",
+            "Ground-truth bug conditions and repeated evaluation."
+          ]
+        },
+        {
+          "row": "Magma~\\cite{magma2020}; evaluation methodology",
+          "row_names": [
+            "Magma~\\cite{magma2020}; evaluation methodology",
+            "Magma~\\cite{magma2020}; evaluation studies"
+          ],
+          "column": 2,
+          "old": "Information-controlled network rediscovery; minimal security-patch pairs.",
+          "new": "Information-controlled network rediscovery; minimal security-patch pairs.",
+          "accepted": [
+            "Information-controlled network rediscovery; minimal security-patch pairs.",
+            "Information-controlled network rediscovery with minimal security-patch pairs."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:predicates",
+      "caption": {
+        "old": "Admission predicates and required evidence.",
+        "new": "Admission predicates and required evidence.",
+        "accepted": [
+          "Admission predicates and required evidence.",
+          "Admission predicates relative to the recorded pre-trial snapshot."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Predicate",
+          "row_names": [
+            "Predicate"
+          ],
+          "column": 1,
+          "old": "Positive evidence",
+          "new": "Pass condition",
+          "accepted": [
+            "Positive evidence"
+          ]
+        },
+        {
+          "row": "Predicate",
+          "row_names": [
+            "Predicate"
+          ],
+          "column": 2,
+          "old": "Example failure",
+          "new": "Failure",
+          "accepted": [
+            "Example failure"
+          ]
+        },
+        {
+          "row": "Predicate",
+          "row_names": [
+            "Predicate"
+          ],
+          "column": 3,
+          "old": "Required evidence",
+          "new": "Measurements",
+          "accepted": [
+            "Required evidence",
+            "Required audit fields"
+          ]
+        },
+        {
+          "row": "$P$",
+          "row_names": [
+            "$P$"
+          ],
+          "column": 1,
+          "old": "Prespecified structure and format.",
+          "new": "Valid required structure.",
+          "accepted": [
+            "Prespecified structure and format.",
+            "Schema and local structural checks pass."
+          ]
+        },
+        {
+          "row": "$P$",
+          "row_names": [
+            "$P$"
+          ],
+          "column": 2,
+          "old": "Missing field; invalid length/delimiter.",
+          "new": "Missing fields; invalid lengths/delimiters.",
+          "accepted": [
+            "Missing field; invalid length/delimiter.",
+            "Missing field, invalid length or delimiter."
+          ]
+        },
+        {
+          "row": "$P$",
+          "row_names": [
+            "$P$"
+          ],
+          "column": 3,
+          "old": "Candidate identity; validation criteria; reason; hypothesis version.",
+          "new": "Candidate; criteria; reason; hypothesis version.",
+          "accepted": [
+            "Candidate identity; validation criteria; reason; hypothesis version.",
+            "Candidate ID, parser/schema version, reason, hypothesis hash."
+          ]
+        },
+        {
+          "row": "$U$",
+          "row_names": [
+            "$U$"
+          ],
+          "column": 1,
+          "old": "Adapter accepts response.",
+          "new": "Accepted response.",
+          "accepted": [
+            "Adapter accepts response.",
+            "Adapter-defined acceptable response."
+          ]
+        },
+        {
+          "row": "$U$",
+          "row_names": [
+            "$U$"
+          ],
+          "column": 2,
+          "old": "Rejection; timeout/reset/drop; unparseable reply.",
+          "new": "Rejection; timeout/reset/drop; unparseable reply.",
+          "accepted": [
+            "Rejection; timeout/reset/drop; unparseable reply.",
+            "Rejection, timeout, reset, drop, unparseable reply."
+          ]
+        },
+        {
+          "row": "$U$",
+          "row_names": [
+            "$U$"
+          ],
+          "column": 3,
+          "old": "Response identity; acceptance criteria; failures; exceptions.",
+          "new": "Response; acceptance rule; failure/exception.",
+          "accepted": [
+            "Response identity; acceptance criteria; failures; exceptions.",
+            "Response code/hash, adapter, flags, exception rule."
+          ]
+        },
+        {
+          "row": "$R$",
+          "row_names": [
+            "$R$"
+          ],
+          "column": 1,
+          "old": "Target/frontier reached or documented sink escape.",
+          "new": "Target/frontier reached or sink escaped.",
+          "accepted": [
+            "Target/frontier reached or documented sink escape."
+          ]
+        },
+        {
+          "row": "$R$",
+          "row_names": [
+            "$R$"
+          ],
+          "column": 2,
+          "old": "Repeated sink; missed destination.",
+          "new": "Sink retained; destination missed.",
+          "accepted": [
+            "Repeated sink; missed destination.",
+            "Repeats a sink or misses the destination."
+          ]
+        },
+        {
+          "row": "$R$",
+          "row_names": [
+            "$R$"
+          ],
+          "column": 3,
+          "old": "Source/target; observed state sequence.",
+          "new": "Source/target; observed state sequence.",
+          "accepted": [
+            "Source/target; observed state sequence.",
+            "Source, intended target, observed state sequence."
+          ]
+        },
+        {
+          "row": "$\\gcode$",
+          "row_names": [
+            "$\\gcode$"
+          ],
+          "column": 1,
+          "old": "New code branch/code edge or code-supported favored entry.",
+          "new": "New code coverage or code-supported favored entry.",
+          "accepted": [
+            "New code branch/code edge or code-supported favored entry."
+          ]
+        },
+        {
+          "row": "$\\gcode$",
+          "row_names": [
+            "$\\gcode$"
+          ],
+          "column": 3,
+          "old": "Pre/post code coverage; novelty class; favored reason.",
+          "new": "Pre/post coverage; novelty; favored reason.",
+          "accepted": [
+            "Pre/post code coverage; novelty class; favored reason.",
+            "Pre/post code observations, novelty class, favored reason."
+          ]
+        },
+        {
+          "row": "$\\gstate$",
+          "row_names": [
+            "$\\gstate$"
+          ],
+          "column": 2,
+          "old": "Known IPSM structure.",
+          "new": "Known IPSM structure.",
+          "accepted": [
+            "Known IPSM structure.",
+            "Known response-state structure."
+          ]
+        },
+        {
+          "row": "$\\gstate$",
+          "row_names": [
+            "$\\gstate$"
+          ],
+          "column": 3,
+          "old": "Pre/post IPSM; new transitions.",
+          "new": "Pre/post IPSM; new state transitions.",
+          "accepted": [
+            "Pre/post IPSM; new transitions.",
+            "Pre/post IPSM observations and new transitions."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:architecture",
+      "caption": {
+        "old": "Evidence-gated admission with provisional and durable queues.",
+        "new": "Evidence-gated admission and two-tier queues.",
+        "accepted": [
+          "Evidence-gated admission with provisional and durable queues.",
+          "Controller contract: $P$ precedes execution; $U/R$ and distinct code/IPSM evidence precede queue disposition. Native saving must not bypass the boundary. Security-oracle artifacts are preserved separately."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:posterior",
+      "caption": {
+        "old": "Online productivity calibration using pre-update predictions and code rewards.",
+        "new": "Online calibration from pre-update predictions and independent code rewards.",
+        "accepted": [
+          "Online productivity calibration using pre-update predictions and code rewards.",
+          "Productivity calibration: prediction precedes reward. IPSM state-edge growth is diagnostic and excluded from the main reward."
+        ]
+      },
+      "cells": [],
+      "block_edits": [
+        {
+          "old": "\\node[box] (pre) {Record pre-update mean and Thompson sample};",
+          "new": "\\node[box] (pre) {Pre-update mean; Thompson sample};"
+        },
+        {
+          "old": "\\node[box,below=5mm of pre] (run) {Select state; execute a fixed-energy episode};",
+          "new": "\\node[box,below=5mm of pre] (run) {Select state; fixed-energy episode};"
+        },
+        {
+          "old": "\\node[box,below=5mm of run] (reward) {Observe independent code reward};",
+          "new": "\\node[box,below=5mm of run] (reward) {Independent code reward};"
+        },
+        {
+          "old": "\\node[box,below=5mm of reward] (update) {Discounted update of productivity estimates};",
+          "new": "\\node[box,below=5mm of reward] (update) {Discounted posterior update};"
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:implementation",
+      "caption": {
+        "old": "Operational criteria and evidence limitations.",
+        "new": "Operational criteria and evidence limitations.",
+        "accepted": [
+          "Operational criteria and evidence limitations.",
+          "Controller contract versus inspected implementation and available evidence. Source findings describe the current checkout; archive/source identity is not assumed without a commit or binary hash."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Requirement",
+          "row_names": [
+            "Contract",
+            "Requirement"
+          ],
+          "column": 0,
+          "old": "Requirement",
+          "new": "Requirement",
+          "accepted": [
+            "Requirement",
+            "Contract"
+          ]
+        },
+        {
+          "row": "Gate precedes durable promotion",
+          "row_names": [
+            "Gate before promotion",
+            "Gate precedes durable promotion"
+          ],
+          "column": 0,
+          "old": "Gate precedes durable promotion",
+          "new": "Gate before promotion",
+          "accepted": [
+            "Gate precedes durable promotion"
+          ]
+        },
+        {
+          "row": "Gate precedes durable promotion",
+          "row_names": [
+            "Gate before promotion",
+            "Gate precedes durable promotion"
+          ],
+          "column": 1,
+          "old": "Retention may precede $U/R$ verification.",
+          "new": "Retention may precede $U/R$.",
+          "accepted": [
+            "Retention may precede $U/R$ verification.",
+            "Native saving may precede post-trial $U/R$ checks."
+          ]
+        },
+        {
+          "row": "Gate precedes durable promotion",
+          "row_names": [
+            "Gate before promotion",
+            "Gate precedes durable promotion"
+          ],
+          "column": 2,
+          "old": "Disposition labels do not verify queue protection.",
+          "new": "Queue protection unverified.",
+          "accepted": [
+            "Disposition labels do not verify queue protection.",
+            "Disposition/reason text does not certify strict queue protection."
+          ]
+        },
+        {
+          "row": "Independent state-only trial evidence",
+          "row_names": [
+            "Independent state-only evidence",
+            "Independent state-only trial evidence"
+          ],
+          "column": 0,
+          "old": "Independent state-only trial evidence",
+          "new": "Independent state-only evidence",
+          "accepted": [
+            "Independent state-only trial evidence"
+          ]
+        },
+        {
+          "row": "Independent state-only trial evidence",
+          "row_names": [
+            "Independent state-only evidence",
+            "Independent state-only trial evidence"
+          ],
+          "column": 1,
+          "old": "State assessment depends on prior retention.",
+          "new": "State assessment follows retention.",
+          "accepted": [
+            "State assessment depends on prior retention.",
+            "IPSM update depends on saving in the inspected path."
+          ]
+        },
+        {
+          "row": "Independent state-only trial evidence",
+          "row_names": [
+            "Independent state-only evidence",
+            "Independent state-only trial evidence"
+          ],
+          "column": 2,
+          "old": "Zero provisional events do not establish a low state-only rate.",
+          "new": "Zero provisional counts may be structural.",
+          "accepted": [
+            "Zero provisional events do not establish a low state-only rate.",
+            "Zero provisional events cannot establish a low state-only rate."
+          ]
+        },
+        {
+          "row": "Full structural and reachability checks",
+          "row_names": [
+            "Complete $P/R$ verification",
+            "Full structural and reachability checks"
+          ],
+          "column": 0,
+          "old": "Full structural and reachability checks",
+          "new": "Complete $P/R$ verification",
+          "accepted": [
+            "Full structural and reachability checks"
+          ]
+        },
+        {
+          "row": "Full structural and reachability checks",
+          "row_names": [
+            "Complete $P/R$ verification",
+            "Full structural and reachability checks"
+          ],
+          "column": 1,
+          "old": "$P$: structural recognition; $R$: generic transition.",
+          "new": "$P$: recognition; $R$: transition.",
+          "accepted": [
+            "$P$: structural recognition; $R$: generic transition.",
+            "$P$ can mean action schema; $R$ accepts generic state transitions."
+          ]
+        },
+        {
+          "row": "Full structural and reachability checks",
+          "row_names": [
+            "Complete $P/R$ verification",
+            "Full structural and reachability checks"
+          ],
+          "column": 2,
+          "old": "Full validity and target reachability remain unverified.",
+          "new": "Validity and reachability unverified.",
+          "accepted": [
+            "Full validity and target reachability remain unverified.",
+            "Audit exact parser and target-hit evidence."
+          ]
+        },
+        {
+          "row": "Main reward is new code coverage",
+          "row_names": [
+            "Main reward is new code coverage",
+            "New-code reward"
+          ],
+          "column": 0,
+          "old": "Main reward is new code coverage",
+          "new": "New-code reward",
+          "accepted": [
+            "Main reward is new code coverage"
+          ]
+        },
+        {
+          "row": "Main reward is new code coverage",
+          "row_names": [
+            "Main reward is new code coverage",
+            "New-code reward"
+          ],
+          "column": 1,
+          "old": "Observed novelty may reflect execution frequency.",
+          "new": "Execution-frequency novelty may contribute.",
+          "accepted": [
+            "Observed novelty may reflect execution frequency.",
+            "Bitmap novelty includes hit-count changes; some named branch fields count bitmap slots."
+          ]
+        },
+        {
+          "row": "Main reward is new code coverage",
+          "row_names": [
+            "Main reward is new code coverage",
+            "New-code reward"
+          ],
+          "column": 2,
+          "old": "Separate code branches, execution frequency, and retention.",
+          "new": "Distinguish branches, frequency, and retention.",
+          "accepted": [
+            "Separate code branches, execution frequency, and retention.",
+            "Keep offline branches, bitmap slots, and save events distinct."
+          ]
+        },
+        {
+          "row": "Fixed-energy episode",
+          "row_names": [
+            "Fixed-energy episode",
+            "Fixed-energy episodes"
+          ],
+          "column": 0,
+          "old": "Fixed-energy episode",
+          "new": "Fixed-energy episodes",
+          "accepted": [
+            "Fixed-energy episode"
+          ]
+        },
+        {
+          "row": "Fixed-energy episode",
+          "row_names": [
+            "Fixed-energy episode",
+            "Fixed-energy episodes"
+          ],
+          "column": 1,
+          "old": "Variable mutation energy; zero-execution attempts.",
+          "new": "Variable energy; zero executions.",
+          "accepted": [
+            "Variable mutation energy; zero-execution attempts.",
+            "Existing rounds vary mutation energy and may include zero-execution attempts."
+          ]
+        },
+        {
+          "row": "Fixed-energy episode",
+          "row_names": [
+            "Fixed-energy episode",
+            "Fixed-energy episodes"
+          ],
+          "column": 2,
+          "old": "Raw episodes do not provide equal opportunities.",
+          "new": "Unequal opportunities.",
+          "accepted": [
+            "Raw episodes do not provide equal opportunities.",
+            "Raw episode productivity is not equal-opportunity productivity."
+          ]
+        },
+        {
+          "row": "Strict provisional budget",
+          "row_names": [
+            "Strict provisional budget"
+          ],
+          "column": 1,
+          "old": "Limits checked after whole fuzzing rounds.",
+          "new": "Post-round budget checks.",
+          "accepted": [
+            "Limits checked after whole fuzzing rounds.",
+            "Limits checked after a whole fuzzing round."
+          ]
+        },
+        {
+          "row": "Strict provisional budget",
+          "row_names": [
+            "Strict provisional budget"
+          ],
+          "column": 2,
+          "old": "64-mutation/30-second limits may be exceeded.",
+          "new": "64-mutation/30-second limits may be exceeded.",
+          "accepted": [
+            "64-mutation/30-second limits may be exceeded.",
+            "Nominal 64/30-second thresholds are not enforced maxima."
+          ]
+        },
+        {
+          "row": "Verified run configuration",
+          "row_names": [
+            "Verified run conditions",
+            "Verified run configuration"
+          ],
+          "column": 0,
+          "old": "Verified run configuration",
+          "new": "Verified run conditions",
+          "accepted": [
+            "Verified run configuration"
+          ]
+        },
+        {
+          "row": "Verified run configuration",
+          "row_names": [
+            "Verified run conditions",
+            "Verified run configuration"
+          ],
+          "column": 1,
+          "old": "Effective settings may differ from initial declarations.",
+          "new": "Initial and effective settings may differ.",
+          "accepted": [
+            "Effective settings may differ from initial declarations.",
+            "Start event is written before some environment flags are parsed."
+          ]
+        },
+        {
+          "row": "Verified run configuration",
+          "row_names": [
+            "Verified run conditions",
+            "Verified run configuration"
+          ],
+          "column": 2,
+          "old": "Verify conditions throughout each experimental trial.",
+          "new": "Verify conditions throughout each run.",
+          "accepted": [
+            "Verify conditions throughout each experimental trial.",
+            "Cross-check launcher, end records, and effective execution path."
+          ]
+        },
+        {
+          "row": "Equal total call/token caps",
+          "row_names": [
+            "Equal total call/token caps",
+            "Total call/token caps"
+          ],
+          "column": 0,
+          "old": "Equal total call/token caps",
+          "new": "Total call/token caps",
+          "accepted": [
+            "Equal total call/token caps"
+          ]
+        },
+        {
+          "row": "Equal total call/token caps",
+          "row_names": [
+            "Equal total call/token caps",
+            "Total call/token caps"
+          ],
+          "column": 1,
+          "old": "64-call cap covers plateau use; token enforcement unverified.",
+          "new": "64-call cap: plateau only; tokens unverified.",
+          "accepted": [
+            "64-call cap covers plateau use; token enforcement unverified.",
+            "The logged 64 cap concerns plateau use; token-cap logging does not prove enforcement."
+          ]
+        },
+        {
+          "row": "Equal total call/token caps",
+          "row_names": [
+            "Equal total call/token caps",
+            "Total call/token caps"
+          ],
+          "column": 2,
+          "old": "Total-budget fairness remains unverified.",
+          "new": "Total-budget fairness unverified.",
+          "accepted": [
+            "Total-budget fairness remains unverified.",
+            "No existing total-budget fairness claim."
+          ]
+        },
+        {
+          "row": "Repair disabled in C/D/E",
+          "row_names": [
+            "Repair disabled in C/D/E",
+            "Repair off in C/D/E"
+          ],
+          "column": 0,
+          "old": "Repair disabled in C/D/E",
+          "new": "Repair off in C/D/E",
+          "accepted": [
+            "Repair disabled in C/D/E"
+          ]
+        },
+        {
+          "row": "Repair disabled in C/D/E",
+          "row_names": [
+            "Repair disabled in C/D/E",
+            "Repair off in C/D/E"
+          ],
+          "column": 1,
+          "old": "Actual repair conditions are incompletely established.",
+          "new": "Repair status incompletely verified.",
+          "accepted": [
+            "Actual repair conditions are incompletely established.",
+            "Code defaults and activation differ from the prospective configuration."
+          ]
+        },
+        {
+          "row": "Repair disabled in C/D/E",
+          "row_names": [
+            "Repair disabled in C/D/E",
+            "Repair off in C/D/E"
+          ],
+          "column": 2,
+          "old": "Reported arm identity does not establish adherence.",
+          "new": "Arm labels do not prove adherence.",
+          "accepted": [
+            "Reported arm identity does not establish adherence.",
+            "Legacy labels do not certify the complete D-arm contract."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:events",
+      "caption": {
+        "old": "Observation classes and required measurements.",
+        "new": "Observation classes and required measurements.",
+        "accepted": [
+          "Observation classes and required measurements.",
+          "Required logging schema. Each event also includes run ID, schema version, event sequence, and timestamp. Required fields are not claimed to be fully present in the current archive."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Experimental conditions",
+          "row_names": [
+            "Experimental conditions"
+          ],
+          "column": 1,
+          "old": "Arm; target/fuzzer versions; execution environment; model/service version; sampling parameters; random seed.",
+          "new": "Arm; software/model versions; environment; sampling seed.",
+          "accepted": [
+            "Arm; target/fuzzer versions; execution environment; model/service version; sampling parameters; random seed."
+          ]
+        },
+        {
+          "row": "Experimental conditions",
+          "row_names": [
+            "Experimental conditions"
+          ],
+          "column": 2,
+          "old": "Call/token limits; CPU/memory allocation; observation period; termination reason.",
+          "new": "Call/token caps; resources; period; termination.",
+          "accepted": [
+            "Call/token limits; CPU/memory allocation; observation period; termination reason."
+          ]
+        },
+        {
+          "row": "Candidate generation",
+          "row_names": [
+            "Candidate generation"
+          ],
+          "column": 1,
+          "old": "Candidate and prompt identity; parentage; original request/response; action; source/intended states.",
+          "new": "Candidate/prompt; lineage; request/response; action; source/target.",
+          "accepted": [
+            "Candidate and prompt identity; parentage; original request/response; action; source/intended states."
+          ]
+        },
+        {
+          "row": "Admission trial",
+          "row_names": [
+            "Admission trial"
+          ],
+          "column": 1,
+          "old": "Candidate/trial correspondence; $P/U/R$ and reasons; response identity; failures; state sequence; target reachability.",
+          "new": "Candidate/trial; $P/U/R$; responses; reachability.",
+          "accepted": [
+            "Candidate/trial correspondence; $P/U/R$ and reasons; response identity; failures; state sequence; target reachability."
+          ]
+        },
+        {
+          "row": "Admission trial",
+          "row_names": [
+            "Admission trial"
+          ],
+          "column": 2,
+          "old": "Pre/post IPSM nodes/state edges and code coverage; coverage-based priority; latency; decision.",
+          "new": "Code/IPSM changes; priority; latency; decision.",
+          "accepted": [
+            "Pre/post IPSM nodes/state edges and code coverage; coverage-based priority; latency; decision."
+          ]
+        },
+        {
+          "row": "Provisional validation",
+          "row_names": [
+            "Provisional validation"
+          ],
+          "column": 1,
+          "old": "Candidate identity; validation budget; first productive descendant.",
+          "new": "Candidate; budget; first productive descendant.",
+          "accepted": [
+            "Candidate identity; validation budget; first productive descendant."
+          ]
+        },
+        {
+          "row": "Provisional validation",
+          "row_names": [
+            "Provisional validation"
+          ],
+          "column": 2,
+          "old": "Descendant executions/code gain; conversion time; promotion latency; expiration/censoring.",
+          "new": "Executions; code gain; conversion/expiration; latency; censoring.",
+          "accepted": [
+            "Descendant executions/code gain; conversion time; promotion latency; expiration/censoring."
+          ]
+        },
+        {
+          "row": "State-selection episode",
+          "row_names": [
+            "State-selection episode"
+          ],
+          "column": 1,
+          "old": "Episode/state/seed identity; pre-update $\\alpha,\\beta,\\widehat{\\theta}$; Thompson sample; frontier/selection scores.",
+          "new": "State/seed; pre-update posterior; sample; selection scores.",
+          "accepted": [
+            "Episode/state/seed identity; pre-update $\\alpha,\\beta,\\widehat{\\theta}$; Thompson sample; frontier/selection scores."
+          ]
+        },
+        {
+          "row": "State-selection episode",
+          "row_names": [
+            "State-selection episode"
+          ],
+          "column": 2,
+          "old": "Mutation count; code-branch/IPSM state-edge gain; reward; post-update $\\alpha,\\beta$; duration; completion.",
+          "new": "Mutations; code/IPSM gain; reward; updated posterior; duration/completion.",
+          "accepted": [
+            "Mutation count; code-branch/IPSM state-edge gain; reward; post-update $\\alpha,\\beta$; duration; completion."
+          ]
+        },
+        {
+          "row": "Security outcome",
+          "row_names": [
+            "Security outcome"
+          ],
+          "column": 1,
+          "old": "Anonymous oracle identity; reproducing input; diagnostic evidence; root cause.",
+          "new": "Anonymous oracle; reproducer; diagnostics; root cause.",
+          "accepted": [
+            "Anonymous oracle identity; reproducing input; diagnostic evidence; root cause."
+          ]
+        },
+        {
+          "row": "Security outcome",
+          "row_names": [
+            "Security outcome"
+          ],
+          "column": 2,
+          "old": "Reached/triggered; first trigger time; vulnerable/patched outcomes.",
+          "new": "Reached/triggered; first trigger; version-pair outcomes.",
+          "accepted": [
+            "Reached/triggered; first trigger time; vulnerable/patched outcomes."
+          ]
+        },
+        {
+          "row": "Repair (optional)",
+          "row_names": [
+            "Repair (optional)"
+          ],
+          "column": 1,
+          "old": "Repair lineage; failure/counterexample; original/revised hypothesis; changed component.",
+          "new": "Lineage; counterexample; hypotheses; changed component.",
+          "accepted": [
+            "Repair lineage; failure/counterexample; original/revised hypothesis; changed component."
+          ]
+        },
+        {
+          "row": "Repair (optional)",
+          "row_names": [
+            "Repair (optional)"
+          ],
+          "column": 2,
+          "old": "Pre/post validation; post-repair predicates/descendant gain; tokens/latency.",
+          "new": "Validation; post-repair predicates/gain; tokens; latency.",
+          "accepted": [
+            "Pre/post validation; post-repair predicates/descendant gain; tokens/latency."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:arms",
+      "caption": {
+        "old": "Required configurations for arms A--E.",
+        "new": "Required configurations for arms A--E.",
+        "accepted": [
+          "Required configurations for arms A--E.",
+          "Confirmatory arm matrix. Repair is disabled in C/D/E. Names specify required configurations, not inferred identities from archive filenames."
+        ]
+      },
+      "cells": [
+        {
+          "row": "B: Controlled ChatAFL",
+          "row_names": [
+            "B: Controlled ChatAFL"
+          ],
+          "column": 4,
+          "old": "B--A: controlled LLM-lineage change.",
+          "new": "B--A: LLM-lineage comparison.",
+          "accepted": [
+            "B--A: controlled LLM-lineage change.",
+            "B--A: total controlled LLM-lineage change."
+          ]
+        },
+        {
+          "row": "C: LoopFuzz-direct",
+          "row_names": [
+            "C: LoopFuzz-direct"
+          ],
+          "column": 2,
+          "old": "Parseable candidates directly durable",
+          "new": "Parseable to durable",
+          "accepted": [
+            "Parseable candidates directly durable"
+          ]
+        },
+        {
+          "row": "D: LoopFuzz-gated-fixed",
+          "row_names": [
+            "D: LoopFuzz-gated-fixed"
+          ],
+          "column": 2,
+          "old": "Evidence gate + provisional queue",
+          "new": "Evidence gate; provisional queue",
+          "accepted": [
+            "Evidence gate + provisional queue"
+          ]
+        },
+        {
+          "row": "E: LoopFuzz-gated-calibrated",
+          "row_names": [
+            "E: LoopFuzz-gated-calibrated"
+          ],
+          "column": 4,
+          "old": "E--D: calibration effect.",
+          "new": "E--D: calibration effect.",
+          "accepted": [
+            "E--D: calibration effect.",
+            "E--D: scheduling calibration."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:targets",
+      "caption": {
+        "old": "Targets, protocols, and experimental conditions. Versions are the source pins recorded in the benchmark Dockerfiles; endpoint, seed, dictionary, and reset entries are taken from the per-run invocation recorded inside each archive.",
+        "new": "Target protocols and recorded test conditions.",
+        "accepted": [
+          "Targets, protocols, and experimental conditions. Versions are the source pins recorded in the benchmark Dockerfiles; endpoint, seed, dictionary, and reset entries are taken from the per-run invocation recorded inside each archive.",
+          "Target/protocol/build matrix. Blank build fields await exact commit, image, coverage, and reset manifests.",
+          "Targets, protocols, and experimental conditions."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Target",
+          "row_names": [
+            "Target"
+          ],
+          "column": 2,
+          "old": "Pinned source revision",
+          "new": "Source revision",
+          "accepted": [
+            "Pinned source revision",
+            "Commit/version",
+            "Target version"
+          ]
+        },
+        {
+          "row": "Target",
+          "row_names": [
+            "Target"
+          ],
+          "column": 3,
+          "old": "Endpoint (localhost)",
+          "new": "Endpoint (localhost)",
+          "accepted": [
+            "Endpoint (localhost)",
+            "Image digest",
+            "Execution environment"
+          ]
+        },
+        {
+          "row": "Target",
+          "row_names": [
+            "Target"
+          ],
+          "column": 4,
+          "old": "Seeds / dictionary / reset",
+          "new": "Seed protocol / dictionary / reset",
+          "accepted": [
+            "Seeds / dictionary / reset",
+            "Coverage build / reset hook",
+            "Coverage / reset procedure"
+          ]
+        },
+        {
+          "row": "LightFTP",
+          "row_names": [
+            "LightFTP"
+          ],
+          "column": 4,
+          "old": "in-ftp; ftp.dict; ftpclean script",
+          "new": "FTP; yes; cleanup",
+          "accepted": [
+            "in-ftp; ftp.dict; ftpclean script"
+          ]
+        },
+        {
+          "row": "bftpd",
+          "row_names": [
+            "bftpd"
+          ],
+          "column": 4,
+          "old": "in-ftp; ftp.dict; clean script",
+          "new": "FTP; yes; cleanup",
+          "accepted": [
+            "in-ftp; ftp.dict; clean script"
+          ]
+        },
+        {
+          "row": "ProFTPD",
+          "row_names": [
+            "ProFTPD"
+          ],
+          "column": 4,
+          "old": "in-ftp; ftp.dict; clean script",
+          "new": "FTP; yes; cleanup",
+          "accepted": [
+            "in-ftp; ftp.dict; clean script"
+          ]
+        },
+        {
+          "row": "Pure-FTPd",
+          "row_names": [
+            "Pure-FTPd"
+          ],
+          "column": 4,
+          "old": "in-ftp; ftp.dict; clean script",
+          "new": "FTP; yes; cleanup",
+          "accepted": [
+            "in-ftp; ftp.dict; clean script"
+          ]
+        },
+        {
+          "row": "Exim",
+          "row_names": [
+            "Exim"
+          ],
+          "column": 4,
+          "old": "in-smtp; smtp.dict; clean script",
+          "new": "SMTP; yes; cleanup",
+          "accepted": [
+            "in-smtp; smtp.dict; clean script"
+          ]
+        },
+        {
+          "row": "Live555",
+          "row_names": [
+            "Live555"
+          ],
+          "column": 4,
+          "old": "in-rtsp; rtsp.dict; no reset script recorded",
+          "new": "RTSP; yes; unrecorded",
+          "accepted": [
+            "in-rtsp; rtsp.dict; no reset script recorded"
+          ]
+        },
+        {
+          "row": "Kamailio",
+          "row_names": [
+            "Kamailio"
+          ],
+          "column": 4,
+          "old": "in-sip; no dictionary; run\\_pjsip reset",
+          "new": "SIP; no; PJSIP routine",
+          "accepted": [
+            "in-sip; no dictionary; run\\_pjsip reset"
+          ]
+        },
+        {
+          "row": "Forked-daapd",
+          "row_names": [
+            "Forked-daapd"
+          ],
+          "column": 4,
+          "old": "in-daap; no dictionary; no reset script recorded",
+          "new": "DAAP; no; unrecorded",
+          "accepted": [
+            "in-daap; no dictionary; no reset script recorded"
+          ]
+        },
+        {
+          "row": "Lighttpd1",
+          "row_names": [
+            "Lighttpd1"
+          ],
+          "column": 4,
+          "old": "in-http; http.dict; no reset script recorded",
+          "new": "HTTP; yes; unrecorded",
+          "accepted": [
+            "in-http; http.dict; no reset script recorded"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:llm",
+      "caption": {
+        "old": "Shared LLM settings required for B--E. Recorded values are verified against the end-of-run configuration event embedded in every C/D/E and $\\gamma$-sensitivity archive; ChatAFL archives embed no equivalent record, so B's participation remains unverified.",
+        "new": "LLM settings for C/D/E and sensitivity groups; B unverified.",
+        "accepted": [
+          "Shared LLM settings required for B--E. Recorded values are verified against the end-of-run configuration event embedded in every C/D/E and $\\gamma$-sensitivity archive; ChatAFL archives embed no equivalent record, so B's participation remains unverified.",
+          "Shared LLM configuration required for B--E. Blank values await the confirmatory freeze; historical settings do not fill these cells.",
+          "Shared LLM settings required for B--E."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Parameter",
+          "row_names": [
+            "Field",
+            "Parameter"
+          ],
+          "column": 0,
+          "old": "Parameter",
+          "new": "Parameter",
+          "accepted": [
+            "Parameter",
+            "Field"
+          ]
+        },
+        {
+          "row": "Parameter",
+          "row_names": [
+            "Field",
+            "Parameter"
+          ],
+          "column": 1,
+          "old": "Prespecified value",
+          "new": "Recorded value",
+          "accepted": [
+            "Prespecified value",
+            "Frozen value"
+          ]
+        },
+        {
+          "row": "Parameter",
+          "row_names": [
+            "Field",
+            "Parameter"
+          ],
+          "column": 2,
+          "old": "Comparability requirement",
+          "new": "Comparison requirement",
+          "accepted": [
+            "Comparability requirement",
+            "Required handling"
+          ]
+        },
+        {
+          "row": "Model, version, and inference service",
+          "row_names": [
+            "Model / version / service",
+            "Model, version, and inference service",
+            "Provider / endpoint / immutable model version"
+          ],
+          "column": 0,
+          "old": "Model, version, and inference service",
+          "new": "Model / version / service",
+          "accepted": [
+            "Model, version, and inference service",
+            "Provider / endpoint / immutable model version"
+          ]
+        },
+        {
+          "row": "Model, version, and inference service",
+          "row_names": [
+            "Model / version / service",
+            "Model, version, and inference service"
+          ],
+          "column": 1,
+          "old": "codex-auto-review via cctq.ai chat-completions endpoint",
+          "new": "codex-auto-review; cctq.ai",
+          "accepted": [
+            "codex-auto-review via cctq.ai chat-completions endpoint"
+          ]
+        },
+        {
+          "row": "Model, version, and inference service",
+          "row_names": [
+            "Model / version / service",
+            "Model, version, and inference service",
+            "Provider / endpoint / immutable model version"
+          ],
+          "column": 2,
+          "old": "Identical resolved version; name alone insufficient.",
+          "new": "Same resolved version; name insufficient.",
+          "accepted": [
+            "Identical resolved version; name alone insufficient.",
+            "Record resolved version; an alias alone is insufficient."
+          ]
+        },
+        {
+          "row": "Temperature by call class",
+          "row_names": [
+            "Temperature by call class"
+          ],
+          "column": 2,
+          "old": "Match each call class across arms.",
+          "new": "Match each call class.",
+          "accepted": [
+            "Match each call class across arms.",
+            "Match corresponding call classes across arms."
+          ]
+        },
+        {
+          "row": "Top-$p$ / presence and frequency penalties",
+          "row_names": [
+            "Top-$p$ / presence and frequency penalties",
+            "Top-$p$ / presence/frequency penalties"
+          ],
+          "column": 0,
+          "old": "Top-$p$ / presence and frequency penalties",
+          "new": "Top-$p$ / presence/frequency penalties",
+          "accepted": [
+            "Top-$p$ / presence and frequency penalties"
+          ]
+        },
+        {
+          "row": "Top-$p$ / presence and frequency penalties",
+          "row_names": [
+            "Top-$p$ / presence and frequency penalties",
+            "Top-$p$ / presence/frequency penalties"
+          ],
+          "column": 2,
+          "old": "Explicit values or documented defaults.",
+          "new": "Explicit values or defaults.",
+          "accepted": [
+            "Explicit values or documented defaults.",
+            "Explicit values or documented provider defaults."
+          ]
+        },
+        {
+          "row": "Maximum output tokens per attempt",
+          "row_names": [
+            "Maximum output tokens per attempt",
+            "Output tokens per attempt"
+          ],
+          "column": 0,
+          "old": "Maximum output tokens per attempt",
+          "new": "Output tokens per attempt",
+          "accepted": [
+            "Maximum output tokens per attempt"
+          ]
+        },
+        {
+          "row": "Maximum output tokens per attempt",
+          "row_names": [
+            "Maximum output tokens per attempt",
+            "Output tokens per attempt"
+          ],
+          "column": 2,
+          "old": "Shared limit; include truncated/failed responses.",
+          "new": "Same cap; include truncation/failures.",
+          "accepted": [
+            "Shared limit; include truncated/failed responses.",
+            "Shared cap; record truncation and failures."
+          ]
+        },
+        {
+          "row": "Maximum attempted calls / total tokens",
+          "row_names": [
+            "Attempted-call / total-token caps",
+            "Maximum attempted calls / total tokens"
+          ],
+          "column": 0,
+          "old": "Maximum attempted calls / total tokens",
+          "new": "Attempted-call / total-token caps",
+          "accepted": [
+            "Maximum attempted calls / total tokens"
+          ]
+        },
+        {
+          "row": "Maximum attempted calls / total tokens",
+          "row_names": [
+            "Attempted-call / total-token caps",
+            "Maximum attempted calls / total tokens"
+          ],
+          "column": 2,
+          "old": "Count all call classes and retries.",
+          "new": "Count all classes and retries.",
+          "accepted": [
+            "Count all call classes and retries.",
+            "Include all classes and retries."
+          ]
+        },
+        {
+          "row": "Timeout and repeated-request policy",
+          "row_names": [
+            "Timeout / retry count / backoff",
+            "Timeout / retry policy",
+            "Timeout and repeated-request policy"
+          ],
+          "column": 0,
+          "old": "Timeout and repeated-request policy",
+          "new": "Timeout / retry policy",
+          "accepted": [
+            "Timeout and repeated-request policy",
+            "Timeout / retry count / backoff"
+          ]
+        },
+        {
+          "row": "Timeout and repeated-request policy",
+          "row_names": [
+            "Timeout / retry count / backoff",
+            "Timeout / retry policy",
+            "Timeout and repeated-request policy"
+          ],
+          "column": 2,
+          "old": "Identical policy; account for waiting and failures.",
+          "new": "Same policy; include waits/failures.",
+          "accepted": [
+            "Identical policy; account for waiting and failures.",
+            "Fixed policy; record realized waits and failures."
+          ]
+        },
+        {
+          "row": "Model-side seed / support status",
+          "row_names": [
+            "Model seed / support",
+            "Model-side seed / support status"
+          ],
+          "column": 0,
+          "old": "Model-side seed / support status",
+          "new": "Model seed / support",
+          "accepted": [
+            "Model-side seed / support status"
+          ]
+        },
+        {
+          "row": "Model-side seed / support status",
+          "row_names": [
+            "Model seed / support",
+            "Model-side seed / support status"
+          ],
+          "column": 2,
+          "old": "Record support; no determinism guarantee.",
+          "new": "Document support; determinism unassured.",
+          "accepted": [
+            "Record support; no determinism guarantee.",
+            "Record support; do not promise service determinism."
+          ]
+        },
+        {
+          "row": "Prompt corpus / template version",
+          "row_names": [
+            "Prompt corpus / template",
+            "Prompt corpus / template version"
+          ],
+          "column": 0,
+          "old": "Prompt corpus / template version",
+          "new": "Prompt corpus / template",
+          "accepted": [
+            "Prompt corpus / template version"
+          ]
+        },
+        {
+          "row": "Prompt corpus / template version",
+          "row_names": [
+            "Prompt corpus / template",
+            "Prompt corpus / template version"
+          ],
+          "column": 2,
+          "old": "Shared information policy; traceable prompts/responses.",
+          "new": "Same information policy; traceable exchanges.",
+          "accepted": [
+            "Shared information policy; traceable prompts/responses.",
+            "Shared information policy; prompt/reply hashes."
+          ]
+        },
+        {
+          "row": "Plateau cadence / threshold / reset",
+          "row_names": [
+            "Plateau cadence / threshold / reset"
+          ],
+          "column": 2,
+          "old": "Shared intervention and state-growth criteria.",
+          "new": "Same intervention/state-growth criteria.",
+          "accepted": [
+            "Shared intervention and state-growth criteria.",
+            "Same trigger, including state-growth dependencies."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:reliability",
+      "caption": {
+        "old": "E-arm proxy-reward calibration. Points: bin means; bars: 95\\% CIs.",
+        "new": "E-arm proxy-reward reliability (bin means; 95\\% CIs).",
+        "accepted": [
+          "E-arm proxy-reward calibration. Points: bin means; bars: 95\\% CIs.",
+          "Descriptive reliability of the E-archive logged reward, shown separately by target. Pre-update probabilities are grouped into ten fixed equal-width bins; dots show the mean prediction and episode-weighted reward frequency. The dashed diagonal denotes perfect calibration. Whiskers are percentile 95\\% CIs from 2,000 resamples of whole runs within target; bins represented by fewer than two runs have no CI. Lower strips give exact episode counts; empty bins have no estimate. Only records with positive mutation counts are included. The reward marks native coverage-save events, which may include hit-count novelty; it is not independently replayed source-branch gain. Episodes have unequal energy and no verified completion flag. Nominal $N=10$; actual $n$ and episode count $m$ are shown."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:mainresults",
+      "caption": {
+        "old": "Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD.",
+        "new": "Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD.",
+        "accepted": [
+          "Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD.",
+          "Archive-derived final code-branch count / branch-coverage AUC (branch-hours). Each cell shows mean $\\pm$ sample SD and observed $n$ on the first line, with AUC on the second line. The nominal target is 10 runs; all 45 main target--arm groups have observations. Missing runs are not imputed. These descriptive endpoints do not replace matched-horizon causal inference."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:trajectories",
+      "caption": {
+        "old": "A--E code-branch trajectories: medians and interquartile ranges.",
+        "new": "A--E code-branch trajectories (median and interquartile range).",
+        "accepted": [
+          "A--E code-branch trajectories: medians and interquartile ranges.",
+          "Observed A--E code-branch trajectories from 465 archives. Time is measured from each fuzzer\\_stats start time. Lines are medians and shaded regions are interquartile ranges, computed on a five-minute grid by linear interpolation only between recorded observations. A run contributes neither before its first observation nor after its last; the actual contributing $n$ at 24 hours is shown in A--E order. The plot displays 0--24 hours without imposing a completed 24-hour campaign on interrupted runs. Full time-dependent denominators accompany the figure data; the nominal target remains $N=10$. All 45 main target--arm combinations are represented, including ten E--bftpd archives. Native pipeline/build comparability remains unverified; these curves are descriptive, and shaded ranges are not CIs."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:posterior_cases",
+      "caption": {
+        "old": "E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom).",
+        "new": "E-arm pre-update probabilities (top) and scheduling multipliers (bottom).",
+        "accepted": [
+          "E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom).",
+          "State-level E-archive illustrations for the three motivating targets, selected by the deterministic rule in the text. Upper panels show pre-update probabilities; lower panels show the logged final selection score divided by the frontier score. Each point is positioned at the logged episode-end time; connecting lines only guide the eye. Zero-frontier records have an undefined multiplier and are omitted from the lower panels. Colors identify states within each target, not equivalent states across targets. Unequal mutation energy, possible posterior resets, and native save-event rewards limit interpretation. The selected source paths and exact plotted values accompany the figure."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:mechanisms",
+      "caption": {
+        "old": "C/D/E mechanism observations; blanks indicate unvalidated evidence.",
+        "new": "C/D/E admission records and exploratory reward diagnostics.",
+        "accepted": [
+          "C/D/E mechanism observations; blanks indicate unvalidated evidence.",
+          "Logged mechanism totals across the available C/D/E archives. Candidate and trial IDs are scoped to each archive; disposition labels are not independently verified queue membership. Metrics requiring descendant joins or verified fixed-energy, independent code-branch rewards remain blank; the separate logged-reward diagnostics appear in Table~\\ref{tab:logged_calibration}.",
+          "C/D/E mechanism observations; blanks indicate unvalidated evidence."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Candidate records",
+          "row_names": [
+            "Candidate records"
+          ],
+          "column": 4,
+          "old": "Distinct candidates within each experimental record.",
+          "new": "Within-run distinct candidates.",
+          "accepted": [
+            "Distinct candidates within each experimental record.",
+            "Distinct candidate IDs within each archive."
+          ]
+        },
+        {
+          "row": "Trial records",
+          "row_names": [
+            "Trial records"
+          ],
+          "column": 4,
+          "old": "Distinct trials within each experimental record.",
+          "new": "Within-run distinct trials.",
+          "accepted": [
+            "Distinct trials within each experimental record.",
+            "Distinct trial IDs within each archive."
+          ]
+        },
+        {
+          "row": "Reject / durable labels",
+          "row_names": [
+            "Reject / durable labels"
+          ],
+          "column": 4,
+          "old": "Reported trial outcomes.",
+          "new": "Reported trial outcomes.",
+          "accepted": [
+            "Reported trial outcomes.",
+            "Logged trial dispositions."
+          ]
+        },
+        {
+          "row": "First failed $P/U/R$",
+          "row_names": [
+            "First failed $P/U/R$",
+            "First failed logged $P/U/R$"
+          ],
+          "column": 0,
+          "old": "First failed $P/U/R$",
+          "new": "First failed $P/U/R$",
+          "accepted": [
+            "First failed $P/U/R$",
+            "First failed logged $P/U/R$"
+          ]
+        },
+        {
+          "row": "First failed $P/U/R$",
+          "row_names": [
+            "First failed $P/U/R$",
+            "First failed logged $P/U/R$"
+          ],
+          "column": 4,
+          "old": "First false $P$, then $U$, then $R$; denominator: trials.",
+          "new": "Trial denominator; first false $P$, $U$, or $R$.",
+          "accepted": [
+            "First false $P$, then $U$, then $R$; denominator: trials.",
+            "First false field in $P$, then $U$, then $R$ order; trial denominator."
+          ]
+        },
+        {
+          "row": "Direct durable rate",
+          "row_names": [
+            "Direct durable rate"
+          ],
+          "column": 4,
+          "old": "Durable labels / generated candidates.",
+          "new": "Durable labels / generated candidates.",
+          "accepted": [
+            "Durable labels / generated candidates.",
+            "Logged disposition labels / generated candidates."
+          ]
+        },
+        {
+          "row": "State-only provisional rate",
+          "row_names": [
+            "State-only provisional rate"
+          ],
+          "column": 4,
+          "old": "All candidates; disabled for C.",
+          "new": "All candidates; disabled for C.",
+          "accepted": [
+            "All candidates; disabled for C.",
+            "All candidates; not enabled for C."
+          ]
+        },
+        {
+          "row": "Provisional conversion / expiration",
+          "row_names": [
+            "Provisional conversion / expiration"
+          ],
+          "column": 4,
+          "old": "Provisional admissions; include pending/censored cases.",
+          "new": "Provisional admissions; retain pending/censored cases.",
+          "accepted": [
+            "Provisional admissions; include pending/censored cases.",
+            "Provisional admissions, including pending/censored counts."
+          ]
+        },
+        {
+          "row": "Trial latency (ms)",
+          "row_names": [
+            "Trial latency (ms)"
+          ],
+          "column": 4,
+          "old": "Mean $\\pm$ SD of within-run trial means; contributing runs only.",
+          "new": "Within-run trial means; contributing runs only.",
+          "accepted": [
+            "Mean $\\pm$ SD of within-run trial means; contributing runs only.",
+            "Mean $\\pm$ sample SD of within-run mean \\texttt{latency\\_ms}; runs with trials only."
+          ]
+        },
+        {
+          "row": "BS / ECE / AP",
+          "row_names": [
+            "BS / ECE / AP"
+          ],
+          "column": 4,
+          "old": "Fixed-energy code-branch reward; proxy diagnostics: \\namedref{Table}{tab:logged_calibration}.",
+          "new": "265-mutation subset; pooled proxy reward; see \\namedref{Table}{tab:logged_calibration}.",
+          "accepted": [
+            "Fixed-energy code-branch reward; proxy diagnostics: \\namedref{Table}{tab:logged_calibration}.",
+            "Fixed-energy code reward; proxies: \\namedref{Table}{tab:logged_calibration}."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:dispositions",
+      "caption": {
+        "old": "C/D/E reported dispositions (left) and first failed $P/U/R$ predicates (right).",
+        "new": "C/D/E reported dispositions (left) and first $P/U/R$ failures (right).",
+        "accepted": [
+          "C/D/E reported dispositions (left) and first failed $P/U/R$ predicates (right).",
+          "Logged candidate dispositions (left) and first failed trial flags in $P\\!\\rightarrow\\!U\\!\\rightarrow\\!R$ order (right), pooled within each archive arm. Exact counts accompany percentages. The candidate denominators are 1,326/2,227/735 for C/D/E; the trial denominators are 1,326/2,226/734. D and E each have one unmatched candidate, whose narrow segment is identified by the count. Passing $P/U/R$ does not establish code gain or durable queue membership. Provisional, converted, and expired outcomes have no validated lifecycle evidence and are not assigned zero rates."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:cost",
+      "caption": {
+        "old": "Reported tokens versus terminal code branches, by target and arm.",
+        "new": "Code-branch endpoints versus reported tokens, by target and arm.",
+        "accepted": [
+          "Reported tokens versus terminal code branches, by target and arm.",
+          "Saved token counters versus native terminal code coverage, with one marker per B--E archive (371 observations). Token usage is the saved prompt-plus-completion count, expressed in thousands; individual observations show the available dispersion without imposing a fitted efficiency frontier. Different targets have separate axes; all 36 B--E target--arm combinations have saved counters, including ten E--bftpd archives. AFLNet lacks a comparable saved counter and is not assigned a synthetic zero. Horizons and build provenance are not matched, and final counters may lag the event stream. This is a descriptive cost--coverage view, not reconciled billing or a cost-matched causal comparison."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:callcost",
+      "caption": {
+        "old": "Reported model calls versus terminal code branches, by target and arm.",
+        "new": "Code-branch endpoints versus reported calls, by target and arm.",
+        "accepted": [
+          "Reported model calls versus terminal code branches, by target and arm.",
+          "Saved model-call counters versus native terminal branch coverage for the same 371 B--E observations as \\figref{fig:cost}. Each marker represents a run; no regression, Pareto frontier, or missing usage is inferred. Separate target scales preserve the different program coverage surfaces. Call counts do not measure token expenditure or CPU-hours."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:cve",
+      "caption": {
+        "old": "Vulnerability cases and supporting evidence (L: direct observation; R: report).",
+        "new": "Vulnerability cases and supporting evidence (L: direct observation; R: report).",
+        "accepted": [
+          "Vulnerability cases and supporting evidence (L: direct observation; R: report).",
+          "Supplied vulnerability case inventory. Build and CVE identities follow the local case reports. L denotes an attached log; R denotes a report-only observation. A local guard or an unsuccessful patch attempt does not establish equivalence to the upstream security fix."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Case / interface",
+          "row_names": [
+            "Case / interface"
+          ],
+          "column": 1,
+          "old": "Reported vulnerable version",
+          "new": "Reported vulnerable version",
+          "accepted": [
+            "Reported vulnerable version",
+            "Reported vulnerable build"
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP"
+          ],
+          "column": 1,
+          "old": "Reported vulnerable version; ASan; 65,535-byte command buffer",
+          "new": "Reported vulnerable build; 65,535-byte buffer.",
+          "accepted": [
+            "Reported vulnerable version; ASan; 65,535-byte command buffer",
+            "\\texttt{61e621e743346};\\newline ASan; command buffer 65,535 bytes"
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP"
+          ],
+          "column": 2,
+          "old": "60,006-byte input; heap-buffer-overflow: one-byte read beyond a 65,568-byte region (L).",
+          "new": "60,006-byte input; ASan heap-buffer-overflow (L).",
+          "accepted": [
+            "60,006-byte input; heap-buffer-overflow: one-byte read beyond a 65,568-byte region (L).",
+            "60,006-byte input; heap-buffer-overflow, one-byte read beyond a 65,568-byte region (L)."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP"
+          ],
+          "column": 3,
+          "old": "Reported security patch; three rejections, no ASan (L); same input/buffer.",
+          "new": "Security patch: three rejections, no ASan (L).",
+          "accepted": [
+            "Reported security patch; three rejections, no ASan (L); same input/buffer.",
+            "Reported base + \\texttt{97bbe68363cc}; three rejection/no-ASan rounds (L). Same input and buffer configuration are stated in that log."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP"
+          ],
+          "column": 1,
+          "old": "Campaign: 2023.05.10; public report: 2026.02.26 (R)",
+          "new": "Campaign: 2023.05.10; report: 2026.02.26 (R).",
+          "accepted": [
+            "Campaign: 2023.05.10; public report: 2026.02.26 (R)",
+            "2023.05.10 campaign snapshot; public report identifies 2026.02.26 (R)"
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP"
+          ],
+          "column": 2,
+          "old": "728-byte public PoC; heap-use-after-free (L). Fuzzer-discovered input absent.",
+          "new": "728-byte public PoC; use-after-free (L).",
+          "accepted": [
+            "728-byte public PoC; heap-use-after-free (L). Fuzzer-discovered input absent.",
+            "728-byte public PoC; heap-use-after-free excerpt (L). A separate fuzzer-discovered input is described but absent."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP"
+          ],
+          "column": 3,
+          "old": "Attempted local patch: 1/1 still triggers (R); upstream-patch comparison absent.",
+          "new": "Local patch: 1/1 triggers (R); upstream comparison unavailable.",
+          "accepted": [
+            "Attempted local patch: 1/1 still triggers (R); upstream-patch comparison absent.",
+            "Local handler-removal attempt still triggers, 1/1 (R). Successful upstream-patch differential unavailable."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP"
+          ],
+          "column": 1,
+          "old": "Reported vulnerable version; TCP required",
+          "new": "Reported vulnerable build; TCP required.",
+          "accepted": [
+            "Reported vulnerable version; TCP required",
+            "\\texttt{a2209018fb};\\newline TCP listener required"
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP"
+          ],
+          "column": 2,
+          "old": "278-byte input; parsed Content-Length $-10$ (L): overflow predicate, not crash count.",
+          "new": "278-byte input; parsed Content-Length $-10$ (L).",
+          "accepted": [
+            "278-byte input; parsed Content-Length $-10$ (L): overflow predicate, not crash count.",
+            "278-byte input; negative Content-Length value $-10$ (L). This is the overflow predicate, not a crash count."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP"
+          ],
+          "column": 3,
+          "old": "Oracle pair \\texttt{o-kam-01} (L, Sept.~30): patched build 0/253 negative-value lines; upstream guard logged.",
+          "new": "Patched: 0/253 negative-value outcomes; guard observed (L).",
+          "accepted": [
+            "Oracle pair \\texttt{o-kam-01} (L, Sept.~30): patched build 0/253 negative-value lines; upstream guard logged.",
+            "Local \\texttt{INT\\_MAX/10} guard suppresses the fingerprint (R); upstream fix is identified as \\texttt{060b6c2530c8}. Patched log and repeat count unavailable.",
+            "Local overflow guard suppresses diagnostic (R); equivalence to the identified security patch unverified."
+          ]
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "row_names": [
+            "SMARTPL availability case\\newline forked-daapd / HTTP"
+          ],
+          "column": 1,
+          "old": "Reported version 27.2",
+          "new": "Reported version 27.2.",
+          "accepted": [
+            "Reported version 27.2",
+            "Reported 27.2,\\newline \\texttt{2ca10d9b}"
+          ]
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "row_names": [
+            "SMARTPL availability case\\newline forked-daapd / HTTP"
+          ],
+          "column": 2,
+          "old": "148-byte input; lexer errors; health probe fails; process alive (R). Direct replay evidence absent.",
+          "new": "148-byte input; unresponsive service, live process (R).",
+          "accepted": [
+            "148-byte input; lexer errors; health probe fails; process alive (R). Direct replay evidence absent.",
+            "148-byte input; lexer errors, failed health probe, process still alive (R). No standalone replay log."
+          ]
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "row_names": [
+            "SMARTPL availability case\\newline forked-daapd / HTTP"
+          ],
+          "column": 3,
+          "old": "No patched replay/CVE; parser reportedly removed in 28.4.",
+          "new": "No patched replay/CVE; removal reported in 28.4.",
+          "accepted": [
+            "No patched replay/CVE; parser reportedly removed in 28.4.",
+            "No patched-version replay. No CVE assigned; report associates parser removal with version 28.4."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:cveresults",
+      "caption": {
+        "old": "Reported replay batches and separate controls; original denominators retained.",
+        "new": "Replay outcomes and controls; original denominators retained.",
+        "accepted": [
+          "Reported replay batches and separate controls; original denominators retained.",
+          "Recorded replay and sampled-input outcomes. R/L have the meanings in Table~\\ref{tab:cve}. Fractions retain the original batch denominators; vulnerable-side batches are report-only unless specified. The control column records separate tests, not matched A--E campaigns. No absent trial is imputed."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Case",
+          "row_names": [
+            "Case"
+          ],
+          "column": 1,
+          "old": "Vulnerable-side batches (R)",
+          "new": "Replay outcome",
+          "accepted": [
+            "Vulnerable-side batches (R)"
+          ]
+        },
+        {
+          "row": "Case",
+          "row_names": [
+            "Case"
+          ],
+          "column": 2,
+          "old": "Patched or diagnostic control",
+          "new": "Control outcome",
+          "accepted": [
+            "Patched or diagnostic control"
+          ]
+        },
+        {
+          "row": "Case",
+          "row_names": [
+            "Case"
+          ],
+          "column": 3,
+          "old": "Interpretation / missing evidence",
+          "new": "Evidence limit",
+          "accepted": [
+            "Interpretation / missing evidence"
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}"
+          ],
+          "column": 1,
+          "old": "Earlier batches: 1/1 seed; 1/1 fuzzer crash; 3/3 batch crashes. Full oracle-pair replay (L, Sept.~30): 172/233 in-campaign crash inputs (121 and 112 per run) trigger the \\texttt{make\\_ftp\\_cmd} ASan predicate on the vulnerable image; 61/233 and 9/9 teardown inputs do not reproduce standalone.",
+          "new": "172/233 ASan triggers (L).",
+          "accepted": [
+            "Earlier batches: 1/1 seed; 1/1 fuzzer crash; 3/3 batch crashes. Full oracle-pair replay (L, Sept.~30): 172/233 in-campaign crash inputs (121 and 112 per run) trigger the \\texttt{make\\_ftp\\_cmd} ASan predicate on the vulnerable image; 61/233 and 9/9 teardown inputs do not reproduce standalone.",
+            "1/1 known seed; 1/1 fuzzer crash (Sept.~22); 3/3 batch crashes (Sept.~25).",
+            "1/1 seed; 1/1 fuzzer crash (Sept.~22); 3/3 batch crashes (Sept.~25)."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}"
+          ],
+          "column": 2,
+          "old": "Oracle pair \\texttt{o-pftp-01}: patched image 0/242 ASan activations (L, Sept.~30); earlier fix batch 0/3.",
+          "new": "Patched: 0/242 ASan activations (L).",
+          "accepted": [
+            "Oracle pair \\texttt{o-pftp-01}: patched image 0/242 ASan activations (L, Sept.~30); earlier fix batch 0/3.",
+            "0/3 ASan activations after the reported upstream fix; 3/3 FTP 500 rejections (L, Sept.~28).",
+            "Reported fix: 0/3 ASan activations; 3/3 FTP 500 rejections (L, Sept.~28)."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "row_names": [
+            "\\mbox{CVE-2023-51713}"
+          ],
+          "column": 3,
+          "old": "Crash-artifact replay with a verified version pair, not campaign recall; no time-to-trigger or arm-level discovery probability.",
+          "new": "Artifact replay; campaign recall unmeasured.",
+          "accepted": [
+            "Crash-artifact replay with a verified version pair, not campaign recall; no time-to-trigger or arm-level discovery probability.",
+            "Vulnerable and patched replay evidence available. Counts are from different batches; no arm-specific discovery probability or trigger time.",
+            "Separate replay batches; no arm-specific discovery probability or trigger time."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}"
+          ],
+          "column": 1,
+          "old": "1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9. Full single-side replay of all 88 recorded campaign crash inputs (L, Sept.~30): 82 terminate the campaign-build server, 6 survive.",
+          "new": "82/88 server terminations (L).",
+          "accepted": [
+            "1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9. Full single-side replay of all 88 recorded campaign crash inputs (L, Sept.~30): 82 terminate the campaign-build server, 6 survive.",
+            "1/1 public PoC; three fuzzer inputs reported at 3/3 each; later aggregate 8/9.",
+            "1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}"
+          ],
+          "column": 2,
+          "old": "Local patch: 1/1 still triggers (R); patched-image comparison absent; campaign build has no ASan.",
+          "new": "Local patch: 1/1 triggers (R).",
+          "accepted": [
+            "Local patch: 1/1 still triggers (R); patched-image comparison absent; campaign build has no ASan.",
+            "Local patch attempt: 1/1 still triggers (R). Successful patched-side denominator unavailable.",
+            "Local patch: 1/1 still triggers (R); successful patched-side denominator absent."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "row_names": [
+            "\\mbox{CVE-2026-38998}"
+          ],
+          "column": 3,
+          "old": "Unpooled batches; the 82/88 result is reproduction on the campaign build and does not attribute the crashes to the use-after-free.",
+          "new": "No sanitizer or verified patched build.",
+          "accepted": [
+            "Unpooled batches; the 82/88 result is reproduction on the campaign build and does not attribute the crashes to the use-after-free.",
+            "Keep the 3/3 batches and 8/9 aggregate separate. Fuzzer input and individual trial records missing; no confirmed patched pair.",
+            "Unpooled batches; fuzzer input/trial records absent; no confirmed patch pair."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}"
+          ],
+          "column": 1,
+          "old": "1/1 seed; earlier sampled batches: 3/4, 19/20, 19/20, 50/51. Full queue-entry census (L, Sept.~30): all 253 campaign queue entries carrying Content-Length $\\geq 2^{31}$ (77 and 176 per run) replayed on the oracle pair; 102/253 produce the negative-value artifact on the vulnerable build (36/77 and 66/176), with overflow values $-2147483648$, $-1$, and $-954437177$.",
+          "new": "102/253 negative-value outcomes (L).",
+          "accepted": [
+            "1/1 seed; earlier sampled batches: 3/4, 19/20, 19/20, 50/51. Full queue-entry census (L, Sept.~30): all 253 campaign queue entries carrying Content-Length $\\geq 2^{31}$ (77 and 176 per run) replayed on the oracle pair; 102/253 produce the negative-value artifact on the vulnerable build (36/77 and 66/176), with overflow values $-2147483648$, $-1$, and $-954437177$.",
+            "1/1 seed; 3/4 from a 60-s queue; 19/20 from a 60-min queue; 19/20 sampled from a 1,540-min queue; 50/51 in another 60-min batch.",
+            "1/1 seed; queue samples: 3/4 (60 s), 19/20 (60 min), 19/20 (1,540 min), 50/51 (separate 60-min batch)."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}"
+          ],
+          "column": 2,
+          "old": "Oracle pair \\texttt{o-kam-01} (minimal upstream guard): 0/253 negative-value lines; 193/253 log the upstream large-value guard (L, Sept.~30).",
+          "new": "Patched: 0/253; guard: 193/253 (L).",
+          "accepted": [
+            "Oracle pair \\texttt{o-kam-01} (minimal upstream guard): 0/253 negative-value lines; 193/253 log the upstream large-value guard (L, Sept.~30)."
+          ]
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}",
+          "row_names": [
+            "\\mbox{CVE-2026-39863}"
+          ],
+          "column": 3,
+          "old": "Census of precondition-satisfying queue entries, not campaign recall; 151/253 do not produce the artifact (ordering or parse path unlocated); no time-to-trigger.",
+          "new": "Selected queue entries; campaign recall unmeasured.",
+          "accepted": [
+            "Census of precondition-satisfying queue entries, not campaign recall; 151/253 do not produce the artifact (ordering or parse path unlocated); no time-to-trigger.",
+            "Queue-sample outcomes, not campaign recall. No extrapolation to all 195 reported large-header entries; no attached patched log.",
+            "Queue samples, not campaign recall; no extrapolation to 195 entries; patched-version evidence absent."
+          ]
+        },
+        {
+          "row": "SMARTPL availability case",
+          "row_names": [
+            "SMARTPL availability case"
+          ],
+          "column": 1,
+          "old": "5/5 advisory repeats; 3/3 48-message-seed repeats; 1/1 later advisory replay.",
+          "new": "Advisory: 5/5; seed: 3/3; later: 1/1 (R).",
+          "accepted": [
+            "5/5 advisory repeats; 3/3 48-message-seed repeats; 1/1 later advisory replay.",
+            "5/5 advisory-input repeats; 3/3 repeats of a 48-message seed; 1/1 later advisory replay."
+          ]
+        },
+        {
+          "row": "SMARTPL availability case",
+          "row_names": [
+            "SMARTPL availability case"
+          ],
+          "column": 2,
+          "old": "All five recorded campaign hangs: 0/5 SMARTPL hits (R); patched replay absent.",
+          "new": "Campaign hangs: 0/5 matching outcomes (R).",
+          "accepted": [
+            "All five recorded campaign hangs: 0/5 SMARTPL hits (R); patched replay absent.",
+            "SMARTPL predicate hits among five sampled campaign hang inputs: 0/5 (R). Patched replay unavailable.",
+            "Sampled campaign hangs: 0/5 SMARTPL hits (R); patched replay absent."
+          ]
+        },
+        {
+          "row": "SMARTPL availability case",
+          "row_names": [
+            "SMARTPL availability case"
+          ],
+          "column": 3,
+          "old": "Known-input unavailability; no campaign rediscovery or CVE.",
+          "new": "Known-input replay; no patch or CVE.",
+          "accepted": [
+            "Known-input unavailability; no campaign rediscovery or CVE.",
+            "Known-input availability evidence; not five validated bugs, not a CVE, and not demonstrated rediscovery in the long campaigns.",
+            "Known-input unavailability; no confirmed campaign rediscovery or CVE."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:threats",
+      "caption": {
+        "old": "Validity threats, required controls, and evidence limits.",
+        "new": "Validity threats, required controls, and evidence limits.",
+        "accepted": [
+          "Validity threats, required controls, and evidence limits.",
+          "Threats, protocol controls, and remaining evidence limits."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Internal",
+          "row_names": [
+            "Internal"
+          ],
+          "column": 1,
+          "old": "Admission-only C--D; scheduling-only E--D; repair off; paired initial states.",
+          "new": "Admission-only C--D; scheduling-only E--D; repair off; matched initial states.",
+          "accepted": [
+            "Admission-only C--D; scheduling-only E--D; repair off; paired initial states.",
+            "Admission-only C--D; scheduling-only E--D; repair off; paired snapshot diagnostics."
+          ]
+        },
+        {
+          "row": "Internal",
+          "row_names": [
+            "Internal"
+          ],
+          "column": 2,
+          "old": "Missing observations; differing operation order.",
+          "new": "Missing observations; uncertain decision order.",
+          "accepted": [
+            "Missing observations; differing operation order.",
+            "Missing target-arm observations and implementation-ordering differences prevent attribution."
+          ]
+        },
+        {
+          "row": "Construct",
+          "row_names": [
+            "Construct"
+          ],
+          "column": 1,
+          "old": "Separate IPSM state edges, code branches, bitmap counts, and reached/triggered events.",
+          "new": "Separate code branches, IPSM state edges, bitmap counts, and oracle outcomes.",
+          "accepted": [
+            "Separate IPSM state edges, code branches, bitmap counts, and reached/triggered events.",
+            "Separate IPSM state edges, code branches, bitmap counts, reached/triggered events."
+          ]
+        },
+        {
+          "row": "Construct",
+          "row_names": [
+            "Construct"
+          ],
+          "column": 2,
+          "old": "Observed proxies incompletely measure the intended criteria.",
+          "new": "Proxies incompletely measure intended criteria.",
+          "accepted": [
+            "Observed proxies incompletely measure the intended criteria.",
+            "Native novelty and terminal summaries do not fully instantiate the proposed measures."
+          ]
+        },
+        {
+          "row": "Statistical",
+          "row_names": [
+            "Statistical"
+          ],
+          "column": 1,
+          "old": "Repeated trials; test families; effect sizes; clustered/hierarchical intervals; censoring.",
+          "new": "Repeated runs; test families; effect sizes; clustered/hierarchical CIs; censoring.",
+          "accepted": [
+            "Repeated trials; test families; effect sizes; clustered/hierarchical intervals; censoring.",
+            "Repeated trials, test families, effect sizes, clustered/hierarchical intervals, censoring."
+          ]
+        },
+        {
+          "row": "Statistical",
+          "row_names": [
+            "Statistical"
+          ],
+          "column": 2,
+          "old": "Partial, unequal-duration data; no confirmatory effects.",
+          "new": "Unequal durations; no confirmatory effects.",
+          "accepted": [
+            "Partial, unequal-duration data; no confirmatory effects.",
+            "Unequal-duration partial data cannot establish confirmatory effects."
+          ]
+        },
+        {
+          "row": "Selection",
+          "row_names": [
+            "Selection"
+          ],
+          "column": 1,
+          "old": "Intention-to-run accounting; prespecified infrastructure repetitions.",
+          "new": "Intention-to-run accounting; prespecified infrastructure repetitions.",
+          "accepted": [
+            "Intention-to-run accounting; prespecified infrastructure repetitions.",
+            "Complete intention-to-run ledger and predefined infrastructure reruns."
+          ]
+        },
+        {
+          "row": "Selection",
+          "row_names": [
+            "Selection"
+          ],
+          "column": 2,
+          "old": "Uninitiated trials unobserved; additional records need not be independent.",
+          "new": "Unobserved planned runs; independence uncertain.",
+          "accepted": [
+            "Uninitiated trials unobserved; additional records need not be independent.",
+            "Result manifests omit planned/unlaunched attempts; extra rows do not establish independent launches."
+          ]
+        },
+        {
+          "row": "Reproducibility",
+          "row_names": [
+            "Reproducibility"
+          ],
+          "column": 1,
+          "old": "Identical versions, conditions, seeds, prompts, and measurement definitions.",
+          "new": "Match versions, settings, seeds, prompts, and measurements.",
+          "accepted": [
+            "Identical versions, conditions, seeds, prompts, and measurement definitions.",
+            "Build/image pins, seeds, prompts/replies, event joins, resource traces."
+          ]
+        },
+        {
+          "row": "Reproducibility",
+          "row_names": [
+            "Reproducibility"
+          ],
+          "column": 2,
+          "old": "Unresolved model versions and incomplete experimental provenance.",
+          "new": "Unresolved model versions; incomplete provenance.",
+          "accepted": [
+            "Unresolved model versions and incomplete experimental provenance.",
+            "Aliases and incomplete provenance prevent exact replication claims."
+          ]
+        },
+        {
+          "row": "External",
+          "row_names": [
+            "External"
+          ],
+          "column": 1,
+          "old": "Multiple targets/protocols; negative cases; adapter assumptions.",
+          "new": "Multiple targets/protocols; boundary cases; adapter assumptions.",
+          "accepted": [
+            "Multiple targets/protocols; negative cases; adapter assumptions.",
+            "Multiple targets/protocols, negative cases, declared adapter assumptions."
+          ]
+        },
+        {
+          "row": "External",
+          "row_names": [
+            "External"
+          ],
+          "column": 2,
+          "old": "Encrypted/opaque binary protocols untested.",
+          "new": "Encrypted/opaque binary protocols untested.",
+          "accepted": [
+            "Encrypted/opaque binary protocols untested.",
+            "Textual targets do not establish transfer to encrypted or opaque binary protocols."
+          ]
+        },
+        {
+          "row": "Security",
+          "row_names": [
+            "Security"
+          ],
+          "column": 1,
+          "old": "Minimal patch pairs; independent triggers; information separation.",
+          "new": "Minimal patch pairs; independent triggers; information isolation.",
+          "accepted": [
+            "Minimal patch pairs; independent triggers; information separation.",
+            "Minimal patch pairs, independent triggers, information separation."
+          ]
+        },
+        {
+          "row": "Security",
+          "row_names": [
+            "Security"
+          ],
+          "column": 2,
+          "old": "Controlled A--E and version-pair evidence incomplete; pretraining leakage unresolved.",
+          "new": "Controlled A--E/patch-pair evidence incomplete; pretraining leakage unresolved.",
+          "accepted": [
+            "Controlled A--E and version-pair evidence incomplete; pretraining leakage unresolved.",
+            "Replay dossiers lack controlled A--E outcomes and complete patch/build provenance; model pretraining leakage cannot be excluded."
+          ]
+        }
+      ]
+    },
+    {
+      "file": "observed_tables.updated_20260930.tex",
+      "label": "tab:observed_inventory",
+      "caption": {
+        "old": "Current archive inventory. A and D use benchmark rows; D is counted once because the supplied \\texttt{ablation/gated\\_fixed} directory duplicates benchmark LoopFuzz. Nominal target is 10 runs per target. Status and exit-code labels are descriptive.",
+        "new": "Observed trial counts and D-arm status ($N=10$ nominal runs).",
+        "accepted": [
+          "Current archive inventory. A and D use benchmark rows; D is counted once because the supplied \\texttt{ablation/gated\\_fixed} directory duplicates benchmark LoopFuzz. Nominal target is 10 runs per target. Status and exit-code labels are descriptive.",
+          "Available observations by target; D-arm status and duration."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "observed_tables.updated_20260930.tex",
+      "label": "tab:observed_endpoints",
+      "caption": {
+        "old": "Exploratory native terminal endpoints from current summary rows (mean $\\pm$ sample SD). All available A and D rows are retained; unequal stopping times and source-build uncertainty preclude causal comparisons.",
+        "new": "A/D terminal coverage (mean $\\pm$ SD); descriptive comparisons.",
+        "accepted": [
+          "Exploratory native terminal endpoints from current summary rows (mean $\\pm$ sample SD). All available A and D rows are retained; unequal stopping times and source-build uncertainty preclude causal comparisons.",
+          "A/D code and IPSM endpoints (mean $\\pm$ SD)."
+        ]
+      },
+      "cells": [
+        {
+          "row": "",
+          "row_names": [
+            ""
+          ],
+          "column": 1,
+          "old": "\\multicolumn{2}{c}{Code branches (\\texttt{b\\_abs})}",
+          "new": "\\multicolumn{2}{c}{Code branches}",
+          "accepted": [
+            "\\multicolumn{2}{c}{Code branches (\\texttt{b\\_abs})}"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "observed_tables.updated_20260930.tex",
+      "label": "tab:observed_log_counts",
+      "caption": {
+        "old": "Logged schema-v2 counts in current LoopFuzz D archives. Reject, provisional, and durable are recorded labels, not independently verified queue membership.",
+        "new": "D-arm candidate and episode counts; dispositions are reported labels.",
+        "accepted": [
+          "Logged schema-v2 counts in current LoopFuzz D archives. Reject, provisional, and durable are recorded labels, not independently verified queue membership.",
+          "D-arm observations; reported decisions do not verify queue membership."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "observed_costs.updated_20260930.tex",
+      "label": "tab:observed_costs",
+      "caption": {
+        "old": "Recorded LoopFuzz D costs from current benchmark archives: per-run minimum--maximum by target. Total tokens combine prompt and completion counters; k denotes 1,000 tokens.",
+        "new": "D-arm cost ranges; total tokens = input + output (k = 1,000).",
+        "accepted": [
+          "Recorded LoopFuzz D costs from current benchmark archives: per-run minimum--maximum by target. Total tokens combine prompt and completion counters; k denotes 1,000 tokens.",
+          "Reported D-arm costs: per-run ranges by target."
+        ]
+      },
+      "cells": []
+    },
+    {
+      "file": "figures_updated_20260930/logged_calibration_table.tex",
+      "label": "tab:logged_calibration",
+      "caption": {
+        "old": "E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\\ref{tab:mechanisms}.",
+        "new": "Proxy-reward calibration in E (95\\% CIs in brackets).",
+        "accepted": [
+          "E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\\ref{tab:mechanisms}.",
+          "E-arm proxy-reward calibration (95\\% CIs in brackets)."
+        ]
+      },
+      "cells": [
+        {
+          "row": "Target",
+          "row_names": [
+            "Target"
+          ],
+          "column": 6,
+          "old": "AUPRC (AP)",
+          "new": "AP",
+          "accepted": [
+            "AUPRC (AP)"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "archive_arm_results.updated_20260930.tex",
+      "label": "tab:archive_arms",
+      "caption": {
+        "old": "Complete current archive observations (mean $\\pm$ sample SD). The nominal target is $N=10$; $n$ is the observed count. AUC integrates each recorded trajectory in branch-hours. Missing target--arm combinations have no row and remain unavailable.",
+        "new": "Target--arm coverage (mean $\\pm$ SD; actual $n$, nominal $N=10$).",
+        "accepted": [
+          "Complete current archive observations (mean $\\pm$ sample SD). The nominal target is $N=10$; $n$ is the observed count. AUC integrates each recorded trajectory in branch-hours. Missing target--arm combinations have no row and remain unavailable.",
+          "Observed endpoints and full-trajectory AUC (mean $\\pm$ SD)."
+        ]
+      },
+      "cells": []
+    }
+  ],
+  "prose_edits": [
+    {
+      "file": "main.revised.tex",
+      "old": "The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \\namedref{Table}{tab:events} specifies the corresponding evidence. Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata. Missing observations are not assigned zero values.",
+      "new": "The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \\namedref{Table}{tab:events} specifies the corresponding evidence. Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata. Missing observations are not assigned zero values. Conditions distinguish target/fuzzer and model/service versions, sampling parameters, random seeds, and CPU/memory limits. Admission measurements retain reasons, state sequences, and separate pre/post code and IPSM counts. Episodes retain pre/post $\\alpha,\\beta$, the pre-update mean, Thompson sample, and frontier/selection scores."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "The primary design contains nine servers: four FTP servers, Exim (SMTP), Live555 (RTSP), Kamailio (SIP), Forked-daapd (DAAP/DACP over HTTP), and Lighttpd1 (HTTP). \\namedref{Table}{tab:targets} identifies the target protocols and experimental conditions. Source revisions are pinned in the benchmark Dockerfiles, and each archive records its own invocation; image rebuild provenance beyond those pins is not embedded in the per-run evidence, and conditions reported for other studies are not attributed to these trials.",
+      "new": "The primary design contains nine servers: four FTP servers, Exim (SMTP), Live555 (RTSP), Kamailio (SIP), Forked-daapd (DAAP/DACP over HTTP), and Lighttpd1 (HTTP). \\namedref{Table}{tab:targets} identifies the target protocols and experimental conditions. Source revisions are fixed by the benchmark configuration; endpoints and initialization procedures follow the recorded trial conditions. Build identity beyond those revisions remains unverified. In the table, yes/no denotes dictionary use, and unrecorded means that no reset procedure was recorded; it does not establish that state restoration occurred."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Unverified shared settings remain unspecified in \\namedref{Table}{tab:llm}.",
+      "new": "The confirmatory design requires equal policies and resource ceilings across LLM arms; actual calls and token usage may differ with adaptive trajectories. In \\namedref{Table}{tab:llm}, configuration values are supported by final observations for C/D/E and the sensitivity groups, while equivalent B observations are unavailable. Timeout, retry, seed, and template descriptions are source-derived; they do not independently verify the settings of every executed build. Unresolved settings remain identified explicitly."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "For ProFTPD, the reported defect is an out-of-bounds read during FTP command processing, supported by an ASan heap-buffer-overflow observation. The oracle uses a 65,535-byte command buffer; the report states that the default 512-byte configuration does not expose the same error to ASan. The result is therefore conditional on this setting. The full replay in \\namedref{Table}{tab:cveresults} uses a purpose-built version pair at the campaign's base commit whose only difference is the minimal upstream fix; on that pair, 172 of 233 campaign crash inputs trigger the \\texttt{make\\_ftp\\_cmd} predicate on the vulnerable side and none of 242 activate ASan on the patched side. This supplies differential replay evidence with verified version identity for the pair, while the earlier three-trial fix batch remains a separate observation.",
+      "new": "For ProFTPD, the reported defect is an out-of-bounds read during FTP command processing, supported by an ASan heap-buffer-overflow observation. The 60,006-byte reproducer caused a one-byte read beyond a 65,568-byte region. The oracle uses a 65,535-byte command buffer; the report states that the default 512-byte configuration does not expose the same error to ASan. The result is therefore conditional on this setting. The full replay in \\namedref{Table}{tab:cveresults} uses a purpose-built version pair at the campaign's base commit whose only difference is the minimal upstream fix; on that pair, 172 of 233 campaign crash inputs trigger the \\texttt{make\\_ftp\\_cmd} predicate on the vulnerable side and none of 242 activate ASan on the patched side. This supplies differential replay evidence with verified version identity for the pair, while the earlier three-trial fix batch remains separate. Earlier reported replays yielded 1/1 seed, 1/1 fuzzer-crash, and 3/3 batch-crash reproductions; the separate fix batch yielded 0/3 using the same input and buffer."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "For LIVE555, direct diagnostic evidence supports a use-after-free triggered by the public PoC. A duplicated observation is treated as one diagnostic signature rather than independent replication. The report attributes fuzzer-generated inputs to the same memory-lifetime failure, records 8/9 replay hits, and describes an unsuccessful local patch. The fuzzer-generated reproducer, complete memory-lifetime evidence, and individual trial outcomes are unavailable. The public PoC supports replay validation, but does not demonstrate independent rediscovery by the evaluated controller or independently establish cross-version CVE attribution.",
+      "new": "For LIVE555, direct diagnostic evidence supports a use-after-free triggered by the public PoC. A duplicated observation is treated as one diagnostic signature rather than independent replication. The report attributes fuzzer-generated inputs to the same memory-lifetime failure. It gives 1/1 public-PoC reproduction, 3/3 repeats for each of three fuzzer inputs, a later 8/9 aggregate, and 1/1 persistence after a local patch. The fuzzer-generated reproducer, complete memory-lifetime evidence, and individual trial outcomes are unavailable. The public PoC supports replay validation, but does not demonstrate independent rediscovery by the evaluated controller or independently establish cross-version CVE attribution."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "For Kamailio, a negative parsed Content-Length supports the reported integer-overflow condition. The trigger requires TCP and is not assessed by the UDP-only benchmark condition. The full census in \\namedref{Table}{tab:cveresults} replays every queue entry carrying an oversized Content-Length on a purpose-built pair at the campaign's base commit whose only difference is the upstream guard: 102 of 253 entries produce the negative-value artifact on the vulnerable side, none do on the patched side, and the patched build logs the upstream guard for 193 of 253. The earlier reported batches and the prior local-guard observation remain separate records. Queue entries are fuzzer-generated artifacts, so the census measures predicate yield over retained inputs, not rediscovery. An earlier unsupported 20/20 versus 0/20 claim is excluded from quantitative results. The SMARTPL case reports reproducible unavailability from a known input, while none of the five recorded campaign hangs satisfies that condition; neither a CVE identity nor a verified patched counterpart is established.",
+      "new": "For Kamailio, a negative parsed Content-Length supports the reported integer-overflow condition. The trigger requires TCP and is not assessed by the UDP-only benchmark condition. The full census in \\namedref{Table}{tab:cveresults} replays every queue entry carrying an oversized Content-Length on a purpose-built pair at the campaign's base commit whose only difference is the upstream guard: 102 of 253 entries produce the negative-value artifact on the vulnerable side, none do on the patched side, and the patched build logs the upstream guard for 193 of 253. Earlier reported batches remain separate: 1/1 seed and 3/4, 19/20, 19/20, and 50/51 selected inputs. The prior local-guard observation is also separate. Queue entries are fuzzer-generated artifacts, so the census measures predicate yield over retained inputs, not rediscovery. An earlier unsupported 20/20 versus 0/20 claim is excluded from quantitative results. \n\nFor SMARTPL, the 148-byte input reportedly causes lexer errors and a failed health probe while the process remains alive. Reported repeats comprise 5/5 advisory trials, 3/3 trials with a 48-message seed, and a later 1/1 replay. None of the five recorded campaign hangs reproduces this condition; a CVE and verified patched counterpart remain unavailable. Parser removal in version 28.4 is reported, not a verified patched replay."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "\\namedref{Table}{tab:cveresults} preserves each reported batch separately. A numerator counts replay attempts or selected queue inputs satisfying that case's predicate; the denominator is the number tested. These are not independent 12-hour fuzzer runs, and the main experiment's nominal $N=10$ is not substituted for the actual replay denominator. Selected batches, per-input repeats, and later aggregate counts may overlap; they are not pooled into one success rate. In particular, 19/20 selected inputs is not 95\\% campaign recall, and 8/9 LIVE555 replays is below the prospective 95\\% stability threshold.",
+      "new": "\\namedref{Table}{tab:cveresults} summarizes the replay outcomes; earlier reported batches remain separate in the case descriptions. A numerator counts replay attempts or selected queue inputs satisfying that case's predicate; the denominator is the number tested. These are not independent 12-hour fuzzer runs, and the main experiment's nominal $N=10$ is not substituted for the actual replay denominator. Selected batches, per-input repeats, and later aggregate counts may overlap; they are not pooled into one success rate. In particular, 19/20 selected inputs is not 95\\% campaign recall, and 8/9 LIVE555 replays is below the prospective 95\\% stability threshold."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "Two full-artifact replays extend these batches. First, every crash input recorded by the two 24-hour ProFTPD LoopFuzz campaigns (233 in-campaign and 9 teardown inputs) was replayed once against the vulnerable and patched images of the verified \\texttt{o-pftp-01} pair (same base commit, minimal upstream fix). On the vulnerable image, 172 of the 233 in-campaign inputs trigger the ASan heap-buffer-overflow predicate in \\texttt{make\\_ftp\\_cmd}; all 172 carry that frame and no other signature appears. The patched image shows no ASan activation for any of the 242 inputs. The 61 non-reproducing inputs and the 9 teardown inputs may require campaign state that a standalone replay does not reconstruct; the in-campaign forensic sidecars recorded almost no usable ASan output, so the pair replay is the authoritative verdict. Second, all 88 LIVE555 campaign crash inputs were replayed against the campaign build, which contains no sanitizer: 82 terminate the server and 6 do not. This establishes reproduction on that build only; without a patched counterpart or sanitizer output it does not attribute the crashes to the use-after-free. Third, all 253 Kamailio queue entries carrying an oversized Content-Length were replayed on the \\texttt{o-kam-01} pair: 102 produce the negative-value overflow artifact on the vulnerable build and none on the patched build. All three replays are artifact-level measurements: they provide no arm-level recall, time-to-trigger, or cost denominators.",
+      "new": "Three complete-input replays extend these batches (September 30 observations). First, every crash input recorded by the two 24-hour ProFTPD LoopFuzz campaigns (233 in-campaign inputs: 121 and 112 per run; 9 teardown inputs) was replayed once against the vulnerable and patched images of the verified \\texttt{o-pftp-01} pair (same base commit, minimal upstream fix). On the vulnerable image, 172 of the 233 in-campaign inputs trigger the ASan heap-buffer-overflow predicate in \\texttt{make\\_ftp\\_cmd}; all 172 carry that frame and no other signature appears. The patched image shows no ASan activation for any of the 242 inputs. The 61 non-reproducing inputs and the 9 teardown inputs may require campaign state that a standalone replay does not reconstruct; the in-campaign forensic sidecars recorded almost no usable ASan output, so the pair replay is the authoritative verdict. Second, all 88 LIVE555 campaign crash inputs were replayed against the campaign build, which contains no sanitizer: 82 terminate the server and 6 do not. This establishes reproduction on that build only; without a patched counterpart or sanitizer output it does not attribute the crashes to the use-after-free. Third, all 253 Kamailio queue entries with Content-Length $\\geq 2^{31}$ were replayed on the \\texttt{o-kam-01} pair: 102 produce the negative-value artifact on the vulnerable build and none on the patched build. The two runs contributed 77 and 176 entries, with yields of 36/77 and 66/176. Overflow values include $-2147483648$, $-1$, and $-954437177$; 151/253 entries do not produce the artifact, with ordering and parse-path explanations unresolved. All three replays are artifact-level measurements: they provide no arm-level recall, time-to-trigger, or cost denominators."
+    },
+    {
+      "file": "archive_arm_results.updated_20260930.tex",
+      "old": "\\noindent Row IDs combine arm and target number. Arms A--E retain their main-text meanings; $E_{99}$ and $E_{100}$ denote sensitivity groups at $\\gamma=0.99$ and $\\gamma=1.0$.",
+      "new": "\\noindent Row IDs = arm + target number. Arms A--E follow the main text; $E_{99}$: $\\gamma=0.99$; $E_{100}$: $\\gamma=1.0$."
+    },
+    {
+      "file": "archive_arm_results.updated_20260930.tex",
+      "old": "\\noindent AUC is measured in branch-hours; IPSM denotes state edges. Status codes reproduce the archive: C=completed, X=exit\\_137\\_near\\_limit, S=sigabrt, O=oom\\_killed; they do not independently identify failure causes. Missing target--arm combinations have no row and are not zero-valued observations.",
+      "new": "\\noindent AUC: branch-hours; IPSM: state edges. Status: C, completed; X, exit 137 near limit; S, SIGABRT; O, reported OOM. Labels do not verify causes. Missing combinations are unobserved, not zero."
+    }
+  ],
+  "scope_revision": "evidence_scope_20260930; results exclude unmeasured placeholders; historical data generators require separate review before regeneration."
+}

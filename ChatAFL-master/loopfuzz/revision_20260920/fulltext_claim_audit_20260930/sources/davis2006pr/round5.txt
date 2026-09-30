@@ -1,0 +1,580 @@
+      The Relationship Between Precision-Recall and ROC Curves
+
+
+Jesse Davis                                                                      jdavis@cs.wisc.edu
+Mark Goadrich                                                                    richm@cs.wisc.edu
+Department of Computer Sciences and Department of Biostatistics and Medical Informatics, University of
+Wisconsin-Madison, 1210 West Dayton Street, Madison, WI, 53706 USA
+                      Abstract                              in the class distribution. Drummond and Holte (2000;
+    Receiver Operator Characteristic (ROC)                  2004) have recommended using cost curves to address
+    curves are commonly used to present re-                 this issue. Cost curves are an excellent alternative to
+    sults for binary decision problems in ma-               ROC curves, but discussing them is beyond the scope
+    chine learning.       However, when dealing             of this paper.
+    with highly skewed datasets, Precision-Recall           Precision-Recall (PR) curves, often used in Informa-
+    (PR) curves give a more informative picture             tion Retrieval (Manning & Schutze, 1999; Raghavan
+    of an algorithm’s performance. We show that             et al., 1989), have been cited as an alternative to ROC
+    a deep connection exists between ROC space              curves for tasks with a large skew in the class dis-
+    and PR space, such that a curve dominates               tribution (Bockhorst & Craven, 2005; Bunescu et al.,
+    in ROC space if and only if it dominates                2004; Davis et al., 2005; Goadrich et al., 2004; Kok &
+    in PR space. A corollary is the notion of               Domingos, 2005; Singla & Domingos, 2005). An im-
+    an achievable PR curve, which has proper-               portant difference between ROC space and PR space
+    ties much like the convex hull in ROC space;            is the visual representation of the curves. Looking
+    we show an efficient algorithm for computing            at PR curves can expose differences between algo-
+    this curve. Finally, we also note differences           rithms that are not apparent in ROC space. Sample
+    in the two types of curves are significant for          ROC curves and PR curves are shown in Figures 1(a)
+    algorithm design. For example, in PR space              and 1(b) respectively. These curves, taken from the
+    it is incorrect to linearly interpolate between         same learned models on a highly-skewed cancer detec-
+    points. Furthermore, algorithms that opti-              tion dataset, highlight the visual difference between
+    mize the area under the ROC curve are not               these spaces (Davis et al., 2005). The goal in ROC
+    guaranteed to optimize the area under the               space is to be in the upper-left-hand corner, and when
+    PR curve.                                               one looks at the ROC curves in Figure 1(a) they ap-
+                                                            pear to be fairly close to optimal. In PR space the
+                                                            goal is to be in the upper-right-hand corner, and the
+1. Introduction                                             PR curves in Figure 1(b) show that there is still vast
+In machine learning, current research has shifted away      room for improvement.
+from simply presenting accuracy results when perform-       The performances of the algorithms appear to be com-
+ing an empirical validation of new algorithms. This is      parable in ROC space, however, in PR space we can
+especially true when evaluating algorithms that output      see that Algorithm 2 has a clear advantage over Algo-
+probabilities of class values. Provost et al. (1998) have   rithm 1. This difference exists because in this domain
+argued that simply using accuracy results can be mis-       the number of negative examples greatly exceeds the
+leading. They recommended when evaluating binary            number of positives examples. Consequently, a large
+decision problems to use Receiver Operator Character-       change in the number of false positives can lead to a
+istic (ROC) curves, which show how the number of cor-       small change in the false positive rate used in ROC
+rectly classified positive examples varies with the num-    analysis. Precision, on the other hand, by comparing
+ber of incorrectly classified negative examples. How-       false positives to true positives rather than true neg-
+ever, ROC curves can present an overly optimistic view      atives, captures the effect of the large number of neg-
+of an algorithm’s performance if there is a large skew      ative examples on the algorithm’s performance. Sec-
+                                                            tion 2 defines Precision and Recall for the reader un-
+Appearing in Proceedings of the 23 rd International Con-
+ference on Machine Learning, Pittsburgh, PA, 2006. Copy-    familiar with these terms.
+right 2006 by the author(s)/owner(s).                       We believe it is important to study the connection be-
+                                            The Relationship Between Precision-Recall and ROC Curves
+
+
+                                        1                                                   1
+                                                                                                          Algorithm 1
+                                                                                                          Algorithm 2
+                                      0.8
+
+
+
+                 True Positive Rate
+                                                                                          0.8
+
+
+
+
+                                                                              Precision
+                                      0.6                                                 0.6
+
+
+                                      0.4                                                 0.4
+
+
+                                      0.2                                                 0.2
+                                                     Algorithm 1
+                                                     Algorithm 2
+                                        0                                                   0
+                                            0   0.2   0.4  0.6   0.8   1                        0   0.2   0.4   0.6     0.8   1
+                                                False Positive Rate                                        Recall
+
+                                      (a) Comparison in ROC space                         (b) Comparison in PR space
+
+
+                                      Figure 1. The difference between comparing algorithms in ROC vs PR space
+
+
+tween these two spaces, and whether some of the in-                         A confusion matrix is shown in Figure 2(a). The con-
+teresting properties of ROC space also hold for PR                          fusion matrix can be used to construct a point in either
+space. We show that for any dataset, and hence a                            ROC space or PR space. Given the confusion matrix,
+fixed number of positive and negative examples, the                         we are able to define the metrics used in each space
+ROC curve and PR curve for a given algorithm con-                           as in Figure 2(b). In ROC space, one plots the False
+tain the “same points.” Therefore the PR curves for                         Positive Rate (FPR) on the x-axis and the True Pos-
+Algorithm I and Algorithm II in Figure 1(b) are, in a                       itive Rate (TPR) on the y-axis. The FPR measures
+sense that we formally define, equivalent to the ROC                        the fraction of negative examples that are misclassi-
+curves for Algorithm I and Algorithm II, respectively                       fied as positive. The TPR measures the fraction of
+in Figure 1(a). Based on this equivalence for ROC and                       positive examples that are correctly labeled. In PR
+PR curves, we show that a curve dominates in ROC                            space, one plots Recall on the x-axis and Precision on
+space if and only if it dominates in PR space. Sec-                         the y-axis. Recall is the same as TPR, whereas Pre-
+ond, we introduce the PR space analog to the convex                         cision measures that fraction of examples classified as
+hull in ROC space, which we call the achievable PR                          positive that are truly positive. Figure 2(b) gives the
+curve. We show that due to the equivalence of these                         definitions for each metric. We will treat the metrics
+two spaces we can efficiently compute the achievable                        as functions that act on the underlying confusion ma-
+PR curve. Third we demonstrate that in PR space                             trix which defines a point in either ROC space or PR
+it is insufficient to linearly interpolate between points.                  space. Thus, given a confusion matrix A, RECALL(A)
+Finally, we show that an algorithm that optimizes the                       returns the Recall associated with A.
+area under the ROC curve is not guaranteed to opti-
+mize the area under the PR curve.                                           3. Relationship between ROC Space
+                                                                               and PR Space
+2. Review of ROC and Precision-Recall
+                                                                            ROC and PR curves are typically generated to evalu-
+In a binary decision problem, a classifier labels ex-                       ate the performance of a machine learning algorithm
+amples as either positive or negative. The decision                         on a given dataset. Each dataset contains a fixed num-
+made by the classifier can be represented in a struc-                       ber of positive and negative examples. We show here
+ture known as a confusion matrix or contingency ta-                         that there exists a deep relationship between ROC and
+ble. The confusion matrix has four categories: True                         PR spaces.
+positives (TP) are examples correctly labeled as posi-
+tives. False positives (FP) refer to negative examples
+incorrectly labeled as positive. True negatives (TN)                        Theorem 3.1. For a given dataset of positive and
+correspond to negatives correctly labeled as negative.                      negative examples, there exists a one-to-one correspon-
+Finally, false negatives (FN) refer to positive examples                    dence between a curve in ROC space and a curve in PR
+incorrectly labeled as negative.                                            space, such that the curves contain exactly the same
+                                                                            confusion matrices, if Recall 6= 0.
+                        The Relationship Between Precision-Recall and ROC Curves
+
+
+                                                                                                 TP
+                                                                  Recall                 =    T P +F N
+
+                                   actual      actual                                            TP
+                                                                  Precision              =    T P +F P
+                                  positive    negative
+            predicted positive      TP          FP                                               TP
+                                                                  True Positive Rate     =
+            predicted negative      FN          TN                                            T P +F N
+
+                                                                                                 FP
+                       (a) Confusion Matrix                       False Positive Rate    =    F P +T N
+
+                                                                       (b) Definitions of metrics
+
+
+                               Figure 2. Common machine learning evaluation metrics
+
+
+Proof. Note that a point in ROC space defines a            F P R(A) ≥ F P R(B). Remember that total pos-
+unique confusion matrix when the dataset is fixed.         itives and total negatives are fixed and since
+Since in PR space we ignore F N , one might worry          T P R(A) = T P R(B):
+that each point may correspond to multiple confusion
+matrices. However, with a fixed number of positive                                         T PA
+                                                                           T P R(A) =
+and negative examples, given the other three entries                                  Total Positives
+in a matrix, F N is uniquely determined. If Recall =                                       T PB
+                                                                           T P R(B) =
+0, we are unable to recover F P , and thus cannot find                                Total Positives
+a unique confusion matrix.
+Consequently, we have a one-to-one mapping between         we now have T PA = T PB and thus denote both as
+confusion matrices and points in PR space. This im-        T P . Remember that F P R(A) ≥ F P R(B) and
+plies that we also have a one-to-one mapping between
+points (each defined by a confusion matrix) in ROC                                         F PA
+                                                                           F P R(A) =
+space and PR space; hence, we can translate a curve                                   Total Negatives
+in ROC space to PR space and vice-versa.                                                   F PB
+                                                                           F P R(B) =
+                                                                                      Total Negatives
+One important definition we need for our next theorem
+is the notion that one curve dominates another curve,      This implies that F PA ≥ F PB because
+“meaning that all other...curves are beneath it or equal
+to it (Provost et al., 1998).”                                                             TP
+                                                                       P RECISION (A) =
+Theorem 3.2. For a fixed number of positive and neg-                                    F PA + T P
+ative examples, one curve dominates a second curve in                                       TP
+                                                                       P RECISION (B) =
+ROC space if and only if the first dominates the second                                 F PB + T P
+in Precision-Recall space.
+                                                           we now have that P RECISION (A)            ≤
+Proof.                                                     P RECISION (B).      But this contradicts our
+                                                           original assumption that P RECISION (A) >
+Claim 1 (⇒): If a curve dominates in ROC
+                                                           P RECISION (B).
+space then it dominates in PR space. Proof by
+contradiction. Suppose we have curve I and curve II        Claim 2 (⇐): If a curve dominates in PR space
+(as shown in Figure 3) such that curve I dominates         then it dominates in ROC space. Proof by con-
+in ROC space, yet, once we translate these curves in       tradiction. Suppose we have curve I and curve II (as
+PR space, curve I no longer dominates. Since curve         shown in Figure 4) such that curve I dominates curve II
+I does not dominate in PR space, there exists some         in PR space, but once translated in ROC space curve I
+point A on curve II such that the point B on curve         no longer dominates. Since curve I does not dominate
+I with identical Recall has lower Precision. In other      in ROC space, there exists some point A on curve II
+words, P RECISION (A) > P RECISION (B)                     such that point B on curve I with identical T P R yet
+yet RECALL(A)          =    RECALL(B).          Since      F P R(A) < T P R(B). Since RECALL and T P R are
+RECALL(A) = RECALL(B) and Recall is iden-                  the same, we get that RECALL(A) = RECALL(B).
+tical to T P R, we have that T P R(A) = T P R(B).          Because curve I dominates in PR space we know that
+Since curve I dominates curve II in ROC space              P RECISION (A) ≤ P RECISION (B). Remember
+                                         The Relationship Between Precision-Recall and ROC Curves
+
+
+                                     1                                                               1
+
+
+                                   0.8                                                             0.8
+
+
+
+              True Positive Rate
+
+
+
+
+                                                                              True Positive Rate
+                                   0.6       B       A                                             0.6
+
+
+                                   0.4                                                             0.4       B = A
+
+
+                                   0.2                                                             0.2
+                                                      Curve I                                                           Curve I
+                                                     Curve II                                                          Curve II
+                                     0                                                               0
+                                         0   0.2   0.4  0.6   0.8     1                                  0   0.2   0.4  0.6   0.8       1
+                                             False Positive Rate                                             False Positive Rate
+
+                                   (a) Case 1: F P R(A) > F P R(B)                                 (b) Case 2: F P R(A) = F P R(B)
+
+
+                                                   Figure 3. Two cases for Claim 1 of Theorem 3.2
+
+
+                                     1                                                               1
+                                                      Curve I                                                           Curve I
+                                                     Curve II                                                          Curve II
+                                   0.8                                                             0.8
+              Precision
+
+
+
+
+                                                                              Precision
+
+                                   0.6                                                             0.6
+
+
+                                   0.4                                                             0.4
+                                                                                                                   B = A
+                                                         B
+                                   0.2                                                             0.2
+                                                         A
+                                     0                                                               0
+                                         0   0.2   0.4   0.6    0.8   1                                  0   0.2     0.4   0.6    0.8   1
+                                                    Recall                                                            Recall
+
+                                   (a) Case 1: P RECISION (A) <                                    (b) Case 2: P RECISION (A) =
+                                   P RECISION (B)                                                  P RECISION (B)
+
+
+                                                   Figure 4. Two cases of Claim 2 of Theorem 3.2
+
+
+that RECALL(A) = RECALL(B) and                                              we find that F PA ≥ F PB . Now we have
+                                                                                                                              F PA
+                                                                                                              F P R(A) =
+                            T PA                                                                                         Total Negatives
+           RECALL(A) =                                                                                                        F PB
+                       Total Positives                                                                        F P R(B) =
+                            T PB                                                                                         Total Negatives
+           RECALL(B) =
+                       Total Positives                                      This implies that F P R(A) ≥ F P R(B) and this con-
+                                                                            tradicts our original assumption that F P R(A) <
+We know that T PA = T PB , so we will now denote                            F P R(B).
+them simply as T P . Because P RECISION (A) ≤                               In ROC space the convex hull is a crucial idea. Given
+P RECISION (B) and                                                          a set of points in ROC space, the convex hull must
+                                                                            meet the following three criteria:
+                                TP
+           P RECISION (A) =                                                  1. Linear interpolation is used between adjacent
+                            T P + F PA                                          points.
+                                TP
+           P RECISION (B) =                                                  2. No point lies above the final curve.
+                            T P + F PB
+                                           The Relationship Between Precision-Recall and ROC Curves
+
+
+                       1                                                         1                                                  1
+
+
+                     0.8                                                       0.8                                                0.8
+True Positive Rate
+
+
+
+
+                                                          True Positive Rate
+
+
+
+
+                                                                                                                      Precision
+                     0.6                                                       0.6                                                0.6
+
+
+                     0.4                                                       0.4                                                0.4
+
+
+                     0.2                                                       0.2                                                0.2
+
+
+                       0                                                         0                                                  0
+                           0   0.2   0.4  0.6   0.8   1                              0   0.2   0.4  0.6   0.8   1                       0   0.2   0.4   0.6   0.8   1
+                               False Positive Rate                                       False Positive Rate                                       Recall
+
+
+                     (a) Convex hull in ROC space                                (b) Curves in ROC space                      (c) Equivalent curves in PR space
+
+
+Figure 5. Convex hull and its PR analog dominate the naı̈ve method for curve construction in each space. Note that this
+achievable PR curve is not a true convex hull due to non-linear interpolation. Linear interpolation in PR space is typically
+not achievable.
+
+
+         3. For any pair of points used to construct the curve,                                  we can find the achievable PR curve (the best legal
+            the line segment connecting them is equal to or                                      PR curve) by first computing the convex hull in ROC
+            below the curve.                                                                     space and the converting that curve into PR space.
+                                                                                                 Thus the best curve in one space gives you the best
+Figure 5(a) shows an example of a convex hull in ROC                                             curve in the other space.
+space. For a detailed algorithm of how to efficiently                                            An important methodological issue must be addressed
+construct the convex hull, see Cormen et al. (1990).                                             when building a convex hull in ROC space or an
+In PR space, there exists an analogous curve to the                                              achievable curve in PR space. When constructing a
+convex hull in ROC space, which we call the achievable                                           ROC curve (or PR curve) from an algorithm that out-
+PR curve, although it cannot be achieved by linear                                               puts a probability, the following approach is usually
+interpolation. The issue of dominance in ROC space                                               taken: first find the probability that each test set ex-
+is directly related to this convex hull analog.                                                  ample is positive, next sort this list and then traverse
+                                                                                                 the sorted list in ascending order. To simplify the dis-
+Corollary 3.1. Given a set of points in PR space,
+                                                                                                 cussion, let class(i) refer to the true classification of
+there exists an achievable PR curve that dominates the
+                                                                                                 the example at position i in the array and prob(i) re-
+other valid curves that could be constructed with these
+                                                                                                 fer to the probability that the example at position i is
+points.
+                                                                                                 positive. For each i such that class(i) 6= class(i + 1)
+Proof. First, convert the points into ROC space                                                  and prob(i) < prob(i + 1), create a classifier by calling
+(Theorem 3.1), and construct the convex hull of these                                            every example j such that j ≥ i + 1 positive and all
+points in ROC space. By definition, the convex hull                                              other examples negative.
+dominates all other curves that could be constructed                                             Thus each point in ROC space or PR space represents
+with those points when using linear interpolation be-                                            a specific classifier, with a threshold for calling an ex-
+tween the points. Thus converting the points of the                                              ample positive. Building the convex hull can be seen
+ROC convex hull back into PR space will yield a curve                                            as constructing a new classifier, as one picks the best
+that dominates in PR space as shown in Figures 5(b)                                              points. Therefore it would be methodologically incor-
+and 5(c). This follows from Theorem 3.2. The achiev-                                             rect to construct a convex hull or achievable PR curve
+able PR curve will exclude exactly those points be-                                              by looking at performance on the test data and then
+neath the convex hull in ROC space.                                                              constructing a convex hull. To combat this problem,
+The convex hull in ROC space is the best legal curve                                             the convex hull must be constructed using a tuning set
+that can be constructed from a set of given ROC                                                  as follows: First, use the method described above to
+points. Many researchers, ourselves included, argue                                              find a candidate set of thresholds on the tuning data.
+that PR curves are preferable when presented with                                                Then, build a convex hull over the tuning data. Finally
+highly-skewed datasets. Therefore it is surprising that                                          use the thresholds selected on the tuning data, when
+                        The Relationship Between Precision-Recall and ROC Curves
+
+building an ROC or PR curve for the test data. While
+                                                            Table 1. Correct interpolation between two points in PR
+this test-data curve is not guaranteed to be a convex
+                                                            space for a dataset with 20 positive and 2000 negative ex-
+hull, it preserves the split between training data and      amples
+testing data.
+                                                                                      TP        FP     REC         PREC
+4. Interpolation and AUC                                                A              5         5     0.25        0.500
+A key practical issue to address is how to interpolate                  .              6        10     0.30        0.375
+between points in each space. It is straightforward                     .              7        15     0.35        0.318
+to interpolate between points in ROC space by sim-                      .              8        20     0.40        0.286
+ply drawing a straight line connecting the two points.                  .              9        25     0.45        0.265
+One can achieve any level of performance on this line                   B             10        30     0.50        0.250
+by flipping a weighted coin to decide between the clas-
+sifiers that the two end points represent.                                              1
+                                                                                                         Correct
+                                                                                                       Incorrect
+However, in Precision-Recall space, interpolation is                                  0.8
+more complicated. As the level of Recall varies, the
+
+
+
+
+                                                                          Precision
+Precision does not necessarily change linearly due to                                 0.6
+
+the fact that F P replaces F N in the denominator of                                  0.4
+the Precision metric. In these cases, linear interpola-
+tion is a mistake that yields an overly-optimistic es-                                0.2
+
+timate of performance. Corollary 3.1 shows how to
+                                                                                        0
+find the achievable PR curve by simply converting the                                       0   0.2   0.4   0.6    0.8   1
+                                                                                                       Recall
+analogous ROC convex hull; this yields the correct in-
+terpolation in PR space. However, a curve consists of       Figure 6. The effect of incorrect interpolation in PR space
+infinitely many points, and thus we need a practical,
+approximate method for translation. We expand here
+on the method proposed by Goadrich et al. (2004) to         every 1 positive. Notice how the resulting Precision
+approximate the interpolation between two points in         interpolation is not linear between 0.50 and 0.25.
+PR space.
+                                                            Often, the area under the curve is used as a simple
+Remember that any point A in a Precision-Recall             metric to define how an algorithm performs over the
+space is generated from the underlying true positive        whole space (Bradley, 1997; Davis et al., 2005; Goad-
+(T PA ) and false positive (F PA ) counts. Suppose we       rich et al., 2004; Kok & Domingos, 2005; Macskassy
+have two points, A and B which are far apart in             & Provost, 2005; Singla & Domingos, 2005). The area
+Precision-Recall space. To find some intermediate val-      under the ROC curve (AUC-ROC) can be calculated
+ues, we must interpolate between their counts T PA          by using the trapezoidal areas created between each
+and T PB , and F PA and F PB . We find out how many         ROC point, and is equivalent to the Wilcoxon-Mann-
+negative examples it takes to equal one positive, or the    Whitney statistic (Cortes & Mohri, 2003). By includ-
+local skew, defined by FT P B −F PA
+                           PB −T PA . Now we can create     ing our intermediate PR points, we can now use the
+new points T PA +x for all integer values of x such that    composite trapezoidal method to approximate the area
+1 ≤ x ≤ T PB −T PA , i.e. T PA +1, T PA +2, ..., T PB −1,   under the PR curve (AUC-PR).
+and calculate corresponding FP by linearly increasing
+the false positives for each new point by the local skew.   The effect of incorrect interpolation on the AUC-PR
+Our resulting intermediate Precision-Recall points will     is especially pronounced when two points are far away
+be                                                          in Recall and Precision and the local skew is high.
+                                                 !          Consider a curve (Figure 6) constructed from a sin-
+    T PA + x                T PA + x                        gle point of (0.02, 1), and extended to the endpoints
+               ,                                   .
+    Total Pos T PA + x + F PA + FT P   B −F PA              of (0, 1) and (1, 0.008) as described above (for this ex-
+                                      PB −T PA x
+                                                            ample, our dataset contains 433 positives and 56,164
+                                                            negatives). Interpolating as we have described would
+For example, suppose we have a dataset with 20 posi-
+                                                            have an AUC-PR of 0.031; a linear connection would
+tive examples and 2000 negative examples. Let T PA =
+                                                            severely overestimate with an AUC-PR of 0.50.
+5, F PA = 5, T PB = 10, and F PB = 30. Table 1 shows
+the proper interpolation of the intermediate points be-     Now that we have developed interpolation for PR
+tween A and B, with the local skew of 5 negatives for       space, we can give the complete algorithm for find-
+                                           The Relationship Between Precision-Recall and ROC Curves
+
+
+                                       1                                                      1
+                                                                                                                   Curve I
+                                                                                                                  Curve II
+
+                                     0.8
+
+
+                True Positive Rate
+                                                                                             0.8
+
+
+
+                                     0.6
+
+
+
+
+                                                                                 Precision
+                                                                                             0.6
+
+
+                                     0.4                                                     0.4
+
+
+                                     0.2                                                     0.2
+                                                         Curve I
+                                                        Curve II
+                                       0                                                      0
+                                           0   0.2   0.4  0.6   0.8     1                          0   0.2   0.4   0.6   0.8   1
+                                               False Positive Rate                                            Recall
+
+
+                                     (a) Comparing AUC-ROC for                               (b) Comparing AUC-PR for two
+                                     two algorithms                                          algorithms
+
+
+                                           Figure 7. Difference in optimizing area under the curve in each space
+
+ing the achievable PR curve. First, we find the convex                          ative examples, where each curve individually is a con-
+hull in ROC space (Corollary 3.1). Next, for each point                         vex hull. The AUC-ROC for curve I is 0.813 and the
+selected by the algorithm to be included in the hull,                           AUC-ROC for curve II is 0.875, so an algorithm opti-
+we use the confusion matrix that defines that point to                          mizing the AUC-ROC and choosing between these two
+construct the corresponding point in PR space (Theo-                            rankings would choose curve II. However, Figure 7(b)
+rem 3.1). Finally, we perform the correct interpolation                         shows the same curves translated into PR space, and
+between the newly created PR points.                                            the difference here is drastic. The AUC-PR for curve
+                                                                                I is now 0.514 due to the high ranking of over half
+5. Optimizing Area Under the Curve.                                             of the positive examples, while the AUC-PR for curve
+                                                                                II is far less at 0.038, so the direct opposite choice of
+Several researchers have investigated using AUC-ROC                             curve I should be made to optimize the AUC-PR. This
+to inform the search heuristics of their algorithms.                            is because in PR space the main contribution comes
+Ferri et al. (2002) alter decision trees to use the                             from achieving a lower Recall range with higher Preci-
+AUC-ROC as their splitting criterion, Cortes and                                sion. Nevertheless, based on Theorem 3.2 ROC curves
+Mohri (2003) show that the boosting algorithm Rank-                             are useful in an algorithm that optimizes AUC-PR.
+Boost (Freund et al., 1998) is also well-suited to opti-                        An algorithm can find the convex hull in ROC space,
+mize the AUC-ROC, Joachims (2005) presents a gen-                               convert that curve to PR space for an achievable PR
+eralization of Support Vector Machines which can op-                            curve, and score the classifier by the area under this
+timize AUC-ROC among other ranking metrics, Prati                               achievable PR curve.
+and Flach (2005) use a rule selection algorithm to di-
+rectly create the convex hull in ROC space, and both                            6. Conclusions
+Yan et al. (2003) and Herschtal and Raskutti (2004)
+explore ways to optimize the AUC-ROC within neural                              This work makes four important contributions. First,
+networks. Also, ILP algorithms such as Aleph (Srini-                            for any dataset, the ROC curve and PR curve for a
+vasan, 2003) can be changed to use heuristics related                           given algorithm contain the same points. This equiv-
+to ROC or PR space, at least in relation to an indi-                            alence, leads to the surprising theorem that a curve
+vidual rule.                                                                    dominates in ROC space if and only if it dominates in
+                                                                                PR space. Second, as a corollary to the theorem we
+Knowing that a convex hull in ROC space can be
+                                                                                show the existence of the PR space analog to the con-
+translated into the achievable curve in Precision-Recall
+                                                                                vex hull in ROC space, which we call an achievable PR
+space leads to another open question: do algorithms
+                                                                                curve. Remarkably, when constructing the achievable
+which optimize the AUC-ROC also optimize the AUC-
+                                                                                PR curve one discards exactly the same points omit-
+PR? Unfortunately, the answer generally is no, and
+                                                                                ted by the convex hull in ROC space. Consequently,
+we prove this by the following counter-example. Fig-
+                                                                                we can efficiently compute the achievable PR curve.
+ure 7(a) shows two overlapping curves in ROC space
+                                                                                Third, we show that simple linear interpolation is in-
+for a domain with 20 positive examples and 2000 neg-
+                                                                                sufficient between points in PR space. Finally, we show
+                         The Relationship Between Precision-Recall and ROC Curves
+
+that an algorithm that optimizes the area under the            Goadrich, M., Oliphant, L., & Shavlik, J. (2004). Learn-
+ROC curve is not guaranteed to optimize the area un-             ing ensembles of first-order clauses for recall-precision
+der the PR curve.                                                curves: A case study in biomedical information extrac-
+                                                                 tion. Proceedings of the 14th International Conference
+                                                                 on Inductive Logic Programming (ILP). Porto, Portugal.
+Acknowledgements                                               Herschtal, A., & Raskutti, B. (2004). Optimising area un-
+A    Java    program   for    calculating    all of              der the ROC curve using gradient descent. Proceedings
+                                                                 of the 21st International Conference on Machine Learn-
+the   discussed metrics     can be        found  at              ing (p. 49). New York, NY, USA: ACM Press.
+http://www.cs.wisc.edu/~richm/programs/AUC/.
+We gratefully acknowledge the funding from USA                 Joachims, T. (2005). A support vector method for multi-
+NLM Grant 5T15LM007359-02 and USA Air Force                      variate performance measures. Proceedings of the 22nd
+                                                                 International Conference on Machine Learning. ACM
+Grant F30602-01-2-0571, Vı́tor Santos Costa, Louis               Press.
+Oliphant, our advisors David Page and Jude Shav-
+lik and our anonymous reviewers for their helpful              Kok, S., & Domingos, P. (2005). Learning the structure of
+comments and suggestions.                                        Markov Logic Networks. Proceedings of 22nd Interna-
+                                                                 tional Conference on Machine Learning (pp. 441–448).
+                                                                 ACM Press.
+References                                                     Macskassy, S., & Provost, F. (2005). Suspicion scoring
+Bockhorst, J., & Craven, M. (2005). Markov networks for         based on guilt-by-association, collective inference, and
+  detecting overlapping elements in sequence data. Neural       focused data access. International Conference on Intel-
+  Information Processing Systems 17 (NIPS). MIT Press.          ligence Analysis.
+
+Bradley, A. (1997). The use of the area under the ROC          Manning, C., & Schutze, H. (1999). Foundations of statis-
+  curve in the evaluation of machine learning algorithms.       tical natural language processing. MIT Press.
+  Pattern Recognition, 30, 1145–1159.
+                                                               Prati, R., & Flach, P. (2005). ROCCER: an algorithm for
+Bunescu, R., Ge, R., Kate, R., Marcotte, E., Mooney, R.,         rule learning based on ROC analysis. Proceeding of the
+  Ramani, A., & Wong, Y. (2004). Comparative Experi-             19th International Joint Conference on Artificial Intel-
+  ments on Learning Information Extractors for Proteins          ligence. Edinburgh, Scotland.
+  and their Interactions. Journal of Artificial Intelligence
+  in Medicine, 139–155.                                        Provost, F., Fawcett, T., & Kohavi, R. (1998). The case
+                                                                 against accuracy estimation for comparing induction al-
+Cormen, T. H., Leiserson, Charles, E., & Rivest, R. L.           gorithms. Proceeding of the 15th International Confer-
+  (1990). Introduction to algorithms. MIT Press.                 ence on Machine Learning (pp. 445–453). Morgan Kauf-
+                                                                 mann, San Francisco, CA.
+Cortes, C., & Mohri, M. (2003). AUC optimization vs.
+  error rate minimization. Neural Information Processing       Raghavan, V., Bollmann, P., & Jung, G. S. (1989). A
+  Systems 15 (NIPS). MIT Press.                                  critical investigation of recall and precision as measures
+                                                                 of retrieval system performance. ACM Trans. Inf. Syst.,
+Davis, J., Burnside, E., Dutra, I., Page, D., Ramakrishnan,      7, 205–229.
+  R., Costa, V. S., & Shavlik, J. (2005). View learning
+  for statistical relational learning: With an application     Singla, P., & Domingos, P. (2005). Discriminative training
+  to mammography. Proceeding of the 19th International           of Markov Logic Networks. Proceedings of the 20th Na-
+  Joint Conference on Artificial Intelligence. Edinburgh,        tional Conference on Artificial Intelligene (AAAI) (pp.
+  Scotland.                                                      868–873). AAAI Press.
+Drummond, C., & Holte, R. (2000). Explicitly representing      Srinivasan, A. (2003).    The Aleph Manual Version
+  expected cost: an alternative to ROC representation.           4. http://web.comlab.ox.ac.uk/ oucl/ research/ areas/
+  Proceeding of Knowledge Discovery and Datamining (pp.          machlearn/ Aleph/.
+  198–207).
+                                                               Yan, L., Dodier, R., Mozer, M., & Wolniewicz, R. (2003).
+Drummond, C., & Holte, R. C. (2004). What ROC curves             Optimizing classifier performance via the Wilcoxon-
+  can’t do (and cost curves can). ROCAI (pp. 19–26).             Mann-Whitney statistics. Proceedings of the 20th In-
+                                                                 ternational Conference on Machine Learning.
+Ferri, C., Flach, P., & Henrandez-Orallo, J. (2002). Learn-
+  ing decision trees using area under the ROC curve. Pro-
+  ceedings of the 19th International Conference on Ma-
+  chine Learning (pp. 139–146). Morgan Kaufmann.
+Freund, Y., Iyer, R., Schapire, R., & Singer, Y. (1998). An
+  efficient boosting algorithm for combining preferences.
+  Proceedings of the 15th International Conference on Ma-
+  chine Learning (pp. 170–178). Madison, US: Morgan
+  Kaufmann Publishers, San Francisco, US.
+

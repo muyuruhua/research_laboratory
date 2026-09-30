@@ -1,0 +1,521 @@
+--- before/main.revised.tex
++++ main.revised.tex
+@@ -118,16 +118,16 @@
+ \toprule
+ Target & Hypothesis & Required observation & Current interpretation \\
+ \midrule
+-Forked-daapd & Overestimation: IPSM growth without downstream code gain. & Growing IPSM structure with low episode code reward. & Prior endpoint code regression not reproduced. \\
+-Lighttpd1 & Underestimation: code progress within shallow response states. & Code-branch gain with little IPSM gain, linked to executions. & Both endpoints increase; hidden productivity remains unverified. \\
+-LightFTP & Saturation: IPSM novelty after code progress plateaus. & Aligned code/IPSM trajectories across saturation. & Near-equal endpoints; matched-version trajectories still needed. \\
++Forked-daapd & Overestimation: IPSM-only growth. & IPSM growth; low code reward. & Code regression not reproduced. \\
++Lighttpd1 & Underestimation: weak state signal. & Code gain with little IPSM growth. & Both endpoints increase; mechanism unverified. \\
++LightFTP & Saturation: IPSM growth after code plateau. & Aligned code/IPSM saturation trajectories. & Near-equal code endpoints; matched-version trajectories needed. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=0.92\textwidth]{revision_20260920/figures_updated_20260930/native_endpoints.pdf}
+-\caption{A/D code and IPSM endpoints (mean $\pm$ SD; actual $n$ shown).}
++\caption{A/D code-branch and IPSM state-edge endpoints (mean $\pm$ SD; actual $n$).}
+ \label{fig:mismatch}
+ \end{figure*}
+ 
+@@ -158,12 +158,12 @@
+ \toprule
+ Prior work & Established focus & Present boundary \\
+ \midrule
+-AFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\
+-ChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\
+-The Bandit's States~\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\
+-T-Scheduler~\cite{tscheduler2024}; Entropic~\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\
++AFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Proxy calibration, not semantic-state recovery. \\
++ChatAFL; LLM synthesis & Protocol-guided message/sequence generation. & Execute-before-promote; bounded provisional validation. \\
++The Bandit's States~\cite{bandits_states2023} & Bandit-based protocol-state selection. & Couple proxy calibration with admission. \\
++T-Scheduler~\cite{tscheduler2024}; Entropic~\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Calibrate response proxies. \\
+ SeqFuzzSDN~\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\
+-Magma~\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\
++Magma~\cite{magma2020}; evaluation studies & Ground-truth bug oracles; repeated trials. & Information-controlled network rediscovery; minimal security-patch pairs. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -198,13 +198,13 @@
+ \label{tab:predicates}
+ \begin{tabularx}{\textwidth}{l Y Y Y}
+ \toprule
+-Predicate & Positive evidence & Example failure & Required evidence \\
+-\midrule
+-$P$ & Prespecified structure and format. & Missing field; invalid length/delimiter. & Candidate identity; validation criteria; reason; hypothesis version. \\
+-$U$ & Adapter accepts response. & Rejection; timeout/reset/drop; unparseable reply. & Response identity; acceptance criteria; failures; exceptions. \\
+-$R$ & Target/frontier reached or documented sink escape. & Repeated sink; missed destination. & Source/target; observed state sequence. \\
+-$\gcode$ & New code branch/code edge or code-supported favored entry. & IPSM-only novelty. & Pre/post code coverage; novelty class; favored reason. \\
+-$\gstate$ & New IPSM node, state edge, or path. & Known IPSM structure. & Pre/post IPSM; new transitions. \\
++Predicate & Pass condition & Failure & Measurements \\
++\midrule
++$P$ & Valid required structure. & Missing fields; invalid lengths/delimiters. & Candidate; criteria; reason; hypothesis version. \\
++$U$ & Accepted response. & Rejection; timeout/reset/drop; unparseable reply. & Response; acceptance rule; failure/exception. \\
++$R$ & Target/frontier reached or sink escaped. & Sink retained; destination missed. & Source/target; observed state sequence. \\
++$\gcode$ & New code coverage or code-supported favored entry. & IPSM-only novelty. & Pre/post coverage; novelty; favored reason. \\
++$\gstate$ & New IPSM node, state edge, or path. & Known IPSM structure. & Pre/post IPSM; new state transitions. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -271,7 +271,7 @@
+ \draw[failure] (validation.south)--(8.8,-1.35)--
+   node[condition,above] (expiry) {Budget exhausted}(0,-1.35)--(rej.south);
+ \end{tikzpicture}
+-\caption{Evidence-gated admission with provisional and durable queues.}
++\caption{Evidence-gated admission and two-tier queues.}
+ \label{fig:architecture}
+ \end{figure*}
+ 
+@@ -343,13 +343,13 @@
+ \begin{tikzpicture}[>=Latex,font=\small,
+ box/.style={draw,rounded corners,align=center,text width=61mm,minimum height=9mm},
+ arr/.style={->,thick}]
+-\node[box] (pre) {Record pre-update mean and Thompson sample};
+-\node[box,below=5mm of pre] (run) {Select state; execute a fixed-energy episode};
+-\node[box,below=5mm of run] (reward) {Observe independent code reward};
+-\node[box,below=5mm of reward] (update) {Discounted update of productivity estimates};
++\node[box] (pre) {Pre-update mean; Thompson sample};
++\node[box,below=5mm of pre] (run) {Select state; fixed-energy episode};
++\node[box,below=5mm of run] (reward) {Independent code reward};
++\node[box,below=5mm of reward] (update) {Discounted posterior update};
+ \draw[arr](pre)--(run);\draw[arr](run)--(reward);\draw[arr](reward)--(update);
+ \end{tikzpicture}
+-\caption{Online productivity calibration using pre-update predictions and code rewards.}
++\caption{Online calibration from pre-update predictions and independent code rewards.}
+ \label{fig:posterior}
+ \end{figure}
+ 
+@@ -401,21 +401,21 @@
+ \toprule
+ Requirement & Current boundary & Evaluation consequence \\
+ \midrule
+-Gate precedes durable promotion & Retention may precede $U/R$ verification. & Disposition labels do not verify queue protection. \\
+-Independent state-only trial evidence & State assessment depends on prior retention. & Zero provisional events do not establish a low state-only rate. \\
+-Full structural and reachability checks & $P$: structural recognition; $R$: generic transition. & Full validity and target reachability remain unverified. \\
+-Main reward is new code coverage & Observed novelty may reflect execution frequency. & Separate code branches, execution frequency, and retention. \\
+-Fixed-energy episode & Variable mutation energy; zero-execution attempts. & Raw episodes do not provide equal opportunities. \\
+-Strict provisional budget & Limits checked after whole fuzzing rounds. & 64-mutation/30-second limits may be exceeded. \\
+-Verified run configuration & Effective settings may differ from initial declarations. & Verify conditions throughout each experimental trial. \\
+-Equal total call/token caps & 64-call cap covers plateau use; token enforcement unverified. & Total-budget fairness remains unverified. \\
+-Repair disabled in C/D/E & Actual repair conditions are incompletely established. & Reported arm identity does not establish adherence. \\
++Gate before promotion & Retention may precede $U/R$. & Queue protection unverified. \\
++Independent state-only evidence & State assessment follows retention. & Zero provisional counts may be structural. \\
++Complete $P/R$ verification & $P$: recognition; $R$: transition. & Validity and reachability unverified. \\
++New-code reward & Execution-frequency novelty may contribute. & Distinguish branches, frequency, and retention. \\
++Fixed-energy episodes & Variable energy; zero executions. & Unequal opportunities. \\
++Strict provisional budget & Post-round budget checks. & 64-mutation/30-second limits may be exceeded. \\
++Verified run conditions & Initial and effective settings may differ. & Verify conditions throughout each run. \\
++Total call/token caps & 64-call cap: plateau only; tokens unverified. & Total-budget fairness unverified. \\
++Repair off in C/D/E & Repair status incompletely verified. & Arm labels do not prove adherence. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+ 
+ \subsection{Measurement structure and traceability}
+-The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \namedref{Table}{tab:events} specifies the corresponding evidence. Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata. Missing observations are not assigned zero values.
++The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \namedref{Table}{tab:events} specifies the corresponding evidence. Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata. Missing observations are not assigned zero values. Conditions distinguish target/fuzzer and model/service versions, sampling parameters, random seeds, and CPU/memory limits. Admission measurements retain reasons, state sequences, and separate pre/post code and IPSM counts. Episodes retain pre/post $\alpha,\beta$, the pre-update mean, Thompson sample, and frontier/selection scores.
+ 
+ \begin{table*}[!tbp]
+ \centering\footnotesize
+@@ -425,13 +425,13 @@
+ \toprule
+ Observation class & Experimental context & Measurements / outcomes \\
+ \midrule
+-Experimental conditions & Arm; target/fuzzer versions; execution environment; model/service version; sampling parameters; random seed. & Call/token limits; CPU/memory allocation; observation period; termination reason. \\
+-Candidate generation & Candidate and prompt identity; parentage; original request/response; action; source/intended states. & Input/output tokens; generation time. \\
+-Admission trial & Candidate/trial correspondence; $P/U/R$ and reasons; response identity; failures; state sequence; target reachability. & Pre/post IPSM nodes/state edges and code coverage; coverage-based priority; latency; decision. \\
+-Provisional validation & Candidate identity; validation budget; first productive descendant. & Descendant executions/code gain; conversion time; promotion latency; expiration/censoring. \\
+-State-selection episode & Episode/state/seed identity; pre-update $\alpha,\beta,\widehat{\theta}$; Thompson sample; frontier/selection scores. & Mutation count; code-branch/IPSM state-edge gain; reward; post-update $\alpha,\beta$; duration; completion. \\
+-Security outcome & Anonymous oracle identity; reproducing input; diagnostic evidence; root cause. & Reached/triggered; first trigger time; vulnerable/patched outcomes. \\
+-Repair (optional) & Repair lineage; failure/counterexample; original/revised hypothesis; changed component. & Pre/post validation; post-repair predicates/descendant gain; tokens/latency. \\
++Experimental conditions & Arm; software/model versions; environment; sampling seed. & Call/token caps; resources; period; termination. \\
++Candidate generation & Candidate/prompt; lineage; request/response; action; source/target. & Input/output tokens; generation time. \\
++Admission trial & Candidate/trial; $P/U/R$; responses; reachability. & Code/IPSM changes; priority; latency; decision. \\
++Provisional validation & Candidate; budget; first productive descendant. & Executions; code gain; conversion/expiration; latency; censoring. \\
++State-selection episode & State/seed; pre-update posterior; sample; selection scores. & Mutations; code/IPSM gain; reward; updated posterior; duration/completion. \\
++Security outcome & Anonymous oracle; reproducer; diagnostics; root cause. & Reached/triggered; first trigger; version-pair outcomes. \\
++Repair (optional) & Lineage; counterexample; hypotheses; changed component. & Validation; post-repair predicates/gain; tokens; latency. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -462,9 +462,9 @@
+ Arm & LLM & Admission & Scheduler & Role \\
+ \midrule
+ A: AFLNet & No & Original AFLNet & AFLNet & Non-LLM baseline. \\
+-B: Controlled ChatAFL & Yes & ChatAFL direct/open-loop & ChatAFL lineage & B--A: controlled LLM-lineage change. \\
+-C: LoopFuzz-direct & Yes & Parseable candidates directly durable & Fixed LoopFuzz & Admission counterfactual. \\
+-D: LoopFuzz-gated-fixed & Yes & Evidence gate + provisional queue & Same fixed LoopFuzz & D--C: admission effect. \\
++B: Controlled ChatAFL & Yes & ChatAFL direct/open-loop & ChatAFL lineage & B--A: LLM-lineage comparison. \\
++C: LoopFuzz-direct & Yes & Parseable to durable & Fixed LoopFuzz & Admission counterfactual. \\
++D: LoopFuzz-gated-fixed & Yes & Evidence gate; provisional queue & Same fixed LoopFuzz & D--C: admission effect. \\
+ E: LoopFuzz-gated-calibrated & Yes & Identical to D & Productivity calibration & E--D: calibration effect. \\
+ \bottomrule
+ \end{tabularx}
+@@ -475,25 +475,25 @@
+ Proposal control has two scopes. Paired diagnostics evaluate the same candidate under direct and gated admission from an identical initial target and campaign state, with equal descendant budgets. This comparison supports a candidate-level counterfactual. Independent adaptive campaigns diverge, so equal policies do not guarantee identical prompts or model outputs. Replay can assess structural validation and admission decisions under matched initial conditions, but cannot establish equivalence to an independently evolving campaign.
+ 
+ \subsection{Targets and experimental controls}
+-The primary design contains nine servers: four FTP servers, Exim (SMTP), Live555 (RTSP), Kamailio (SIP), Forked-daapd (DAAP/DACP over HTTP), and Lighttpd1 (HTTP). \namedref{Table}{tab:targets} identifies the target protocols and experimental conditions. Source revisions are pinned in the benchmark Dockerfiles, and each archive records its own invocation; image rebuild provenance beyond those pins is not embedded in the per-run evidence, and conditions reported for other studies are not attributed to these trials.
+-
+-\begin{table*}[!tbp]
+-\centering\small
+-\caption{Targets, protocols, and experimental conditions. Versions are the source pins recorded in the benchmark Dockerfiles; endpoint, seed, dictionary, and reset entries are taken from the per-run invocation recorded inside each archive.}
++The primary design contains nine servers: four FTP servers, Exim (SMTP), Live555 (RTSP), Kamailio (SIP), Forked-daapd (DAAP/DACP over HTTP), and Lighttpd1 (HTTP). \namedref{Table}{tab:targets} identifies the target protocols and experimental conditions. Source revisions are fixed by the benchmark configuration; endpoints and initialization procedures follow the recorded trial conditions. Build identity beyond those revisions remains unverified. In the table, yes/no denotes dictionary use, and unrecorded means that no reset procedure was recorded; it does not establish that state restoration occurred.
++
++\begin{table*}[!tbp]
++\centering\small
++\caption{Target protocols and recorded test conditions.}
+ \label{tab:targets}
+ \begin{tabularx}{\textwidth}{l l l l Y}
+ \toprule
+-Target & Protocol & Pinned source revision & Endpoint (localhost) & Seeds / dictionary / reset \\
+-\midrule
+-LightFTP & FTP & 139af7c & tcp/2200 & in-ftp; ftp.dict; ftpclean script \\
+-bftpd & FTP & 6.1 release & tcp/21 & in-ftp; ftp.dict; clean script \\
+-ProFTPD & FTP & 61e621e743346 & tcp/21 & in-ftp; ftp.dict; clean script \\
+-Pure-FTPd & FTP & 10122d9f & tcp/21 & in-ftp; ftp.dict; clean script \\
+-Exim & SMTP & d6a5a05b84 & tcp/25 & in-smtp; smtp.dict; clean script \\
+-Live555 & RTSP & live.2023.05.10 & tcp/8554 & in-rtsp; rtsp.dict; no reset script recorded \\
+-Kamailio & SIP & a2209018fb03d & udp/5060 & in-sip; no dictionary; run\_pjsip reset \\
+-Forked-daapd & DAAP/DACP & 2ca10d9 & tcp/3689 & in-daap; no dictionary; no reset script recorded \\
+-Lighttpd1 & HTTP & 9f38b63cae3e2 & tcp/8080 & in-http; http.dict; no reset script recorded \\
++Target & Protocol & Source revision & Endpoint (localhost) & Seed protocol / dictionary / reset \\
++\midrule
++LightFTP & FTP & 139af7c & tcp/2200 & FTP; yes; cleanup \\
++bftpd & FTP & 6.1 release & tcp/21 & FTP; yes; cleanup \\
++ProFTPD & FTP & 61e621e743346 & tcp/21 & FTP; yes; cleanup \\
++Pure-FTPd & FTP & 10122d9f & tcp/21 & FTP; yes; cleanup \\
++Exim & SMTP & d6a5a05b84 & tcp/25 & SMTP; yes; cleanup \\
++Live555 & RTSP & live.2023.05.10 & tcp/8554 & RTSP; yes; unrecorded \\
++Kamailio & SIP & a2209018fb03d & udp/5060 & SIP; no; PJSIP routine \\
++Forked-daapd & DAAP/DACP & 2ca10d9 & tcp/3689 & DAAP; no; unrecorded \\
++Lighttpd1 & HTTP & 9f38b63cae3e2 & tcp/8080 & HTTP; yes; unrecorded \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -507,25 +507,25 @@
+ An intention-to-run analysis accounts for every planned and initiated trial, including completion, timeout, target or fuzzer failure, infrastructure or measurement failure, exclusion, and repetition, with reasons linking repeated attempts. Low coverage never justifies exclusion. Only prespecified infrastructure failures permit repetition. Interrupted observations are not extended to 24 hours; they contribute failure or censoring outcomes according to the estimand, with sensitivity analysis. Restriction to completed trials does not constitute intention-to-run analysis.
+ 
+ \subsection{LLM fairness and configuration}
+-The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Unverified shared settings remain unspecified in \namedref{Table}{tab:llm}.
+-
+-\begin{table*}[!tbp]
+-\centering\small
+-\caption{Shared LLM settings required for B--E. Recorded values are verified against the end-of-run configuration event embedded in every C/D/E and $\gamma$-sensitivity archive; ChatAFL archives embed no equivalent record, so B's participation remains unverified.}
++The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Unverified shared settings remain unspecified in \namedref{Table}{tab:llm}. Listed values are supported by final configuration observations for C/D/E and the sensitivity groups; equivalent B observations are unavailable.
++
++\begin{table*}[!tbp]
++\centering\small
++\caption{LLM settings for C/D/E and sensitivity groups; B unverified.}
+ \label{tab:llm}
+ \begin{tabularx}{\textwidth}{Y c Y}
+ \toprule
+-Parameter & Prespecified value & Comparability requirement \\
+-\midrule
+-Model, version, and inference service & codex-auto-review via cctq.ai chat-completions endpoint & Identical resolved version; name alone insufficient. \\
+-Temperature by call class & grammar 0.5; plateau 1.2 & Match each call class across arms. \\
+-Top-$p$ / presence and frequency penalties & top-$p$ 1.0; penalties unrecorded & Explicit values or documented defaults. \\
+-Maximum output tokens per attempt & 4,096 & Shared limit; include truncated/failed responses. \\
+-Maximum attempted calls / total tokens & call cap 64; token cap 0 (unset) & Count all call classes and retries. \\
+-Timeout and repeated-request policy & \missing & Identical policy; account for waiting and failures. \\
+-Model-side seed / support status & \missing & Record support; no determinism guarantee. \\
+-Prompt corpus / template version & \missing & Shared information policy; traceable prompts/responses. \\
+-Plateau cadence / threshold / reset & state-edge threshold 512; cadence unrecorded & Shared intervention and state-growth criteria. \\
++Parameter & Recorded value & Comparison requirement \\
++\midrule
++Model / version / service & codex-auto-review; cctq.ai & Same resolved version; name insufficient. \\
++Temperature by call class & grammar 0.5; plateau 1.2 & Match each call class. \\
++Top-$p$ / presence/frequency penalties & top-$p$ 1.0; penalties unrecorded & Explicit values or defaults. \\
++Output tokens per attempt & 4,096 & Same cap; include truncation/failures. \\
++Attempted-call / total-token caps & call cap 64; token cap 0 (unset) & Count all classes and retries. \\
++Timeout / retry policy & \missing & Same policy; include waits/failures. \\
++Model seed / support & \missing & Document support; determinism unassured. \\
++Prompt corpus / template & \missing & Same information policy; traceable exchanges. \\
++Plateau cadence / threshold / reset & state-edge threshold 512; cadence unrecorded & Same intervention/state-growth criteria. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -590,7 +590,7 @@
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=0.90\textwidth]{revision_20260920/figures_updated_20260930/logged_reward_reliability.pdf}
+-\caption{E-arm proxy-reward calibration. Points: bin means; bars: 95\% CIs.}
++\caption{E-arm proxy-reward reliability (bin means; 95\% CIs).}
+ \label{fig:reliability}
+ \end{figure*}
+ 
+@@ -643,13 +643,13 @@
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260930/coverage_trajectories.pdf}
+-\caption{A--E code-branch trajectories: medians and interquartile ranges.}
++\caption{A--E code-branch trajectories (median and interquartile range).}
+ \label{fig:trajectories}
+ \end{figure*}
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260930/posterior_cases.pdf}
+-\caption{E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom).}
++\caption{E-arm pre-update probabilities (top) and scheduling multipliers (bottom).}
+ \label{fig:posterior_cases}
+ \end{figure*}
+ 
+@@ -661,28 +661,28 @@
+ \toprule
+ Metric & C & D & E & Denominator / interpretation \\
+ \midrule
+-Candidate records & 1,326 & 2,227 & 746 & Distinct candidates within each experimental record. \\
+-Trial records & 1,326 & 2,226 & 745 & Distinct trials within each experimental record. \\
++Candidate records & 1,326 & 2,227 & 746 & Within-run distinct candidates. \\
++Trial records & 1,326 & 2,226 & 745 & Within-run distinct trials. \\
+ Reject / durable labels & 0 / 1,326 & 2,203 / 23 & 736 / 9 & Reported trial outcomes. \\
+-First failed $P/U/R$ & 0 / 1,208 / 0 & 0 / 2,071 / 0 & 0 / 698 / 0 & First false $P$, then $U$, then $R$; denominator: trials. \\
++First failed $P/U/R$ & 0 / 1,208 / 0 & 0 / 2,071 / 0 & 0 / 698 / 0 & Trial denominator; first false $P$, $U$, or $R$. \\
+ Direct durable rate & 100.0\% (1,326/1,326) & 1.0\% (23/2,227) & 1.2\% (9/746) & Durable labels / generated candidates. \\
+ State-only provisional rate & disabled & 0.0\% (0/2{,}227) & 0.0\% (0/746) & All candidates; disabled for C. \\
+-Provisional conversion / expiration & disabled & none (0 admitted) & none (0 admitted) & Provisional admissions; include pending/censored cases. \\
+-Trial latency (ms) & 439.2$\pm$405.9 ($n=67$) & 403.6$\pm$574.6 ($n=81$) & 806.5$\pm$554.0 ($n=62$) & Mean $\pm$ SD of within-run trial means; contributing runs only. \\
+-Promotion latency & \missing & \missing & \missing & Verified queue-promotion timestamps required. \\
+-Downstream productivity@64 & \missing & \missing & \missing & Descendant code gain; exclude admission gain. \\
+-Queue size / nonproductive retention & \missing & \missing & \missing & Queue state and C--D counterfactual. \\
++Provisional conversion / expiration & disabled & none (0 admitted) & none (0 admitted) & Provisional admissions; retain pending/censored cases. \\
++Trial latency (ms) & 439.2$\pm$405.9 ($n=67$) & 403.6$\pm$574.6 ($n=81$) & 806.5$\pm$554.0 ($n=62$) & Within-run trial means; contributing runs only. \\
++Promotion latency & \missing & \missing & \missing & Verified promotion timestamps. \\
++Downstream productivity@64 & \missing & \missing & \missing & Descendant code gain only. \\
++Queue size / nonproductive retention & \missing & \missing & \missing & Queue state; C--D counterfactual. \\
+ Shadow-validation false-negative rate & \missing & \missing & \missing & Random rejected-candidate sample. \\
+ Code-branch gain per episode & \missing & \missing & \missing & Completed equal-energy episodes. \\
+-BS / ECE / AP & \missing & \missing & \missing & Fixed-energy code-branch reward; proxy diagnostics: \namedref{Table}{tab:logged_calibration}. \\
+-Code gain per candidate / 1,000 tokens & \missing & \missing & \missing & Joined code gain and complete usage. \\
++BS / ECE / AP & \missing & \missing & \missing & Fixed-energy code reward; proxies: \namedref{Table}{tab:logged_calibration}. \\
++Code gain per candidate / 1,000 tokens & \missing & \missing & \missing & Linked code gain and usage. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260930/candidate_dispositions.pdf}
+-\caption{C/D/E reported dispositions (left) and first failed $P/U/R$ predicates (right).}
++\caption{C/D/E reported dispositions (left) and first $P/U/R$ failures (right).}
+ \label{fig:dispositions}
+ \end{figure*}
+ 
+@@ -701,13 +701,13 @@
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260930/token_cost_coverage.pdf}
+-\caption{Reported tokens versus terminal code branches, by target and arm.}
++\caption{Code-branch endpoints versus reported tokens, by target and arm.}
+ \label{fig:cost}
+ \end{figure*}
+ 
+ \begin{figure*}[!tbp]
+ \centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260930/call_cost_coverage.pdf}
+-\caption{Reported model calls versus terminal code branches, by target and arm.}
++\caption{Code-branch endpoints versus reported calls, by target and arm.}
+ \label{fig:callcost}
+ \end{figure*}
+ 
+@@ -719,12 +719,12 @@
+ \toprule
+ Metric & E, repair off & E, repair on \\
+ \midrule
+-Repair opportunities / attempts & 0 (no event files) & \missing \\
+-Before/after validation success & \missing & \missing \\
+-Post-repair descendant code gain & \missing & \missing \\
++Repair opportunities / attempts & 0 recorded & \missing \\
++Pre/post validation success & \missing & \missing \\
++Post-repair descendant gain & \missing & \missing \\
+ Changed fields / locality & \missing & \missing \\
+ Token / latency cost & \missing & \missing \\
+-Independent effect / interval & \missing & \missing \\
++Effect / uncertainty interval & \missing & \missing \\
+ \bottomrule
+ \end{tabularx}
+ \end{table}
+@@ -744,43 +744,45 @@
+ \toprule
+ Case / interface & Reported vulnerable version & Trigger evidence / oracle & Patch or control evidence \\
+ \midrule
+-\mbox{CVE-2023-51713}\newline ProFTPD / FTP & Reported vulnerable version; ASan; 65,535-byte command buffer & 60,006-byte input; heap-buffer-overflow: one-byte read beyond a 65,568-byte region (L). & Reported security patch; three rejections, no ASan (L); same input/buffer. \\
+-\addlinespace[3pt]
+-\mbox{CVE-2026-38998}\newline LIVE555 / RTSP & Campaign: 2023.05.10; public report: 2026.02.26 (R) & 728-byte public PoC; heap-use-after-free (L). Fuzzer-discovered input absent. & Attempted local patch: 1/1 still triggers (R); upstream-patch comparison absent. \\
+-\addlinespace[3pt]
+-\mbox{CVE-2026-39863}\newline Kamailio / SIP over TCP & Reported vulnerable version; TCP required & 278-byte input; parsed Content-Length $-10$ (L): overflow predicate, not crash count. & Oracle pair \texttt{o-kam-01} (L, Sept.~30): patched build 0/253 negative-value lines; upstream guard logged. \\
+-\addlinespace[3pt]
+-SMARTPL availability case\newline forked-daapd / HTTP & Reported version 27.2 & 148-byte input; lexer errors; health probe fails; process alive (R). Direct replay evidence absent. & No patched replay/CVE; parser reportedly removed in 28.4. \\
+-\bottomrule
+-\end{tabularx}
+-\end{table*}
+-
+-For ProFTPD, the reported defect is an out-of-bounds read during FTP command processing, supported by an ASan heap-buffer-overflow observation. The oracle uses a 65,535-byte command buffer; the report states that the default 512-byte configuration does not expose the same error to ASan. The result is therefore conditional on this setting. The full replay in \namedref{Table}{tab:cveresults} uses a purpose-built version pair at the campaign's base commit whose only difference is the minimal upstream fix; on that pair, 172 of 233 campaign crash inputs trigger the \texttt{make\_ftp\_cmd} predicate on the vulnerable side and none of 242 activate ASan on the patched side. This supplies differential replay evidence with verified version identity for the pair, while the earlier three-trial fix batch remains a separate observation.
+-
+-For LIVE555, direct diagnostic evidence supports a use-after-free triggered by the public PoC. A duplicated observation is treated as one diagnostic signature rather than independent replication. The report attributes fuzzer-generated inputs to the same memory-lifetime failure, records 8/9 replay hits, and describes an unsuccessful local patch. The fuzzer-generated reproducer, complete memory-lifetime evidence, and individual trial outcomes are unavailable. The public PoC supports replay validation, but does not demonstrate independent rediscovery by the evaluated controller or independently establish cross-version CVE attribution.
+-
+-For Kamailio, a negative parsed Content-Length supports the reported integer-overflow condition. The trigger requires TCP and is not assessed by the UDP-only benchmark condition. The full census in \namedref{Table}{tab:cveresults} replays every queue entry carrying an oversized Content-Length on a purpose-built pair at the campaign's base commit whose only difference is the upstream guard: 102 of 253 entries produce the negative-value artifact on the vulnerable side, none do on the patched side, and the patched build logs the upstream guard for 193 of 253. The earlier reported batches and the prior local-guard observation remain separate records. Queue entries are fuzzer-generated artifacts, so the census measures predicate yield over retained inputs, not rediscovery. An earlier unsupported 20/20 versus 0/20 claim is excluded from quantitative results. The SMARTPL case reports reproducible unavailability from a known input, while none of the five recorded campaign hangs satisfies that condition; neither a CVE identity nor a verified patched counterpart is established.
++\mbox{CVE-2023-51713}\newline ProFTPD / FTP & Reported vulnerable build; 65,535-byte buffer. & 60,006-byte input; ASan heap-buffer-overflow (L). & Security patch: three rejections, no ASan (L). \\
++\addlinespace[3pt]
++\mbox{CVE-2026-38998}\newline LIVE555 / RTSP & Campaign: 2023.05.10; report: 2026.02.26 (R). & 728-byte public PoC; use-after-free (L). & Local patch: 1/1 triggers (R); upstream comparison unavailable. \\
++\addlinespace[3pt]
++\mbox{CVE-2026-39863}\newline Kamailio / SIP over TCP & Reported vulnerable build; TCP required. & 278-byte input; parsed Content-Length $-10$ (L). & Patched: 0/253 negative-value outcomes; guard observed (L). \\
++\addlinespace[3pt]
++SMARTPL availability case\newline forked-daapd / HTTP & Reported version 27.2. & 148-byte input; unresponsive service, live process (R). & No patched replay/CVE; removal reported in 28.4. \\
++\bottomrule
++\end{tabularx}
++\end{table*}
++
++For ProFTPD, the reported defect is an out-of-bounds read during FTP command processing, supported by an ASan heap-buffer-overflow observation. The 60,006-byte reproducer caused a one-byte read beyond a 65,568-byte region. The oracle uses a 65,535-byte command buffer; the report states that the default 512-byte configuration does not expose the same error to ASan. The result is therefore conditional on this setting. The full replay in \namedref{Table}{tab:cveresults} uses a purpose-built version pair at the campaign's base commit whose only difference is the minimal upstream fix; on that pair, 172 of 233 campaign crash inputs trigger the \texttt{make\_ftp\_cmd} predicate on the vulnerable side and none of 242 activate ASan on the patched side. This supplies differential replay evidence with verified version identity for the pair, while the earlier three-trial fix batch remains separate. Earlier reported replays yielded 1/1 seed, 1/1 fuzzer-crash, and 3/3 batch-crash reproductions; the separate fix batch yielded 0/3 using the same input and buffer.
++
++For LIVE555, direct diagnostic evidence supports a use-after-free triggered by the public PoC. A duplicated observation is treated as one diagnostic signature rather than independent replication. The report attributes fuzzer-generated inputs to the same memory-lifetime failure. It gives 1/1 public-PoC reproduction, 3/3 repeats for each of three fuzzer inputs, a later 8/9 aggregate, and 1/1 persistence after a local patch. The fuzzer-generated reproducer, complete memory-lifetime evidence, and individual trial outcomes are unavailable. The public PoC supports replay validation, but does not demonstrate independent rediscovery by the evaluated controller or independently establish cross-version CVE attribution.
++
++For Kamailio, a negative parsed Content-Length supports the reported integer-overflow condition. The trigger requires TCP and is not assessed by the UDP-only benchmark condition. The full census in \namedref{Table}{tab:cveresults} replays every queue entry carrying an oversized Content-Length on a purpose-built pair at the campaign's base commit whose only difference is the upstream guard: 102 of 253 entries produce the negative-value artifact on the vulnerable side, none do on the patched side, and the patched build logs the upstream guard for 193 of 253. Earlier reported batches remain separate: 1/1 seed and 3/4, 19/20, 19/20, and 50/51 selected inputs. The prior local-guard observation is also separate. Queue entries are fuzzer-generated artifacts, so the census measures predicate yield over retained inputs, not rediscovery. An earlier unsupported 20/20 versus 0/20 claim is excluded from quantitative results. 
++
++For SMARTPL, the 148-byte input reportedly causes lexer errors and a failed health probe while the process remains alive. Reported repeats comprise 5/5 advisory trials, 3/3 trials with a 48-message seed, and a later 1/1 replay. None of the five recorded campaign hangs reproduces this condition; a CVE and verified patched counterpart remain unavailable. Parser removal in version 28.4 is reported, not a verified patched replay.
+ 
+ \subsection{Replay outcomes and their denominators}
+-\namedref{Table}{tab:cveresults} preserves each reported batch separately. A numerator counts replay attempts or selected queue inputs satisfying that case's predicate; the denominator is the number tested. These are not independent 12-hour fuzzer runs, and the main experiment's nominal $N=10$ is not substituted for the actual replay denominator. Selected batches, per-input repeats, and later aggregate counts may overlap; they are not pooled into one success rate. In particular, 19/20 selected inputs is not 95\% campaign recall, and 8/9 LIVE555 replays is below the prospective 95\% stability threshold.
+-
+-Two full-artifact replays extend these batches. First, every crash input recorded by the two 24-hour ProFTPD LoopFuzz campaigns (233 in-campaign and 9 teardown inputs) was replayed once against the vulnerable and patched images of the verified \texttt{o-pftp-01} pair (same base commit, minimal upstream fix). On the vulnerable image, 172 of the 233 in-campaign inputs trigger the ASan heap-buffer-overflow predicate in \texttt{make\_ftp\_cmd}; all 172 carry that frame and no other signature appears. The patched image shows no ASan activation for any of the 242 inputs. The 61 non-reproducing inputs and the 9 teardown inputs may require campaign state that a standalone replay does not reconstruct; the in-campaign forensic sidecars recorded almost no usable ASan output, so the pair replay is the authoritative verdict. Second, all 88 LIVE555 campaign crash inputs were replayed against the campaign build, which contains no sanitizer: 82 terminate the server and 6 do not. This establishes reproduction on that build only; without a patched counterpart or sanitizer output it does not attribute the crashes to the use-after-free. Third, all 253 Kamailio queue entries carrying an oversized Content-Length were replayed on the \texttt{o-kam-01} pair: 102 produce the negative-value overflow artifact on the vulnerable build and none on the patched build. All three replays are artifact-level measurements: they provide no arm-level recall, time-to-trigger, or cost denominators.
+-
+-\begin{table*}[!tbp]
+-\centering\small
+-\caption{Reported replay batches and separate controls; original denominators retained.}
++\namedref{Table}{tab:cveresults} summarizes the replay outcomes; earlier reported batches remain separate in the case descriptions. A numerator counts replay attempts or selected queue inputs satisfying that case's predicate; the denominator is the number tested. These are not independent 12-hour fuzzer runs, and the main experiment's nominal $N=10$ is not substituted for the actual replay denominator. Selected batches, per-input repeats, and later aggregate counts may overlap; they are not pooled into one success rate. In particular, 19/20 selected inputs is not 95\% campaign recall, and 8/9 LIVE555 replays is below the prospective 95\% stability threshold.
++
++Three complete-input replays extend these batches (September 30 observations). First, every crash input recorded by the two 24-hour ProFTPD LoopFuzz campaigns (233 in-campaign inputs: 121 and 112 per run; 9 teardown inputs) was replayed once against the vulnerable and patched images of the verified \texttt{o-pftp-01} pair (same base commit, minimal upstream fix). On the vulnerable image, 172 of the 233 in-campaign inputs trigger the ASan heap-buffer-overflow predicate in \texttt{make\_ftp\_cmd}; all 172 carry that frame and no other signature appears. The patched image shows no ASan activation for any of the 242 inputs. The 61 non-reproducing inputs and the 9 teardown inputs may require campaign state that a standalone replay does not reconstruct; the in-campaign forensic sidecars recorded almost no usable ASan output, so the pair replay is the authoritative verdict. Second, all 88 LIVE555 campaign crash inputs were replayed against the campaign build, which contains no sanitizer: 82 terminate the server and 6 do not. This establishes reproduction on that build only; without a patched counterpart or sanitizer output it does not attribute the crashes to the use-after-free. Third, all 253 Kamailio queue entries with Content-Length $\geq 2^{31}$ were replayed on the \texttt{o-kam-01} pair: 102 produce the negative-value artifact on the vulnerable build and none on the patched build. The two runs contributed 77 and 176 entries, with yields of 36/77 and 66/176. Overflow values include $-2147483648$, $-1$, and $-954437177$; 151/253 entries do not produce the artifact, with ordering and parse-path explanations unresolved. All three replays are artifact-level measurements: they provide no arm-level recall, time-to-trigger, or cost denominators.
++
++\begin{table*}[!tbp]
++\centering\small
++\caption{Replay outcomes and controls; original denominators retained.}
+ \label{tab:cveresults}
+ \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.20\textwidth} Y Y Y@{}}
+ \toprule
+-Case & Vulnerable-side batches (R) & Patched or diagnostic control & Interpretation / missing evidence \\
+-\midrule
+-\mbox{CVE-2023-51713} & Earlier batches: 1/1 seed; 1/1 fuzzer crash; 3/3 batch crashes. Full oracle-pair replay (L, Sept.~30): 172/233 in-campaign crash inputs (121 and 112 per run) trigger the \texttt{make\_ftp\_cmd} ASan predicate on the vulnerable image; 61/233 and 9/9 teardown inputs do not reproduce standalone. & Oracle pair \texttt{o-pftp-01}: patched image 0/242 ASan activations (L, Sept.~30); earlier fix batch 0/3. & Crash-artifact replay with a verified version pair, not campaign recall; no time-to-trigger or arm-level discovery probability. \\
+-\addlinespace[3pt]
+-\mbox{CVE-2026-38998} & 1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9. Full single-side replay of all 88 recorded campaign crash inputs (L, Sept.~30): 82 terminate the campaign-build server, 6 survive. & Local patch: 1/1 still triggers (R); patched-image comparison absent; campaign build has no ASan. & Unpooled batches; the 82/88 result is reproduction on the campaign build and does not attribute the crashes to the use-after-free. \\
+-\addlinespace[3pt]
+-\mbox{CVE-2026-39863} & 1/1 seed; earlier sampled batches: 3/4, 19/20, 19/20, 50/51. Full queue-entry census (L, Sept.~30): all 253 campaign queue entries carrying Content-Length $\geq 2^{31}$ (77 and 176 per run) replayed on the oracle pair; 102/253 produce the negative-value artifact on the vulnerable build (36/77 and 66/176), with overflow values $-2147483648$, $-1$, and $-954437177$. & Oracle pair \texttt{o-kam-01} (minimal upstream guard): 0/253 negative-value lines; 193/253 log the upstream large-value guard (L, Sept.~30). & Census of precondition-satisfying queue entries, not campaign recall; 151/253 do not produce the artifact (ordering or parse path unlocated); no time-to-trigger. \\
+-\addlinespace[3pt]
+-SMARTPL availability case & 5/5 advisory repeats; 3/3 48-message-seed repeats; 1/1 later advisory replay. & All five recorded campaign hangs: 0/5 SMARTPL hits (R); patched replay absent. & Known-input unavailability; no campaign rediscovery or CVE. \\
++Case & Replay outcome & Control outcome & Evidence limit \\
++\midrule
++\mbox{CVE-2023-51713} & 172/233 ASan triggers (L). & Patched: 0/242 ASan activations (L). & Artifact replay; campaign recall unmeasured. \\
++\addlinespace[3pt]
++\mbox{CVE-2026-38998} & 82/88 server terminations (L). & Local patch: 1/1 triggers (R). & No sanitizer or verified patched build. \\
++\addlinespace[3pt]
++\mbox{CVE-2026-39863} & 102/253 negative-value outcomes (L). & Patched: 0/253; guard: 193/253 (L). & Selected queue entries; campaign recall unmeasured. \\
++\addlinespace[3pt]
++SMARTPL availability case & Advisory: 5/5; seed: 3/3; later: 1/1 (R). & Campaign hangs: 0/5 matching outcomes (R). & Known-input replay; no patch or CVE. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -815,13 +817,13 @@
+ \toprule
+ Dimension & Required control & Current limitation \\
+ \midrule
+-Internal & Admission-only C--D; scheduling-only E--D; repair off; paired initial states. & Missing observations; differing operation order. \\
+-Construct & Separate IPSM state edges, code branches, bitmap counts, and reached/triggered events. & Observed proxies incompletely measure the intended criteria. \\
+-Statistical & Repeated trials; test families; effect sizes; clustered/hierarchical intervals; censoring. & Partial, unequal-duration data; no confirmatory effects. \\
+-Selection & Intention-to-run accounting; prespecified infrastructure repetitions. & Uninitiated trials unobserved; additional records need not be independent. \\
+-Reproducibility & Identical versions, conditions, seeds, prompts, and measurement definitions. & Unresolved model versions and incomplete experimental provenance. \\
+-External & Multiple targets/protocols; negative cases; adapter assumptions. & Encrypted/opaque binary protocols untested. \\
+-Security & Minimal patch pairs; independent triggers; information separation. & Controlled A--E and version-pair evidence incomplete; pretraining leakage unresolved. \\
++Internal & Admission-only C--D; scheduling-only E--D; repair off; matched initial states. & Missing observations; uncertain decision order. \\
++Construct & Separate code branches, IPSM state edges, bitmap counts, and oracle outcomes. & Proxies incompletely measure intended criteria. \\
++Statistical & Repeated runs; test families; effect sizes; clustered/hierarchical CIs; censoring. & Unequal durations; no confirmatory effects. \\
++Selection & Intention-to-run accounting; prespecified infrastructure repetitions. & Unobserved planned runs; independence uncertain. \\
++Reproducibility & Match versions, settings, seeds, prompts, and measurements. & Unresolved model versions; incomplete provenance. \\
++External & Multiple targets/protocols; boundary cases; adapter assumptions. & Encrypted/opaque binary protocols untested. \\
++Security & Minimal patch pairs; independent triggers; information isolation. & Controlled A--E/patch-pair evidence incomplete; pretraining leakage unresolved. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+--- before/observed_tables.updated_20260930.tex
++++ observed_tables.updated_20260930.tex
+@@ -1,7 +1,7 @@
+ % Generated from current Key_Experiment archives on 2026-09-30.
+ \begin{table*}[!tbp]
+ \centering\small
+-\caption{Current archive inventory. A and D use benchmark rows; D is counted once because the supplied \texttt{ablation/gated\_fixed} directory duplicates benchmark LoopFuzz. Nominal target is 10 runs per target. Status and exit-code labels are descriptive.}
++\caption{Observed trial counts and D-arm status ($N=10$ nominal runs).}
+ \label{tab:observed_inventory}
+ \begin{tabular}{lrrrrrl}
+ \toprule
+@@ -21,11 +21,11 @@
+ \end{table*}
+ \begin{table*}[!tbp]
+ \centering\small
+-\caption{Exploratory native terminal endpoints from current summary rows (mean $\pm$ sample SD). All available A and D rows are retained; unequal stopping times and source-build uncertainty preclude causal comparisons.}
++\caption{A/D terminal coverage (mean $\pm$ SD); descriptive comparisons.}
+ \label{tab:observed_endpoints}
+ \begin{tabular}{lrrrr}
+ \toprule
+- & \multicolumn{2}{c}{Code branches (\texttt{b\_abs})} & \multicolumn{2}{c}{IPSM state edges} \\
++ & \multicolumn{2}{c}{Code branches} & \multicolumn{2}{c}{IPSM state edges} \\
+ Target & AFLNet & LoopFuzz(D) & AFLNet & LoopFuzz(D) \\
+ \midrule
+ LightFTP & 71.0$\pm$0.0 & 71.7$\pm$2.3 & 187.3$\pm$11.3 & 207.0$\pm$17.0 \\
+@@ -42,7 +42,7 @@
+ \end{table*}
+ \begin{table*}[!tbp]
+ \centering\small
+-\caption{Logged schema-v2 counts in current LoopFuzz D archives. Reject, provisional, and durable are recorded labels, not independently verified queue membership.}
++\caption{D-arm candidate and episode counts; dispositions are reported labels.}
+ \label{tab:observed_log_counts}
+ \begin{tabular}{lrrrrrr}
+ \toprule
+--- before/observed_costs.updated_20260930.tex
++++ observed_costs.updated_20260930.tex
+@@ -1,7 +1,7 @@
+ % Generated from current selected benchmark LoopFuzz D archives.
+ \begin{table}[!tbp]
+ \centering\small
+-\caption{Recorded LoopFuzz D costs from current benchmark archives: per-run minimum--maximum by target. Total tokens combine prompt and completion counters; k denotes 1,000 tokens.}
++\caption{D-arm cost ranges; total tokens = input + output (k = 1,000).}
+ \label{tab:observed_costs}
+ \begin{tabular}{lrr}
+ \toprule
+--- before/figures_updated_20260930/logged_calibration_table.tex
++++ figures_updated_20260930/logged_calibration_table.tex
+@@ -1,11 +1,11 @@
+ % Generated logged-reward diagnostics, not fixed-energy source-branch outcomes.
+ \begin{table*}[t]
+ \centering\footnotesize
+-\caption{E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\ref{tab:mechanisms}.}
++\caption{Proxy-reward calibration in E (95\% CIs in brackets).}
+ \label{tab:logged_calibration}
+ \begin{tabularx}{\textwidth}{l r r *{4}{>{\centering\arraybackslash}X}}
+ \toprule
+-Target & $n$ & Episodes & BS & Reference BS & ECE (10 bins) & AUPRC (AP) \\
++Target & $n$ & Episodes & BS & Reference BS & ECE (10 bins) & AP \\
+ \midrule
+ LightFTP & 10 & 6,622 & \shortstack{0.188\\{[0.178, 0.198]}} & \shortstack{0.183\\{[0.172, 0.195]}} & \shortstack{0.166\\{[0.161, 0.172]}} & \shortstack{0.452\\{[0.430, 0.471]}} \\
+ bftpd & 10 & 2,643 & \shortstack{0.249\\{[0.243, 0.257]}} & \shortstack{0.247\\{[0.243, 0.252]}} & \shortstack{0.105\\{[0.094, 0.119]}} & \shortstack{0.517\\{[0.493, 0.542]}} \\
+--- before/archive_arm_results.updated_20260930.tex
++++ archive_arm_results.updated_20260930.tex
+@@ -3,7 +3,7 @@
+ \small
+ \setlength{\tabcolsep}{1.6pt}
+ \renewcommand{\arraystretch}{1.0}
+-\noindent Row IDs combine arm and target number. Arms A--E retain their main-text meanings; $E_{99}$ and $E_{100}$ denote sensitivity groups at $\gamma=0.99$ and $\gamma=1.0$.
++\noindent Row IDs = arm + target number. Arms A--E follow the main text; $E_{99}$: $\gamma=0.99$; $E_{100}$: $\gamma=1.0$.
+ \par\smallskip
+ \noindent\begin{tabularx}{\columnwidth}{@{}YYY@{}}
+ 1: LightFTP & 4: Pure-FTPd & 7: Kamailio \\
+@@ -11,9 +11,9 @@
+ 3: ProFTPD & 6: Live555 & 9: Lighttpd1 \\
+ \end{tabularx}
+ \par\smallskip
+-\noindent AUC is measured in branch-hours; IPSM denotes state edges. Status codes reproduce the archive: C=completed, X=exit\_137\_near\_limit, S=sigabrt, O=oom\_killed; they do not independently identify failure causes. Missing target--arm combinations have no row and are not zero-valued observations.
++\noindent AUC: branch-hours; IPSM: state edges. Status: C, completed; X, exit 137 near limit; S, SIGABRT; O, reported OOM. Labels do not verify causes. Missing combinations are unobserved, not zero.
+ \par\smallskip
+-\captionof{table}{Complete current archive observations (mean $\pm$ sample SD). The nominal target is $N=10$; $n$ is the observed count. AUC integrates each recorded trajectory in branch-hours. Missing target--arm combinations have no row and remain unavailable.}
++\captionof{table}{Target--arm coverage (mean $\pm$ SD; actual $n$, nominal $N=10$).}
+ \label{tab:archive_arms}
+ \tablefirsthead{\toprule ID & $n$ & Branches & AUC & IPSM & Status \\ \midrule}
+ \tablehead{\multicolumn{6}{l}{Table~\thetable\ (continued)}\\ \toprule ID & $n$ & Branches & AUC & IPSM & Status \\ \midrule}

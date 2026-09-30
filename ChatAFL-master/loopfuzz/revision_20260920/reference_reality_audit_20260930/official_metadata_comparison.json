@@ -1,0 +1,190 @@
+[
+  {
+    "key": "sgf_usenix22",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Jinsheng Ba and Marcel B{\\\"o}hme and Zahra Mirzamomen and Abhik Roychoudhury",
+      "title": "Stateful Greybox Fuzzing",
+      "booktitle": "31st USENIX Security Symposium (USENIX Security 22)",
+      "year": "2022",
+      "isbn": "978-1-939133-31-1",
+      "address": "Boston, MA",
+      "pages": "3255--3272",
+      "url": "https://www.usenix.org/conference/usenixsecurity22/presentation/ba",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/sgf_usenix22.html",
+    "sha256": "a1f2feb9412ac85c62ca86964f91f9a775faec5e8e8ff1c27ead2df9f9538596"
+  },
+  {
+    "key": "carpetfuzz_documentation_2023",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Dawei Wang and Ying Li and Zhiyu Zhang and Kai Chen",
+      "title": "{CarpetFuzz}: Automatic Program Option Constraint Extraction from Documentation for Fuzzing",
+      "booktitle": "32nd USENIX Security Symposium (USENIX Security 23)",
+      "year": "2023",
+      "isbn": "978-1-939133-37-3",
+      "address": "Anaheim, CA",
+      "pages": "1919--1936",
+      "url": "https://www.usenix.org/conference/usenixsecurity23/presentation/wang-dawei",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/carpetfuzz_documentation_2023.html",
+    "sha256": "c765db2c2740cc7e46e61cd8abc4b43c91d72d079179b711e3ca0959b2801f4a"
+  },
+  {
+    "key": "guo2017calibration",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "title": "On Calibration of Modern Neural Networks",
+      "author": "Chuan Guo and Geoff Pleiss and Yu Sun and Kilian Q. Weinberger",
+      "booktitle": "Proceedings of the 34th International Conference on Machine Learning",
+      "pages": "1321--1330",
+      "year": "2017",
+      "editor": "Precup, Doina and Teh, Yee Whye",
+      "volume": "70",
+      "series": "Proceedings of Machine Learning Research",
+      "month": "06--11 Aug",
+      "publisher": "PMLR",
+      "pdf": "http://proceedings.mlr.press/v70/guo17a/guo17a.pdf",
+      "url": "https://proceedings.mlr.press/v70/guo17a.html",
+      "abstract": "Confidence calibration – the problem of predicting probability estimates representative of the true correctness likelihood – is important for classification models in many applications. We discover that modern neural networks, unlike those from a decade ago, are poorly calibrated. Through extensive experiments, we observe that depth, width, weight decay, and Batch Normalization are important factors influencing calibration. We evaluate the performance of various post-processing calibration methods on state-of-the-art architectures with image and document classification datasets. Our analysis and experiments not only offer insights into neural network learning, but also provide a simple and straightforward recipe for practical settings: on most datasets, temperature scaling – a single-parameter variant of Platt Scaling – is surprisingly effective at calibrating predictions."
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/guo2017calibration.html",
+    "sha256": "fcd644b81c1d06d034060e3ff8079ccc6acc2213dbf846043b92059ce10d26f8"
+  },
+  {
+    "key": "blueman2025",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Wei-Che Kao and Yen-Chia Chen and Yu-Sheng Lin and Yu-Cheng Yang and Chi-Yu Li and Chun-Ying Huang",
+      "title": "{BLuEMan}: A Stateful Simulation-based Fuzzing Framework for {Open-Source} {RTOS} Bluetooth Low Energy Protocol Stacks",
+      "booktitle": "34th USENIX Security Symposium (USENIX Security 25)",
+      "year": "2025",
+      "isbn": "978-1-939133-52-6",
+      "address": "Seattle, WA",
+      "pages": "6259--6278",
+      "url": "https://www.usenix.org/conference/usenixsecurity25/presentation/kao",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/blueman2025.html",
+    "sha256": "f4673dc6a7bb0e6548f17c56097a702b217239f1434c49f6e496a6ae89127d9d"
+  },
+  {
+    "key": "fishfuzz2023",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Han Zheng and Jiayuan Zhang and Yuhang Huang and Zezhong Ren and He Wang and Chunjie Cao and Yuqing Zhang and Flavio Toffalini and Mathias Payer",
+      "title": "{FISHFUZZ}: Catch Deeper Bugs by Throwing Larger Nets",
+      "booktitle": "32nd USENIX Security Symposium (USENIX Security 23)",
+      "year": "2023",
+      "isbn": "978-1-939133-37-3",
+      "address": "Anaheim, CA",
+      "pages": "1343--1360",
+      "url": "https://www.usenix.org/conference/usenixsecurity23/presentation/zheng",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/fishfuzz2023.html",
+    "sha256": "e3b7281b6a1c67b4faeab64d235f69a721c9c0176b9d3d8ac54389e719322c69"
+  },
+  {
+    "key": "miner2023",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Chenyang Lyu and Jiacheng Xu and Shouling Ji and Xuhong Zhang and Qinying Wang and Binbin Zhao and Gaoning Pan and Wei Cao and Peng Chen and Raheem Beyah",
+      "title": "{MINER}: A Hybrid {Data-Driven} Approach for {REST} {API} Fuzzing",
+      "booktitle": "32nd USENIX Security Symposium (USENIX Security 23)",
+      "year": "2023",
+      "isbn": "978-1-939133-37-3",
+      "address": "Anaheim, CA",
+      "pages": "4517--4534",
+      "url": "https://www.usenix.org/conference/usenixsecurity23/presentation/lyu",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/miner2023.html",
+    "sha256": "1b6f17c50a98256046fb24a50974b6d684139276ffb33cbb62d5773045ee42f3"
+  },
+  {
+    "key": "mutationassessment2023",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Philipp G{\\\"o}rz and Bj{\\\"o}rn Mathis and Keno Hassler and Emre G{\\\"u}ler and Thorsten Holz and Andreas Zeller and Rahul Gopinath",
+      "title": "Systematic Assessment of Fuzzers using Mutation Analysis",
+      "booktitle": "32nd USENIX Security Symposium (USENIX Security 23)",
+      "year": "2023",
+      "isbn": "978-1-939133-37-3",
+      "address": "Anaheim, CA",
+      "pages": "4535--4552",
+      "url": "https://www.usenix.org/conference/usenixsecurity23/presentation/gorz",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/mutationassessment2023.html",
+    "sha256": "b10a3b4565ea6cbc3aea2cfcb0d707b5b615e25da4e16045ceec27fe3d1c49ad"
+  },
+  {
+    "key": "fuzztruction2023",
+    "checks": {
+      "title": true,
+      "author": true,
+      "year": true,
+      "pages": true,
+      "venue": true
+    },
+    "source_fields": {
+      "author": "Nils Bars and Moritz Schloegel and Tobias Scharnowski and Nico Schiller and Thorsten Holz",
+      "title": "Fuzztruction: Using Fault Injection-based Fuzzing to Leverage Implicit Domain Knowledge",
+      "booktitle": "32nd USENIX Security Symposium (USENIX Security 23)",
+      "year": "2023",
+      "isbn": "978-1-939133-37-3",
+      "address": "Anaheim, CA",
+      "pages": "1847--1864",
+      "url": "https://www.usenix.org/conference/usenixsecurity23/presentation/bars",
+      "publisher": "USENIX Association"
+    },
+    "evidence_file": "reference_reality_audit_20260930/official/fuzztruction2023.html",
+    "sha256": "4986ee85804a6fae28f474f738598072b00aabb167bc9655fb62da48317c6000"
+  }
+]

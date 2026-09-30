@@ -1,0 +1,970 @@
+                                                             Large Language Models are Edge-Case Fuzzers:
+                                                              Testing Deep Learning Libraries via FuzzGPT
+                                                         Yinlin Deng                                 Chunqiu Steven Xia                                     Chenyuan Yang
+                                                     University of Illinois                            University of Illinois                              University of Illinois
+                                                      Urbana-Champaign                                 Urbana-Champaign                                    Urbana-Champaign
+                                                     yinlind2@illinois.edu                            chunqiu2@illinois.edu                                 cy54@illinois.edu
+
+                                                  Shizhuo Dylan Zhang                                     Shujing Yang                                     Lingming Zhang
+                                                     University of Illinois                            University of Illinois                             University of Illinois
+                                                     Urbana-Champaign                                  Urbana-Champaign                                    Urbana-Champaign
+arXiv:2304.02014v1 [cs.SE] 4 Apr 2023
+
+
+
+
+                                                    shizhuo2@illinois.edu                             shujing6@illinois.edu                              lingming@illinois.edu
+                                                                                                                                d=3
+                                        ABSTRACT                                                                          all spatial dimensions
+                                                                                                                                                    torch.nn.Fold
+                                                                                                                                                   (output_size, kernel_size,
+                                        Bugs in Deep Learning (DL) libraries may affect almost all down-                                           dilation, padding, stride)
+
+                                        stream DL applications, and it is crucial to ensure the quality of                  Input Shape            MUST              SATISFY        Output Shape
+                                                                                                                      (N,C*∏(kernel_size),L)                                    (N,C,output_size[0],..)
+
+                                                                                                                              ∏⌊output_size[d]+2×padding[d]−dilation[d]×(kernel_size[d]−1)-1
+                                        such systems. It is challenging to generate valid input programs
+                                        for fuzzing DL libraries, since the input programs need to satisfy             L=                                                                    ⌋      +1
+                                                                                                                                                      stride[d]
+                                                                                                                              d
+                                        both the syntax/semantics of the supported languages (e.g., Python)
+                                        and the tensor/operator constraints for constructing valid compu-                   Figure 1: Tensor computation with torch.nn.Fold.
+                                        tational graphs. Recently, the TitanFuzz work demonstrates that             DL libraries can also be buggy. Moreover, bugs in DL libraries can
+                                        modern Large Language Models (LLMs) can be directly leveraged               cause serious consequences as they can potentially affect almost all
+                                        to implicitly learn all the language and DL computation constraints         downstream DL applications, including safety-critical ones [44, 56].
+                                        to generate valid programs for fuzzing DL libraries. However, LLMs          As a result, it is crucial to ensure the quality of DL libraries.
+                                        tend to generate ordinary programs following similar patterns/-                Fuzzing [5, 63, 82], a powerful methodology for bug finding via
+                                        tokens with typical programs seen in their massive training cor-            random input generation, has been widely studied for testing DL
+                                        pora (e.g., GitHub), while fuzzing favors unusual inputs that cover         libraries in recent years. Meanwhile, it is extremely challenging to
+                                        edge cases or are unlikely to be manually produced. To fill this gap,       generate arbitrary input programs for DL libraries, since the pro-
+                                        this paper proposes FuzzGPT, the first technique to prime LLMs to           grams need to satisfy both the syntax/semantics of the supported
+                                        synthesize unusual programs for fuzzing. FuzzGPT is built on the            languages (such as Python with dynamic typing) and the tensor/-
+                                        well-known hypothesis that historical bug-triggering programs may           operator constraints for constructing valid computational graphs.
+                                        include rare/valuable code ingredients important for bug finding.           For example, Figure 1 shows the complicated constraints for in-
+                                        Meanwhile, while traditional techniques leveraging such historical          put/output tensor shapes and other operator inputs (e.g., dilation)
+                                        information require intensive human efforts to both design dedicated        to correctly use a PyTorch API torch.nn.Fold: the last shape value
+                                        generators and ensure the syntactic/semantic validity of generated          𝐿 in the input should equal the product of the formula across all
+                                        programs, FuzzGPT demonstrates that this process can be fully au-           spatial dimensions 𝑑. To simplify the problem, prior DL library
+                                        tomated via the intrinsic capabilities of LLMs (including fine-tuning       fuzzing techniques mainly work on model-level [24, 26, 35, 50, 70]
+                                        and in-context learning), while being generalizable and applicable          or API-level fuzzing [15, 71, 75, 77]. Model-level fuzzers either re-
+                                        to challenging domains. While FuzzGPT can be applied with dif-              use/mutate existing seed models [26, 50, 70], or generate DL models
+                                        ferent LLMs, this paper focuses on the powerful GPT-style models:           from scratch [24, 35]. Due to the intricate tensor/operator constraints,
+                                        Codex and CodeGen. Moreover, FuzzGPT also shows the potential               such model-level fuzzers either only focus on manipulating shape-
+                                        of directly leveraging the instruct-following capability of the recent      preserving APIs [70] or require manually-written specifications for
+                                        ChatGPT for effective fuzzing. The experimental study on two pop-           each API [24, 35] to preserve model validity. As a result, they can
+                                        ular DL libraries (PyTorch and TensorFlow) shows that FuzzGPT               only cover limited DL APIs and program patterns. On the other hand,
+                                        can substantially outperform TitanFuzz, detecting 76 bugs, with             API-level fuzzers focus on testing each individual API via effective
+                                        49 already confirmed as previously unknown bugs, including 11               input generation [71, 75] or oracle inference [15, 77]. While API-level
+                                        high-priority bugs or security vulnerabilities.                             fuzzers can easily cover a large number of APIs, they cannot find
+                                                                                                                    any bugs arising from interactions of different DL APIs.
+                                        1   INTRODUCTION                                                               With the recent enormous advances in Large Language Models
+                                        Deep Learning (DL) has been widely adopted in various applica-              (LLMs), TitanFuzz [14] has been proposed to directly leverage LLMs
+                                        tion domains, including scientific discovery [54], healthcare [6],          for fuzzing DL libraries. The key insight is that LLMs are pre-trained
+                                        finance [65], and transportation [58]. Such DL applications are com-        on billions of code snippets in different languages from open source,
+                                        monly constructed using DL libraries (e.g., PyTorch [51] and Tensor-
+                                        Flow [64]) where developers utilize library APIs to build, train, and de-
+                                        ploy DL models. Similar to any other complicated software systems,
+                                                        Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+which can include numerous valid DL programs for popular DL li-               both learning strategies, FuzzGPT can prime the LLMs to generate
+braries; in this way, LLMs can implicitly learn both the language syn-        bug-triggering programs by capturing code ingredients within either
+tax/semantics and the tensor/operator constraints for valid DL com-           the local context examples or fine-tuning dataset.
+putations. TitanFuzz has been shown effective in generating valid                To summarize, this paper makes the following contributions:
+input DL programs and substantially outperforms both traditional              • Dimension This paper opens up a new direction for generating
+model-level and API-level fuzzers. More importantly, compared with              unusual input programs for effective fuzzing via LLMs. This paper
+traditional fuzzing techniques that require intensive human efforts             is the first to show that LLMs can be easily prompted/fine-tuned
+for building generation/mutation strategies [17, 29, 32, 33, 62, 78, 83],       to resemble historical bug-triggering programs or even directly
+TitanFuzz is fully automated, and can be easily generalized to differ-          follow human instructs to generate unusual programs for fuzzing
+ent application domains and programming languages. Meanwhile,                   real-world systems. Compared with traditional fuzzers for unusual
+TitanFuzz directly leverages the generative capability of LLMs,                 program generation, FuzzGPT is fully automated, generalizable,
+which is based on token naturalness [27] and aims to resemble what              and applicable to challenging application domains.
+they saw in the training corpora. In this way, TitanFuzz can easily           • Technique While our idea is generalizable, we have implemented
+generate human-like DL programs, which definitely can be valid                  FuzzGPT as an LLM-based fuzzer for DL libraries in this paper. We
+programs for fuzzing. However, given DL libraries have been used                implement three variants of FuzzGPT based on in-context learning
+by developers all over the world, such ordinary input programs can              and fine-tuning: 1) few-shot learning: a few examples of previous
+hardly help cover additional DL library behaviors/paths, leading to             bug-triggering code snippets are provided, 2) zero-shot learning:
+limited fuzzing effectiveness.                                                  a partially complete bug-triggering program is given, and 3) fine-
+Our Work. This paper proposes FuzzGPT, the first technique to                   tuning: training a specialized LLM via learning bug-ingredients
+guide LLMs to synthesize unusual input programs for effective                   from the historical programs. While FuzzGPT can be applied with
+fuzzing. FuzzGPT is built on the well-known hypothesis that his-                different LLMs, we build our strategies based on state-of-the-art
+torical bug-triggering programs may include edge-case/valuable                  proprietary and open-source GPT-style LLMs for code, Codex [11]
+code ingredients important for bug finding. In the literature, re-              and CodeGen [45]. Moreover, we also build a specific zero-shot
+searchers have proposed various techniques to recompose such code               FuzzGPT variant by directly leveraging the instruct-following
+ingredients or insert them into new code contexts for exposing new              capability of ChatGPT [47] without any historical information.
+interesting bugs/vulnerabilities [10, 29, 61, 84]. However, such tech-        • Extensive Study We study all FuzzGPT variants on two popular
+niques require intensive human efforts to both design such dedicated            DL libraries (PyTorch [51] and TensorFlow [64]). Our results show
+generators and ensure the syntactic/semantic validity of the gener-             that FuzzGPT achieves 60.70%/36.03% higher coverage than state-
+ated programs. For example, according to prior work [29, 84], even              of-the-art TitanFuzz on PyTorch/TensorFlow. Overall, FuzzGPT
+resolving the very common undeclared-identifier issue can be non-               found 76 bugs on the latest versions of PyTorch and TensorFlow.
+trivial. Moreover, it is hard to generalize such techniques to different        49 have already been confirmed as new bugs, with 11 high-priority
+domains, not to mention the challenging DL library fuzzing problem.             bugs or security vulnerabilities.
+In contrast, our key insight is that recent advanced LLMs offer a
+natural, generalizable, and fully automated solution for leveraging
+such historical programs – they can be easily prompted [53] or fine-          2 BACKGROUND AND RELATED WORK
+tuned [52] to digest such historical programs, and then generate
+more unusual programs that resemble the historical ones and ef-               2.1 Large Language Model
+fectively exploit their code ingredients. Compared with traditional           Large Language Models (LLMs) have demonstrated impressive per-
+techniques on leveraging such historical information, FuzzGPT can             formance across a wide range of NLP tasks by training on large
+implicitly learn all the generation constraints (including language           corpora of text data scraped from the Internet [21]. Recently, re-
+syntax/semantics, DL computation constraints, and the new un-                 searchers have begun adopting LLMs for code-related tasks, e.g., via
+usualness constraints) implicitly, and is fully automated. Moreover,          further fine-tuning LLMs on code snippets from open-source repos-
+while this paper focuses on the challenging problem of DL library             itories [18]. LLMs can be classified based on variations of the pop-
+fuzzing, the FuzzGPT idea is directly generalizable to other applica-         ular Transformer architecture [66] into: Encoder-only, Decoder-only
+tion domains and programming languages (e.g., fuzzing for various             and Encoder-Decoder models. Decoder-only LLMs (e.g., GPT [8, 48],
+compilers/interpreters, DB systems, SMT solvers, and more).                   Codex [11] and CodeGen [45]) focus on autoregressive completion
+   To implement FuzzGPT, we first construct a dataset of bug-triggering       tasks by learning to predict the probability of the next token given
+code snippets by mining bug reports from open-source repositories             previously generated tokens. Encoder-only (e.g., CodeBERT [18] and
+of the target DL libraries. Built on this dataset, FuzzGPT includes           GraphCodeBERT [25]) and Encoder-Decoder (e.g., CodeT5 [81] and
+the following strategies. (1) In-context learning [38]: we provide            PLBART [4]) models on the other hand are designed for infilling tasks,
+LLMs with either a few examples of historical bug-triggering pro-             where the pre-training objective is to recover masked-out tokens or
+grams (few-shot learning [8, 53]) or a partial bug-triggering program         token spans in the training data by using bi-directional context.
+(zero-shot learning [49, 60]) to either generate a new code snip-                In order to apply LLMs for down-stream applications, there are
+pet or to autocomplete the partial code. (2) Fine-tuning [52]: we             two main paradigms: Fine-tuning [52] and In-context learning [8, 53].
+modify the model weights by training on the extracted historical bug-         Fine-tuning is the process of updating the model weights by learning
+triggering programs to obtain fine-tuned LLMs that are specially              the desired output from the given input of a specific downstream task
+designed to generate similar bug-triggering code snippets. From               dataset. The resulting fine-tuned LLM can be treated as specialized
+Large Language Models are Edge-Case Fuzzers:
+Testing Deep Learning Libraries via FuzzGPT
+
+
+models designed to perform a particular task such as code summa-           compilers [13], C compilers [39], and PDF file parsers [23]. Likewise,
+rization [4]. Different from fine-tuning, which typically requires         Montage [34] has been proposed to fuzz JavaScript engines by di-
+large downstream datasets to update the model, in-context learning         rectly training the tree-based RNN to mutate existing seed ASTs.
+only requires a few examples/demonstration of the downstream task.         Moreover, COMFORT [79] proposes to fine-tune the pre-trained
+In-context learning directly uses the pre-trained LLM without any          GPT-2 model to generate JavaScript programs, and further relies on
+weight modification by constructing an input which contains multi-         additional heuristics to generate inputs for the synthesized programs.
+ple (i.e., few-shot) examples of input/output demonstrations and then      While the above work leverages the development of DL models for
+the final task to be solved. Through looking at the context, LLMs can      fuzzing, they do not yet study modern LLMs for code. Recently, Ti-
+directly learn the goal of the specific task and expected output format    tanFuzz [14] demonstrates for the first time that modern LLMs can
+without fine-tuning. Various techniques have been proposed to im-          be directly leveraged to perform end-to-end fuzzing of real-world
+prove in-context learning, in particular via example selection [36, 55],   systems in a zero-shot manner (without any fine-tuning). TitanFuzz
+and via multi-step reasoning using Scratchpad [46] or Chain-of-            first leverages Codex [11] to generate high-quality seed programs
+Thought [72]. Together, in-context learning and fine-tuning are two        and then leverages InCoder [20] with an evolutionary fuzzing strat-
+different approaches to prime LLMs for downstream tasks.                   egy to generate diverse code snippets. TitanFuzz has demonstrated
+   While the approach of FuzzGPT is general for different LLMs,            state-of-the-art results for fuzzing DL libraries and can find bugs
+in this paper we mainly focus on the recent powerful GPT-style             that can only be uncovered with complex API sequences.
+models: Codex [11] and CodeGen [45], which are state-of-the-art               In this work, we propose to leverage the historical bug-triggering
+proprietary and open-source models for code, respectively. More-           code information to further guide LLMs towards more effective
+over, we also directly leverage the instruct-following capability of       fuzzing. To our knowledge, this is the first work demonstrating that
+ChatGPT [47] for fuzzing.                                                  LLMs can easily perform history-driven fuzzing (widely studied
+                                                                           for over a decade), while being fully automated, generalizable, and
+2.2     Fuzzing with Historical Bugs                                       applicable to the challenging domain of DL library fuzzing.
+Fuzzing with historical bugs has been extensively studied for over
+a decade. One of the pioneering techniques is LangFuzz [29]: Lang-         3   APPROACH
+Fuzz first parses historical tests which have been known to cause
+                                                                           In this section, we describe our FuzzGPT approach of exploiting his-
+incorrect behaviors and extracts individual code fragments; then,
+                                                                           torical bugs via Large Language Models (LLMs) to automatically fuzz
+LangFuzz will generate code and further replace partial code with
+                                                                           DL libraries. The key idea of FuzzGPT is to use LLMs and directly
+extracted code fragments. Researchers have also mined fuzzer con-
+                                                                           learn from historical reported bugs to generate similar bug-triggering
+figurations (e.g., grammar/statement probabilities) from historical
+                                                                           code snippets to find new bugs. Existing work along this direction
+bug-triggering programs for more diverse generation [10, 61]. More
+                                                                           requires extensive human efforts, and can hardly generalize to the
+recently, JavaTailor [84] leverages extracted code ingredients from
+                                                                           challenging domain of DL library fuzzing. In contrast, the recent ad-
+historical bugs to synthesize new input programs for Java Virtual
+                                                                           vances in LLMs offer a natural, generalizable, and fully automated so-
+Machine (JVM) fuzzing. Besides such generation-based or hybrid ap-
+                                                                           lution – modern LLMs can be easily prompted or fine-tuned to digest
+proaches, mutation-based fuzzers have also widely utilized such prior
+                                                                           such historical programs and then generate programs that resemble
+bug reports or regression tests as high-quality input seeds for future
+                                                                           the historical ones and effectively exploit their code ingredients.
+mutations, targeting C compilers [32], SMT solvers [73], and database
+                                                                              Figure 2 shows the overview of FuzzGPT. We first systematically
+systems [68, 86]. Moreover, a recent study [85] shows that directly
+                                                                           mine bug reports from the target DL library repositories to collect
+reusing code snippets with minimal modification from historical
+                                                                           historical bug-triggering code snippets (Section 3.1). As FuzzGPT
+bug reports can also find interesting bugs in other C/C++ compilers.
+                                                                           aims to target specific DL library APIs, each bug-triggering code
+   FuzzGPT directly learns from historical bug-triggering code via
+                                                                           snippet requires a corresponding buggy API label. However, often-
+fine-tuning and in-context learning with LLMs. Unlike the prior
+                                                                           times the exact buggy API may not be explicitly indicated within the
+generation- or mutation-based techniques which require extensive
+                                                                           bug report. As such, FuzzGPT employs a self-training approach to
+human efforts to build dedicated generators and ensure syntactic/se-
+                                                                           automatically generate buggy API labels using LLMs by prompting
+mantic validity of generated programs [29, 84], FuzzGPT is fully
+                                                                           with a few manually labeled examples. Next, using these pairs of ex-
+automated and generalizable. Moreover, it is extremely challenging
+                                                                           tracted bug-triggering code snippets and buggy API labels, FuzzGPT
+to build such traditional generators/mutators for DL programs due
+                                                                           can start the fuzzing procedure to generate edge-case code snippets
+to the complicated language and tensor/operator constraints, while
+                                                                           (Section 3.2). In this work, we investigate two learning methods:
+FuzzGPT can implicitly learn all such constraints using modern
+                                                                           1) In-context learning: we prompt the pre-trained LLM directly
+LLMs.
+                                                                           with either examples of bug-triggering code and buggy API pairs
+                                                                           (few-shot), or a partial/complete bug-triggering code (zero-shot),
+2.3     Fuzzing via Deep Learning                                          and let the model generate/edit programs for a target API, 2) Fine-
+In addition to traditional fuzzing approaches, researchers have also       tuning: using the extracted dataset, we fine-tune the LLM to learn
+developed fuzzing tools based on Deep Learning (DL) techniques. Se-        from the bug-triggering code examples and patterns to generate new
+qFuzzer is network protocol fuzzer built on Long Short-term Memory         bug-triggering code snippets for a target API. Finally, the generated
+(LSTM) [28], a Recurrent Neural Network (RNN) [12]. RNN-based              programs are executed with test oracles (e.g., CPU/GPU [71], or
+fuzzers have also been used for fuzzing other systems such as OpenCL       automatic differentiation oracle [77]) for bug detection (Section 3.3).
+                                                                                Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+
+
+                                DL library repos                                                              torch.gather
+                                                              DL Libraries                                  DL Library Target API
+
+                                                                 API: torch.Tensor.apply_
+                                                                 Title: Tensor.apply_ fails                                    In-context learning
+                                                    select       x = torch.randn(3, 3)                                                                                      POTENTIAL
+                                                   example       x.apply_(lambda a: a+1)                                           x = torch.gather(                          BUGS                     !
+                                                               API: torch.cat Title: Support legacy                                    [1, 2, 3], [])
+                                                               empty tensor behavior in cat
+                                                                                                                                        fuzzing output
+                   Webcrawler                                    x = torch.randn(4, 3)                LLM
+                                                                 torch.cat([[], x], 1)
+                          extract                                 In-context examples
+                         relevant                                                                                                           Fine-tuning
+                                                                                                                                   x = torch.randn(2, 2)              CPU                             Auto
+                                                                                ﬁnetune                                            y = torch.tensor([0, 1])                                           Diff
+                                                                                 model                                             output = torch.gather(             GPU
+                                                                                                                                            x, 0, y)
+             Issues         Pull Requests                                                                                                                                   differential testing
+                                                          LLM                                   Fine-tuned LLM                          fuzzing output
+                                                                                                                                                                                     /
+                                                                                                                                                                                   crash
+                                                   API: torch.Tensor.apply_                                                    API: torch.cat Title: Support legacy
+                                                   Title: Tensor.apply_ fails                                                  empty tensor behavior in cat
+             x = torch.randn(3, 3)                 x = torch.randn(3, 3)                                                         x = torch.randn(4, 3)                 x = torch.gather(
+             x.apply_(lambda a: a+1)               x.apply_(lambda a: a+1)             prompt                          label
+                                                                                                                                 torch.cat([[], x], 1)                     [1, 2, 3], [])
+                                                                                      examples
+
+            Buggy code snippet dataset                 human annotation                               LLM                          labeled buggy code                        fuzzing outputs
+                                                                                                                                     snippet dataset
+
+
+
+
+                                                                            Figure 2: Overview of FuzzGPT.
+
+    While FuzzGPT is general for any generative LLMs, in this paper,                                                      x = torch.randn(3, 3)                                                 x = torch.randn(3, 3)
+                                                                                                                          x.apply_(lambda a: a+1)                                               x.apply_(lambda a: a+1)
+we focus on two specific LLMs: Codex [11] and CodeGen [45]. Codex
+                                                                                                            examples
+
+
+                                                                                                                          Title: Tensor.apply_ fails
+is a state-of-the-art generative model fine-tuned on open-source code                                                     Buggy API: torch.Tensor.apply_
+                                                                                                                                                                                               Buggy code snippet dataset
+repositories initialized from the GPT-3 [8] model weights. Unlike                                                                                   ...                                                        manual
+                                                                                                                                                                                                              annotation
+Codex whose model weights and training data are not released, Code-
+                                                                                                                                                    ...                                         API: torch.Tensor.apply_
+Gen is an open-source generative model. Since we target DL library                                                                                                                              x = torch.randn(3, 3)
+                                                                                                                           x = torch.Tensor([1,1,1])                                            x.apply_(lambda a: a+1)
+APIs exposed in Python, we use the Python version of CodeGen,
+
+
+
+
+                                                                                                                                                                                          et
+                                                                                                                                                                               code beled
+                                                                                                                           x.index_fill_(0, torch.LongTensor([100]), -1)
+
+
+
+
+                                                                                                                                                                                    snipp
+                                                                                                                           a = torch.Tensor([1,1,1]).cuda()
+fine-tuned on Python GitHub code [45]. In FuzzGPT, we directly use                                                                                                                                 human annotated
+
+
+
+
+                                                                                                                                                                                 unla
+                                                                                                                           a.index_fill_(0,                                                    buggy code snippet dataset
+both Codex and CodeGen models, where the larger Codex model                                                                     torch.LongTensor([100]).cuda(), -1)
+                                                                                                                           Title: x.index_fill_() on cuda tensors
+allows us to show the full potential of fuzzing when using LLMs                                                            doesn’t do bounds checks
+                                                                                                                           Buggy API:
+and the open-source CodeGen models can be used to evaluate the
+scaling effect and test out fine-tuning strategies. We next describe                                                                                      query LLM
+
+each step in FuzzGPT in more detail.
+                                                                                                                           torch.Tensor.index_fill_                                               Model Completion
+
+
+3.1    Dataset Construction                                                                                                    Figure 3: Prompt for buggy API annotation.
+To facilitate learning from historical bugs, FuzzGPT requires a bug-                                        each bug-triggering code example, we propose a self-training [57, 87]
+triggering code dataset which contains pairs of bug-exposing code                                           approach where we feed a few-shot prompt (shown in Figure 3) to
+snippet and its corresponding buggy DL library API.                                                         LLM and use the model completion as the buggy API. We first provide
+                                                                                                            manual annotation of the buggy API name for several randomly cho-
+3.1.1 Mining Bug History from GitHub. First, we implement an
+                                                                                                            sen bug-triggering code snippets. These manually annotated pairs
+HTML crawler to collect all the issues and pull requests (PRs) from
+                                                                                                            become the few-shot examples used as part of the input to the LLM.
+the GitHub issue-tracking systems of our target libraries. Then, we
+                                                                                                            In Figure 3, the few-shot examples are constructed with the chosen
+focus on identifying bug-triggering code snippets from two sources:
+                                                                                                            bug-triggering code snippet, the extracted title of the corresponding
+(1) Issues associated with accepted or pending PRs. We search in
+                                                                                                            issue/pull request (e.g., Tensor.apply_ fails), and finally, the man-
+these bug reports for all code blocks, which contain code snippets to
+                                                                                                            ually annotated buggy API name (e.g., torch.Tensor.apply_). Next,
+reproduce the bug, and concatenate them together. (2) PRs contain-
+                                                                                                            we combine the few-shot examples with a target bug-triggering code
+ing code blocks in their commit messages. We further consider PRs
+                                                                                                            snippet to create a prompt, and then query the LLM to obtain the
+because some PRs may fix bugs without corresponding issues. For
+                                                                                                            predicted buggy API name for the given code snippet. Note that the
+each extracted issue or PR, we extract its title as well and include that
+                                                                                                            annotation effort is minimal, since we only need to annotate a few
+in prompts for few-shot learning and fine-tuning. After mining bug-
+                                                                                                            examples (6 for this work as shown in Section 4) for the targeted
+triggering code snippets, we will next perform automated annotation
+                                                                                                            library due to the in-context learning capability of modern LLMs.
+to further label each code snippet with a corresponding buggy API.
+                                                                                                               Our proposed method is similar to self-training [57, 87] where a
+3.1.2 Automated Buggy API Annotation. Each code snippet in our                                              classifier is first trained on a small labeled dataset and then used to la-
+dataset often involves multiple DL APIs. As such, the exact buggy API                                       bel a larger unlabeled dataset. In our case, we directly use LLMs with
+cannot be directly extracted. In order to annotate the buggy API for
+Large Language Models are Edge-Case Fuzzers:
+Testing Deep Learning Libraries via FuzzGPT
+
+
+few-shot learning from a small number of manual annotations to pro-        of a possible “bug” (Bug description:) before generating the actual
+vide annotations for the large amounts of extracted bug-triggering         “bug-triggering” code snippet that invokes the target API. The pre-
+code snippets in our dataset. Note that the annotation does not need       dicted bug description provides additional hint to the LLM, indicating
+to be fully precise [43]: the main goal of labeling is to steer the LLMs   that the generated code should try to cover specific potential buggy
+to generate many programs for each targeted DL API by providing            behavior.
+paired API and corresponding code examples; that said, even if a code         Let M be the LLM that outputs the probability of generating a
+example is unfortunately labeled with a “wrong” API which is used          sequence. Let 𝐸𝐾 = {< 𝑝 1,𝑑 1,𝑐 1 >, ..., < 𝑝𝐾 ,𝑑𝐾 ,𝑐 𝐾 >} be the con-
+in the bug-triggering code for the ground-truth buggy API, it can          catenation of 𝐾 examples consisting of tuples of example API 𝑝𝑖 ,
+still guide the model to learn the non-strict mapping from a DL API        bug description 𝑑𝑖 , and code snippet 𝑐𝑖 . Let 𝑝 target be the target
+to a program that contains interesting bug-triggering patterns and         API query. The probability of generating the output code 𝑐 fs using
+hopefully also invokes the API. In our evaluation, we also observe         few-shot learning can be formalized as this conditional probability:
+that when targeting a certain DL API, FuzzGPT can indeed generate          M (𝑐 fs |𝐸𝐾 , 𝑝 target ) = M (𝑐 fs |𝐸𝐾 , 𝑝 target, 𝑑 fs ) ·M (𝑑 fs |𝐸𝐾 , 𝑝 target )
+code snippets that actually reveal bugs in a different API.
+                                                                           3.2.2 Zero-shot Learning. We now describe two FuzzGPT variants
+3.2     In-context learning and Fine-tuning                                under the zero-shot learning scenario:
+Using the extracted and annotated buggy code snippet dataset, Fuz-         Zero-shot Completion (default). In this variant, the input is only
+zGPT starts the process of learning to generate edge-case code. At         made up of a partial code snippet. The partial code snippet is created
+a high level, LLM-based learning methods can be separated into             from historical bug-triggering code snippet dataset where we ran-
+two main approaches: In-context learning and Fine-tuning. In-              domly remove a portion of the suffix code. Figure 4 ( 2 ) shows how
+context learning involves directly using a pre-trained LLM without         the zero-shot completion input can be created. We first include a
+adjusting any of the model parameters. Instead, the input to the LLM       natural language comment # The following code reveals a bug in
+is prepended first with instructions and examples demonstrating the        {target_api} which allows us to apply zero-shot learning to any ar-
+task before providing the current input. In-context learning allows        bitrary target API. We then randomly pick an example bug-exposing
+the LLM to prime its output by learning not only the desired output        code snippet from the dataset. Following, we randomly remove a
+format (e.g., provide a yes or no answer) but also the task domain         portion of the selected bug-triggering code snippet’s suffix and only
+(e.g., translate English to French) from the surrounding input context.    keep the prefix lines as the input for the LLM to complete it.
+Fine-tuning on the other hand aims to modify the LLM parameters                Again let M be the LLM that outputs the probability of gener-
+through training on a specific dataset to create a specialized model.      ating a sequence, 𝑐𝑒 be the selected code snippet with the first 𝑗
+    In FuzzGPT, we follow prior work [7] and systematically explore        lines (𝑐𝑒 [: 𝑗]), and 𝑝 comp be the completion prompt. The probabil-
+different learning settings. Specifically, we design three different       ity of producing zero-shot completion code 𝑐 zs-comp can be formal-
+learning strategies: few-shot, zero-shot, and fine-tune, each uses         ized as this conditional probability: M (𝑐 zs-comp |𝑝 comp,𝑐𝑒 [: 𝑗]), with
+the annotated bug-triggering code dataset differently to generate          𝑐𝑒 [: 𝑗] +𝑐 zs-comp being the complete fuzzing code snippet, including
+fuzzing outputs. Figure 4 illustrates these three strategies, which are    the partial code.
+presented in more detail below.                                            Zero-shot Editing. In this variant, the input is created from a com-
+                                                                           plete code snippet in our historical bug-triggering dataset. Figure 4
+3.2.1 Few-shot Learning. We follow the classic few-shot in-context         ( 2 ) also shows an example of the zero-shot editing. To begin with,
+learning [7] by prepending the target query with examples from             we use the natural language comment # Edit the code to use
+the annotated bug-triggering code snippet dataset. Figure 4 ( 1 )          {target_api} which indicates to the LLM that we want to perform
+shows how the few-shot learning prompt is constructed. Our ex-             editing and we should directly reuse a large part of the original code.
+ample format consists of the API name (e.g., torch.Tensor.apply_),         Similar to zero-shot completion, we randomly select a bug-triggering
+bug description which is obtained from the title of the issue/PR (e.g.,    code and attach it to the end of the input. Different from zero-shot
+Tensor.apply_ fails), and finally the bug-triggering code snippet.         completion, where the model autocompletes the end of the code
+The purpose of these examples is twofold. Firstly, they are intended       snippet, editing is designed to allow the LLM to reuse all parts of his-
+to prime the LLM towards generating the desired output format.             torical bug-triggering code snippet to generate new fuzzing output.
+Secondly, they enable the model to learn to produce similar edge-case      Let 𝑝 edit be the editing prompt. The zero-shot editing output 𝑐 zs-edit
+code snippets by observing historical bug-triggering code snippets,        can be formalized as this conditional probability: M (𝑐 zs-edit |𝑝 edit,𝑐𝑒 )
+without having to modify the model parameters. In few-shot learn-              Compared with few-shot learning, where multiple historical bugs
+ing, each prompt consists of 𝐾 examples (denoted as 𝐾-Shot) and            are provided to the LLM as examples, zero-shot learning can directly
+the actual query (the target API and bug description header). Then,        use the existing code portions from historical bugs and only need
+LLMs can generate new predictions based on the prompt.                     to generate a partial program (completion) or replace a small por-
+Chain-of-Thought Prompting. An important component of few-                 tion of the code to use the new target API (edit). These concrete
+shot learning is the prompt used. Our prompt design is inspired by         code lines from prior bug-triggering code can be useful to test new
+chain-of-thought (CoT) [72] prompting, where instead of directly           APIs as they can include special values (e.g., NaN), edge-case tensor
+generating the final output, the prompt asks the model to perform the      shapes/dimensions, and other code ingredients useful for bug find-
+task in a step-by-step manner. Following the format of in-context ex-      ing (e.g., unconventional API usages). By using zero-shot learning,
+amples, we first include the target API name (e.g., API: torch.gather)     FuzzGPT can directly make use of these historical bug-triggering
+in our query, and then we ask the model to produce a description           code snippets to target additional APIs.
+                                                                  Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+                                                                            API: torch.Tensor.apply_
+                                                                            Title: Tensor.apply_ fails                                               3 Fine-tuning
+                       1 Few-shot learning
+                                                                            x = torch.randn(3, 3)
+                         API: torch.Tensor.apply_                           x.apply_(lambda a: a+1)                           API: torch.Tensor.apply_
+                         Bug description: Tensor.apply_ fails                                                                 Bug description: Tensor.apply_ fails
+             example                                                                                                example
+                         x = torch.randn(3, 3)                                                                                x = torch.randn(3, 3)
+                         x.apply_(lambda a: a+1)                        annotated buggy code snippet dataset                  x.apply_(lambda a: a+1)
+                                                                                 torch.gather
+                K                                                               DL library target API
+             examples                    ...                                                                                            gradient update
+    prompt
+                                                                    Zero-shot
+                                         ...                    2
+                                                                    learning # The following code reveals a bug                               ...
+                                                                              in torch.gather
+                                         ...                                  x = torch.randn(3, 3)    target API                             ...
+                                                                  prompt      zero-shot completion                                      ﬁne-tuned LLM
+                                                                              # Edit the code to use torch.gather
+             target      API: torch.gather        target API                                                                  API: torch.gather         target API
+                                                                              x = torch.randn(3, 3)                 prompt
+             query       Bug description:                                                                                     Bug description:
+                                                                              x.apply_(lambda a: a+1)
+                                                                              zero-shot editing
+                                 Figure 4: Fine-tuning, zero-shot, and few-shot learning for DL Library Fuzzing.
+
+3.2.3 Fine-tuning. Apart from in-context learning (few-shot and                                 Automatic Differentiation (AD) oracle. We detect gradient com-
+zero-shot) to learn from historical bugs which only uses the original                           putation bugs in the crucial AD engines of DL libraries, which sup-
+pre-trained LLMs, fine-tuning directly modifies the model param-                                port efficient training of DL models. We apply the AD oracle proposed
+eters by training on the historical bug code snippet dataset. Figure 4                          in prior work [77] and compare the computed gradient between
+( 3 ) shows how the fine-tuning procedure works and also the input                              reverse-mode AD (the most commonly used mode in DL libraries),
+to the fine-tuned model during inference time to produce the fuzzing                            forward-mode AD, and numerical differentiation (ND).
+outputs. Each training sample follows the same format as few-shot
+examples – made up of the API name, bug description and also the
+bug-triggering code snippet. We start with the original pre-trained                             4        IMPLEMENTATION
+LLM and then update the model weights through gradient descent                                  Dataset construction. We scraped the GitHub repositories of tar-
+by training to auto-regressively predict each training sample.                                  geted libraries using the requests library [3], and finally collected
+    Let 𝑇 = {𝑡 1,𝑡 2,...,𝑡𝑛 } be the training token sequence obtained by                        1750 and 633 bug-triggering code snippets for PyTorch and Tensor-
+tokenizing the training sample, 𝑇<𝑠 = {𝑡 1,𝑡 2, ...,𝑡𝑠−1 } be the token                         Flow, respectively, from their historical issues or PRs. The lower
+sequence generated by the model so far and M be the LLM which                                   number of TensorFlow is because it has fewer PRs than PyTorch,
+outputs the probability of generated the next token given the pre-                              as TensorFlow developers are not as active in confirming bugs/PRs,
+viously generated tokens. The fine-tuning loss function is defined                              and rarely include code blocks in their PRs. Note that we perform
+as: Lfine-tune = − 𝑛1 𝑛𝑖=1𝑙𝑜𝑔 (M (𝑡𝑖 |𝑇<𝑖 ))                                                    additional cleaning on the extracted code to filter out error messages
+                          Í
+    For each DL library, we fine-tune a separate model using the                                and remove code lines that contain only the inputs and outputs of
+bug-triggering code snippet collected from that library. By fine-                               executions. We also did not consider the code snippets that fail to
+tuning on these historical bug-triggering code snippets, the LLM                                pass syntax checking or are longer than 256 tokens.
+can learn from different kinds of bug-triggering patterns/ingredi-                                 For buggy API annotation, we manually annotate 𝐾 = 6 randomly
+ents for the targeted library. The input to the fine-tuned model                                sampled examples and use them as in-context examples. For each
+follows the same pattern as the few-shot approach where we con-                                 unlabeled example, we query Codex to complete the buggy API with
+struct a prompt based on the specific target API. Let Mft be the fine-                          𝑡𝑒𝑚𝑝𝑒𝑟𝑎𝑡𝑢𝑟𝑒 = 0 (deterministic greedy decoding) to get the most
+tuned LLM which outputs the probability of generating a sequence                                confident prediction following [69]. We also evaluate the labeling
+with target API prompt 𝑝 target . The fine-tune model output code 𝑐 ft                          accuracy on a random sample of 100 PyTorch issues/PRs and find the
+can be formalized as this conditional probability: Mft (𝑐 ft |𝑝 target ) =                      automated labeling achieves 76% precision. In fact, even mislabeled
+Mft (𝑐 ft |𝑝 target, 𝑑 ft ) ·Mft (𝑑 ft | 𝑝 target )                                             examples (where the mislabeled API always appears in the code) can
+                                                                                                still guide FuzzGPT-FS to substantially outperform the zero-shot
+                                                                                                baseline where we do not have access to any examples (Section 6.3.1).
+3.3    Oracle                                                                                   Language models. We evaluate on two specific generative LLMs
+Using the generated fuzzing outputs, we test the DL libraries through                           Codex (code-davinci-002) and CodeGen (350M/2B/6B-mono). Un-
+both general and DL-specific oracles:                                                           like Codex whose training data and model weights are not released,
+Crashes. We detect bugs caused by unexpected crashes found when                                 CodeGen [45] is a widely-used open-source generative model [16,
+executing the fuzzing output. These crashes can include aborts,                                 42, 74], which provides trained model of various sizes and allows
+segmentation faults, and INTERNAL_ASSERT_FAILED. Bugs exposed by                                fine-tuning. We access Codex through its API and use the PyTorch
+such crashes may even further trigger security vulnerabilities.                                 implementation of the CodeGen models on Hugging Face [30].
+CPU/GPU oracle. We detect wrong-computation bugs by identify-                                   Fine-tuning. We perform fine-tuning on the CodeGen models be-
+ing inconsistencies between the output values across two execution                              cause Codex is not open source. We fine-tune a separate model for
+backends (CPU and GPU). We follow prior work [14, 71] to use a                                  each studied DL library. To update the model parameters for each
+significance tolerance threshold for comparison in order to account                             targeted library, we use batch_size=32, learning rate=5e-5, and train
+for the non-deterministic nature of particular library APIs when                                the models with AdamW optimizer [40] for 10 epochs, using a linear
+executed on different backends.                                                                 learning rate scheduler with 10% warmup proportion.
+Large Language Models are Edge-Case Fuzzers:
+Testing Deep Learning Libraries via FuzzGPT
+
+
+5 EVALUATION                                                                Code coverage. Code coverage has been widely adopted in software
+                                                                            testing and recently DL library/compiler testing [14, 24, 37, 71, 77].
+5.1 Research Questions
+                                                                            We follow recent DL library fuzzing work [14, 24, 71, 77] and measure
+We investigate the following research questions in our experiments:         Python line coverage with the coverage.py tool [1]. We excluded ad-
+• RQ1: How does different learning paradigms of FuzzGPT compare             ditional coverage added by the oracle checking for fair comparison.
+  against each other?                                                       API coverage. We evaluate the number of covered DL APIs as an
+• RQ2: How does FuzzGPT compared against existing fuzzers?                  important metric of test adequacy following prior work on fuzzing
+• RQ3: How do the key components of FuzzGPT contribute to its               DL libraries [14, 15, 71, 77].
+  effectiveness?                                                            Unique valid programs. A generated program is considered valid
+• RQ4: Is FuzzGPT able to detect new bugs?                                  if the program executes successfully without exceptions and actually
+                                                                            invokes the target API at least once. We also remove the programs
+5.2     Experimental Setup                                                  already generated and only consider unique programs.
+Subject systems. We evaluate FuzzGPT on fuzzing PyTorch and
+TensorFlow, two of the most popular open-source DL libraries. For
+RQ1, we separately run FuzzGPT with few-shot, zero-shot, and fine-          6 RESULT ANALYSIS
+tune settings to evaluate their individual effectiveness for fuzzing (de-
+                                                                            6.1 Comparison of Learning Paradigms.
+noted as FuzzGPT-FS, FuzzGPT-ZS, and FuzzGPT-FT respectively).
+We use FuzzGPT-FS as the default implementation for FuzzGPT if              We first compare all our three FuzzGPT variants (few-shot, zero-
+not specified explicitly. For RQ2, We compare our approach with             shot, fine-tune) against each other to understand their performance.
+prior work on PyTorch (v1.12) and TensorFlow (v2.10), the same              Table 1 summarizes the results. Columns #APIs, #Prog., and Cov
+version as the most recent work TitanFuzz[14], and we use the               present the number of APIs, unique programs, and lines covered.
+same set of public Python APIs as TitanFuzz as well. For RQ3, we            More specifically, Valid means only unique programs without run-
+run all the generated tests on the nightly version of PyTorch and           time errors are considered, All means all generated unique programs
+TensorFlow to find previously unknown bugs (Section 6.4). For RQ4,          are considered. Lastly, Valid(%) computes the ratio of valid programs
+due to huge costs, we conducted our ablation study experiments for          over all generated unique programs. Figure 5 further shows the cover-
+all three settings of FuzzGPT on 50 APIs randomly sampled from              age trend with respect to the number of generated programs per API.
+one example DL library PyTorch, and report the average results of               We can observe that FuzzGPT-FS has the highest number of
+5 runs following prior work [14].                                           covered APIs and unique (valid) programs on both PyTorch and Ten-
+Baselines. We compare FuzzGPT to state-of-the-art DL library                sorFlow. The reason could be that it provides the LLM (i.e., Codex)
+fuzzers, including state-of-the-art API-level (FreeFuzz [71], Deep-         with a rich context (including K = 6 bug examples, which very likely
+REL [15], and ∇Fuzz [77]) and model-level (Muffin [24]) fuzzers, as         contain different buggy APIs), enabling it to learn and combine a
+well as the most recent TitanFuzz [14]. We run each tool with its           variety of bug patterns and use a diverse set of APIs.
+default configuration on both libraries, except that Muffin was only            FuzzGPT-ZS has a much lower valid rate compared with other
+executed on TensorFlow since it does not support PyTorch.                   variants. The reason is that it is required to complete existing partial
+Environment. We use a 64-core workstation with 256 GB RAM                   programs. In this way, the search space is more constrained com-
+and running Ubuntu 20.04.5 LTS with 4 NVIDIA RTX A6000 GPUs.                pared to other variants, and the task is more challenging since the
+Fuzzing budget. Our default setting generates 100 programs for              newly generated code needs to be compatible. Meanwhile, FuzzGPT-
+each target API. In the Few-shot approach, for each target API, we          ZS may trigger more interesting interactions between APIs in the
+independently construct 10 prompts with 6-shot examples picked              existing partial programs and newly generated APIs. Furthermore,
+randomly, and feed each prompt to the LLM to sample 10 genera-              the partial code reused from bug history can also be very valuable,
+tions. Similarly, in the zero-shot approach, we randomly choose 10          and may already cover interesting program paths/behaviors. As a
+different examples from our dataset, and use the partial/complete           result, FuzzGPT-ZS even achieves the highest coverage on PyTorch.
+code to construct 10 prompts to perform completion/editing. In the          FuzzGPT-ZS performs relatively worse on TensorFlow, potentially
+Fine-tune approach, we use a fixed task description, and query the          because there are fewer snippets (only 633, which can hardly cover
+model for 10 times to generation all 100 programs for a target API.         all 3316 TensorFlow APIs) to reuse for TensorFlow.
+Generation. Our default setting when using all LLMs for gener-                  FuzzGPT-FT achieves comparable code coverage on both libraries,
+ation uses top-p sampling with 𝑝 = 0.95, 𝑡𝑒𝑚𝑝𝑒𝑟𝑎𝑡𝑢𝑟𝑒 = 0.8, and             and has the highest valid rate on PyTorch, even with a smaller model
+𝑚𝑎𝑥_𝑡𝑜𝑘𝑒𝑛 = 256 following prior work [14].                                  (CodeGen-6B). The results suggest that fine-tuning can be a very
+                                                                            effective approach for fuzzing a specific library, since the fine-tuned
+                                                                            model has learned from all collected buggy patterns via updating
+5.3     Metrics                                                             model parameters, and can “select” or “mix” the learned buggy in-
+Detected bugs. Following prior work on DL library fuzzing [14, 50,          gredients to target a specific API during generation. On the contrary,
+67, 70, 71, 75, 77], we report the number of unique detected bugs.          few-shot consumes a limited number of in-context examples, and
+Unique crashes. Besides counting all bugs, we also count the num-           zero-shot relies on one partial example at each inference step. Never-
+ber of unique crashes as another proxy for fuzzing effectiveness.           theless, fine-tuning requires collecting a (high-quality) fine-tuning
+Unique crashes are widely used in the literature for evaluating             dataset, and training a different LLM for every different task (which
+fuzzing technique [19, 31, 41].                                             can be costly in terms of computation resources and storage).
+                                                                                                              Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+                 38000                                                                                                                                    Table 2: Comparison with prior work.
+                                                                                     140000
+                 36000                                                                                                                                                              PyTorch                                TensorFlow
+ Code coverage
+
+
+
+
+                                                                     Code coverage
+                                                                                     130000                                                                                  Code Cov          API Cov                   Code Cov     API Cov
+                 34000
+                                                                                     120000                                             Codebase Under Test           113538 (100.00%)              1593        269448 (100.00%)             3316
+                 32000                           FuzzGPT-FS                                                         FuzzGPT-FS
+                                                 FuzzGPT-ZS                                                         FuzzGPT-ZS          FreeFuzz                         15688 (13.82%)              468          78548 (29.15%)              581
+                 30000                           FuzzGPT-FT                          110000                         FuzzGPT-FT          DeepREL                          15794 (13.91%)             1071          82592 (30.65%)             1159
+                          20     40       60      80     100                                  20     40       60     80     100         ∇Fuzz                            15860 (13.97%)             1071          89722 (33.30%)             1159
+                           # Generated programs per API                                        # Generated programs per API             Muffin                                      NA               NA           79283 (29.42%)               79
+                                                                                                                                        TitanFuzz-seed-only              22584 (19.89%)             1329         103054 (38.35%)             2215
+                            (a) PyTorch                                                       (b) TensorFlow                            TitanFuzz                        23823 (20.98%)             1329         107685 (39.97%)             2215
+
+                    Figure 5: Coverage trend of FuzzGPT-FS/-ZS/-FT.                                                                     FuzzGPT-FS-25                   32305 (28.45%)             1296          130312 (48.36%)            1937
+                                                                                                                                        FuzzGPT-FS                      35426 (31.20%)             1377         146487 (54.37%)             2309
+   FuzzGPT demonstrates the ability to generate fuzzing inputs us-                                                                      FuzzGPT-ZS                     38284 (33.72%)              1237          126193 (46.83%)            1460
+                                                                                                                                        FuzzGPT-FT                      36463 (32.12%)             1223          125832 (46.70%)            1834
+ing techniques from both in-context learning and fine-tuning. From
+the coverage trend in Figure 5, we observe that in all three variants,                                                                             FuzzGPT-ZS   (7)   FuzzGPT-FS   (7)                      FuzzGPT-ZS   (5)   FuzzGPT-FS   (8)
+the coverage does not saturate even after all 100 code snippets get                                                                   FuzzGPT-FT                                   TitanFuzz
+                                                                                                                                                                                               FuzzGPT-FT                                   TitanFuzz
+                                                                                                                                         (2)                                             (3)                                                      (3)
+generated, showing the power of LLMs in learning from historical                                                                                                                                  (5)
+
+bug-triggering datasets to continuously generate valuable fuzzing
+programs that can obtain more coverage. Next we will examine how
+FuzzGPT compares against state-of-the-art DL library fuzzers.
+                         Table 1: Comparison of learning paradigms.
+                                                    # APIs                                # Prog.                                                    (a) Direct crashes.                                       (b) AD Crashes.
+                              Paradigm                                                                     Valid(%)          Cov
+                                                Valid          All                   Valid          All                                                Figure 6: Venn diagram of unique crashes
+                             FuzzGPT-FS                                                                     27.43%        35426
+ PyTorch                     FuzzGPT-ZS
+                                                 1377
+                                                 1237
+                                                           1588
+                                                           1553
+                                                                                     42496
+                                                                                      7809
+                                                                                              154904
+                                                                                               132111        5.91%        38284
+                                                                                                                                    both AD and direct execution crashes) compared with the baseline of
+                             FuzzGPT-FT          1223      1546                      31225     112765       27.69%        36463     TitanFuzz, e.g., our default FuzzGPT-FS detects 2.5 times as many
+                             FuzzGPT-FS          2309      3314                      54058    310483        17.41%       146487     unique crashes as TitanFuzz. Moreover, by combining FT/ZS/FT
+ TensorFlow                  FuzzGPT-ZS          1460      3157                       4650     233887        1.99%        126193
+                             FuzzGPT-FT          1834      3292                      31105     253216       12.28%        125832
+                                                                                                                                    together, FuzzGPT can detect 19 distinct crashes in total, with 14
+                                                                                                                                    unique crashes that cannot be found by TitanFuzz, while only 1
+                                                                                                                                    crash is uniquely found by TitanFuzz, highlighting the effectiveness
+6.2                  Comparison with Prior Work                                                                                     of FuzzGPT in generating unusual crash-triggering programs with
+We compare FuzzGPT-FS/-ZS/-FT against state-of-the-art fuzzer                                                                       the help of historical bug-triggering code snippets.
+TitanFuzz and other recent DL library fuzzers. All techniques are                                                                   Generation efficiency. We further discuss the generation efficiency
+applied under their default configurations.                                                                                         for FuzzGPT and the strongest baseline TitanFuzz. Since TitanFuzz
+API and code coverage. As shown in Table 2, all three variants                                                                      uses Codex to first generate 25 seed programs and then performs
+of FuzzGPT significantly outperform all existing fuzzers including                                                                  mutations with InCoder, we apply FuzzGPT-FS to only generate 25
+state-of-the-art TitanFuzz in code coverage. In particular, the best-                                                               programs using Codex (denoted as FuzzGPT-FS-25). According to
+performing variants FuzzGPT-FS/FuzzGPT-ZS achieve state-of-the-                                                                     Table 2, even FuzzGPT-FS-25 can substantially outperform Titan-
+art results of 54.37%/33.72% line coverage on TensorFlow/PyTorch,                                                                   Fuzz with much lower cost (TitanFuzz further involves additional
+36.03%/60.70% improvement over TitanFuzz. We also observe an                                                                        mutations with InCoder for each API), demonstrating that LLMs like
+interesting fact that FuzzGPT has similar API coverage with Titan-                                                                  Codex can effectively leverage historical bug-triggering programs
+Fuzz but has much higher code coverage. This demonstrates that                                                                      to generate valuable programs for fuzzing. Moreover, the mutation
+FuzzGPT can cover much more interesting code behaviors/paths                                                                        phase of TitanFuzz does not bring significant coverage gain com-
+for DL libraries. Both FuzzGPT and TitanFuzz rely on LLMs to                                                                        pared to its seed-only version (i.e., TitanFuzz-seed-only), while
+fully automatically generate (or mutate) programs and significantly                                                                 FuzzGPT’s coverage does not saturate even after 100 generations
+outperform prior techniques (FreeFuzz, DeepREL, ∇Fuzz, Muffin) in                                                                   (Figure 5). Please note that overall it is hard to precisely compare
+terms of API coverage, showing the superiority of LLMs for fuzzing.                                                                 the efficiency of techniques using different LLMs (due to different
+Crash detection. We compare the bug finding capabilities of Fuz-                                                                    CPU/GPU/Cloud costs), and we tried our best to make the discussion
+zGPT and TitanFuzz on an example library PyTorch using the num-                                                                     fair here.
+ber of unique crashes as a metric. We did not include inconsistency
+bugs in this comparison, because crashes are easier to measure and                                                                  6.3        Ablation Study
+can serve as an approximation of bug finding capabilities [31]. We                                                                  6.3.1 Few-shot Learning. We first study the various design choices
+run both tools with their default settings, and execute the programs                                                                for FuzzGPT-FS which provide the LLMs with several real bug-
+directly to detect crashes. In addition to direct execution, we also                                                                triggering code examples in the prompt. We compare different mod-
+execute all programs with AD oracles to detect more crashes. Fig-                                                                   els and variants of the prompting strategies.
+ure 6 shows the Venn diagram comparison of FuzzGPT-FT/-ZS/-FT                                                                       Model size. We first evaluate the performance of FuzzGPT-FS with
+and TitanFuzz where the number in the parenthesis is the number                                                                     the model size scaling. Figure 7a plots the code coverage and # of
+of total crashes found by each technique. First, we observe that all                                                                valid programs generated as we increase model size. We can see that
+three of our techniques can find more crashes in total (including                                                                   larger models are able to generate more (unique) syntactically and
+Large Language Models are Edge-Case Fuzzers:
+Testing Deep Learning Libraries via FuzzGPT
+
+
+                                                                                  also observed in prior work [76] that the distracting prompt structure,
+                                                                                  with more few-shot examples, can decrease the LLM’s performance.
+
+
+                                                                                  6.3.2 Zero-shot Learning. Model size. Figure 7b shows the code
+                                                                                  coverage and # of valid programs generated using FuzzGPT-ZS as
+                                                                                  we vary the size of the model used. We first observe a clear trend of
+             (a) few-shot                             (b) zero-shot               improvement as we increase model size, except that the coverage
+            Figure 7: Comparison of model size scaling                            drops for Codex. One reason could be Codex generates much more
+semantically correct programs. We can also observe a clear gain in                valid programs, and may miss coverage obtained during exception-
+coverage with the increase of model parameters (from CodeGen                      handling code (covered by invalid programs). Additionally, this could
+350M to 2B and finally 6B), and that CodeGen-6B can already achieve               also be due to the usage of partial programs in the zero-shot setting
+comparable performance compared to Codex in terms of coverage.                    where we directly re-use part of the historical bug-triggering code.
+Chain-of-Thought prompting. We now examine the effective-                         As such, smaller models like CodeGen can obtain a high coverage
+ness of the bug description in our few-shot template. Our default                 results without needing to generate a complete code snippet required
+prompting strategy w/ CoT provides natural language explanation                   in the few-shot setting. Nevertheless, we still observe that larger
+to the buggy code (shown in Figure 4), which can be seen as chain-                models like Codex is able to achieve the highest number of generated
+of-thought prompting as it instructs the LLM to first generate the                valid programs which are important to test DL libraries.
+possible bug reason (in natural language) and then generate code                  Prompting Strategy. We evaluate three different zero-shot prompt-
+conditioned on it. The baseline strategy w/o CoT removes the Bug                  ing strategies: editing (to edit a complete program), completion
+description: ... component from the prompt and only asks the
+                                                                                  (to complete a partial program, our default zero-shot variant), and
+model to generate programs from the specified API. As shown in Ta-                a baseline completion-NL where only a natural language descrip-
+ble 3, including the bug description significantly improves the code              tion and no code is given to the LLM for completion. As shown
+coverage, indicating that it is beneficial to give LLMs some intermedi-           in Table 4, completion achieves significantly higher coverage than
+ate context information to “reason” about the buggy patterns. Table 3             completion-NL, highlighting the effectiveness of including partial
+also shows that including natural language description in each exam-              historical bug-triggering programs in the prompt. It is also note-
+ple encourages the model to generate more unique APIs, potentially                worthy that completion has lower valid rate than completion-NL,
+suggesting that the model first generates more diverse natural lan-               because the partial code contains unusual patterns and thus is harder
+guage description which affects the later code generation. The lower              to generate semantically valid completions. The extremely low valid
+valid rate is probably because the generated programs are more likely             rate of editing is because editing an existing program to use new
+to cover some edge-cases and trigger run-time exceptions.                         APIs fully automatically is an even more challenging task for Codex.
+
+        Table 3: FuzzGPT-FS w/ or w/o CoT prompting.                               Table 4: FuzzGPT-ZS with different prompting strategies.
+                                                                                   Prompt          Valid APIs    All APIs    Valid Prog.    All Prog.     Valid(%)         Cov
+  Prompt     Valid APIs   All APIs   Valid Prog.   All Prog.   Valid(%)    Cov
+                                                                                   editing                 22         304             20          1609      1.22%     19440
+  w/ CoT           190        428          1092        4885     22.36%    23945    completion-NL          192         400            506          4972     10.17%     22917
+  w/o CoT          181        377          1346        4798     28.05%    22922    completion             112         362            238          3470      6.86%     25893
+
+
+
+
+                                                                                  6.3.3 Fine-tuning. Model size. We study the fine-tuning perfor-
+                                                                                  mance with different model sizes. Table 5 shows that CodeGen-6B,
+                                                                                  the largest CodeGen model studied, does achieve the highest code
+                                                                                  coverage. However, with fine-tuning, larger models are not always
+                                                                                  better. For example, the 2B model has the most unique valid programs.
+Figure 8: FuzzGPT-FS as the number of examples K increases.
+                                                                                  This could potentially be explained with the validity-unusualness
+# of examples. We study the effect of 𝐾, the number of examples in                trade-off: as we fine-tune LLMs towards unusualness-favored gener-
+the context. Figure 8 shows trend of the code coverage and # of valid             ation, we may lose some validity-preserving information, while both
+programs as we increase the number of examples. We first notice                   contribute to code coverage and the ultimate bug-finding capability.
+that having no examples (𝐾 = 0) is by far the worst in terms of both                        Table 5: FuzzGPT-FT with different LLM size.
+coverage and valid programs generated. As we slowly increase 𝐾, the
+                                                                                    Model    Valid APIs   All APIs     Valid Prog.   All Prog.      Valid(%)         Cov
+coverage improves drastically, demonstrating the benefit of using
+                                                                                    350M           118          329           682          4236      16.10%     23352.2
+few-shot learning to provide in-context examples for the LLM to                     2B             118          292           835          3393      24.60%     22688.8
+learn from. However, we see that the coverage actually begins to                    6B             131          311           768          3532      21.75%    24420.8
+
+decrease as we add more examples. This could be due to having too
+                                                                                  Prompting strategy. According to Table 6, similar to the few-shot
+many prior historical bug-triggering examples, causing the LLMs to
+                                                                                  results, including bug description in the fine-tuning process also
+restrict its generation creativity and get distracted. In fact, it has been
+                                                                                  helps the fine-tuned LLM to generate much more diverse outputs (i.e.,
+                                                                                  more unique and valid APIs/programs) and achieve higher coverage.
+                                                                                       Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+ Table 6: FuzzGPT-FT with different prompting strategies.                                                        bug description (on the first line) generated by FuzzGPT seems to
+  Prompt          Valid APIs            All APIs     Valid Prog.    All Prog.   Valid(%)                   Cov   correctly capture the reason for this bug! Previous work (including
+  w/ CoT                      131              311            768       3532        21.75%           24420.8     TitanFuzz which also uses LLMs for generation) cannot trigger this
+  w/o CoT                      83              250            434       2659        16.34%            24242.8
+                                                                                                                 bug because it requires calling the copy API and then modifying the
+      x = torch.ones((1,1,1,1,0))                                                                                value of the original data - a series of unnatural operations. FuzzGPT
+      def func(x):
+         layer = torch.nn.PixelShuffle(1)                                            High Priority
+                                                                                                                 successfully finds this bug because our CoT prompting instructs it
+         pred = layer(x)                                                                                         to first predict a plausible bug reason “buffer sharing issue” together
+      jacrev(func)(x)      floating point exception
+      a) PyTorch crash triggered by 0-dim tensor.                                                                with its triggering condition “when copying array ...” as a bug descrip-
+      # Bug description: Buffer sharing issue when copying array from NumPy to TensorFlow
+      x = np.arange(10)                                                                                          tion. Following this description, FuzzGPT can generate the unusual
+                                                                            Vulnerability
+      x_copy = tf.experimental.numpy.copy(x)
+      x[3] = 42      x_copy[3] changes to 42 on CPU and remains 3 on GPU
+                                                                                                                 program which is very rare in the training dataset and thus hard to be
+      b) TensorFlow bug when copying array.                                                                      generated by TitanFuzz. This bug enables data manipulation attacks
+                Figure 9: Example bugs found by FuzzGPT.                                                         by silently changing copies of the original array, and has been further
+6.4       Bug Finding                                                                                            confirmed as a security vulnerability by the Google security team.
+Due to the extensive human cost in bug finding/reporting, in this
+RQ, we mainly focus on our default setting: FuzzGPT-FS with all the
+                                                                                                                 7     DISCUSSION
+oracles in Section 3.3. Meanwhile, we expect FuzzGPT-ZS/FuzzGPT-
+FT to be also effective in bug finding (given their performance in code                                          Table 8: FuzzGPT w/o historical information with ChatGPT.
+coverage and crash detection) and may contribute additional bugs.                                                 System Message: You are a pytorch fuzzer.                  # APIs         # Prog.
+
+   Bug statistics are summarized in Table 7. In total, FuzzGPT de-                                                Prompt: Please generate a program to use conv2d ...      Valid   All   Valid        All   Valid(%)    Cov
+
+tected 76 bugs, with 61 confirmed, including 49 confirmed as previ-                                               to demonstrate the example usage (baseline)                102   183    2298    4209       55.00%    20454
+                                                                                                                  in a way you have not seen in your training dataset       190    297           4756        48.00%
+ously unknown bugs (6 of them have already been fixed). Besides,                                                  in a very creative way                                    201    318
+                                                                                                                                                                                         2306
+                                                                                                                                                                                         2104    4801        44.00%
+                                                                                                                                                                                                                       21077
+                                                                                                                                                                                                                       20971
+                                                                                                                  in a non-conventional way                                              2038                42.00%    20759
+Column Pending presents the bugs not yet confirmed and Won’t                                                      in a way that is rarely used by developers in practice
+                                                                                                                                                                            212
+                                                                                                                                                                            200
+                                                                                                                                                                                   330
+                                                                                                                                                                                   306   2056
+                                                                                                                                                                                                 4880
+                                                                                                                                                                                                 4841        42.00%    20759
+Fix shows bugs rejected by developers (usually due to precision                                                   in a very strange way                                     181    291   1735    4854        36.00%    20377
+
+issues or efficiency concerns). Notably, Column High Prio presents
+                                                                                                                 FuzzGPT w/o historical information. So far we have leveraged
+the number of high-priority bugs or security vulnerabilities newly
+                                                                                                                 historical bug-triggering programs to guide LLMs for unusual pro-
+detected by FuzzGPT. Note that fewer bugs are confirmed or fixed
+                                                                                                                 gram generation. Meanwhile, with the recent advances in the instruct-
+on TensorFlow, because TensorFlow developers are less active (as
+                                                                                                                 following capability of LLMs, it is also possible to directly instruct
+discussed in Section 4 there are fewer PRs in TensorFlow). Out of the
+                                                                                                                 LLMs (without any historical information) to generate unusual pro-
+49 confirmed new bugs (including 25 crashes and 24 inconsistencies;
+                                                                                                                 grams for fuzzing. To this end, we have tested state-of-the-art Chat-
+within them 30 are AD-related), only 11 can be found by running
+                                                                                                                 GPT [47] with a list of representative prompts on the 50 PyTorch
+TitanFuzz (augmented with our oracles), and 2 can be found by di-
+                                                                                                                 APIs used in our ablation study. More specifically, we first instruct
+rectly rerunning historical bug-triggering programs with our oracles.
+                                                                                                                 ChatGPT to generate typical example usages of an API as the base-
+We next present two exemplary bugs detected by FuzzGPT.
+                                                                                                                 line; then, we instruct ChatGPT to generate unusual programs using
+                         Table 7: Summary of detected bugs.                                                      various other prompts. The shortened prompts and main results have
+                       Total
+                                       Confirmed (Fixed)
+                                                                Pending     Won’t Fix        High Prio
+                                                                                                                 been shown in Table 8. From the table, we can observe that all the stud-
+                                     Unknown         Known                                                       ied prompts can help ChatGPT cover much more APIs than the base-
+  PyTorch                43              33 (6)       5 (1)         1           4                     3          line, demonstrating ChatGPT and similar models (e.g., GPT-4 [48])
+  TensorFlow             33              16 (0)       7 (0)         5           5                     8
+                                                                                                                 can understand the instructs and generate more interesting programs
+  Total                  76              49 (6)      12 (1)         6           9                     11         that may cover interesting library paths/behaviors. Another interest-
+                                                                                                                 ing observation is that the other prompts all have lower valid rates
+   Figure 9a shows a crash bug when we apply PixelShuffle on a
+                                                                                                                 than the baseline, since less common programs may more likely fail.
+special tensor of 0-dimension shape and then compute gradient with
+                                                                                                                 Impact of example selection. Besides the random example selec-
+jacrev. Normally PixelShuffle accepts a 4-D tensor where the last
+                                                                                                                 tion used in our default FuzzGPT-FS variant, we have also inves-
+dimension is the width of of an image, typically larger than 1. Fuz-
+                                                                                                                 tigated other strategies to select in-context examples for few-shot
+zGPT has learned from an in-context historical bug example [22]
+                                                                                                                 fuzzing. Intuitively, examples with APIs semantically/syntactically
+where zero-dimension tensors can trigger crashes, and generates
+                                                                                                                 similar to the target API may provide more relevant bug-triggering
+this unusual input of shape (1,1,1,1,0) for PixelShuffle which
+                                                                                                                 patterns that can be better utilized by LLMs. Conversely, a diverse
+triggers floating point exception during gradient computation. As
+                                                                                                                 set of examples can also provide complimentary bug-triggering pat-
+PixelShuffle is a commonly-used API in computer vision applica-
+                                                                                                                 terns/ingredients that could be leveraged/combined by LLMs. As
+tions [59] where crashes can lead to security risks, this bug is labeled
+                                                                                                                 such, we design a set of smoothed maximum-marginal-relevance
+by PyTorch developers as high-priority and immediately fixed.
+                                                                                                                 (MMR) [9] guided selection strategies inspired by prior work [80], in-
+   Figure 9b presents a TensorFlow bug where the generated fuzzing
+                                                                                                                 cluding strategies favoring APIs similar to the target API, strategies
+code snippet first makes a copy of a numpy array x and then modifies
+                                                                                                                 favoring diverse APIs, and strategies in-between. Interestingly, we
+its value. In this case, the tensor x_copy should remain the same.
+                                                                                                                 observe that the default random strategy is competitive compared
+However, we find that on CPU, after we assign a new value to x[3],
+                                                                                                                 with all studied variants. The main reason could be that modern
+the value of copied tensor x_copy is also modified! Interestingly, the
+                                                                                                                 LLMs are powerful enough to learn even from dissimilar examples
+Large Language Models are Edge-Case Fuzzers:
+Testing Deep Learning Libraries via FuzzGPT
+
+
+for program generation; in this way, random selection can provide                                   International Symposium on Software Testing and Analysis. 95–105.
+a diverse set of ingredients to facilitate effective generation.                               [14] Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming
+                                                                                                    Zhang. 2023. Large Language Models are Zero-Shot Fuzzers: Fuzzing Deep-
+Threats to validity. The main threats to internal validity lie in the                               Learning Libraries via Large Language Models. In Proceedings of the 32nd ACM
+potential bugs in our implementation and experimentation. To mit-                                   SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2023).
+                                                                                               [15] Yinlin Deng, Chenyuan Yang, Anjiang Wei, and Lingming Zhang. 2022. Fuzzing
+igate such threats, we performed rigorous review for our code. The                                  Deep-Learning Libraries via Automated Relational API Inference. In Proceedings
+main threats to external validity lie in the subject systems used. To                               of the 30th ACM Joint European Software Engineering Conference and Symposium
+reduce the threats, we select two most popular DL libraries, PyTorch                                on the Foundations of Software Engineering (Singapore, Singapore) (ESEC/FSE
+                                                                                                    2022). Association for Computing Machinery, New York, NY, USA, 44–56.
+and TensorFlow, which have also been widely studied in recent                                       https://doi.org/10.1145/3540250.3549085
+work [14, 15, 26, 71, 77]. Lastly, we also adopt widely used metrics in                        [16] Yangruibo Ding, Zijian Wang, Wasi Uddin Ahmad, Murali Krishna Ramanathan,
+prior fuzzing work [14, 71, 77], such as real bug detection and code                                Ramesh Nallapati, Parminder Bhatia, Dan Roth, and Bing Xiang. 2022. CoCoMIC:
+                                                                                                    Code Completion By Jointly Modeling In-file and Cross-file Context. arXiv
+coverage.                                                                                           preprint arXiv:2212.10007 (2022).
+                                                                                               [17] Alastair F Donaldson, Hugues Evrard, Andrei Lascu, and Paul Thomson. 2017.
+                                                                                                    Automated testing of graphics shader compilers. Proceedings of the ACM on
+8      CONCLUSION                                                                                   Programming Languages 1, OOPSLA (2017), 1–29.
+We have introduced FuzzGPT, the first approach to leveraging histor-                           [18] Zhangyin Feng, Daya Guo, Duyu Tang, Nan Duan, Xiaocheng Feng, Ming Gong,
+                                                                                                    Linjun Shou, Bing Qin, Ting Liu, Daxin Jiang, and Ming Zhou. 2020. CodeBERT: A
+ical bug-triggering programs to prime LLMs for fuzzing with edge                                    Pre-Trained Model for Programming and Natural Languages. arXiv:2002.08155.
+cases. Compared to traditional fuzzing techniques on leveraging                                [19] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++:
+such historical information studied for over a decade, FuzzGPT is                                   Combining Incremental Steps of Fuzzing Research. In Proceedings of the 14th
+                                                                                                    USENIX Conference on Offensive Technologies (WOOT’20). USENIX Association,
+fully automated, generalizable, and applicable to challenging do-                                   USA, Article 10, 1 pages.
+mains, such as DL library fuzzing. Moreover, FuzzGPT also shows                                [20] Daniel Fried, Armen Aghajanyan, Jessy Lin, Sida Wang, Eric Wallace, Freda Shi,
+                                                                                                    Ruiqi Zhong, Wen-tau Yih, Luke Zettlemoyer, and Mike Lewis. 2022. Incoder: A
+the potential of ChatGPT for edge-case program generation with-                                     generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999
+out any historical information. The experimental results show that                                  (2022).
+FuzzGPT substantially outperforms existing DL library fuzzers, and                             [21] Leo Gao, Stella Biderman, Sid Black, Laurence Golding, Travis Hoppe, Charles
+                                                                                                    Foster, Jason Phang, Horace He, Anish Thite, Noa Nabeshima, et al. 2020. The
+can detect various bugs for PyTorch and TensorFlow.                                                 pile: An 800gb dataset of diverse text for language modeling. arXiv preprint
+Artifact Availability. We make our artifact available at [2].                                       arXiv:2101.00027 (2020).
+                                                                                               [22] GitHub. 2022.           torch.nn.PixelShuffle crash with floating point ex-
+                                                                                                    ception when input has 0 size in the last three dimensions.                  (2022).
+REFERENCES                                                                                          https://github.com/pytorch/pytorch/issues/85155.
+ [1]   2023. Coverage.py. https://github.com/nedbat/coveragepy.                                [23] Patrice Godefroid, Hila Peleg, and Rishabh Singh. 2017. Learn&Fuzz: Machine learn-
+ [2]   2023. FuzzGPT artifact. https://github.com/ise-uiuc/FuzzGPT.                                 ing for input fuzzing. In 2017 32nd IEEE/ACM International Conference on Automated
+ [3]   2023. requests. https://pypi.org/project/requests/.                                          Software Engineering (ASE). 50–59. https://doi.org/10.1109/ASE.2017.8115618
+ [4]   Wasi Uddin Ahmad, Saikat Chakraborty, Baishakhi Ray, and Kai-Wei Chang.                 [24] J. Gu, X. Luo, Y. Zhou, and X. Wang. 2022. Muffin: Testing Deep Learning Libraries
+       2021.     Unified Pre-training for Program Understanding and Generation.                     via Neural Architecture Fuzzing. In 2022 IEEE/ACM 44th International Conference
+       arXiv:2103.06333 [cs.CL]                                                                     on Software Engineering (ICSE). IEEE Computer Society, Los Alamitos, CA, USA,
+ [5]   Marcel Boehme, Cristian Cadar, and Abhik ROYCHOUDHURY. 2021. Fuzzing:                        1418–1430. https://doi.org/10.1145/3510003.3510092
+       Challenges and Reflections. IEEE Software 38, 3 (2021), 79–86.                          [25] Daya Guo, Shuo Ren, Shuai Lu, Zhangyin Feng, Duyu Tang, Shujie Liu, Long
+ [6]   Dalvin Brown. 2021. Hospitals turn to artificial intelligence to help with an age-old        Zhou, Nan Duan, Alexey Svyatkovskiy, Shengyu Fu, Michele Tufano, Shao Kun
+       problem: Doctors’ poor bedside manners. The Washington Post (2021). https://www.             Deng, Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and
+       washingtonpost.com/technology/2021/02/16/virtual-ai-hospital-patients/.                      Ming Zhou. 2021. GraphCodeBERT: Pre-training Code Representations with
+ [7]   Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,                       Data Flow. arXiv:2009.08366 [cs.SE]
+       Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda              [26] Qianyu Guo, Xiaofei Xie, Yi Li, Xiaoyu Zhang, Yang Liu, Xiaohong Li, and Chao
+       Askell, et al. 2020. Language models are few-shot learners. Advances in neural               Shen. 2020. Audee: Automated testing for deep learning frameworks. In 2020
+       information processing systems 33 (2020), 1877–1901.                                         35th IEEE/ACM International Conference on Automated Software Engineering (ASE).
+ [8]   Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Pra-                 IEEE, 486–498.
+       fulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,         [27] Abram Hindle, Earl T. Barr, Zhendong Su, Mark Gabel, and Premkumar Devanbu.
+       Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon                  2012. On the Naturalness of Software. In Proceedings of the 34th International
+       Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher             Conference on Software Engineering (ICSE ’12). IEEE Press, 837–847.
+       Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack         [28] Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long Short-term Memory. Neural
+       Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and                 computation 9 (12 1997), 1735–80.
+       Dario Amodei. 2020. Language Models are Few-Shot Learners. arXiv:2005.14165.            [29] Christian Holler, Kim Herzig, Andreas Zeller, et al. 2012. Fuzzing with Code
+ [9]   Jaime Carbonell and Jade Goldstein. 1998. The use of MMR, diversity-based                    Fragments.. In USENIX Security Symposium. 445–458.
+       reranking for reordering documents and producing summaries. In Proceedings              [30] HuggingFace 2022. Hugging Face. https://huggingface.co.
+       of the 21st annual international ACM SIGIR conference on Research and development       [31] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+       in information retrieval. 335–336.                                                           Evaluating fuzz testing. In Proceedings of the 2018 ACM SIGSAC conference on
+[10]   Junjie Chen, Guancheng Wang, Dan Hao, Yingfei Xiong, Hongyu Zhang, and                       computer and communications security. 2123–2138.
+       Lu Zhang. 2019. History-guided configuration diversification for compiler               [32] Vu Le, Mehrdad Afshari, and Zhendong Su. 2014. Compiler validation via
+       test-program generation. In 2019 34th IEEE/ACM International Conference on                   equivalence modulo inputs. ACM Sigplan Notices 49, 6 (2014), 216–226.
+       Automated Software Engineering (ASE). IEEE, 305–316.                                    [33] Vu Le, Chengnian Sun, and Zhendong Su. 2015. Finding deep compiler bugs via
+[11]   Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira                 guided stochastic program mutation. ACM SIGPLAN Notices 50, 10 (2015), 386–399.
+       Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman,         [34] Suyoung Lee, HyungSeok Han, Sang Kil Cha, and Sooel Son. 2020. Montage: A
+       et al. 2021. Evaluating large language models trained on code. arXiv preprint                neural network language model-guided javascript engine fuzzer. In Proceedings
+       arXiv:2107.03374 (2021).                                                                     of the 29th USENIX Conference on Security Symposium. 2613–2630.
+[12]   Kyunghyun Cho, Bart van Merriënboer, Caglar Gulcehre, Dzmitry Bahdanau,                 [35] Jiawei Liu, Jinkun Lin, Fabian Ruffy, Cheng Tan, Jinyang Li, Aurojit Panda, and
+       Fethi Bougares, Holger Schwenk, and Yoshua Bengio. 2014. Learning Phrase                     Lingming Zhang. 2023. NNSmith: Generating Diverse and Valid Test Cases for
+       Representations using RNN Encoder–Decoder for Statistical Machine Translation.               Deep Learning Compilers. In ASPLOS. 530–543.
+       In Proceedings of the 2014 Conference on Empirical Methods in Natural Language          [36] Jiachang Liu, Dinghan Shen, Yizhe Zhang, Bill Dolan, Lawrence Carin, and
+       Processing (EMNLP). Association for Computational Linguistics, Doha, Qatar,                  Weizhu Chen. 2022. What Makes Good In-Context Examples for GPT-3?. In
+       1724–1734. https://doi.org/10.3115/v1/D14-1179                                               Proceedings of Deep Learning Inside Out (DeeLIO 2022): The 3rd Workshop on
+[13]   Chris Cummins, Pavlos Petoumenos, Alastair Murray, and Hugh Leather. 2018.                   Knowledge Extraction and Integration for Deep Learning Architectures. Asso-
+       Compiler fuzzing through deep learning. In Proceedings of the 27th ACM SIGSOFT               ciation for Computational Linguistics, Dublin, Ireland and Online, 100–114.
+                                                                      Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang
+
+
+     https://doi.org/10.18653/v1/2022.deelio-1.10                                           [63] Michael Sutton, Adam Greene, and Pedram Amini. 2007. Fuzzing: Brute Force
+[37] Jiawei Liu, Yuxiang Wei, Sen Yang, Yinlin Deng, and Lingming Zhang. 2022.                   Vulnerability Discovery. Addison-Wesley Professional.
+     Coverage-Guided Tensor Compiler Fuzzing with Joint IR-Pass Mutation.                   [64] TensorFlow 2023. TensorFlow. https://www.tensorflow.org.
+     Proc. ACM Program. Lang. 6, OOPSLA1, Article 73 (apr 2022), 26 pages.                  [65] Alina Tugend. 2021. A Smarter App Is Watching Your Wallet. The New York Times
+     https://doi.org/10.1145/3527317                                                             (2021). https://www.nytimes.com/2021/03/09/business/apps-personal-finance-
+[38] Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and Graham            budget.html.
+     Neubig. 2023. Pre-train, prompt, and predict: A systematic survey of prompting         [66] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+     methods in natural language processing. Comput. Surveys 55, 9 (2023), 1–35.                 Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you
+[39] Xiao Liu, Xiaoting Li, Rupesh Prajapati, and Dinghao Wu. 2019. Deepfuzz:                    need. Advances in neural information processing systems 30 (2017).
+     Automatic generation of syntax valid c programs for fuzz testing. In Proceedings       [67] Jiannan Wang, Thibaud Lutellier, Shangshu Qian, Hung Viet Pham, and Lin Tan.
+     of the AAAI Conference on Artificial Intelligence, Vol. 33. 1044–1051.                      2022. EAGLE: Creating Equivalent Graphs to Test Deep Learning Libraries. (2022).
+[40] Ilya Loshchilov and Frank Hutter. 2019.                Decoupled Weight Decay          [68] Mingzhe Wang, Zhiyong Wu, Xinyi Xu, Jie Liang, Chijin Zhou, Huafeng Zhang,
+     Regularization. In International Conference on Learning Representations.                    and Yu Jiang. 2021. Industry practice of coverage-guided enterprise-level DBMS
+     https://openreview.net/forum?id=Bkg6RiCqY7                                                  fuzzing. In 2021 IEEE/ACM 43rd International Conference on Software Engineering:
+[41] M. Zalewski 2016.        American Fuzzy Lop - Whitepaper.                   https:          Software Engineering in Practice (ICSE-SEIP). IEEE, 328–337.
+     //lcamtuf.coredump.cx/afl/technical_details.txt.                                       [69] Xingyao Wang, Sha Li, and Heng Ji. 2022. Code4struct: Code generation
+[42] Aman Madaan, Alexander Shypula, Uri Alon, Milad Hashemi, Parthasarathy Ran-                 for few-shot structured prediction from natural language. arXiv preprint
+     ganathan, Yiming Yang, Graham Neubig, and Amir Yazdanbakhsh. 2023. Learning                 arXiv:2210.12810 (2022).
+     Performance-Improving Code Edits. arXiv preprint arXiv:2302.07867 (2023).              [70] Zan Wang, Ming Yan, Junjie Chen, Shuang Liu, and Dongdi Zhang. 2020. Deep
+[43] Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis, Hannaneh                     learning library testing via effective model generation. In Proceedings of the 28th
+     Hajishirzi, and Luke Zettlemoyer. 2022. Rethinking the Role of Demonstrations:              ACM Joint Meeting on European Software Engineering Conference and Symposium
+     What Makes In-Context Learning Work? arXiv preprint arXiv:2202.12837 (2022).                on the Foundations of Software Engineering. 788–799.
+[44] Tanya Mohn. 2022. Can A.I. All but End Car Crashes? The Potential Is There. The        [71] Anjiang Wei, Yinlin Deng, Chenyuan Yang, and Lingming Zhang. 2022. Free
+     New York Times (2022). https://www.nytimes.com/2022/04/19/technology/ai-                    Lunch for Testing: Fuzzing Deep-Learning Libraries from Open Source. In 2022
+     road-car-safety.html.                                                                       IEEE/ACM 44th International Conference on Software Engineering (ICSE). 995–1007.
+[45] Erik Nijkamp, Bo Pang, Hiroaki Hayashi, Lifu Tu, Huan Wang, Yingbo Zhou, Silvio             https://doi.org/10.1145/3510003.3510041
+     Savarese, and Caiming Xiong. 2022. Codegen: An open large language model for           [72] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Ed Chi, Quoc Le,
+     code with multi-turn program synthesis. arXiv preprint arXiv:2203.13474 (2022).             and Denny Zhou. 2022. Chain of thought prompting elicits reasoning in large
+[46] Maxwell Nye, Anders Johan Andreassen, Guy Gur-Ari, Henryk Michalewski, Jacob                language models. arXiv preprint arXiv:2201.11903 (2022).
+     Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David               [73] Dominik Winterer, Chengyu Zhang, and Zhendong Su. 2020. On the unusual ef-
+     Luan, et al. 2021. Show your work: Scratchpads for intermediate computation                 fectiveness of type-aware operator mutations for testing SMT solvers. Proceedings
+     with language models. arXiv preprint arXiv:2112.00114 (2021).                               of the ACM on Programming Languages 4, OOPSLA (2020), 1–25.
+[47] OpenAI. 2023. ChatGPT. (2023). https://openai.com/blog/chatgpt.                        [74] Chunqiu Steven Xia and Lingming Zhang. 2023. Conversational automated
+[48] OpenAI. 2023. GPT-4 Technical Report. arXiv:2303.08774 [cs.CL]                              program repair. arXiv preprint arXiv:2301.13246 (2023).
+[49] Fabio Petroni, Tim Rocktäschel, Sebastian Riedel, Patrick Lewis, Anton Bakhtin,        [75] Danning Xie, Yitong Li, Mijung Kim, Hung Viet Pham, Lin Tan, Xiangyu Zhang,
+     Yuxiang Wu, and Alexander Miller. 2019. Language Models as Knowledge Bases?.                and Michael W Godfrey. 2022. DocTer: Documentation-Guided Fuzzing for
+     In Proceedings of the 2019 Conference on Empirical Methods in Natural Language              Testing Deep Learning API Functions. In Proceedings of the 31st ACM SIGSOFT
+     Processing and the 9th International Joint Conference on Natural Language                   International Symposium on Software Testing and Analysis.
+     Processing (EMNLP-IJCNLP). 2463–2473.                                                  [76] Sang Michael Xie, Aditi Raghunathan, Percy Liang, and Tengyu Ma. 2021. An
+[50] Hung Viet Pham, Thibaud Lutellier, Weizhen Qi, and Lin Tan. 2019. CRADLE:                   explanation of in-context learning as implicit bayesian inference. arXiv preprint
+     Cross-Backend Validation to Detect and Localize Bugs in Deep Learning Libraries.            arXiv:2111.02080 (2021).
+     In 2019 IEEE/ACM 41st International Conference on Software Engineering (ICSE).         [77] Chenyuan Yang, Yinlin Deng, Jiayi Yao, Yuxing Tu, Hanchi Li, and Lingming
+     1027–1038. https://doi.org/10.1109/ICSE.2019.00107                                          Zhang. 2023. Fuzzing Automatic Differentiation in Deep-Learning Libraries. In
+[51] PyTorch 2023. PyTorch. http://pytorch.org.                                                  International Conference on Software Engineering (ICSE). to appear.
+[52] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al. 2018.           [78] Xuejun Yang, Yang Chen, Eric Eide, and John Regehr. 2011. Finding and
+     Improving language understanding by generative pre-training. (2018).                        understanding bugs in C compilers. In Proceedings of the 32nd ACM SIGPLAN
+[53] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever,            conference on Programming language design and implementation. 283–294.
+     et al. 2019. Language models are unsupervised multitask learners. OpenAI blog          [79] Guixin Ye, Zhanyong Tang, Shin Hwei Tan, Songfang Huang, Dingyi Fang,
+     1, 8 (2019), 9.                                                                             Xiaoyang Sun, Lizhong Bian, Haibo Wang, and Zheng Wang. 2021. Automated
+[54] Maithra Raghu and Eric Schmidt. 2020. A survey of deep learning for scientific              conformance testing for JavaScript engines via deep compiler fuzzing. In
+     discovery. arXiv preprint arXiv:2003.11755 (2020).                                          Proceedings of the 42nd ACM SIGPLAN International Conference on Programming
+[55] Ohad Rubin, Jonathan Herzig, and Jonathan Berant. 2022. Learning To Retrieve                Language Design and Implementation. 435–450.
+     Prompts for In-Context Learning. In Proceedings of the 2022 Conference of the          [80] Xi Ye, Srinivasan Iyer, Asli Celikyilmaz, Ves Stoyanov, Greg Durrett, and Ra-
+     North American Chapter of the Association for Computational Linguistics: Human              makanth Pasunuru. 2022. Complementary Explanations for Effective In-Context
+     Language Technologies. 2655–2671.                                                           Learning. arXiv preprint arXiv:2211.13892 (2022).
+[56] Adam Satariano and Cade Metz. 2023. Using A.I. to Detect Breast Cancer That            [81] Shafiq Joty Yue Wang, Weishi Wang and Steven C.H. Hoi. 2021. CodeT5: Identifier-
+     Doctors Miss. The New York Times (2023). https://www.nytimes.com/2023/03/                   aware Unified Pre-trained Encoder-Decoder Models for Code Understanding and
+     05/technology/artificial-intelligence-breast-cancer-detection.html.                         Generation. In EMNLP 2021.
+[57] H. Scudder. 1965. Probability of error of some adaptive pattern-recognition            [82] Andreas Zeller, Rahul Gopinath, Marcel Böhme, Gordon Fraser, and Christian
+     machines. IEEE Transactions on Information Theory 11, 3 (1965), 363–371.                    Holler. 2019. The fuzzing book.
+     https://doi.org/10.1109/TIT.1965.1053799                                               [83] Qirun Zhang, Chengnian Sun, and Zhendong Su. 2017. Skeletal program enu-
+[58] Danny Shapiro. 2023. Transportation Generation: See How AI and the Metaverse                meration for rigorous compiler testing. In Proceedings of the 38th ACM SIGPLAN
+     Are Shaping the Automotive Industry at GTC. Nvidia Blog (2023). https://blogs.              conference on programming language design and implementation. 347–361.
+     nvidia.com/blog/2023/02/16/ai-metaverse-shaping-automotive-industry-gtc/.              [84] Yingquan Zhao, Zan Wang, Junjie Chen, Mengdi Liu, Mingyuan Wu, Yuqun
+[59] Wenzhe Shi, Jose Caballero, Ferenc Huszár, Johannes Totz, Andrew P Aitken,                  Zhang, and Lingming Zhang. 2022. History-Driven Test Program Synthesis for
+     Rob Bishop, Daniel Rueckert, and Zehan Wang. 2016. Real-time single image and               JVM Testing. In ICSE 2022. 1133–1144.
+     video super-resolution using an efficient sub-pixel convolutional neural network.      [85] Hao Zhong. 2022. Enriching Compiler Testing with Real Program from Bug
+     In Proceedings of the IEEE conference on computer vision and pattern recognition.           Report. In 37th IEEE/ACM International Conference on Automated Software
+     1874–1883.                                                                                  Engineering. 1–12.
+[60] Taylor Shin, Yasaman Razeghi, Robert L Logan IV, Eric Wallace, and Sameer              [86] Rui Zhong, Yongheng Chen, Hong Hu, Hangfan Zhang, Wenke Lee, and Dinghao
+     Singh. 2020. AutoPrompt: Eliciting Knowledge from Language Models with                      Wu. 2020. Squirrel: Testing database management systems with language validity
+     Automatically Generated Prompts. In EMNLP 2020. 4222–4235.                                  and coverage feedback. In Proceedings of the 2020 ACM SIGSAC Conference on
+[61] Ezekiel Soremekun, Esteban Pavese, Nikolas Havrikov, Lars Grunske, and Andreas              Computer and Communications Security. 955–970.
+     Zeller. 2020. Inputs From Hell. IEEE Transactions on Software Engineering 48, 4        [87] Barret Zoph, Golnaz Ghiasi, Tsung-Yi Lin, Yin Cui, Hanxiao Liu, Ekin Dogus
+     (2020), 1138–1153.                                                                          Cubuk, and Quoc Le. 2020. Rethinking pre-training and self-training. Advances
+[62] Chengnian Sun, Vu Le, and Zhendong Su. 2016. Finding compiler bugs via live                 in neural information processing systems 33 (2020), 3833–3845.
+     code mutation. In Proceedings of the 2016 ACM SIGPLAN international conference
+     on object-oriented programming, systems, languages, and applications. 849–863.
+

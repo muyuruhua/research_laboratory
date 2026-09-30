@@ -1,0 +1,14 @@
+[
+  {
+    "pdf_page": 2,
+    "excerpt": "\n\n\n   Building on this, we propose H Y LL FUZZ, a hybrid fuzzer        1 /* *\nthat integrates LLM-based concolic execution. Specifically,         2 * Parse an XML ( SGML ) comment\n                                                                    3 * Comment ::= ' <! - - ' (( Ch - ' -' ) |( ' -' ( Ch - ' -' ) ) ) * ' --> '\nwhen greybox fuzzing reaches a coverage plateau, where it has       4 */\ndifficulty covering new program paths, H Y LL FUZZ identifies       5 void x m lP ar se C om me nt ( x m l P a r s e r C t x t P t r ctxt ) {\n                                                                    6    ...\nthe roadblocks to overcome. The subsequent steps align with         7    do {\nthe principles of traditional concolic execution. H Y LL FUZZ       8       // Skip 20+ path c o n d i t i o n s"
+  },
+  {
+    "pdf_page": 3,
+    "excerpt": "\n\ntions (as shown in Fig. 1). This further reduces the efficiency                traditional solvers are limited to modifying only symbolized\nof concolic execution. In our experiments, traditional concolic                data fields. This capability further enhances the effectiveness\nexecution failed to generate a syntactically valid XML comment                 of H Y LL FUZZ. In libxml2, H Y LL FUZZ can cover twice as\nfor input. In the best case, the engines only generated inputs                 many code branches as state-of-the-art hybrid fuzzers.\nwith a partial opening delimiter (e.g., <!), which are unable\nto explore subsequent program behaviors.                                                      III. LLM- ASSISTED H YBRID F UZZING\n   In this paper, we propose a novel hybrid fuzzer H Y LL FUZZ,                A. Overview\nwhich integrates LLM-based concolic execution to address                          H Y LL FUZZ is a hybrid fuzzer that combines greybox\nthe above problems. The workflow of H Y LL FUZZ to solve                       fuzzing with LLM-based concolic execution to maximize"
+  },
+  {
+    "pdf_page": 4,
+    "excerpt": "                                                                 Coverage Report\n    Initial Seeds\n\n           Fig. 3: Overall workflow of H Y LL FUZZ including greybox fuzzing and LLM-based concolic execution.\n\n\none input, and (2) have at least one branch not covered yet by           Algorithm 1: Analysis of Coverage and Roadblocks\nthe greybox fuzzer. Such conditions become potential targets              Input : Program P, source code C, seed corpus S\nfor LLM-based concolic execution. H Y LL FUZZ does not rely               Globals: Coverage report R, partially covered conditions I\non the coverage bitmap recorded by the greybox fuzzer, as                 Output : Roadblock B to be solved by concolic execution\nthis bitmap only provides an approximate measure of branch           1    R ← ∅; I ← ∅"
+  }
+]

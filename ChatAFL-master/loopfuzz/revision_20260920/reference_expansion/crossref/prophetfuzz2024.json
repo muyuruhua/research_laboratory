@@ -1,0 +1,2032 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=ProphetFuzz+Fully+Automated+Prediction+and+Fuzzing+of+High-Risk+Option+Combinations+with+Only+Documentation+via+Large+Language+Model&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 10190906,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                28
+              ]
+            ],
+            "date-time": "2026-09-28T17:49:23Z",
+            "timestamp": 1790617763566,
+            "version": "4.1.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 43,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    12,
+                    2
+                  ]
+                ],
+                "date-time": "2024-12-02T00:00:00Z",
+                "timestamp": 1733097600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "DOI": "10.1145/3658644.3690231",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ],
+            "date-time": "2024-12-09T12:19:20Z",
+            "timestamp": 1733746760000
+          },
+          "page": "735-749",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 16,
+          "title": [
+            "ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations with Only Documentation via Large Language Model"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0006-0656-9697",
+              "authenticated-orcid": false,
+              "given": "Dawei",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Zhongguancun Laboratory, Beijing, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0001-0010-9415",
+              "authenticated-orcid": false,
+              "given": "Geng",
+              "family": "Zhou",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongguancun Laboratory, Beijing, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-4228-7885",
+              "authenticated-orcid": false,
+              "given": "Li",
+              "family": "Chen",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongguancun Laboratory, Beijing, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-7581-8865",
+              "authenticated-orcid": false,
+              "given": "Dan",
+              "family": "Li",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Tsinghua University, Beijing, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-6401-5979",
+              "authenticated-orcid": false,
+              "given": "Yukai",
+              "family": "Miao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongguancun Laboratory, Beijing, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "volume-title": "Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al.",
+              "author": "Achiam Josh",
+              "year": "2023",
+              "unstructured": "Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "Perspectives on the Challenges and Benefits of the Bug Bounty Ecosystem. In 32nd USENIX Security Symposium (USENIX Security 23)",
+              "author": "Akgul Omer",
+              "year": "2023",
+              "unstructured": "Omer Akgul, Taha Eghtesad, Amit Elazari, Omprakash Gnawali, Jens Grossklags, Michelle L Mazurek, Daniel Votipka, and Aron Laszka. 2023. Bug Hunters? Perspectives on the Challenges and Benefits of the Bug Bounty Ecosystem. In 32nd USENIX Security Symposium (USENIX Security 23). 2275--2291."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2017.2785841"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "Tom Brown Benjamin Mann Nick Ryder Melanie Subbiah Jared D Kaplan Prafulla Dhariwal Arvind Neelakantan Pranav Shyam Girish Sastry Amanda Askell et al. 2020. Language models are few-shot learners. Advances in neural information processing systems Vol. 33 (2020) 1877--1901."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597926.3598067"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597503.3623343"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "Dor1s. 2019. Testcase of pdf. https://github.com/google/AFL/blob/master/testcases/others/pdf/small.pdf"
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "CovRL: Fuzzing JavaScript Engines with Coverage-Guided Reinforcement Learning for LLM-based Mutation. arXiv preprint arXiv:2402.12222",
+              "author": "Eom Jueon",
+              "year": "2024",
+              "unstructured": "Jueon Eom, Seyeon Jeong, and Taekyoung Kwon. 2024. CovRL: Fuzzing JavaScript Engines with Coverage-Guided Reinforcement Learning for LLM-based Mutation. arXiv preprint arXiv:2402.12222 (2024)."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "AFL: Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on Offensive Technologies (WOOT 20)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL: Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on Offensive Technologies (WOOT 20). USENIX Association."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "The Eleventh International Conference on Learning Representations.",
+              "author": "Fu Yao",
+              "year": "2022",
+              "unstructured": "Yao Fu, Hao Peng, Ashish Sabharwal, Peter Clark, and Tushar Khot. 2022. Complexity-based prompting for multi-step reasoning. In The Eleventh International Conference on Learning Representations."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "unstructured": "Google. 2019. Fuzzing with afl-fuzz. https://afl-1.readthedocs.io/en/latest/fuzzing.html"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "volume-title": "Augmenting greybox fuzzing with generative ai. arXiv preprint arXiv:2306.06782",
+              "author": "Hu Jie",
+              "year": "2023",
+              "unstructured": "Jie Hu, Qian Zhang, and Heng Yin. 2023. Augmenting greybox fuzzing with generative ai. arXiv preprint arXiv:2306.06782 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "volume-title": "Mathprompter: Mathematical reasoning using large language models. arXiv preprint arXiv:2303.05398",
+              "author": "Imani Shima",
+              "year": "2023",
+              "unstructured": "Shima Imani, Liang Du, and Harsh Shrivastava. 2023. Mathprompter: Mathematical reasoning using large language models. arXiv preprint arXiv:2303.05398 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST53961.2022.00032"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE48619.2023.00085"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "LMSYS Chatbot Arena Leaderboard",
+              "author": "LMSYS.",
+              "year": "2024",
+              "unstructured": "LMSYS. 2024. LMSYS Chatbot Arena Leaderboard in March 13, 2024. https://huggingface.co/spaces/lmsys/chatbot-arena-leaderboard"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Bati Yilmaz, Kangjoo Lee, Alexandra O Cohen, Valentina Borghesani, Anton Pashkov, et al.",
+              "author": "Luo Xiaoliang",
+              "year": "2024",
+              "unstructured": "Xiaoliang Luo, Akilles Rechardt, Guangzhi Sun, Kevin K Nejad, Felipe Yá nez, Bati Yilmaz, Kangjoo Lee, Alexandra O Cohen, Valentina Borghesani, Anton Pashkov, et al. 2024. Large language models surpass human experts in predicting neuroscience results. arXiv preprint arXiv:2403.03230 (2024)."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "volume-title": "Prompt Fuzzing for Fuzz Driver Generation. arXiv preprint arXiv:2312.17677",
+              "author": "Lyu Yunlong",
+              "year": "2023",
+              "unstructured": "Yunlong Lyu, Yuxuan Xie, Peng Chen, and Hao Chen. 2023. Prompt Fuzzing for Fuzz Driver Generation. arXiv preprint arXiv:2312.17677 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2024.24556"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Nosco Timothy",
+              "year": "2020",
+              "unstructured": "Timothy Nosco, Jared Ziegler, Zechariah Clark, Davy Marrero, Todd Finkler, Andrew Barbarello, and W Michael Petullo. 2020. The industrial age of hacking. In 29th USENIX Security Symposium (USENIX Security 20). 1129--1146."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "unstructured": "Yaroslav Oliinyk Michael Scott Ryan Tsang Chongzhou Fang Houman Homayoun et al. 2024. Fuzzing BusyBox: Leveraging LLM and Crash Reuse for Embedded Bug Unearthing. arXiv preprint arXiv:2403.03897 (2024)."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "unstructured": "OpenAI. 2023. GPT-4V(ision) System Card."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "unstructured": "OpenAI. 2024. API Reference - OpenAI API. https://platform.openai.com/docs/api-reference/audio"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597926.3598097"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "unstructured": "Anthropic PBC. 2024. Introducing the next generation of Claude. https://www.anthropic.com/news/claude-3-family"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "unstructured": "LLVM Project. 2024. libFuzzer -- a library for coverage-guided fuzz testing. https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "unstructured": "Reingart. 2018. FPDF for Python. https://pyfpdf.readthedocs.io/en/latest/"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409769"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "unstructured": "Gemini Team Rohan Anil Sebastian Borgeaud Yonghui Wu Jean-Baptiste Alayrac Jiahui Yu Radu Soricut Johan Schalkwyk Andrew M Dai Anja Hauth et al. 2023. Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "unstructured": "Hugo Touvron Louis Martin Kevin Stone Peter Albert Amjad Almahairi Yasmine Babaei Nikolay Bashlykov Soumya Batra Prajjwal Bhargava Shruti Bhosale et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "Nature",
+              "volume": "625",
+              "author": "Trinh Trieu H",
+              "year": "2024",
+              "unstructured": "Trieu H Trinh, Yuhuai Wu, Quoc V Le, He He, and Thang Luong. 2024. Solving olympiad geometry without human demonstrations. Nature, Vol. 625, 7995 (2024), 476--482."
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00003"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "volume-title": "32nd USENIX Security Symposium (USENIX Security 23)",
+              "author": "Wang Dawei",
+              "year": "2023",
+              "unstructured": "Dawei Wang, Ying Li, Zhiyu Zhang, and Kai Chen. 2023. CarpetFuzz: Automatic Program Option Constraint Extraction from Documentation for Fuzzing. In 32nd USENIX Security Symposium (USENIX Security 23). 1919--1936."
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "Tofu: Target-oriented fuzzer. arXiv preprint arXiv:2004.14375",
+              "author": "Wang Zi",
+              "year": "2020",
+              "unstructured": "Zi Wang, Ben Liblit, and Thomas Reps. 2020. Tofu: Target-oriented fuzzer. arXiv preprint arXiv:2004.14375 (2020)."
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "volume-title": "Denny Zhou, et al.",
+              "author": "Wei Jason",
+              "year": "2022",
+              "unstructured": "Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits reasoning in large language models. Advances in neural information processing systems, Vol. 35 (2022), 24824--24837."
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597503.3639121"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "first-page": "1",
+              "article-title": "Mental-LLM: Leveraging Large Language Models for Mental Health Prediction via Online Text Data",
+              "volume": "8",
+              "author": "Xu Xuhai",
+              "year": "2024",
+              "unstructured": "Xuhai Xu, Bingsheng Yao, Yuanzhe Dong, Saadia Gabriel, Hong Yu, James Hendler, Marzyeh Ghassemi, Anind K Dey, and Dakuo Wang. 2024. Mental-LLM: Leveraging Large Language Models for Mental Health Prediction via Online Text Data. Proceedings of the ACM on Interactive, Mobile, Wearable and Ubiquitous Technologies, Vol. 8, 1 (2024), 1--32.",
+              "journal-title": "Proceedings of the ACM on Interactive, Mobile, Wearable and Ubiquitous Technologies"
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "Large language models as optimizers. arXiv preprint arXiv:2309.03409",
+              "author": "Yang Chengrun",
+              "year": "2023",
+              "unstructured": "Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V Le, Denny Zhou, and Xinyun Chen. 2023. Large language models as optimizers. arXiv preprint arXiv:2309.03409 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "volume-title": "KernelGPT: Enhanced Kernel Fuzzing via Large Language Models. arXiv preprint arXiv:2401.00563",
+              "author": "Yang Chenyuan",
+              "year": "2023",
+              "unstructured": "Chenyuan Yang, Zijie Zhao, and Lingming Zhang. 2023. KernelGPT: Enhanced Kernel Fuzzing via Large Language Models. arXiv preprint arXiv:2401.00563 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "unstructured": "Yue Zhang Yafu Li Leyang Cui Deng Cai Lemao Liu Tingchen Fu Xinting Huang Enbo Zhao Yu Zhang Yulong Chen et al. 2023. Siren's song in the AI ocean: a survey on hallucination in large language models. arXiv preprint arXiv:2309.01219 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3576915.3616636"
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3603109"
+            }
+          ],
+          "event": {
+            "name": "CCS '24: ACM SIGSAC Conference on Computer and Communications Security",
+            "location": "Salt Lake City UT USA",
+            "acronym": "CCS '24",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3690231",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3658644.3690231",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2025-08-22T06:08:25Z",
+            "timestamp": 1755842905000
+          },
+          "score": 86.607155,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3690231"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "references-count": 43,
+          "alternative-id": [
+            "10.1145/3658644.3690231",
+            "10.1145/3658644"
+          ],
+          "URL": "https://doi.org/10.1145/3658644.3690231",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-12-09",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ],
+            "date-time": "2026-03-09T07:13:44Z",
+            "timestamp": 1773040424274,
+            "version": "3.50.1"
+          },
+          "reference-count": 40,
+          "publisher": "Springer Science and Business Media LLC",
+          "issue": "1",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2026,
+                    3,
+                    9
+                  ]
+                ],
+                "date-time": "2026-03-09T00:00:00Z",
+                "timestamp": 1773014400000
+              },
+              "content-version": "tdm",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2026,
+                    3,
+                    9
+                  ]
+                ],
+                "date-time": "2026-03-09T00:00:00Z",
+                "timestamp": 1773014400000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100007847",
+              "name": "Natural Science Foundation of Jilin Province",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "62302508"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "62302508"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100007847",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100001809",
+              "name": "Natural Science Foundation of China",
+              "doi-asserted-by": "crossref",
+              "award": [
+                "62372437"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "62372437"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100001809",
+                  "id-type": "DOI",
+                  "asserted-by": "crossref"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100001809",
+              "name": "Natural Science Foundation of China",
+              "doi-asserted-by": "crossref",
+              "award": [
+                "62302506"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "62302506"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100001809",
+                  "id-type": "DOI",
+                  "asserted-by": "crossref"
+                }
+              ]
+            },
+            {
+              "name": "Key Research Program of Frontier Sciences, CAS",
+              "award": [
+                "ZDBS-LY-7006"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "ZDBS-LY-7006"
+                  ]
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100004739",
+              "name": "Youth Innovation Promotion Association of the Chinese Academy of Sciences",
+              "doi-asserted-by": "crossref",
+              "award": [
+                "Y2021041"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "Y2021041"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100004739",
+                  "id-type": "DOI",
+                  "asserted-by": "crossref"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100001809",
+              "name": "National Natural Science Foundation of China",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "62232016"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "62232016"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100001809",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "name": "Research Project of Institute of Software Chinese Academy of Sciences",
+              "award": [
+                "ISCAS-JCZD-202301, ISCAS-ZD-202402"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "ISCAS-JCZD-202301, ISCAS-ZD-202402"
+                  ]
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "link.springer.com"
+            ],
+            "crossmark-restriction": false
+          },
+          "short-container-title": [
+            "Cybersecurity"
+          ],
+          "abstract": "<jats:title>Abstract</jats:title>\n                  <jats:p>\n                    Program options provide flexible software functionality control but complicate fuzz testing, as triggering many behaviors require specific option combinations. Although existing option-aware fuzzing approaches attempt to mutate options as inputs or leverage AI technologies to extract option relationships from documentation, these methods have limitations. Documentation is often incomplete, and some option dependencies are embedded deeply within program logic via data or control flows, making these methods challenging to detect all possible dependencies. This paper introduces\n                    <jats:sc>OSmartPro</jats:sc>\n                    , an advanced option-fuzzing approach that directly extracts options and infers option dependencies from source code. Given LLM’s capabilities to interpret program semantics,\n                    <jats:sc>OSmartPro</jats:sc>\n                    employs LLM-assisted static analysis to handle diverse option-parsing structures and extract comprehensive options. Through control and data dependency analysis, it constructs\n                    <jats:italic>option impact graph</jats:italic>\n                    , which it uses to guide fuzzing strategies. The tool successfully extracted complete options from all 59 programs in our test set, uncovering undocumented options in over 66% of them. Additionally,\n                    <jats:sc>OSmartPro</jats:sc>\n                    inferred 14,701 option combinations, identified 45.03% more execution paths compared to AFL++, and uncovered 54 zero-day vulnerabilities, of which 18 awarded CVE IDs. Lastly, in a benchmark comparison against four option-aware fuzzers,\n                    <jats:sc>OSmartPro</jats:sc>\n                    achieved higher line coverage in 66.7% (20 out of 30) of the programs.\n                  </jats:p>",
+          "DOI": "10.1186/s42400-026-00557-8",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ],
+            "date-time": "2026-03-09T06:16:26Z",
+            "timestamp": 1773036986000
+          },
+          "update-policy": "https://doi.org/10.1007/springer_crossmark_policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "OSmartPro: a large language model-assisted option fuzzing approach"
+          ],
+          "prefix": "10.1186",
+          "volume": "9",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0000-3617-3913",
+              "authenticated-orcid": false,
+              "given": "Kelin",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Mengda",
+              "family": "Chen",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Liang",
+              "family": "He",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yanhao",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Purui",
+              "family": "Su",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "JiongYi",
+              "family": "Chen",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yan",
+              "family": "Cai",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Bin",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Chao",
+              "family": "Feng",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Chaojing",
+              "family": "Tang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Guojun",
+              "family": "Peng",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "297",
+          "published-online": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "557_CR1",
+              "unstructured": "AFL (2024) AFL-argvfuzz. https://github.com/google/AFL/tree/master/experimental/argv_fuzzing"
+            },
+            {
+              "key": "557_CR2",
+              "unstructured": "AFLplusplus (2024a) AFLplusplus. https://github.com/AFLplusplus/AFLplusplus"
+            },
+            {
+              "key": "557_CR3",
+              "unstructured": "AFLplusplus (2024b) AFLplusplus-argvfuzz. https://github.com/AFLplusplus/AFLplusplus/tree/stable/utils/argv_fuzzing"
+            },
+            {
+              "key": "557_CR4",
+              "unstructured": "american fuzzy lop (2.52b) (2024) American Fuzzy Lop. http://lcamtuf.coredump.cx/afl/"
+            },
+            {
+              "key": "557_CR5",
+              "volume-title": "The Graph Traversal Pattern",
+              "author": "MA Rodriguez",
+              "year": "2011",
+              "unstructured": "Rodriguez MA, Neubauer P (2011) The Graph Traversal Pattern. Techniques and Applications, In Graph Data Management"
+            },
+            {
+              "key": "557_CR6",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Aschermann C, Schumilo S, Blazytko T, Gawlik R, Holz T (2019) REDQUEEN: Fuzzing with Input-to-State Correspondence. In 26th Annual Network and Distributed System Security Symposium, NDSS 2019, San Diego, California, USA, February 24-27, 2019. The Internet Society. https://www.ndss-symposium.org/ndss-paper/redqueen-fuzzing-with-input-to-state-correspondence/",
+              "DOI": "10.14722/ndss.2019.23371"
+            },
+            {
+              "key": "557_CR7",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Backes M, Rieck K, Skoruppa M, Stock B, Yamaguchi F (2017) Efficient and flexible discovery of php application vulnerabilities. In IEEE European Symposium on Security and Privacy",
+              "DOI": "10.1109/EuroSP.2017.14"
+            },
+            {
+              "issue": "2",
+              "key": "557_CR8",
+              "doi-asserted-by": "publisher",
+              "first-page": "82",
+              "DOI": "10.1145/2408776.2408795",
+              "volume": "56",
+              "author": "C Cadar",
+              "year": "2013",
+              "unstructured": "Cadar C, Sen K (2013) Symbolic execution for software testing: three decades later. Commun ACM 56(2):82–90. https://doi.org/10.1145/2408776.2408795",
+              "journal-title": "Commun ACM"
+            },
+            {
+              "key": "557_CR9",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Chen P, Chen H (2018) Angora: Efficient Fuzzing by Principled Search. In 2018 IEEE Symposium on Security and Privacy, SP 2018, Proceedings, 21-23 May 2018, San Francisco, California, USA. IEEE Computer Society, 711–725. https://doi.org/10.1109/SP.2018.00046",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "557_CR10",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Deng Y, Xia CS, Peng H, Yang C, Zhang L (2023) Large Language Models Are Zero-Shot Fuzzers: Fuzzing Deep-Learning Libraries via Large Language Models. In Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis (Seattle, WA, USA) (ISSTA 2023). Association for Computing Machinery, New York, NY, USA, 423–435. https://doi.org/10.1145/3597926.3598067",
+              "DOI": "10.1145/3597926.3598067"
+            },
+            {
+              "key": "557_CR11",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Deng Y, Xia CS, Yang C, Zhang SD, Yang S, Zhang L (2024) Large Language Models are Edge-Case Generators: Crafting Unusual Programs for Fuzzing Deep Learning Libraries. In Proceedings of the IEEE/ACM 46th International Conference on Software Engineering (Lisbon, Portugal) (ICSE ’24). Association for Computing Machinery, New York, NY, USA, Article 70, 13 pages. https://doi.org/10.1145/3597503.3623343",
+              "DOI": "10.1145/3597503.3623343"
+            },
+            {
+              "key": "557_CR12",
+              "unstructured": "LLVM Developers. (2024) The LLVM Compiler Infrastructure. https://www.llvm.org"
+            },
+            {
+              "key": "557_CR13",
+              "unstructured": "Fabian Y, Nico G, Daniel A, Konrad R (2014) Modeling and Discovering Vulnerabilities with Code Property Graph.. In Proceedings IEEE Symposium on Security and Privacy"
+            },
+            {
+              "issue": "3",
+              "key": "557_CR14",
+              "doi-asserted-by": "publisher",
+              "first-page": "319",
+              "DOI": "10.1145/24039.24041",
+              "volume": "9",
+              "author": "J Ferrante",
+              "year": "1987",
+              "unstructured": "Ferrante J, Ottenstein KJ, Warren JD (1987) The Program Dependence Graph and Its Use in Optimization. ACM Trans Prog Lang Syst 9(3):319–349. https://doi.org/10.1145/24039.24041",
+              "journal-title": "ACM Trans Prog Lang Syst"
+            },
+            {
+              "key": "557_CR15",
+              "unstructured": "AI2 Allen Institute for AI. (2024) AllenNLP. https://allenai.org/allennlp"
+            },
+            {
+              "key": "557_CR16",
+              "unstructured": "Joern (2023) JOERN-The Bug Hunter’s Workbench. https://joern.io"
+            },
+            {
+              "issue": "11",
+              "key": "557_CR17",
+              "doi-asserted-by": "publisher",
+              "first-page": "558",
+              "DOI": "10.1145/368996.369025",
+              "volume": "5",
+              "author": "AB Kahn",
+              "year": "1962",
+              "unstructured": "Kahn AB (1962) Topological sorting of large networks. Commun ACM 5(11):558–562. https://doi.org/10.1145/368996.369025",
+              "journal-title": "Commun ACM"
+            },
+            {
+              "key": "557_CR18",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Lee A, Ariq I, Kim Y, Kim M (2022) POWER: Program option-aware fuzzer for high bug detection ability. In 2022 IEEE Conference on Software Testing, Verification and Validation",
+              "DOI": "10.1109/ICST53961.2022.00032"
+            },
+            {
+              "key": "557_CR19",
+              "unstructured": "LemmInflect (2022) Lemminflect. https://github.com/bjascob/LemmInflect"
+            },
+            {
+              "key": "557_CR20",
+              "unstructured": "Li S, Kang M, Hou J, Cao Y (2022) Mining node. js vulnerabilities via object dependence graph and query. In Proceedings of the USENIX Security Symposium"
+            },
+            {
+              "key": "557_CR21",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Lu K, Hu H (2019) Where Does It Go? Refining Indirect-Call Targets with Multi-Layer Type Analysis.. In Proceedings of the 26th ACM Conference on Computer and Communications Security",
+              "DOI": "10.1145/3319535.3354244"
+            },
+            {
+              "key": "557_CR22",
+              "unstructured": "Lyu C, Ji S, Zhang C, Li Y, Lee W-H, Song Y, Beyah R (2019) $$\\{$$MOPT$$\\}$$: Optimized mutation scheduling for fuzzers. In 28th USENIX Security Symposium (USENIX Security 19). 1949–1966"
+            },
+            {
+              "key": "557_CR23",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Lyu Y, Xie Y, Chen P, Chen H (2024) Prompt Fuzzing for Fuzz Driver Generation. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security (Salt Lake City, UT, USA) (CCS ’24). Association for Computing Machinery, New York, NY, USA, 3793–3807. https://doi.org/10.1145/3658644.3670396",
+              "DOI": "10.1145/3658644.3670396"
+            },
+            {
+              "key": "557_CR24",
+              "unstructured": "NLTK (2024) Natural Language Toolkit. https://www.nltk.org"
+            },
+            {
+              "key": "557_CR25",
+              "doi-asserted-by": "publisher",
+              "unstructured": "OpenAI (2023) GPT-4 Technical Report. CoRR abs/2303.08774 (2023). [arXiv]2303.08774 https://doi.org/10.48550/ARXIV.2303.08774",
+              "DOI": "10.48550/ARXIV.2303.08774"
+            },
+            {
+              "key": "557_CR26",
+              "unstructured": "phpjoern (2024) Parser utility to generate asts from php source code suitable to be processed by joern. https://github.com/malteskoruppa/phpjoern"
+            },
+            {
+              "key": "557_CR27",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Rawat S, Jain V, Kumar A, Cojocar L, Giuffrida C (2017) and Herbert Bos. VUzzer, Application-aware Evolutionary Fuzzing (In NDSS)",
+              "DOI": "10.14722/ndss.2017.23404"
+            },
+            {
+              "key": "557_CR28",
+              "unstructured": "Rebert A, Cha SK, Avgerinos T, Foote J, Warren D, Grieco G, Brumley D (2014) Optimizing seed selection for fuzzing. In 23rd USENIX Security Symposium. 861–875"
+            },
+            {
+              "key": "557_CR29",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Schwartz EJ, Avgerinos T, Brumley D (2010) All You Ever Wanted to Know about Dynamic Taint Analysis and Forward Symbolic Execution (but Might Have Been Afraid to Ask). In 31st IEEE Symposium on Security and Privacy, SP 2010, 16-19 May 2010, Berleley/Oakland, California, USA. IEEE Computer Society, 317–331. https://doi.org/10.1109/SP.2010.26",
+              "DOI": "10.1109/SP.2010.26"
+            },
+            {
+              "key": "557_CR30",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Song S, Song C, Jang Y, Lee B (2020) CrFuzz: Fuzzing Multi-purpose Programs through Input Validation. In Proceedings of the 2020 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering",
+              "DOI": "10.1145/3368089.3409769"
+            },
+            {
+              "key": "557_CR31",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Sui Y, Xue J (2016) SVF: interprocedural static value-flow analysis in LLVM. In Proceedings of the 25th International Conference on Compiler Construction, CC 2016, Barcelona, Spain, March 12-18, 2016, Ayal Zaks and Manuel V. Hermenegildo (Eds.). ACM, 265–266. https://doi.org/10.1145/2892208.2892235",
+              "DOI": "10.1145/2892208.2892235"
+            },
+            {
+              "key": "557_CR32",
+              "unstructured": "syzkaller (2024) Syzkaller. https://github.com/google/syzkaller/"
+            },
+            {
+              "key": "557_CR33",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Touvron H, Martin L, Stone K, Albert P, Almahairi A, et.al (2023) Llama 2: Open Foundation and Fine-Tuned Chat Models. CoRR abs/2307.09288 (2023). [arXiv]2307.09288 https://doi.org/10.48550/ARXIV.2307.09288",
+              "DOI": "10.48550/ARXIV.2307.09288"
+            },
+            {
+              "key": "557_CR34",
+              "unstructured": "Wang D, Li Y, Zhang Z, Chen K (2023) CarpetFuzz: Automatic Program Option Constraint Extraction from Documentation for Fuzzing. In Proceedings of the USENIX Security Symposium"
+            },
+            {
+              "key": "557_CR35",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Wang D, Zhou G, Chen L, Li D, Miao Y (2024b) ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations with Only Documentation via Large Language Model. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security, CCS 2024, Salt Lake City, UT, USA, October 14-18, 2024, Bo Luo, Xiaojing Liao, Jun Xu, Engin Kirda, and David Lie (Eds.). ACM, 735–749. https://doi.org/10.1145/3658644.3690231",
+              "DOI": "10.1145/3658644.3690231"
+            },
+            {
+              "key": "557_CR36",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Wang K, Chen M, He L, Su P, Cai Y, Chen J, Zhang B, Feng C, Tang C (2024a). OSmart: Whitebox Program Option Fuzzing. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security, CCS 2024, Salt Lake City, UT, USA, October 14-18, 2024, Bo Luo, Xiaojing Liao, Jun Xu, Engin Kirda, and David Lie (Eds.). ACM, 705–719. https://doi.org/10.1145/3658644.3690228",
+              "DOI": "10.1145/3658644.3690228"
+            },
+            {
+              "key": "557_CR37",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Wang Y, Jia X, Liu Y, Zeng K, Bao T, Wu D, Su P (2020) Not All Coverage Measurements Are Equal: Fuzzing by Coverage Accounting for Input Prioritization.. In NDSS",
+              "DOI": "10.14722/ndss.2020.24422"
+            },
+            {
+              "key": "557_CR38",
+              "unstructured": "Yang C, Zhao Z, Zhang L (2023) KernelGPT: Enhanced Kernel Fuzzing via Large Language Models. [arxiv]2401.00563 [cs.CR] https://arxiv.org/abs/2401.00563"
+            },
+            {
+              "issue": "2",
+              "key": "557_CR39",
+              "doi-asserted-by": "publisher",
+              "first-page": "21",
+              "DOI": "10.1145/3580597",
+              "volume": "32",
+              "author": "Z Zenong",
+              "year": "2023",
+              "unstructured": "Zenong Z, George K, Eric W, Michael H, Shiyi W (2023) Fuzzing configurations of program options. ACM Trans Softw Eng Methodol 32(2):21. https://doi.org/10.1145/3580597",
+              "journal-title": "ACM Trans Softw Eng Methodol"
+            },
+            {
+              "key": "557_CR40",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Zhang Z, Klees G, Wang E, Hicks M, Wei S (2022) Registered Report: Fuzzing Configurations of Program Options. In International Fuzzing Workshop (FUZZING)",
+              "DOI": "10.14722/fuzzing.2022.23008"
+            }
+          ],
+          "container-title": [
+            "Cybersecurity"
+          ],
+          "language": "en",
+          "link": [
+            {
+              "URL": "https://link.springer.com/content/pdf/10.1186/s42400-026-00557-8.pdf",
+              "content-type": "application/pdf",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://link.springer.com/article/10.1186/s42400-026-00557-8",
+              "content-type": "text/html",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://link.springer.com/content/pdf/10.1186/s42400-026-00557-8.pdf",
+              "content-type": "application/pdf",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ],
+            "date-time": "2026-03-09T06:16:35Z",
+            "timestamp": 1773036995000
+          },
+          "score": 37.713165,
+          "resource": {
+            "primary": {
+              "URL": "https://link.springer.com/10.1186/s42400-026-00557-8"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ]
+          },
+          "references-count": 40,
+          "journal-issue": {
+            "issue": "1",
+            "published-online": {
+              "date-parts": [
+                [
+                  2026,
+                  12
+                ]
+              ]
+            }
+          },
+          "alternative-id": [
+            "557"
+          ],
+          "URL": "https://doi.org/10.1186/s42400-026-00557-8",
+          "ISSN": [
+            "2523-3246"
+          ],
+          "issn-type": [
+            {
+              "value": "2523-3246",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "11 December 2025",
+              "order": 1,
+              "name": "received",
+              "label": "Received",
+              "group": {
+                "name": "ArticleHistory",
+                "label": "Article History"
+              }
+            },
+            {
+              "value": "26 January 2026",
+              "order": 2,
+              "name": "accepted",
+              "label": "Accepted",
+              "group": {
+                "name": "ArticleHistory",
+                "label": "Article History"
+              }
+            },
+            {
+              "value": "9 March 2026",
+              "order": 3,
+              "name": "first_online",
+              "label": "First Online",
+              "group": {
+                "name": "ArticleHistory",
+                "label": "Article History"
+              }
+            },
+            {
+              "value": "The authors declare that they have no competing interests",
+              "order": 1,
+              "name": "Ethics",
+              "group": {
+                "name": "EthicsHeading",
+                "label": "Competing interests"
+              }
+            }
+          ],
+          "article-number": "133"
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2026-08-22T15:24:13Z",
+            "timestamp": 1787412253091,
+            "version": "build-2736575974"
+          },
+          "reference-count": 85,
+          "publisher": "Association for Computing Machinery (ACM)",
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "short-container-title": [
+            "ACM Trans. Softw. Eng. Methodol."
+          ],
+          "abstract": "<jats:p>\n                    Directed Greybox Fuzzing (DGF) aims to efficiently test specific code locations, but its effectiveness is often hampered by its reliance on a syntax-driven strategy. This approach leads to an intractable search space during exploration and inefficient, semantically unaware mutations during exploitation. To address these limitations, we introduce HGFuzzer, an automated framework that augments DGF with predicate-guided execution synthesis. HGFuzzer first infers the execution predicates required to traverse a feasible call chain to the target, and then uses these predicates as a shared specification for generating coordinated fuzzing components. Through semantic analysis of the code, it constructs a purpose-built harness to govern control flow, a target-reachable seed generator to materialize the required data constraints, and a constraint-aware mutator that preserves reachability conditions while mutating bug-triggering fields. Our evaluation of HGFuzzer on 23 real-world bugs demonstrates its superior performance. It successfully triggered 19 bugs, with 11 of them discovered in under 1,000 seconds, and achieved a speedup of at most 24.1\n                    <jats:inline-formula content-type=\"math/tex\">\n                      <jats:tex-math notation=\"LaTeX\" version=\"MathJax\">\\(\\times\\)</jats:tex-math>\n                    </jats:inline-formula>\n                    over state-of-the-art fuzzers. Furthermore, HGFuzzer unearthed 9 previously unknown, CVE-assigned bugs, confirming its efficacy in real-world security auditing.\n                  </jats:p>",
+          "DOI": "10.1145/3841476",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2026-08-22T14:50:19Z",
+            "timestamp": 1787410219000
+          },
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "HGFuzzer: Directed Greybox Fuzzing via Large Language Model"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0004-5477-7971",
+              "authenticated-orcid": false,
+              "given": "Hanxiang",
+              "family": "Xu",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Huazhong University of Science and Technology, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-8793-5367",
+              "authenticated-orcid": false,
+              "given": "Yanjie",
+              "family": "Zhao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huazhong University of Science and Technology, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-7057-0402",
+              "authenticated-orcid": false,
+              "given": "Junqing",
+              "family": "Yu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huazhong University of Science and Technology, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1100-8633",
+              "authenticated-orcid": false,
+              "given": "Haoyu",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huazhong University of Science and Technology, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_2_1_1_1",
+              "unstructured": "2018. afl-cov. https://github.com/mrash/afl-cov"
+            },
+            {
+              "key": "e_1_2_1_2_1",
+              "unstructured": "2025. AFL++. https://github.com/AFLplusplus/AFLplusplus"
+            },
+            {
+              "key": "e_1_2_1_3_1",
+              "unstructured": "2025. CodeQL documentation. https://codeql.github.com/docs/"
+            },
+            {
+              "key": "e_1_2_1_4_1",
+              "unstructured": "2025. CVE Database. https://cve.mitre.org/"
+            },
+            {
+              "key": "e_1_2_1_5_1",
+              "unstructured": "2025. LlamaIndex Documents. https://docs.llamaindex.ai/en/stable/"
+            },
+            {
+              "key": "e_1_2_1_6_1",
+              "unstructured": "2025. OSS-Fuzz. https://github.com/google/oss-fuzz/tree/master/projects"
+            },
+            {
+              "key": "e_1_2_1_7_1",
+              "unstructured": "2025. Tree-Sitter documentation. https://tree-sitter.github.io/tree-sitter/"
+            },
+            {
+              "key": "e_1_2_1_8_1",
+              "unstructured": "2026. HGFuzzer. https://github.com/Xuhxx/HGFuzzer"
+            },
+            {
+              "key": "e_1_2_1_9_1",
+              "unstructured": "Josh Achiam Steven Adler Sandhini Agarwal Lama Ahmad Ilge Akkaya Florencia Leoni Aleman Diogo Almeida Janko Altenschmidt Sam Altman Shyamal Anadkat et al. 2023. GPT-4 Technical Report. arXiv e-prints (2023) arXiv–2303."
+            },
+            {
+              "key": "e_1_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3182657"
+            },
+            {
+              "key": "e_1_2_1_11_1",
+              "volume-title": "Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security",
+              "author": "Böhme Marcel",
+              "year": "2017",
+              "unstructured": "Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen, and Abhik Roychoudhury. 2017. Directed Greybox Fuzzing. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (Dallas, Texas, USA) (CCS ’17). Association for Computing Machinery, New York, NY, USA, 2329–2344. doi:10.1145/3133956.3134020"
+            },
+            {
+              "key": "e_1_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2408776.2408795"
+            },
+            {
+              "key": "e_1_2_1_13_1",
+              "volume-title": "2023 IEEE Symposium on Security and Privacy (SP). IEEE, 2726–2743",
+              "author": "Cao Sicong",
+              "year": "2023",
+              "unstructured": "Sicong Cao, Biao He, Xiaobing Sun, Yu Ouyang, Chao Zhang, Xiaoxue Wu, Ting Su, Lili Bo, Bin Li, Chuanlei Ma, et al. 2023. Oddfuzz: Discovering java deserialization vulnerabilities via structure-aware directed greybox fuzzing. In 2023 IEEE Symposium on Security and Privacy (SP). IEEE, 2726–2743."
+            },
+            {
+              "key": "e_1_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.cose.2018.02.002"
+            },
+            {
+              "key": "e_1_2_1_15_1",
+              "volume-title": "Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security",
+              "author": "Chen Hongxu",
+              "year": "2018",
+              "unstructured": "Hongxu Chen, Yinxing Xue, Yuekang Li, Bihuan Chen, Xiaofei Xie, Xiuheng Wu, and Yang Liu. 2018. Hawkeye: Towards a Desired Directed Grey-box Fuzzer. In Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security (Toronto, Canada) (CCS ’18). Association for Computing Machinery, New York, NY, USA, 2095–2108. doi:10.1145/3243734.3243849"
+            },
+            {
+              "key": "e_1_2_1_16_1",
+              "volume-title": "SelectiveTaint: Efficient Data Flow Tracking With Static Binary Rewriting. In 30th USENIX Security Symposium (USENIX Security 21)",
+              "author": "Chen Sanchuan",
+              "year": "2021",
+              "unstructured": "Sanchuan Chen, Zhiqiang Lin, and Yinqian Zhang. 2021. SelectiveTaint: Efficient Data Flow Tracking With Static Binary Rewriting. In 30th USENIX Security Symposium (USENIX Security 21). USENIX Association, 1665–1682. https://www.usenix.org/conference/usenixsecurity21/presentation/chen-sanchuan"
+            },
+            {
+              "key": "e_1_2_1_17_1",
+              "volume-title": "International Conference on Learning Representations, B. Kim, Y. Yue, S. Chaudhuri, K. Fragkiadaki, M. Khan, and Y. Sun (Eds.), Vol. 2024",
+              "author": "Chen Xinyun",
+              "year": "2024",
+              "unstructured": "Xinyun Chen, Maxwell Lin, Nathanael Schaerli, and Denny Zhou. 2024. Teaching Large Language Models to Self-Debug. In International Conference on Learning Representations, B. Kim, Y. Yue, S. Chaudhuri, K. Fragkiadaki, M. Khan, and Y. Sun (Eds.), Vol. 2024. 8746–8825. https://proceedings.iclr.cc/paper_files/paper/2024/file/2460396f2d0d421885997dd1612ac56b-Paper-Conference.pdf"
+            },
+            {
+              "key": "e_1_2_1_18_1",
+              "volume-title": "34th USENIX Security Symposium (USENIX Security 25)",
+              "author": "Chen Yiyang",
+              "year": "2025",
+              "unstructured": "Yiyang Chen, Chao Zhang, Long Wang, Wenyu Zhu, Changhua Luo, Nuoqi Gui, Zheyu Ma, Xingjian Zhang, and Bingkai Su. 2025. {IDFuzz}: Intelligent Directed Grey-box Fuzzing. In 34th USENIX Security Symposium (USENIX Security 25). 6219–6238."
+            },
+            {
+              "key": "e_1_2_1_19_1",
+              "volume-title": "A coefficient of agreement for nominal scales. Educational and psychological measurement 20, 1",
+              "author": "Cohen Jacob",
+              "year": "1960",
+              "unstructured": "Jacob Cohen. 1960. A coefficient of agreement for nominal scales. Educational and psychological measurement 20, 1 (1960), 37–46."
+            },
+            {
+              "key": "e_1_2_1_20_1",
+              "volume-title": "Weighted kappa: Nominal scale agreement provision for scaled disagreement or partial credit. Psychological bulletin 70, 4",
+              "author": "Cohen Jacob",
+              "year": "1968",
+              "unstructured": "Jacob Cohen. 1968. Weighted kappa: Nominal scale agreement provision for scaled disagreement or partial credit. Psychological bulletin 70, 4 (1968), 213."
+            },
+            {
+              "key": "e_1_2_1_21_1",
+              "volume-title": "Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+              "author": "Deng Yinlin",
+              "year": "2023",
+              "unstructured": "Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming Zhang. 2023. Large Language Models Are Zero-Shot Fuzzers: Fuzzing Deep-Learning Libraries via Large Language Models. In Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis (Seattle, WA, USA) (ISSTA 2023). Association for Computing Machinery, New York, NY, USA, 423–435. doi:10.1145/3597926.3598067"
+            },
+            {
+              "key": "e_1_2_1_22_1",
+              "volume-title": "Proceedings of the 32nd ACM SIGSOFT international symposium on software testing and analysis. 423–435",
+              "author": "Deng Yinlin",
+              "year": "2023",
+              "unstructured": "Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming Zhang. 2023. Large language models are zero-shot fuzzers: Fuzzing deep-learning libraries via large language models. In Proceedings of the 32nd ACM SIGSOFT international symposium on software testing and analysis. 423–435."
+            },
+            {
+              "key": "e_1_2_1_23_1",
+              "volume-title": "Proceedings of the 46th IEEE/ACM International Conference on Software Engineering. 1–13",
+              "author": "Deng Yinlin",
+              "year": "2024",
+              "unstructured": "Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shujing Yang, and Lingming Zhang. 2024. Large language models are edge-case generators: Crafting unusual programs for fuzzing deep learning libraries. In Proceedings of the 46th IEEE/ACM International Conference on Software Engineering. 1–13."
+            },
+            {
+              "key": "e_1_2_1_24_1",
+              "volume-title": "2022 IEEE/ACM 44th International Conference on Software Engineering (ICSE). 2440–2451",
+              "author": "Du Zhengjie",
+              "year": "2022",
+              "unstructured": "Zhengjie Du, Yuekang Li, Yang Liu, and Bing Mao. 2022. Windranger: A Directed Greybox Fuzzer driven by Deviation Basic Blocks. In 2022 IEEE/ACM 44th International Conference on Software Engineering (ICSE). 2440–2451. doi:10.1145/3510003.3510197"
+            },
+            {
+              "key": "e_1_2_1_25_1",
+              "volume-title": "Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+              "author": "Eom Jueon",
+              "year": "2024",
+              "unstructured": "Jueon Eom, Seyeon Jeong, and Taekyoung Kwon. 2024. Fuzzing JavaScript Interpreters with Coverage-Guided Reinforcement Learning for LLM-Based Mutation. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis (Vienna, Austria) (ISSTA 2024). Association for Computing Machinery, New York, NY, USA, 1656–1668. doi:10.1145/3650212.3680389"
+            },
+            {
+              "key": "e_1_2_1_26_1",
+              "volume-title": "Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining",
+              "author": "Fan Wenqi",
+              "year": "2024",
+              "unstructured": "Wenqi Fan, Yujuan Ding, Liangbo Ning, Shijie Wang, Hengyun Li, Dawei Yin, Tat-Seng Chua, and Qing Li. 2024. A Survey on RAG Meeting LLMs: Towards Retrieval-Augmented Large Language Models. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (Barcelona, Spain) (KDD ’24). Association for Computing Machinery, New York, NY, USA, 6491–6501. doi:10.1145/3637528.3671470"
+            },
+            {
+              "key": "e_1_2_1_27_1",
+              "volume-title": "Proceedings of the 24th Australasian Computing Education Conference. 10–19",
+              "author": "Finnie-Ansley James",
+              "year": "2022",
+              "unstructured": "James Finnie-Ansley, Paul Denny, Brett A Becker, Andrew Luxton-Reilly, and James Prather. 2022. The robots are coming: Exploring the implications of openai codex on introductory programming. In Proceedings of the 24th Australasian Computing Education Conference. 10–19."
+            },
+            {
+              "key": "e_1_2_1_28_1",
+              "unstructured": "Google. 2026. Gemini 3 Pro. https://ai.google.dev/gemini-api/docs/gemini-3"
+            },
+            {
+              "key": "e_1_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3695988"
+            },
+            {
+              "key": "e_1_2_1_30_1",
+              "volume-title": "Augmenting Greybox Fuzzing with Generative AI. arXiv e-prints",
+              "author": "Hu Jie",
+              "year": "2023",
+              "unstructured": "Jie Hu, Qian Zhang, and Heng Yin. 2023. Augmenting Greybox Fuzzing with Generative AI. arXiv e-prints (2023), arXiv–2306."
+            },
+            {
+              "key": "e_1_2_1_31_1",
+              "volume-title": "DeGPT: Optimizing Decompiler Output with LLM. In 31st Annual Network and Distributed System Security Symposium, NDSS 2024",
+              "author": "Hu Peiwei",
+              "year": "2024",
+              "unstructured": "Peiwei Hu, Ruigang Liang, and Kai Chen. 2024. DeGPT: Optimizing Decompiler Output with LLM. In 31st Annual Network and Distributed System Security Symposium, NDSS 2024, San Diego, California, USA, February 26 - March 1, 2024. The Internet Society. https://www.ndss-symposium.org/ndss-paper/degpt-optimizing-decompiler-output-with-llm/"
+            },
+            {
+              "key": "e_1_2_1_32_1",
+              "volume-title": "BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning. In 2022 IEEE Symposium on Security and Privacy (SP). 36–50",
+              "author": "Huang Heqing",
+              "year": "2022",
+              "unstructured": "Heqing Huang, Yiyuan Guo, Qingkai Shi, Peisen Yao, Rongxin Wu, and Charles Zhang. 2022. BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning. In 2022 IEEE Symposium on Security and Privacy (SP). 36–50. doi:10.1109/SP46214.2022.9833751"
+            },
+            {
+              "key": "e_1_2_1_33_1",
+              "volume-title": "Titan: Efficient Multi-target Directed Greybox Fuzzing. 2024 IEEE Symposium on Security and Privacy (SP) (2024)",
+              "author": "Huang Heqing",
+              "year": "2024",
+              "unstructured": "Heqing Huang, Peisen Yao, Hung-Chun Chiu, Yiyuan Guo, and Charles Zhang. 2024. Titan: Efficient Multi-target Directed Greybox Fuzzing. 2024 IEEE Symposium on Security and Privacy (SP) (2024), 1849–1864. https://api.semanticscholar.org/CorpusID:268386913"
+            },
+            {
+              "key": "e_1_2_1_34_1",
+              "volume-title": "2024 IEEE Symposium on Security and Privacy (SP). 1956–1973",
+              "author": "Huang Heqing",
+              "year": "2024",
+              "unstructured": "Heqing Huang, Anshunkang Zhou, Mathias Payer, and Charles Zhang. 2024. Everything is Good for Something: Counterexample-Guided Directed Fuzzing via Likely Invariant Inference. In 2024 IEEE Symposium on Security and Privacy (SP). 1956–1973. doi:10.1109/SP54263.2024.00142"
+            },
+            {
+              "key": "e_1_2_1_35_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3703155"
+            },
+            {
+              "key": "e_1_2_1_36_1",
+              "volume-title": "Large language models based fuzzing techniques: A survey. arXiv e-prints",
+              "author": "Huang Linghan",
+              "year": "2024",
+              "unstructured": "Linghan Huang, Peizhou Zhao, Huaming Chen, and Lei Ma. 2024. Large language models based fuzzing techniques: A survey. arXiv e-prints (2024), arXiv–2402."
+            },
+            {
+              "key": "e_1_2_1_37_1",
+              "volume-title": "Proceedings of the 16th conference of the european chapter of the association for computational linguistics: main volume. 874–880",
+              "author": "Izacard Gautier",
+              "year": "2021",
+              "unstructured": "Gautier Izacard and Edouard Grave. 2021. Leveraging passage retrieval with generative models for open domain question answering. In Proceedings of the 16th conference of the european chapter of the association for computational linguistics: main volume. 874–880."
+            },
+            {
+              "key": "e_1_2_1_38_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3571730"
+            },
+            {
+              "key": "e_1_2_1_39_1",
+              "volume-title": "Benchmarking and Explaining Large Language Model-based Code Generation: A Causality-Centric Approach. arXiv e-prints",
+              "author": "Ji Zhenlan",
+              "year": "2023",
+              "unstructured": "Zhenlan Ji, Pingchuan Ma, Zongjie Li, and Shuai Wang. 2023. Benchmarking and Explaining Large Language Model-based Code Generation: A Causality-Centric Approach. arXiv e-prints (2023), arXiv–2310."
+            },
+            {
+              "key": "e_1_2_1_40_1",
+              "volume-title": "When Fuzzing Meets LLMs: Challenges and Opportunities. In Companion Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering (Porto de Galinhas, Brazil) (FSE",
+              "author": "Jiang Yu",
+              "year": "2024",
+              "unstructured": "Yu Jiang, Jie Liang, Fuchen Ma, Yuanliang Chen, Chijin Zhou, Yuheng Shen, Zhiyong Wu, Jingzhou Fu, Mingzhe Wang, Shanshan Li, and Quan Zhang. 2024. When Fuzzing Meets LLMs: Challenges and Opportunities. In Companion Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering (Porto de Galinhas, Brazil) (FSE 2024). Association for Computing Machinery, New York, NY, USA, 492–496. doi:10.1145/3663529.3663784"
+            },
+            {
+              "key": "e_1_2_1_41_1",
+              "volume-title": "Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering",
+              "author": "Jiang Zongze",
+              "year": "2024",
+              "unstructured": "Zongze Jiang, Ming Wen, Jialun Cao, Xuanhua Shi, and Hai Jin. 2024. Towards Understanding the Effectiveness of Large Language Models on Directed Test Input Generation. In Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering (Sacramento, CA, USA) (ASE ’24). Association for Computing Machinery, New York, NY, USA, 1408–1420. doi:10.1145/3691620.3695513"
+            },
+            {
+              "key": "e_1_2_1_42_1",
+              "first-page": "10",
+              "volume-title": "Proc. ACM Softw. Eng. 1, FSE, Article 15 (July",
+              "author": "Kim Tae Eun",
+              "year": "2024",
+              "unstructured": "Tae Eun Kim, Jaeseung Choi, Seongjae Im, Kihong Heo, and Sang Kil Cha. 2024. Evaluating Directed Fuzzers: Are We Heading in the Right Direction? Proc. ACM Softw. Eng. 1, FSE, Article 15 (July 2024), 22 pages. doi:10.1145/3643741"
+            },
+            {
+              "key": "e_1_2_1_43_1",
+              "first-page": "21314",
+              "article-title": "Coderl: Mastering code generation through pretrained models and deep reinforcement learning",
+              "volume": "35",
+              "author": "Le Hung",
+              "year": "2022",
+              "unstructured": "Hung Le, Yue Wang, Akhilesh Deepak Gotmare, Silvio Savarese, and Steven Chu Hong Hoi. 2022. Coderl: Mastering code generation through pretrained models and deep reinforcement learning. Advances in Neural Information Processing Systems 35 (2022), 21314–21328.",
+              "journal-title": "Advances in Neural Information Processing Systems"
+            },
+            {
+              "key": "e_1_2_1_44_1",
+              "volume-title": "Data transformation: a focus on the interpretation. Korean journal of anesthesiology 73, 6",
+              "author": "Lee Dong Kyu",
+              "year": "2020",
+              "unstructured": "Dong Kyu Lee. 2020. Data transformation: a focus on the interpretation. Korean journal of anesthesiology 73, 6 (2020), 503–508."
+            },
+            {
+              "key": "e_1_2_1_45_1",
+              "volume-title": "et al",
+              "author": "Lewis Patrick",
+              "year": "2020",
+              "unstructured": "Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, et al. 2020. Retrieval-augmented generation for knowledge-intensive nlp tasks. Advances in neural information processing systems 33 (2020), 9459–9474."
+            },
+            {
+              "key": "e_1_2_1_46_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TCYB.2020.3013675"
+            },
+            {
+              "key": "e_1_2_1_47_1",
+              "volume-title": "2020 IEEE 27th International Conference on Software Analysis, Evolution and Reengineering (SANER). IEEE, 127–137",
+              "author": "Liang Hongliang",
+              "year": "2020",
+              "unstructured": "Hongliang Liang, Lin Jiang, Lu Ai, and Jinyi Wei. 2020. Sequence directed hybrid fuzzing. In 2020 IEEE 27th International Conference on Software Analysis, Evolution and Reengineering (SANER). IEEE, 127–137."
+            },
+            {
+              "key": "e_1_2_1_48_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TR.2018.2834476"
+            },
+            {
+              "key": "e_1_2_1_49_1",
+              "volume-title": "DeepGo: Predictive Directed Greybox Fuzzing. In 31st Annual Network and Distributed System Security Symposium, NDSS 2024",
+              "author": "Lin Peihong",
+              "year": "2024",
+              "unstructured": "Peihong Lin, Pengfei Wang, Xu Zhou, Wei Xie, Gen Zhang, and Kai Lu. 2024. DeepGo: Predictive Directed Greybox Fuzzing. In 31st Annual Network and Distributed System Security Symposium, NDSS 2024, San Diego, California, USA, February 26 - March 1, 2024. The Internet Society. https://www.ndss-symposium.org/ndss-paper/deepgo-predictive-directed-greybox-fuzzing/"
+            },
+            {
+              "key": "e_1_2_1_50_1",
+              "volume-title": "Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation. Advances in neural information processing systems 36",
+              "author": "Liu Jiawei",
+              "year": "2023",
+              "unstructured": "Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. 2023. Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation. Advances in neural information processing systems 36 (2023), 21558–21572."
+            },
+            {
+              "key": "e_1_2_1_51_1",
+              "doi-asserted-by": "crossref",
+              "first-page": "157",
+              "DOI": "10.1162/tacl_a_00638",
+              "article-title": "Lost in the middle: How language models use long contexts",
+              "volume": "12",
+              "author": "Liu F",
+              "year": "2024",
+              "unstructured": "Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. 2024. Lost in the middle: How language models use long contexts. Transactions of the association for computational linguistics 12 (2024), 157–173.",
+              "journal-title": "Transactions of the association for computational linguistics"
+            },
+            {
+              "key": "e_1_2_1_52_1",
+              "volume-title": "AFGen: Whole-Function Fuzzing for Applications and Libraries. In 2024 IEEE Symposium on Security and Privacy (SP). 1901–1919",
+              "author": "Liu Yuwei",
+              "year": "2024",
+              "unstructured": "Yuwei Liu, Yanhao Wang, Xiangkun Jia, Zheng Zhang, and Purui Su. 2024. AFGen: Whole-Function Fuzzing for Applications and Libraries. In 2024 IEEE Symposium on Security and Privacy (SP). 1901–1919. doi:10.1109/SP54263.2024.00011"
+            },
+            {
+              "key": "e_1_2_1_53_1",
+              "volume-title": "Proceedings of the IEEE/ACM 46th International conference on software engineering. 1–12",
+              "author": "Liu Zhe",
+              "year": "2024",
+              "unstructured": "Zhe Liu, Chunyang Chen, Junjie Wang, Mengzhuo Chen, Boyu Wu, Zhilin Tian, Yuekai Huang, Jun Hu, and Qing Wang. 2024. Testing the limits: Unusual text inputs generation for mobile app crash detection with large language model. In Proceedings of the IEEE/ACM 46th International conference on software engineering. 1–12."
+            },
+            {
+              "key": "e_1_2_1_54_1",
+              "volume-title": "SelectFuzz: Efficient Directed Fuzzing with Selective Path Exploration. In 2023 IEEE Symposium on Security and Privacy (SP). 2693–2707",
+              "author": "Luo Changhua",
+              "year": "2023",
+              "unstructured": "Changhua Luo, Wei Meng, and Penghui Li. 2023. SelectFuzz: Efficient Directed Fuzzing with Selective Path Exploration. In 2023 IEEE Symposium on Security and Privacy (SP). 2693–2707. doi:10.1109/SP46215.2023.10179296"
+            },
+            {
+              "key": "e_1_2_1_55_1",
+              "volume-title": "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security",
+              "author": "Lyu Yunlong",
+              "year": "2024",
+              "unstructured": "Yunlong Lyu, Yuxuan Xie, Peng Chen, and Hao Chen. 2024. Prompt Fuzzing for Fuzz Driver Generation. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security (Salt Lake City, UT, USA) (CCS ’24). Association for Computing Machinery, New York, NY, USA, 3793–3807. doi:10.1145/3658644.3670396"
+            },
+            {
+              "key": "e_1_2_1_56_1",
+              "doi-asserted-by": "crossref",
+              "first-page": "50",
+              "DOI": "10.1214/aoms/1177730491",
+              "article-title": "On a Test of Whether one of Two Random Variables is Stochastically Larger than the Other",
+              "volume": "18",
+              "author": "Mann B.",
+              "year": "1947",
+              "unstructured": "Henry B. Mann and Douglas R. Whitney. 1947. On a Test of Whether one of Two Random Variables is Stochastically Larger than the Other. Annals of Mathematical Statistics 18 (1947), 50–60. https://api.semanticscholar.org/CorpusID:14328772",
+              "journal-title": "Annals of Mathematical Statistics"
+            },
+            {
+              "key": "e_1_2_1_57_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2946563"
+            },
+            {
+              "key": "e_1_2_1_58_1",
+              "volume-title": "31st Annual Network and Distributed System Security Symposium, NDSS 2024",
+              "author": "Meng Ruijie",
+              "year": "2024",
+              "unstructured": "Ruijie Meng, Martin Mirchev, Marcel Böhme, and Abhik Roychoudhury. 2024. Large Language Model guided Protocol Fuzzing. In 31st Annual Network and Distributed System Security Symposium, NDSS 2024, San Diego, California, USA, February 26 - March 1, 2024. The Internet Society. https://www.ndss-symposium.org/ndss-paper/large-language-model-guided-protocol-fuzzing/"
+            },
+            {
+              "key": "e_1_2_1_59_1",
+              "volume-title": "Binary-level Directed Fuzzing for Use-After-Free Vulnerabilities. In 23rd International Symposium on Research in Attacks, Intrusions and Defenses (RAID 2020",
+              "author": "Nguyen Manh-Dung",
+              "year": "2020",
+              "unstructured": "Manh-Dung Nguyen, Sébastien Bardin, Richard Bonichon, Roland Groz, and Matthieu Lemerre. 2020. Binary-level Directed Fuzzing for Use-After-Free Vulnerabilities. In 23rd International Symposium on Research in Attacks, Intrusions and Defenses (RAID 2020). USENIX Association, San Sebastian, 47–62. https://www.usenix.org/conference/raid2020/presentation/nguyen"
+            },
+            {
+              "key": "e_1_2_1_60_1",
+              "volume-title": "International Conference on Learning Representations, Vol. 2024",
+              "author": "Olausson X",
+              "year": "2024",
+              "unstructured": "Theo X Olausson, Jeevana Priya Inala, Chenglong Wang, Jianfeng Gao, and Armando Solar-Lezama. 2024. Is self-repair a silver bullet for code generation?. In International Conference on Learning Representations, Vol. 2024. 36545–36593."
+            },
+            {
+              "key": "e_1_2_1_61_1",
+              "volume-title": "ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Österlund Sebastian",
+              "year": "2020",
+              "unstructured": "Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. 2020. ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 2289–2306. https://www.usenix.org/conference/usenixsecurity20/presentation/osterlund"
+            },
+            {
+              "key": "e_1_2_1_62_1",
+              "doi-asserted-by": "crossref",
+              "first-page": "96",
+              "DOI": "10.1145/3610721",
+              "article-title": "Asleep at the keyboard? assessing the security of github copilot's code contributions",
+              "volume": "68",
+              "author": "Pearce Hammond",
+              "year": "2025",
+              "unstructured": "Hammond Pearce, Baleegh Ahmad, Benjamin Tan, Brendan Dolan-Gavitt, and Ramesh Karri. 2025. Asleep at the keyboard? assessing the security of github copilot's code contributions. Commun. ACM 68, 2 (2025), 96–105.",
+              "journal-title": "Commun. ACM"
+            },
+            {
+              "key": "e_1_2_1_63_1",
+              "volume-title": "International Conference on Learning Representations, Vol. 2025",
+              "author": "Qiu Ruizhong",
+              "year": "2025",
+              "unstructured": "Ruizhong Qiu, Weiliang Zeng, James Ezick, Christopher Lott, and Hanghang Tong. 2025. How efficient is llm-generated code? a rigorous & high-standard benchmark. In International Conference on Learning Representations, Vol. 2025. 2233–2261."
+            },
+            {
+              "key": "e_1_2_1_64_1",
+              "volume-title": "Introduction to static analysis: an abstract interpretation perspective",
+              "author": "Rival Xavier",
+              "unstructured": "Xavier Rival and Kwangkeun Yi. 2020. Introduction to static analysis: an abstract interpretation perspective. Mit Press."
+            },
+            {
+              "key": "e_1_2_1_65_1",
+              "volume-title": "International Conference on Machine Learning. PMLR, 31210–31227",
+              "author": "Shi Freda",
+              "year": "2023",
+              "unstructured": "Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales, David Dohan, Ed H Chi, Nathanael Schärli, and Denny Zhou. 2023. Large language models can be easily distracted by irrelevant context. In International Conference on Machine Learning. PMLR, 31210–31227."
+            },
+            {
+              "key": "e_1_2_1_66_1",
+              "volume-title": "Proceedings of the ACM/IEEE 42nd International Conference on Software Engineering",
+              "author": "Wang Haijun",
+              "year": "2020",
+              "unstructured": "Haijun Wang, Xiaofei Xie, Yi Li, Cheng Wen, Yuekang Li, Yang Liu, Shengchao Qin, Hongxu Chen, and Yulei Sui. 2020. Typestate-guided fuzzer for discovering use-after-free vulnerabilities. In Proceedings of the ACM/IEEE 42nd International Conference on Software Engineering (Seoul, South Korea) (ICSE ’20). Association for Computing Machinery, New York, NY, USA, 999–1010. doi:10.1145/3377811.3380386"
+            },
+            {
+              "key": "e_1_2_1_67_1",
+              "volume-title": "2019 IEEE/ACM 41st International Conference on Software Engineering (ICSE). IEEE, 724–735",
+              "author": "Wang Junjie",
+              "year": "2019",
+              "unstructured": "Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. 2019. Superion: Grammar-aware greybox fuzzing. In 2019 IEEE/ACM 41st International Conference on Software Engineering (ICSE). IEEE, 724–735."
+            },
+            {
+              "key": "e_1_2_1_68_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/stvr.1869"
+            },
+            {
+              "key": "e_1_2_1_69_1",
+              "volume-title": "27th Annual Network and Distributed System Security Symposium, NDSS 2020",
+              "author": "Wang Yanhao",
+              "year": "2020",
+              "unstructured": "Yanhao Wang, Xiangkun Jia, Yuwei Liu, Kyle Zeng, Tiffany Bao, Dinghao Wu, and Purui Su. 2020. Not All Coverage Measurements Are Equal: Fuzzing by Coverage Accounting for Input Prioritization. In 27th Annual Network and Distributed System Security Symposium, NDSS 2020, San Diego, California, USA, February 23-26, 2020. The Internet Society. https://www.ndss-symposium.org/ndss-paper/not-all-coverage-measurements-are-equal-fuzzing-by-coverage-accounting-for-input-prioritization/"
+            },
+            {
+              "key": "e_1_2_1_70_1",
+              "volume-title": "Critical Code Guided Directed Greybox Fuzzing for Commits. In 33rd USENIX Security Symposium (USENIX Security 24)",
+              "author": "Xiang Yi",
+              "year": "2024",
+              "unstructured": "Yi Xiang, Xuhong Zhang, Peiyu Liu, Shouling Ji, Hong Liang, Jiacheng Xu, and Wenhai Wang. 2024. Critical Code Guided Directed Greybox Fuzzing for Commits. In 33rd USENIX Security Symposium (USENIX Security 24). USENIX Association, Philadelphia, PA, 2459–2474. https://www.usenix.org/conference/usenixsecurity24/presentation/xiang-yi"
+            },
+            {
+              "key": "e_1_2_1_71_1",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Hanxiang Xu. 2026. HGFuzzer. doi:10.5281/zenodo.15553671",
+              "DOI": "10.5281/zenodo.15553671"
+            },
+            {
+              "key": "e_1_2_1_72_1",
+              "volume-title": "2025 IEEE/ACM 47th International Conference on Software Engineering: Companion Proceedings (ICSE-Companion). IEEE, 243–254",
+              "author": "Xu Hanxiang",
+              "year": "2025",
+              "unstructured": "Hanxiang Xu, Wei Ma, Ting Zhou, Yanjie Zhao, Kai Chen, Qiang Hu, Yang Liu, and Haoyu Wang. 2025. Ckgfuzzer: Llm-based fuzz driver generation enhanced by code knowledge graph. In 2025 IEEE/ACM 47th International Conference on Software Engineering: Companion Proceedings (ICSE-Companion). IEEE, 243–254."
+            },
+            {
+              "key": "e_1_2_1_73_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3769676"
+            },
+            {
+              "key": "e_1_2_1_74_1",
+              "volume-title": "Parafuzz: An interpretability-driven technique for detecting poisoned samples in nlp. Advances in Neural Information Processing Systems 36",
+              "author": "Yan Lu",
+              "year": "2024",
+              "unstructured": "Lu Yan, Zhuo Zhang, Guanhong Tao, Kaiyuan Zhang, Xuan Chen, Guangyu Shen, and Xiangyu Zhang. 2024. Parafuzz: An interpretability-driven technique for detecting poisoned samples in nlp. Advances in Neural Information Processing Systems 36 (2024)."
+            },
+            {
+              "key": "e_1_2_1_75_1",
+              "volume-title": "Proceedings of the ACM on Programming Languages 8, OOPSLA2",
+              "author": "Yang Chenyuan",
+              "year": "2024",
+              "unstructured": "Chenyuan Yang, Yinlin Deng, Runyu Lu, Jiayi Yao, Jiawei Liu, Reyhaneh Jabbarvand, and Lingming Zhang. 2024. Whitefox: White-box compiler fuzzing empowered by large language models. Proceedings of the ACM on Programming Languages 8, OOPSLA2 (2024), 709–735."
+            },
+            {
+              "key": "e_1_2_1_76_1",
+              "volume-title": "Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security",
+              "author": "You Wei",
+              "year": "2017",
+              "unstructured": "Wei You, Peiyuan Zong, Kai Chen, XiaoFeng Wang, Xiaojing Liao, Pan Bian, and Bin Liang. 2017. SemFuzz: Semantics-based Automatic Generation of Proof-of-Concept Exploits. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (Dallas, Texas, USA) (CCS ’17). Association for Computing Machinery, New York, NY, USA, 2139–2154. doi:10.1145/3133956.3134085"
+            },
+            {
+              "key": "e_1_2_1_77_1",
+              "volume-title": "Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+              "author": "Zhang Cen",
+              "year": "2024",
+              "unstructured": "Cen Zhang, Yaowen Zheng, Mingqiang Bai, Yeting Li, Wei Ma, Xiaofei Xie, Yuekang Li, Limin Sun, and Yang Liu. 2024. How Effective Are They? Exploring Large Language Model Based Fuzz Driver Generation. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis (Vienna, Austria) (ISSTA 2024). Association for Computing Machinery, New York, NY, USA, 1223–1235. doi:10.1145/3650212.3680355"
+            },
+            {
+              "key": "e_1_2_1_78_1",
+              "volume-title": "Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis. 1223–1235",
+              "author": "Zhang Cen",
+              "year": "2024",
+              "unstructured": "Cen Zhang, Yaowen Zheng, Mingqiang Bai, Yeting Li, Wei Ma, Xiaofei Xie, Yuekang Li, Limin Sun, and Yang Liu. 2024. How effective are they? exploring large language model based fuzz driver generation. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis. 1223–1235."
+            },
+            {
+              "key": "e_1_2_1_79_1",
+              "doi-asserted-by": "crossref",
+              "first-page": "29",
+              "DOI": "10.1007/s11390-021-1663-7",
+              "article-title": "DeltaFuzz: historical version information guided fuzz testing",
+              "volume": "37",
+              "author": "Zhang Jia-Ming",
+              "year": "2022",
+              "unstructured": "Jia-Ming Zhang, Zhan-Qi Cui, Xiang Chen, Huan-Huan Wu, Li-Wei Zheng, and Jian-Bin Liu. 2022. DeltaFuzz: historical version information guided fuzz testing. Journal of Computer Science and Technology 37, 1 (2022), 29–49.",
+              "journal-title": "Journal of Computer Science and Technology"
+            },
+            {
+              "key": "e_1_2_1_80_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/2023.acl-long.45"
+            },
+            {
+              "key": "e_1_2_1_81_1",
+              "volume-title": "Predecessor-aware Directed Greybox Fuzzing. In 2024 IEEE Symposium on Security and Privacy (SP). IEEE Computer Society",
+              "author": "Zhang Yujian",
+              "year": "2024",
+              "unstructured": "Yujian Zhang, Yaokun Liu, Jinyu Xu, and Yanhao Wang. 2024. Predecessor-aware Directed Greybox Fuzzing. In 2024 IEEE Symposium on Security and Privacy (SP). IEEE Computer Society, Los Alamitos, CA, USA, 1884–1900. doi:10.1109/SP54263.2024.00040"
+            },
+            {
+              "key": "e_1_2_1_82_1",
+              "volume-title": "International Conference on Information Security and Cryptology. Springer, 134–153",
+              "author": "Zhao Yuyue",
+              "year": "2019",
+              "unstructured": "Yuyue Zhao, Yangyang Li, Tengfei Yang, and Haiyong Xie. 2019. Suzzer: A vulnerability-guided fuzzer based on deep learning. In International Conference on Information Security and Cryptology. Springer, 134–153."
+            },
+            {
+              "key": "e_1_2_1_83_1",
+              "volume-title": "Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security. 2169–2182",
+              "author": "Zhu Xiaogang",
+              "year": "2021",
+              "unstructured": "Xiaogang Zhu and Marcel Böhme. 2021. Regression greybox fuzzing. In Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security. 2169–2182."
+            },
+            {
+              "key": "e_1_2_1_84_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3512345"
+            },
+            {
+              "key": "e_1_2_1_85_1",
+              "volume-title": "Proceedings of the 29th USENIX Conference on Security Symposium (SEC’20)",
+              "author": "Zong Peiyuan",
+              "year": "2020",
+              "unstructured": "Peiyuan Zong, Tao Lv, Dawei Wang, Zizhuang Deng, Ruigang Liang, and Kai Chen. 2020. FuzzGuard: filtering out unreachable inputs in directed grey-box fuzzing through deep learning. In Proceedings of the 29th USENIX Conference on Security Symposium (SEC’20). USENIX Association, USA, Article 127, 15 pages."
+            }
+          ],
+          "container-title": [
+            "ACM Transactions on Software Engineering and Methodology"
+          ],
+          "language": "en",
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3841476",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2026-08-22T14:50:30Z",
+            "timestamp": 1787410230000
+          },
+          "score": 35.491833,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3841476"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ]
+          },
+          "references-count": 85,
+          "alternative-id": [
+            "10.1145/3841476"
+          ],
+          "URL": "https://doi.org/10.1145/3841476",
+          "ISSN": [
+            "1049-331X",
+            "1557-7392"
+          ],
+          "issn-type": [
+            {
+              "value": "1049-331X",
+              "type": "print"
+            },
+            {
+              "value": "1557-7392",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                22
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2025-12-02",
+              "order": 0,
+              "name": "received",
+              "label": "Received",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2026-07-27",
+              "order": 2,
+              "name": "accepted",
+              "label": "Accepted",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2026-08-22",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ],
+          "article-number": "3841476"
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

@@ -1,0 +1,1020 @@
+                                                                                                                                                                          2024 IEEE Symposium on Security and Privacy (SP)
+
+
+
+
+                                                                                                                                             LLMIF: Augmented Large Language Model for Fuzzing IoT Devices
+
+                                                                                                                                                 Jincheng Wang                                Le Yu                                      Xiapu Luo
+                                                                                                                                                 The Hong Kong                         Nanjing University of                           The Hong Kong
+                                                                                                                                              Polytechnic University               Posts and Telecommunications                     Polytechnic University
+2024 IEEE Symposium on Security and Privacy (SP) | 979-8-3503-3130-1/24/$31.00 ©2024 IEEE | DOI: 10.1109/SP54263.2024.00211
+
+
+
+
+                                                                                                                                Abstract—Despite the efﬁcacy of fuzzing in verifying the im-              easily target different protocol implementations without the
+                                                                                                                                plementation correctness of network protocols, existing IoT               need to consider the availability of the source codes and the
+                                                                                                                                protocol fuzzing approaches grapple with several limitations,             hardware conﬁguration of the target device.
+                                                                                                                                including obfuscated message formats, unresolved message                      Network protocol fuzzing encompasses several distinct
+                                                                                                                                dependencies, and a lack of evaluations on the testing cases.             phases, i.e., fuzzing seed generation, seed mutation, test case
+                                                                                                                                These limitations signiﬁcantly curtail the capabilities of IoT            evaluation, and case enrichment. Unfortunately, the design
+                                                                                                                                fuzzers in vulnerability identiﬁcation. In this work, we show             scope and effectiveness of existing IoT fuzzers [3], [4],
+                                                                                                                                that the protocol speciﬁcation contains fruitful descriptions of          [5], [10] suffer from certain limitations, which restrict their
+                                                                                                                                protocol messages, which can be used to overcome the above                design scope and effectiveness. (L.1) Obfuscated Message
+                                                                                                                                limitations and guide IoT protocol fuzzing. To automate the               Formats. IoT messages typically exhibit a complex structure,
+                                                                                                                                speciﬁcation analysis, we augment the large language model                with meticulously constructed headers and payloads. In the
+                                                                                                                                with the speciﬁcation contents, and drive it to perform two               absence of knowledge regarding these message formats, two
+                                                                                                                                tasks (i.e., protocol information extraction, and device response         signiﬁcant issues arise. Firstly, the fuzzer is limited to a
+                                                                                                                                reasoning). We further design and implement a fuzzing algo-               relatively small range of message types for seed genera-
+                                                                                                                                rithm, LLMIF, which incorporates the LLM into IoT fuzzing.                tion. Secondly, mutation processes may prove ineffective,
+                                                                                                                                Finally, we select Zigbee as the target protocol and initiate
+                                                                                                                                                                                                          as they often generate malformed test cases or overlook
+                                                                                                                                comprehensive evaluations. The evaluation result shows that
+                                                                                                                                                                                                          the mutation of critical bits/bytes, which can potentially
+                                                                                                                                                                                                          expose vulnerabilities. (L.2) Unresolved Message Depen-
+                                                                                                                                LLMIF successfully addressed the above limitations. Com-
+                                                                                                                                                                                                          dencies. IoT protocols showcase an extensive device state
+                                                                                                                                pared with the existing Zigbee fuzzers, it increases the protocol
+                                                                                                                                                                                                          space, effectively navigable only through well-orchestrated
+                                                                                                                                message coverage and code coverage by 55.2% and 53.9%,
+                                                                                                                                                                                                          message sequences. Without resolving these message depen-
+                                                                                                                                respectively. Besides the enhanced coverage, LLMIF unearthed
+                                                                                                                                                                                                          dencies, enriching the testing cases and creating complex
+                                                                                                                                11 vulnerabilities on real-world Zigbee devices, which include
+                                                                                                                                                                                                          message sequences becomes a daunting task. (L.3) Lack of
+                                                                                                                                eight previously unknown vulnerabilities. Seven of them are
+                                                                                                                                                                                                          Testing Case Evaluations. The evaluation of testing cases
+                                                                                                                                not covered by the existing Zigbee fuzzers.                               based on execution feedback (e.g., code coverage) is a
+                                                                                                                                                                                                          standard approach to retain intriguing cases for further ex-
+                                                                                                                                1. Introduction                                                           amination [11]. Absent appropriate evaluation strategies, the
+                                                                                                                                                                                                          fuzzer continually generates low-quality test cases, resulting
+                                                                                                                                    Ensuring the correctness of IoT protocol implementa-                  in subpar fuzzing performance.
+                                                                                                                                tions is important since these protocols guarantee the in-                    Regrettably, surmounting the aforementioned obstacles
+                                                                                                                                tended functioning of IoT devices. In critical infrastruc-                to fuzz IoT devices is not a straightforward undertaking.
+                                                                                                                                tures (e.g., healthcare, transportation, and energy), malfunc-            (1) Prior research [12] employed machine learning tech-
+                                                                                                                                tions or crashes in IoT devices can lead to catastrophic                  niques to infer message formats from plain-text network
+                                                                                                                                consequences [1]. One error in a protocol implementation                  traces. However, the ﬂexible and vendor-speciﬁc authenti-
+                                                                                                                                can instigate a domino effect of failures, which can be                   cation schemes employed in IoT protocols, e.g., customized
+                                                                                                                                challenging to diagnose and rectify [2]. In particular, the               Zigbee link keys [13], render the collection of plain-text
+                                                                                                                                network protocol fuzzing technique has been widely used to                traces a challenging endeavor. (2) Owing to the multitude
+                                                                                                                                identify vulnerabilities in the protocol implementation [3],              of message formats and device properties, IoT protocols
+                                                                                                                                [4], [5], [6], [7]. It involves generating tailored messages and          often lack formal deﬁnitions of the protocol state machine.
+                                                                                                                                transmitting them to the target device in an attempt to trigger           This absence complicates the construction of message de-
+                                                                                                                                unexpected behavior. Since the generated message conforms                 pendency relationships. Furthermore, existing methods [6],
+                                                                                                                                to the protocol format requirement, network protocol fuzzing              [7] that rely on network trace analysis falter in the face of
+                                                                                                                                is more ﬂexible compared with binary fuzzing [8], [9]. It can             customized authentication schemes. (3) Driven by a desire
+                                                                                                                                                                                                          to protect their intellectual property and to avoid exposing
+                                                                                                                                   The corresponding authors.                                             vulnerabilities, IoT vendors are typically reluctant to share
+
+
+                                                                                                                              © 2024, Jincheng Wang. Under license to IEEE.                         881
+                                                                                                                              DOI 10.1109/SP54263.2024.00182
+the source code or even binaries of their device ﬁrmware.              round, LLMIF ﬁrst utilizes the LLM-extracted informa-
+This reluctance impedes the fuzzer’s ability to collect valu-          tion (message payload formats, interesting ﬁeld values, and
+able feedback, such as code coverage.                                  header structure) to generate seeds and perform mutation.
+     To overcome these limitations, we make a critical ob-             Then it transmits the generated testing cases to the target
+servation: the protocol speciﬁcation provides rich message             device, monitors device crashes, and waits for the device re-
+descriptions that can be harnessed to guide the fuzzing                sponse. With the collected response, LLMIF further instructs
+process. Firstly, given that these descriptions include the            the augmented LLM to evaluate the quality of the testing
+introductory details of the message header and payload                 cases. For those cases that promote device state transitions,
+formats, they can be extracted to enhance message cover-               LLMIF enriches them to construct new seeds based on the
+age and craft effective mutation operators. Secondly, these            extracted message dependency relationship. These seeds are
+descriptions often subtly delineate message dependencies               prioritized to be used in the later fuzzing rounds.
+through the interaction of device properties. For instance,                Our evaluation results demonstrate the effectiveness of
+the description of the Zigbee Identify message, ”This then             LLMIF in terms of code coverage and vulnerability identi-
+starts the device’s identiﬁcation procedure,” and that of the          ﬁcation. Compared with the baseline, LLMIF improves the
+AddGroupIfIdentifying message, ”The message allows the                 message coverage by 55.2% and code coverage by 53.9%.
+device to add a group on the condition that it is identifying          Moreover, LLMIF is highly effective at ﬁnding critical vul-
+itself,” suggest a correlation between these two messages in           nerabilities in Zigbee protocol implementations. We tested
+the context of the device’s identifying status. Lastly, these          11 real-world Zigbee devices and successfully identiﬁed
+descriptions outline the workﬂow of message processing                 eight zero-day vulnerabilities. Seven of them are missed
+and response generation, which can be utilized to evaluate             by the existing fuzzers. In summary, our work makes the
+the testing case. Given a transmitted testing case and the             following contributions.
+subsequent response, one can leverage the descriptions to
+                                                                          •    We utilize the augmented large language model
+determine whether the message execution aligns with the
+                                                                               (LLM) to analyze the protocol speciﬁcation and
+speciﬁcation, leading to a legitimate device state transition,
+                                                                               overcome the limitations of IoT fuzzing, i.e., un-
+or if the execution contravenes the speciﬁcation, resulting
+                                                                               known message formats, unresolved message depen-
+in an unspeciﬁed device state transition. Testing cases that
+                                                                               dencies, and lack of testing case evaluations.
+trigger device state transitions will be preserved as new
+                                                                          •    We incorporate the augmented LLM into Zigbee
+fuzzing seeds for use in subsequent fuzzing rounds.
+                                                                               fuzzing and propose a fuzzing algorithm LLMIF. It
+     Leveraging the speciﬁcation to guide IoT fuzzing ne-
+                                                                               utilizes the LLM’s result to enhance different fuzzing
+cessitates capabilities in text summarization and reasoning.
+                                                                               phases including seed generation, mutation, testing
+While these tasks are relatively straightforward for humans,
+                                                                               case evaluation, and testing case enrichment. We
+they can be laborious and prone to errors. For instance,
+                                                                               also implement a prototype for fuzzing real-world
+summarizing the formats for over 140 message types spec-
+                                                                               Zigbee devices [15].
+iﬁed in Zigbee’s 1,213-page document could consume days
+                                                                          •    We conduct experiments that demonstrate LLMIF’s
+of human effort. Motivated by the recent strides made by
+                                                                               effectiveness. Compared with the baselines, LLMIF
+large language models (LLMs) in various natural language
+                                                                               is more effective in increasing the coverage of the
+processing tasks, we propose to augment an LLM with
+                                                                               message type and the protocol implementation code.
+speciﬁcation content and direct it to answer protocol-related
+                                                                               Besides the enhanced coverage, LLMIF discovered
+questions. The generated responses are then utilized to fa-
+                                                                               11 vulnerabilities in off-the-shelf Zigbee devices
+cilitate various fuzzing phases. We have chosen Zigbee [14]
+                                                                               including eight zero-day vulnerabilities, the majority
+as our target IoT protocol, as it has been implemented
+                                                                               of which are missed by existing fuzzers.
+in nearly 300 million nodes globally. Speciﬁcally, we ﬁrst
+apply an LLM augmentation approach, infusing the LLM
+with the speciﬁcation content. Then, the augmented LLM                 2. Background
+is tasked with two duties: Protocol Information Extraction
+and Device Response Reasoning. For the task of protocol                    In this section, we start by introducing the main concepts
+information extraction, the LLM is asked to extract useful             in Zigbee and then provide some background on large
+protocol information, such as message formats, intriguing              language models.
+ﬁeld values, header structure, and message dependencies
+from the speciﬁcation. This approach addresses limitations             2.1. Zigbee Protocol
+L.1 and L.2. For the task of device response reasoning, the
+LLM, given the details of a generated testing case and the                 Zigbee is a communication protocol built to provide low-
+device response, uses the message description to determine             power, low-cost wireless mesh networking for IoT devices,
+if the testing case prompts a device state transition. The             and it regulates a range of device functionalities, e.g., light-
+result is subsequently employed to evaluate the test case,             ing and locking. To provide seamless communication within
+addressing limitation L.3.                                             the Zigbee ecosystem, Zigbee Alliance provides the concept
+     Finally, we propose a fuzzing algorithm, LLMIF, which             of “cluster” in the protocol speciﬁcation [16], which deﬁnes
+incorporates the LLM into Zigbee fuzzing. In each fuzzing              a set of common message formats and data structures that
+
+
+                                                                 882
+TABLE 1: Format of the ”Add Group If Identifying” mes-                 testing [22]. To achieve the goal, prompt engineering is
+sage                                                                   commonly employed [23]. In the prompting paradigm, a
+    Number of Bytes              2               Variable              pre-trained LLM is provided with a snippet of text as an
+                                                                       input and is expected to provide a relevant completion of this
+       Data Type               uint16             string
+                                                                       input as output. Prompt engineering is intended to provide
+      Field Name             Group ID          Group Name              a set of principles and techniques for designing prompts
+                                                                       to squeeze out the best performance from these machine
+                                                                       learning models.
+devices can follow. For example, Zigbee speciﬁes a “Group”                  While LLMs hold great promise as general task solvers,
+cluster (Cluster ID 0x0004), which allows devices to be                recent studies [24] show that they suffer from important lim-
+assigned to one or more groups and supports simultaneous               itations hindering a broader deployment. The ﬁrst limitation
+control of several devices. The cluster deﬁnes several de-             is that they lack domain-speciﬁc knowledge, which makes
+vice properties, e.g., group table, which the device should            them insufﬁcient when performing domain-speciﬁc tasks.
+support to specify the current grouping states. Moreover,              The second limitation is that they usually provide nonfactual
+the cluster deﬁnes six message types with ﬁxed payload                 but seemingly plausible predictions, often referred to as
+formats for communication purposes. For example, Table 1               “hallucinations”. As a result, a growing research trend [25]
+shows the format of the “Add Group If Identifying” message             emerged to augment LLMs with domain knowledge for
+(Command ID 0x05), which adds the group speciﬁed in the                addressing the above limitations, which is known as “Aug-
+message payload if the device currently is in identifying              mented language models” (ALM).
+status. Any message that violates the format, e.g., missing
+ﬁelds or invalid ﬁeld values, will be regarded as malformed            3. LLM Augmentation with Speciﬁcation
+commands and ﬁltered by the target device without further
+processing.                                                                In this section, we discuss our approach to augmenting
+    Due to the widely covered device functionalities, Zigbee           the LLM for IoT fuzzing. We start by showing that LLM
+speciﬁes a large number of message formats. For example,               lacks understanding of the IoT protocol, which highlights
+Zigbee speciﬁes 22 standard clusters that cover more than              the necessity of infusing it with domain knowledge, i.e.,
+140 message types. Besides a large number of messages,                 the speciﬁcation contents. Then we detail our augmentation
+these messages are also widely intertwined with each other             approach.
+through common device properties, i.e., the prerequisite of
+a message execution relies on speciﬁc settings of device               3.1. LLM’s Understanding About Zigbee
+properties, which are updated by other message executions.
+As a result, they form various message dependencies. For                   Pre-trained on vast volumes of internet data, large lan-
+example, the “View Group Membership” message execution                 guage models have assimilated knowledge from diverse
+depends on the “Add Group” message execution because its               ﬁelds. Their effectiveness has been demonstrated across
+execution relies on the “Add Group” message to properly                a variety of tasks, including, notably, question answering.
+set the entry in the group table.                                      Inspired by recent work [6] which utilizes the LLM’s in-
+                                                                       ternal knowledge to guide network protocol fuzzing, e.g.,
+2.2. Large Language Models                                             RTSP, we are curious about a question: Does the LLM have
+                                                                       sufﬁcient understanding of the IoT protocol, e.g., Zigbee,
+     Large language models (LLMs) are a type of machine                such that they can output useful protocol information to
+learning model that can process and generate natural lan-              guide the fuzzing process?
+guage text. Fundamentally, they are trained on massive                     We initiate a case study to explore the answer to the
+amounts of text data to perform statistical language mod-              above question. Speciﬁcally, we select four popular LLMs
+eling and word prediction. In particular, LLMs achieve                 as the target: openAI’s chatGPT [26], Meta’s LLama 2 [27],
+amazing performance in text summarization, text reason-                Google’s PaLM [28], and Anthropic’s Claude [29]. Beneﬁt-
+ing, and contextual conversations. For example, a recent               ing from billions of model parameters, these LLMs have
+study [17] shows that summaries generated by the LLM are               been widely used and shown to be effective in various
+favored by human annotators over the reference summaries               tasks. They are required to address the limitations of existing
+in the document. [18] shows that LLMs can perform well in              Zigbee fuzzers and construct the Zigbee message payload
+comprehending the given document, e.g., radiology reports              format. We select 96 message types from the 22 standard
+and doctor-patient dialogue, and reason it with domain                 Zigbee clusters to construct the baseline, each of which
+knowledge. Finally, [19] shows that LLMs have the poten-               contains at least one ﬁeld in their payloads. We speciﬁed two
+tial to understand the history of conversation and generate            sub-tasks to evaluate the LLM’s performance. (1) Message
+responses that are contextually relevant and coherent with             identiﬁcation: the LLM should output the correct message
+the previous conversation turns.                                       name. (2) Format inference: The LLM should output the
+     One of the advantages of LLMs is that they can be                 correct ﬁeld name and ﬁeld data types for each message. A
+quickly adapted to a speciﬁc task, e.g., mental health classi-         message format is successfully constructed only if the name
+ﬁcation [20], question and answering [21], and penetration             is correctly identiﬁed and its format is correctly inferred.
+
+
+                                                                 883
+(a) cmd identiﬁcation accuracy   (b) Format inference accuracy
+Figure 1: Evaluations of general-purpose LLM’s understand-
+ing for IoT protocols
+
+
+    Figure 1a and Figure 1b show the evaluation result.
+Among the 96 message types, these LLMs only successfully
+construct 15 message formats on average, which achieves a                               Figure 2: LLMIF workﬂow
+low recall of 15.6%. Consequently, if the LLM is directly
+used for guiding the fuzzing process, the fuzzer will achieve
+a low message coverage and omit critical bugs lurking in                We identiﬁed 271 pages and 596,140 characters for 147
+the processing logic of these missing messages. The above               cluster messages.
+result reveals that LLMs do not have enough understanding                   To augment the LLM with the extracted domain knowl-
+of the IoT protocol, and it is necessary to augment it with the         edge for downstream tasks, e.g., extraction of message pay-
+domain knowledge, i.e., the protocol speciﬁcation, before               load formats, we further employ the background-augmented
+performing protocol fuzzing. We also provide a demonstra-               prompting technique [25], which uses the domain knowl-
+tion in our complementary material [15] for reference.                  edge to construct task-speciﬁc prompts. Speciﬁcally, given
+                                                                        the retrieved message descriptions c and the downstream
+3.2. Augmentation Approach                                              task instruction q , e.g., “summarize the Add Group mes-
+                                                                        sage format”, we concatenate c and q to build a prompt
+    Common paradigms for LLM augmentation follow the                    which drives the LLM to base on the speciﬁcation con-
+retrieve-then-read pipeline [30]. First, due to the LLM’s lim-          tents and construct the message format. Compared with the
+ited context size, a knowledge retriever is needed to retrieve          ﬁne-tuning technique [33], [34], the background-augmented
+task-related knowledge from external knowledge sources,                 prompting approach avoids the signiﬁcant tuning cost [35],
+e.g., Wikipedia pages. Second, the retrieved knowledge is               [36]. Moreover, considering that not all LLMs are open-
+fed into the LLM which adapts it to the downstream task,                source and support ﬁne-tuning, the prompting technique is
+e.g., question answering. In this work, we aim to retrieve              more general and can be employed with any LLMs.
+the message descriptions from the speciﬁcation as domain
+knowledge and infuse them into the LLM.                                 4. LLM-Guided IoT Fuzzing
+    Unlike previous works [31], [32] which require a large
+volume of training data and train a neural retriever, to                     With the augmented LLM, we develop an LLM-guided
+retrieve the message descriptions, our observation is that              fuzzing algorithm, LLMIF, to tackle the limitations of ex-
+the speciﬁcation documents are usually organized in well-               isting fuzzers. Figure 2 shows the workﬂow. The input to
+formed ﬁle formats, e.g., PDF, which records fruitful meta-             LLMIF is the speciﬁcation document, and the output is the
+data for knowledge indexing and searching. In particular,               testing cases that crash the target device. Speciﬁcally, (1)
+the document outline records semantically meaningful titles,            LLMIF ﬁrst uses the augmented LLM (Section 3) to analyze
+e.g., “3.5.2.3 Commands Received”, which can help to                    the speciﬁcation and extract four types of protocol infor-
+localize the corresponding sections that contain message                mation: message payload format, interesting ﬁeld values,
+descriptions. Given the speciﬁcation document, we ﬁrst                  message header structure, and message dependencies. The
+parse it and build the hierarchy of the outline. Each entry             extraction process is performed only once before the fuzzing
+in the hierarchy corresponds to a section, which records the            process starts, such the extracted information can be directly
+section level, section name, and the covered pages. Then we             used in later fuzzing phases without communicating to the
+use regular expressions to match the entries whose section              LLM. Then LLMIF starts and loops the fuzzing round (Step
+name contains the keyword “commands received”. For all                  2 - 5). (2) In each round, LLMIF ﬁrst determines the seed.
+matched entries, we further track their children entries, each          It checks if there are any testing cases enriched in previous
+of which represents a subsection discussing a speciﬁc cluster           rounds. If that is the case, LLMIF picks one and uses it as
+message, e.g., “3.5.2.3.1 Identify Command”. As a result,               the seed. Otherwise, LLMIF leverages the extracted header
+we use the page contents covered by these subsections to                structure, payload format, and interesting ﬁeld values to
+build the domain knowledge of the corresponding messages.               generate a message from scratch as the testing case. (3)
+
+
+                                                                  884
+After the seed is determined, LLMIF further mutates the
+seed and generates testing cases. The mutation phase also
+exploits the extracted information to mutate ﬁelds in the
+header and the payload. The generated testing cases are
+further transmitted to the target device for execution. (4)
+LLMIF sets a timeout and waits for the device response.
+If the timeout is reached while no response is collected,
+LLMIF repeats the transmission three times. If there are
+still no responses, the target device is regarded as crashed,
+and the testing case is recorded. Otherwise, LLMIF utilizes            Figure 4: Interesting values for “Off with Effect” message
+the augmented LLM in real time to analyze the response.
+Testing cases that promote the device state transition will be
+recorded. (5) Finally, LLMIF enriched the recorded testing             the ﬁnal prompt. In order to instruct the LLM to generate
+cases by appending new messages that follow the message                well-formed answers for further parsing, we employ few-
+dependency relationship. LLMIF further prioritizes their               shot learning technique [37] and drive the LLM to generate
+usage as seeds in later rounds. In the following section, we           JSON representation, where the key is the message name
+will discuss the design of each module in detail.                      and the value is the ﬁeld information (ﬁeld name: ﬁeld data
+                                                                       type). We constructed 147 model prompts, each of which is
+                                                                       for a speciﬁc cluster message, and used chatGPT-3.5-turbo
+4.1. Protocol Information Extraction                                   as the LLM to construct their formats. Then we evaluate
+                                                                       the construction accuracy for the 96 messages whose pay-
+    With the augmented LLM, LLMIF employs the
+                                                                       loads contain at least one ﬁeld. The result shows that the
+background-augmented prompting technique (Section 3.2)
+                                                                       augmented LLM successfully constructs the formats for all
+to extract four types of protocol information: Message
+                                                                       cluster messages.
+payload formats, interesting ﬁeld values, message header
+structure, and message dependency relationships.                           Interesting ﬁeld values. Besides the payload format,
+    Message payload format. Figure 3a illustrates the                  we also ﬁnd that the message descriptions record a large
+prompt template for message format extraction. The tem-                number of interesting ﬁeld values. In particular, we catego-
+plate has two slots, “message name” and “message de-                   rize two types of interesting values from the speciﬁcation.
+scriptions”, which are used to encode the retrieved message            (1) Dangerous values. These values are prohibited by the
+descriptions. Note that the message descriptions may span              speciﬁcation for setting ﬁelds. For example, the speciﬁcation
+                                                                       requires that the GroupID ﬁeld in the “Add Group” message
+                                                                       should be within 0x0001 - 0xfff7. Values outside the range,
+                                                                       e.g., 0x0000, are invalid and should not be used for setting
+                                                                       the ﬁeld. (2) Functioning values. These values are used to
+                                                                       trigger the speciﬁc device functioning logic. For example,
+                                                                       Figure 4 shows that when the EffectVariant ﬁeld value
+                                                                       of the “Off With Effect” message equals 0x02, the target
+                                                                       device should perform 50% dim down in 0.8 seconds. Since
+                                                                       these interesting values can help to generate initial seeds
+                                                                       that explore diverse device functioning and error-handling
+                                                                       logic, we use the augmented LLM to collect them. As
+                                                                       a result, we constructed 96 prompts, and the augmented
+                                                                       LLM successfully collected 421 functioning values for 68
+                                                                       message ﬁelds. Moreover, it collects 83 dangerous value
+                                                                       intervals which are related to 69 message ﬁelds.
+                                                                           Message header structure. The message header con-
+ (a) Message payload format        (b) Message dependency              tains important ﬁelds which are valuable for mutation.
+Figure 3: Prompt templates for protocol information extrac-            Therefore, with the descriptions of the message header, we
+tion                                                                   drive the LLM to draw the structure of the message header.
+                                                                       As a result, it successfully extracts seven ﬁelds in the header.
+multiple pages and the size may exceed the LLM’s context               One important ﬁeld is the “Disable Default Response” bit
+limit. As a result, we propose a summarization approach to             ﬁeld. Upon receiving a message, a Zigbee device will check
+generate concise message descriptions for constructing the             this bit to determine if it should generate a response. By
+prompt. Speciﬁcally, given a message description that spans            mutating this bit, the fuzzer can ask the target device to
+from page m to page n (m ≤ n), we ﬁrst ask the LLM to                  generate responses to the received testing cases, and the
+summarize information about the message format recorded                response, in turn, can be used as feedback to evaluate the
+on each page i. Then we aggregate the summary of each                  quality of the testing cases (Section 4.4).
+page as the ﬁnal message description and encode it into                    Message dependencies. As discussed in Section 2.1,
+
+
+                                                                 885
+                                                                      with detailed values for generating well-formed messages.
+                                                                      Similarly, LLMIF also maintains the mapping from MID to
+                                                                      the extracted interesting values:
+                                                                               MID → {(ﬁeld namei , {value intervalj })}
+                                                                      where i indexes the ﬁeld and j indexes the recorded inter-
+                                                                      vals of interesting values for the i’s ﬁeld. In each fuzzing
+                                                                      round, a random MID is ﬁrst selected, e.g., (0x0004, 0x00)
+                                                                      representing the “Add Group” message from the Groups
+                                                                      cluster. Then LLMIF retrieves the corresponding message
+                                                                      template and identiﬁes the slot to be ﬁlled. For example,
+                                                                      the template of the “Add Group” message contains two ﬁeld
+                                                                      slots to be ﬁlled, and the value types should be uint16 and
+                                                                      string, respectively. To determine the concrete ﬁeld value,
+         Figure 5: Illustrations of seed generation                   the fuzzer ﬁrst uses the MID and the ﬁeld name as the key-
+                                                                      word to look for interesting values. If there are any recorded
+                                                                      value intervals for the ﬁeld, LLMIF randomly selects an
+Zigbee messages are implicitly correlated with each other             interval and samples a value as the concrete value to ﬁll the
+through common device properties. That is, messages A and             slot. Otherwise, LLMIF follows the data type and randomly
+B have a dependency relationship (A → B ) if the execu-               generates concrete values. For example, after checking that
+tion of A updates some device properties that B examines              the GroupID has two interesting value intervals, LLMIF ran-
+before its execution. Since the message description usually           domly selects the interval [0x0000, 0x0001) and samples a
+details how a message interacts with the device property, the         value 0x0000 for the GroupID ﬁeld. As for the GroupName
+augmented LLM should be able to reason if two messages                ﬁeld which has no recorded interesting values, it randomly
+have dependency relationships. Figure 3b shows the model              generates a string “TestGroup” as the ﬁeld value.
+prompt template for message dependency construction. The                  Besides setting the message payload, LLMIF also lever-
+template takes the descriptions of two messages as input to           ages the extracted header structure to properly set the
+construct the domain knowledge. Different from the previ-             message header. We here discuss three important ﬁelds.
+ous tasks which ask the LLM to perform text summarization,            (1) Manufacturer-speciﬁc bit. This bit is for determining
+the construction of message dependencies requires activating          whether the current message is from the Zigbee cluster
+the LLM’s reasoning capability. That is, the LLM should               speciﬁcation or created by the manufacturer. Since LLMIF
+ﬁrst understand the device properties that the two messages           mainly focuses on the messages recorded in the speciﬁca-
+respectively interact with, then determine if they work on            tion, the bit is set to zero. (2) Direction bit. The bit is used
+the same properties. As a result, we employ the chain-of-             to denote whether the message is a request message or a
+thought technique [38] to drive the LLM to think step-                response to a previously received request. Since in most
+by-step. With the prompt template, we constructed 21,609              cases the fuzzer acts as the client to transmit the request to
+prompts, each of which is for examining a speciﬁc message             the target device, this bit is set to zero which denotes that
+pair. As a result, the augmented LLM successfully constructs          the message is a request. (3) Disable Default Response bit.
+968 message dependencies among the 147 cluster messages.              As introduced in Section 4.1, this bit is critical for collecting
+                                                                      responses from the target device. As a result, LLMIF sets the
+4.2. Seed Generation                                                  bit to zero, which asks the target device to always generate
+                                                                      a response for every received message.
+    LLMIF further utilizes the extracted message informa-
+tion to facilitate seed generation, which is illustrated in           4.3. Seed Mutation
+Figure 5. Speciﬁcally, for each constructed message format,
+LLMIF assigns it a unique message identiﬁer:                              To mutate the generated seed, LLMIF leverages the ex-
+                MID = (clusterID, cmdID)                              tracted protocol information to specify two types of mutation
+                                                                      operators: type-aware mutation and header-aware mutation.
+where clusterID identiﬁes the cluster of the message and                  Type-aware mutation. LLMIF exploits the knowledge
+cmdID identiﬁes the message in the cluster’s message set.             about the data type of each ﬁeld to perform type-aware
+Moreover, LLMIF uses the message format to build a set of             mutation. Speciﬁcally, we ﬁrst summarize the extracted data
+message templates and maintains the mapping from MID to               types and categorize them into two classes: Fixed-length
+the template:                                                         type and variant-length type. The former is commonly used
+    {MID → {(ﬁeld namei , ﬁeld typei , ﬁeld valuei )}                 for numerical data types, e.g., uint32 and enum16, while
+                                                                      the latter is commonly used for string types, e.g., character
+where i is the index of ﬁelds in the corresponding. The               string and octet string. In particular, the variant-length type
+ﬁeld value slot in the template marks the regions to be ﬁlled         usually has additional grammar requirements. For example,
+
+
+                                                                886
+it requires that the ﬁrst byte should be the length of the
+string followed by the string contents.
+    Given a message and its format, the fuzzer traverses the
+data type of each ﬁeld and determines the corresponding mu-
+tation operator. For the ﬁeld with the ﬁx-length type, LLMIF
+uses the extreme value operator to mutate them. By setting
+the numerical values with extreme values, e.g., 0x0000 and
+0xffff, it aims to trigger out-of-range vulnerabilities. As
+for the ﬁeld with variant-length type, LLMIF utilizes the
+following two mutation operators. (1) Byte expansion. By
+increasing the string content and the corresponding length
+byte, LLMIF aims to trigger buffer and heap overﬂow.
+(2) Suspicious length. By mutating the length byte of the
+variant-length ﬁeld, LLMIF aims to create inconsistencies
+and trigger memory leakage or null pointer de-reference                      Figure 6: Prompt template for response reasoning
+vulnerabilities. Besides the above type-aware mutation op-
+erators which tamper with the ﬁeld value, LLMIF randomly
+removes some message ﬁelds and deliberately creates mal-
+formed testing cases. These cases may crash the target                  a group identiﬁer outside this range, the status shall be
+device if the payload domain is not properly parsed.                    INVALID VALUE...”.
+    Header-aware mutation. LLMIF also exploits the                           The above observations show that combined with the
+structure of the message header and enforces a set of header-           message description, the response can be used to evaluate
+aware mutation operators. (1) Crafted command identiﬁer.                the quality of the testing cases. (1) The status code in
+LLMIF corrupts the command identiﬁer ﬁeld with randomly                 the response can be used to check if the testing case was
+generated values. (2) Bit ﬂipping. By ﬂipping the speciﬁc               successfully executed and changed the device state. For
+bits in the message header, the fuzzer mutates the frame                example, if an Add Group message receives a response with
+type, the message source, and the message direction, aiming             a SUCCESS status code, it implies that the device property,
+to test the correctness of the header parsing procedure and             in particular, the group table, has been updated and device
+to trigger unexpected message processing logic. Note that               state transitions happened. As a result, such testing cases
+in order to guarantee the response collection, the Disable              deserve to be kept for further investigation. (2) The status
+Default Response ﬁeld is not ﬂipped.                                    code can be used to initiate conformance testing, which
+                                                                        detects if the message execution violates the speciﬁcation
+4.4. Response Reasoning                                                 and drives the device into dangerous and unspeciﬁed states.
+                                                                        For example, if an Add Group message with GroupID
+     The generated testing case will be transmitted to the              0x0000 receives a response with SUCCESS status code,
+target device for execution. In order to guarantee the same             which is supposed to be INVALID VALUE according to the
+initial state for each testing case execution, LLMIF ﬁrst               speciﬁcation, it implies that the crafted message successfully
+transmits a general Zigbee message ”Reset to Factory De-                pollutes the group table. Since these testing cases violate the
+fault” (clusterID=0x0, commandID=0x0) which initializes                 speciﬁcation and put the device into unspeciﬁed states, they
+the device state. After the testing case is transmitted to the          are also valuable for further investigation.
+target device and a response is collected, LLMIF leverages                   However, considering the large number of status codes,
+the augmented LLM to reason the response and evaluate the               message descriptions, and the large number of testing cases
+testing case. The idea is based on two key observations. (1)            generated in each fuzzing round, it is almost impossible
+The response generated by the target device usually contains            to get humans involved and reason the response of each
+a status code, which marks the execution status of the testing          testing case. To overcome the challenge, LLMIF utilizes the
+case. For example, the status code 0x00 implies that the                augmented LLM to perform the task. The model prompt
+last message was successfully executed, while 0x80 implies              template is shown in Figure 6. It takes three pieces of
+that the last message was malformed. (2) The message de-                information as inputs: Message description, message de-
+scription details various circumstances under which speciﬁc             tails, and message execution status. For each testing case,
+status codes should be generated. For example, when an                  LLMIF ﬁrst checks the message in the case and fetches its
+Add Group message with normal ﬁeld values is received,                  description to augment the LLM. Since response reasoning
+the speciﬁcation requires that “...the device adds the values           requires the detail of the message, e.g., the GroupID values,
+of the Group ID and Group Name ﬁelds to its Group Table                 LLMIF further concatenates the ﬁeld names and values of
+and the status shall be SUCCESS...”. As another example,                the message into a string to construct the message detail.
+when an Add Group message with dangerous ﬁeld values is                 Finally, LLMIF extracts the execution status code from the
+received, the speciﬁcation requires that “...the device veriﬁes         device response, constructs the prompt, and asks the LLM
+that the GroupID ﬁeld contains a valid group identiﬁer                  to determine if the device state transition happens. Either a
+in the range 0x0001-0xfff7. If the GroupID ﬁeld contains                normal state transition that aligns with the speciﬁcation or an
+
+
+                                                                  887
+abnormal state transition that violates the speciﬁcation will           in generation-based fuzzing [4], [40]. Speciﬁcally, we imple-
+promote LLMIF to record the corresponding testing case for              ment 47 basic data types speciﬁed in Zigbee speciﬁcation,
+further investigation.                                                  e.g., enum8 and string, and use them as the building block
+                                                                        for assembling the message payload. As a result, the ex-
+4.5. Testing Case Enrichment                                            tracted protocol information, e.g., the message format and
+                                                                        interesting value repositories, can be easily integrated into
+    Once a testing case draws the attention of the LLM                  the assembling process. We further implement a total of
+and is recorded by LLMIF (Section 4.4), it is enriched                  seven mutation operators (Section 4.3) to perform mutation.
+to construct new seeds. For each testing case, we deﬁne                 The fuzzing controller is implemented in Python with 3,000
+its interacted device properties as the one that is altered             lines of code, and it runs on a Raspberry Pi 4 with Ubuntu
+by the last message. As a result, when enriching testing                20.04 operating system.
+cases, we only consider messages that are dependent on the                  The stack controller aims to create and maintain the
+last message, such that the enriched case will examine the              Zigbee communication channel with the target device. Con-
+interacted device property.                                             sidering availability and popularity, we select CC2538 with
+    Speciﬁcally, given a testing case s = [m1 , ..., mn ] which         a fully compliant Zigbee solution Z-Stack [41] as the hard-
+contains n messages, the task of testing case enrichment                ware radio. We develop a driver on top of Z-Stack and
+is to construct a suitable message mn+1 which can be                    transform CC2538 into a Zigbee node. The node forms
+concatenated to the end of s, such that every neighbor-                 a fully-controlled Zigbee network which allows the target
+ing message pair in the constructed message sequence                    device to join. On the one hand, it communicates with
+s = [m1 , ..., mn , mn+1 ] follows the message dependency              the fuzzing controller through the universal asynchronous
+relationship.                                                           receiver/transmitter (UART) channel, i.e., receiving testing
+    LLMIF leverages the extracted message dependency re-                cases and forwarding device responses. On the other hand,
+lationship to perform the task. Speciﬁcally, the dependencies           it communicates to the target device through the transpar-
+are stored in the form of message pairs:                                ent and authenticated Zigbee network, i.e., transmitting the
+                                                                        testing case and monitoring device responses. The driver is
+               D = {d : (MIDpre , MIDcon )}                             developed with 1,000 lines of C codes.
+
+where the preceding message and the consecutive message
+represented by the corresponding MID are correlated for the             5. Evaluation
+common device property. Given a testing case s, LLMIF ﬁrst
+fetches the MID of the last message mn , and looks for the                  To evaluate the effectiveness of LLMIF, we seek answers
+set of candidate messages M which have correlations with                to the following questions.
+s, i.e.,                                                                    Q1: Code coverage. How much more code coverage
+            M = {MID|(mn .MID, MID) ∈ D}                                does LLMIF achieve compared to the baseline?
+                                                                            Q2: Ablation. What is the impact of the extracted
+After M is determined, LLMIF randomly selects a MID                     protocol knowledge on the performance of LLMIF?
+from M and follows Section 4.2 to initialize the message                    Q3: Bug identiﬁcation. Is LLMIF capable of discover-
+mn+1 whose message identiﬁer equals to MID. Finally, the                ing previously unknown bugs on real-world devices?
+testing case is enriched with the new message, i.e., s =                   In the following sections, we introduce our implemen-
+s + [mn+1 ], and s is saved into the seed corpus and is                tation and our experimental setup. Finally, we discuss the
+prioritized to be selected in the next fuzzing round.                   evaluation results for the above questions.
+
+4.6. Fuzzing Tool Implementation                                        5.1. Experimental Setup
+
+    Unlike fuzzing traditional network protocols, e.g.,                     Z-Stack simulation for code coverage evaluation.
+SMTP [39], fuzzing real-world Zigbee devices requires the               During our experiment, we found that it is challenging to
+support of speciﬁc radio modules (e.g., CC2530). To fuzz                evaluate code coverage. The main reason is most Zigbee
+the real-world Zigbee device, we design a fuzzing tool                  device vendors do not open-source their stack implemen-
+that contains two components: Fuzzing controller and stack              tations (either source codes or binary ﬁrmware), such that
+controller. The fuzzing controller is responsible for running           we cannot instrument the stack implementation to calcu-
+LLMIF and organizing the fuzzing workﬂow. In particular,                late statement/edge coverage, and only black-box fuzzing
+chatGPT-3.5.turbo is used as the large language model. The              can be initiated. The only open-source Zigbee stack we
+stack controller, on the other hand, works as a driver to               found is the Z-Stack of Texas Instruments [41]. Inspired
+operate a programmable Zigbee radio and provides funda-                 by [4], we leverage the IAR development toolchain and
+mental support for Zigbee communication, e.g., message                  set up a simulation platform, which supports simulating
+transmission and reception.                                             stack execution, Zigbee message transmission/reception, and
+    The fuzzing controller leverages the idea of “building              most importantly, coverage analysis. (1) We write a stack
+block” to construct the message, which is commonly used                 driver (900 lines of C code) to build a Zigbee end device
+
+
+                                                                  888
+application. The stack driver and the stack source codes               as the general-purpose LLM. The LLM accepts one hyper-
+are used by the simulation tool C-SPY, which allows us to              parameter, temperature ∈ [0, 1], which regulates the ran-
+create a simulated end device as the target device. Our driver         domness and creativity. To mitigate the LLM’s hallucination
+registers a set of plugins provided by Z-Stack, such that the          problem (i.e., high false positives in the generated answers),
+simulated end device can support 154 cluster messages from             the parameter is set to zero. The same setting applies to the
+the 22 standard clusters, compared with the driver [4] which           baseline method. Since chatAFL is the only LLM-guided
+only supports 22 messages.                                             fuzzing tool among the baseline methods, it means that
+(2) We use shared ﬁles to simulate the communication                   LLMIF and chatAFL will use the same general-purpose
+channel between the fuzzer and the simulated target device.            LLM (chatGPT-3.5 in our case) with the same temperature
+By writing and reading the shared ﬁle, the fuzzer and                  setting. Because chatAFL purely relies on the LLM’s knowl-
+the simulated device can simulate the over-the-air Zigbee              edge base to guide IoT protocol fuzzing, its performance
+message transmission/reception, respectively.                          will reveal the impact of LLM’s insufﬁcient knowledge
+(3) Given a generated testing case, we use the code cov-               (Section 3.1) on IoT protocol fuzzing.
+erage analysis and the static analysis tools provided by the
+IAR toolchain to calculate the statement coverage and edge             5.2. Coverage Analysis
+coverage, which will be detailed in Section 5.2.
+(4) By checking the output of the simulation tool, we                      Message coverage analysis. We ﬁrst evaluate the mes-
+determine if the testing case triggers exceptions of the               sage coverage when fuzzing with LLMIF, and compare
+simulated device and causes the crash. The call stack for              it with the baselines. Speciﬁcally, we aim to measure the
+processing the testing case is used for categorizing the               cluster coverage and message coverage for the 11 devices.
+crashing type and clustering crashing cases. Moreover, the             To build the ground truth, we ﬁrst transmit the Zigbee
+crashing cases are stored for further veriﬁcation on real-             device object (ZDO) commands to the target device and
+world Texas Instruments devices (Section 5.4).                         scan its supported clusters and commands. One exception
+    Real-world Zigbee devices under test (DUT). Besides                is the device D1, which is a CC2538 module loading the
+fuzzing the simulation device, we also selected 11 off-the-            Z-Stack. Since Z-Stack is open-source, we compiled a Z-
+shelf Zigbee devices from various vendors for evaluation,              Stack ﬁrmware and ﬂashed it into the CC2538 module,
+covering well-known brands, such as Philips, Third Reality,            such that it supports the 18 standard clusters with 150
+Sengled, Aqara, and Tuya. The types of selected devices                message types. Given a fuzzer, to evaluate if it covers a
+include smart switches, plugs, lighting, locks, and sensors.           message type, we ask the fuzzer to transmit a message based
+These devices are either recommended by Amazon or the                  on its understanding of the message format and check the
+well-selling products in supermarkets. Note that some de-              response status code. If the message is accepted by the target
+vices have been found with zero-day vulnerabilities and have           device with the status code SUCCESS, the message type is
+not been ﬁxed yet. As a result, we anonymize the names of              successfully covered. Otherwise, error codes, e.g., INVALID
+these devices and their models. We promise to de-anonymize             FORMAT, imply that the message format is incorrect and
+the device details once these vulnerabilities are ﬁxed by the          the message is not covered.
+vendor and the disclosure period is reached.                               The result is shown in Table 2. Our method successfully
+    Baseline methods. We select four popular Zig-                      covers the 150 message types from the 18 clusters, which
+bee fuzzing tools as the baseline: B OO F UZZ [42], Z-                 achieves 100% cluster and message coverage. Compared
+F UZZER [4], B EE H IVE [5], and chatAFL [6]. They are                 with the baselines, our method improves the cluster coverage
+either widely used in industry or reported in top security             by 73.1% and improves the message coverage by 55.2%.
+conferences. Moreover, the design of these tools covers the            Speciﬁcally, Z-F UZZER, B OO F UZZ, and B EE H IVE rely on
+existing solutions to important fuzzing tasks, in particular,          human efforts to construct the message format, and they
+message format construction and interesting value collec-              only focus on the foundation cluster, which contains 22
+tion, which makes them suitable for comparison with our                message types in total. For CHATAFL, we initiate 10 rounds
+method. Speciﬁcally, B OO F UZZ is a famous grammar-based              for message format construction, and without the guidance
+fuzzing tool that is customized by [4] to support Zigbee               of the speciﬁcation, the LLM only reliably constructs the
+fuzzing. Z-F UZZER is a coverage-guided Zigbee fuzzing                 15 message formats from the Identify, Groups, and Scenes
+tool, and it has been used to identify critical zero-day               clusters. Compared with the baseline, we use the augmented
+vulnerabilities in the Z-Stack. B EE H IVE studies the cluster         LLM to precisely construct all of the message formats.
+message format, and manually extracts a set of interesting                 Code coverage analysis. We further evaluate the code
+values for enumeration of ﬁeld values. Finally, CHATAFL                coverage and compare our method with the baseline. Unfor-
+uses the LLM to guide the fuzzing process, in particular,              tunately, as stated in Section 5.1, most off-the-shelf Zigbee
+message format construction and has been used for fuzzing              devices do not open source their stack implementations,
+network protocols (e.g., RTSP). While it is not designed               such that one can only initiate black-box testing and cannot
+for Zigbee fuzzing, we use its proposed prompt engineering             collect code coverage statistics. For example, for the 11
+technique and extend it to support Zigbee message format               devices from 8 vendors, only the Z-Stack from Texas Instru-
+construction and fuzzing.                                              ments is open-sourced. As a result, we use our simulation
+    LLM usage. In our experiment, we use chatGPT-3.5                   end device built with Z-Stack (Section 5.1) as the target
+
+
+                                                                 889
+                           TABLE 2: Evaluation results of message coverage and identiﬁed vulnerabilities
+     Device                LLMIF                             Z-Fuzzer                       BooFuzz                        BeeHive                        chatAFL
+      ID       Cluster       Message      Vul.    Cluster      Message    Vul.   Cluster      Message    Vul.   Cluster     Message     Vul.   Cluster      Message    Vul.
+      D1      18(100.0%)    147(100.0%)    5      1(5.6%)     15(10.2%)    3     1(5.6%)     15(10.2%)    2     1(5.6%)     22(15.0%)    0     3(16.7%)    15(10.2%)    0
+      D2      6(100.0%)     55(100.0%)     2      1(16.7%)    15(27.3%)    0     1(16.7%)    15(27.3%)    0     1(16.7%)    22(40.0%)    0     3(50.0%)    15(27.3%)    0
+      D3      5(100.0%)     39(100.0%)     0      1(20.0%)    15(38.5%)    0     1(20.0%)    15(38.5%)    0     1(20.0%)    22(56.4%)    0     1(20.0%)    6(15.4%)     0
+      D4      9(100.0%)     70(100.0%)     1      1(11.1%)    15(21.4%)    0     1(11.1%)    15(21.4%)    0     1(11.1%)    22(31.4%)    0     3(33.3%)    15(21.4%)    0
+      D5      6(100.0%)     41(100.0%)     0      1(16.7%)    15(36.6%)    0     1(16.7%)    15(36.6%)    0     1(16.7%)    22(53.7%)    0     3(50.0%)    15(36.6%)    0
+      D6      3(100.0%)     26(100.0%)     0      1(33.3%)    15(57.7%)    0     1(33.3%)    15(57.7%)    0     1(33.3%)    22(84.6%)    0     0(0.0%)      0(0.0%)     0
+      D7      6(100.0%)     41(100.0%)     2      1(16.7%)    15(36.6%)    0     1(16.7%)    15(36.6%)    0     1(16.6%)    22(53.7%)    0     3(50.0%)    15(36.6%)    1
+      D8      7(100.0%)     51(100.0%)     0      1(14.3%)    15(29.4%)    0     1(14.3%)    15(29.4%)    0     1(14.3%)    22(43.1%)    0     0(0.0%)      0(0.0%)     0
+      D9      6(100.0%)     52(100.0%)     0      1(16.7%)    15(28.9%)    0     1(16.7%)    15(28.9%)    0     1(16.7%)    22(42.3%)    0     0(0.0%)      0(0.0%)     0
+      D10     7(100.0%)     55(100.0%)     0      1(14.3%)    15(27.3%)    0     1(14.3%)    15(27.3%)    0     1(14.3%)    22(40.0%)    0     3(42.9%)    15(27.3%)    0
+      D11     9(100.0%)     67(100.0%)     1      1(11.1%)    15(22.4%)    0     1(11.1%)    15(22.4%)    0     1(11.1%)    22(32.8%)    0     3(33.3%)    15(22.4%)    0
+    Summary    100.0%         100.0%      11       16.0%        30.6%      3      16.0%       30.6%       2      16.0%       44.8%       0      26.9%        17.9%      1
+
+
+
+
+                                                                                           LLMIF outperforms existing Zigbee fuzzers in terms of
+                                                                                           message coverage and code coverage. Compared with the
+                                                                                           best baseline fuzzing tool, LLMIF improves the message
+                                                                                           coverage, edge coverage, and statement coverage by 55.2%,
+                                                                                           52.0%, and 53.9%, respectively.
+                                                                                               In particular, compared with chatAFL that purely relies
+                                                                                           on the general-purpose LLM’s knowledge base to guide IoT
+                                                                                           fuzzing, LLMIF improves the message coverage, edge cov-
+                                                                                           erage, and statement coverage by 82.1%, 67.4%, and 64.1%.
+       (a) Edge coverage                       (b) Statement coverage                      The coverage improvement shows the insufﬁciency of the
+               Figure 7: Coverage comparison                                               general-purpose LLM for fuzzing IoT protocol stacks, and
+                                                                                           the advantage of our proposed LLM augmentation method
+                                                                                           and our fuzzing algorithm.
+device for code coverage analysis. Speciﬁcally, we use the
+commonly used metric statement coverage (the number of                                     5.3. Ablation Study
+covered lines of codes), and edge coverage (the number of
+covered code branches) for comparison. We ﬁrst statically                                      LLMIF uses the augmented LLM to extract diverse
+analyzed 15 source ﬁles that implement the Zigbee cluster                                  protocol information for enhancing various fuzzing stages.
+functionality to build the ground truth, e.g., “zcl lighting.c”.                           To evaluate the contribution of the extracted information, we
+As a result, a total of 1,665 edges and 3,147 statements are                               conducted an ablation study. For this purpose, we developed
+identiﬁed. Then for each Zigbee fuzzing tool, we generate                                  four variants of LLMIF.
+20,000 testing cases and calculate the cumulative rates of
+                                                                                               •      V 1: LLMIF with only message formats for seed
+statement coverage and edge coverage. The evaluation result
+                                                                                                      generation.
+is shown in Figure 7a and Figure 7b. Finally, we calculate
+                                                                                               •      V 2: V 1 plus the knowledge of interesting values for
+the coverage improvement by subtracting LLMIF’s coverage
+                                                                                                      seed generation.
+with the best coverage among baselines. Take statement
+                                                                                               •      V 3: V 2 plus the knowledge of the message header
+coverage as an example. Given the total number of 3,147
+                                                                                                      for initial seed generation and mutation.
+statements, the best fuzzer (Z-Fuzzer) covers 797 statements
+                                                                                               •      V 4: V 3 plus the knowledge of message depen-
+while our method covers 2,493. As a result, the improvement
+                                                                                                      dencies for initial seed generation, mutation, and
+is calculated as (2493-797)/3147 = 53.9%. The same applies
+                                                                                                      interesting case enrichment.
+for the calculation of message coverage.
+    Compared with the baseline method, LLMIF improves                                      Table 3 shows the results in terms of edge and statement
+the edge coverage by 52.0% and 53.9% statement cov-                                        coverage. Speciﬁcally, we use V 1 as the baseline and eval-
+erage, respectively, which shows the out-performance of                                    uate the improvement of the three LLMIF variants using
+our method. Generally speaking, the low message coverage                                   four metrics: Edge coverage, statement coverage, speed-up
+results in low code coverage. One exception is B EE H IVE.                                 (how fast the variant can reach the baseline’s edge coverage),
+While it supports more message types than that of Z-                                       and probability (the probability of the variant’s coverage
+F UZZER, it achieves low code coverage due to its insufﬁ-                                  outperformance over ten rounds).
+cient mutation strategies, i.e., only mutating two ﬁelds “At-                                  The result shows that all of the extracted protocol in-
+tributeID” and “AttributeDataTYpe” with a limited number                                   formation plays critical roles in terms of coverage improve-
+of interesting values.                                                                     ment. Speciﬁcally, when compared with V 2, we evaluate
+    Answer to Q1: The experimental result shows that                                       the impact of the extracted interesting values. With 8.61%
+
+
+                                                                                   890
+TABLE 3: Coverage improvement by protocol knowledge                   the baseline tools only identiﬁed one zero-day vulnerability.
+    LLMIF         Edge     Statement   Speed-up   Probability         All of the zero-day vulnerabilities have been reported with
+    variant     coverage    coverage                                  ﬁve of them being conﬁrmed and three of them under
+      V1         1009        1846        1.00        1.00             review. The summary of these vulnerabilities is summarized
+      V2        +8.61%      +7.31%      4.23x        1.00             in Table 4, and below we provide their details.
+      V3        +25.95%    +22.98%      7.55x        1.00
+                                                                           Vulnerability 1, 2, and 3. LLMIF successfully iden-
+                                                                      tiﬁes three previously known vulnerabilities (CVE-2020-
+      V4        +35.77%    +35.73%      15.08x       1.00
+                                                                      27890, CVE-2020-27891, CVE-2020-27892) on device D1.
+                                                                      Speciﬁcally, by generating messages with malformed mes-
+                                                                      sage payloads, the fuzzer triggers the device to incorrectly
+edge coverage and 7.31% code coverage improvement, we                 allocate memory and eventually causes the crash. For the
+show that testing cases with interesting values effectively           baseline, Z-F UZZER successfully identiﬁed all of them,
+explore the protocol stack, especially the error handling             while B OO F UZZ missed CVE-2020-27890. Compared with
+logic and the device functioning logic. For example, with             them, we ﬁnd different message types which can trigger the
+the LLM-extracted step mode values 0x01 and 0x03, the                 vulnerabilities. For example, we show that besides the Read
+fuzzer can generate meaningful Step Saturation messages,              Reporting Conﬁguration Response message, one can also
+which explore the functioning logic to increase and decrease          use the Write Attributes Response message to trigger the
+the values of the saturation property, respectively.                  vulnerability.
+    By comparing V 2 with V 3, we evaluate the impact of                   Vulnerability 4 and 5. We further discovered two pre-
+the knowledge of message formats and message headers.                 viously unknown vulnerabilities on the device D1. Speciﬁ-
+The result shows that they improve the edge coverage and              cally, these two vulnerabilities are triggered when the Dis-
+statement coverage by 17.35% and 15.67%. The knowledge                able Default Response bit in the header is set to 0, i.e., the
+beneﬁts the mutation process in two folds. On the one hand,           response is required. As a result, the device crashes after it
+our mutation operators maintain the message formats of                generates the response and prepares to transmit it. Moreover,
+the generated testing cases, and therefore they successfully          no baseline fuzzers identiﬁed these two vulnerabilities be-
+pass the format checking and avoid being ﬁltered. On the              cause they neither know the corresponding message format
+other hand, these operators mutate critical bits and bytes            nor the header bit.
+and create a large number of testing cases that are rare                   Vulnerability 6 and 7. We discovered two vulnera-
+in legitimate scenarios, e.g., cluster messages with inverse          bilities on the device D2, which relate to the AddScene
+direction bits.                                                       and EnhanceAddScene messages. Speciﬁcally, both of these
+    Finally, we compare V 3 with V 4 to evaluate the im-              two messages’ payloads contain a string ﬁeld ”SceneName”.
+pact of the message dependencies. As a result, the edge               With our type-aware mutation operators, in particular, sus-
+coverage and statement coverage are improved by 9.82%                 picious length, LLMIF changed the ﬁrst byte which denotes
+and 12.75%, respectively. The improvement lies in the fact            the string length to a large value. As a result, when the target
+that many code branches condition on device properties,               device parses the length byte, it triggers byte overﬂow, and
+and the generated testing cases can explore these branches            the device crashes. No baseline methods identiﬁed these two
+by resolving message dependencies and updating device                 vulnerabilities because they missed the message format.
+properties before branching. For example, the Get Group                    Vulnerability 8. We discover a vulnerability on devices
+Membership message execution will examine the group                   D4 and D11, which is triggered by a message sequence.
+entry in the group table only if the group size is larger             Speciﬁcally, the device ﬁrst accepts an AddGroup message
+than zero. By resolving the message dependency between                with a dangerous ﬁeld value: GroupID=0x0000. This mes-
+the Add Group message and the Get Group Member-                       sage puts the device in a dangerous state. Then our fuzzer
+ship message, a testing case with the message sequence                extends the testing case with a GetGroupMembership, which
+[Add Group, Get Group Membership] can effectively acti-               is used for querying the group list with a ﬁeld named
+vate the branch for entry examination.                                “GroupCount”. We ﬁnd that the GroupCount ﬁeld can ar-
+    Answer to Q2: The extracted protocol information                  bitrarily control the length of the returned group list. For
+empowers the fuzzing tool for seed generation, mutation,              example, if groupCount ﬁeld equals 3, the target device will
+and interesting case enrichment, which increases the code             return 6 bytes representing three GroupIDs. Surprisingly, all
+coverage by 8.61%, 17.34%, and 9.82%, respectively.                   the returned GroupIDs are 0x0000. As a result, by setting the
+                                                                      GroupCount ﬁeld to a relatively large number, e.g., 0xA0,
+5.4. Real-world Bugs                                                  the target device tries to return a long group list, and a large
+                                                                      number of bytes overﬂows the transmission buffer, which
+    We evaluate the effectiveness of vulnerability identiﬁ-           crashes the device. No baseline fuzzers identiﬁed the vul-
+cation. For each device under testing, we fuzz it for 24              nerability because of the lack of knowledge about dangerous
+hours and examine the collected crashing cases. The result            ﬁeld values and message dependency relationships.
+is shown in Table 2. Speciﬁcally, LLMIF successfully re-                   Vulnerability 9. This vulnerability exists on the de-
+ports 11 vulnerabilities on ﬁve devices, which include three          vice D7. Speciﬁcally, the message payload has two ﬁelds:
+previously known and eight zero-day vulnerabilities, while            GroupCount (uint8) and GroupList (Array[uint16]). When
+
+
+                                                                891
+                                       TABLE 4: Case studies of discovered vulnerabilities
+         Vulnerability   Device            Vulnerable Message                        Cause                  Security               Status
+              ID          ID                   Sequences                                                     Issue
+              1            D1         [DiscoverCommandsResponse]           Field removal mutation       Device crashed         CVE-2020-27892
+              2            D1           [WriteAttributesResponse],         Field removal mutation       Device crashed         CVE-2020-27891
+                                   [ReadReportingConﬁgurationResponse]
+              3            D1          [WriteAttributesNoResponse]         Field removal mutation    Attribute update failed   CVE-2020-27890
+              4            D1           [WriteAttributesUndivided]         Header-aware mutation        Device crashed          Under review
+              5            D1            [PowerProﬁleRequest],             Header-aware mutation        Device crashed          Under review
+                                        [WriteAttributesResponse]
+              6            D2                  [AddScene]                      Type-aware mutation      Device crashed           Conﬁrmed
+              7            D2              [EnhanceAddScene]                   Type-aware mutation      Device crashed           Conﬁrmed
+              8          D4, D11    [AddGroup, GetGroupMembership]         Interesting ﬁeld value,      Device crashed           Conﬁrmed
+                                                                            message dependency
+              9            D7            [GetGroupMembership]                  Type-aware mutation      Device crashed           Conﬁrmed
+              10           D7            [Non-existing command]            Header-aware mutation        Device bricked          Under review
+
+
+
+GroupCount is larger than the number of GroupID in the list,                   about the device response and guides the phase of testing
+the device crashes. By applying the extreme-value mutation                     case prioritization. Compared with chatAFL that uses the
+operators on the GroupCount ﬁeld, our fuzzer successfully                      LLM to guide only two phases (seed mutation and testing
+triggered the vulnerability. CHATAFL also reported this                        case enrichment), LLMIF achieves a broader (four) phase
+vulnerability.                                                                 coverage, and results in a signiﬁcant improvement for the
+    Vulnerability 10. Finally, we discovered a vulnerability                   code coverage (Section 5.3).
+on the device D7, which is triggered by a message with                         LLMIF’s generality for other IoT protocols. In this paper,
+a malformed header. Speciﬁcally, by mutating the message                       we mainly use Zigbee as the target protocol. However,
+identiﬁer ﬁeld in the header with a non-existing message                       LLMIF can be extended to fuzz IoT protocols beyond
+identiﬁer 0x13, the device stopped working. Even worse, it                     Zigbee. Speciﬁcally, users only need to take two steps,
+becomes bricked and does not work anymore, even when                           i.e., update the input speciﬁcation and replace the hardware
+we push the factory reset button and recycle the power.                        radio. To demonstrate LLMIF’s generality, we target the Z-
+No baselines report the vulnerability due to the lack of                       Wave protocol and design a case study. More details can be
+knowledge about the message header.                                            found in our complementary materials [15].
+    Answer to Q3: LLMIF is effective in vulnerability iden-                         Update the input speciﬁcation. LLMIF relies on the pro-
+tiﬁcation, which reveals three previously known and eight                      tocol speciﬁcation to augment the LLM and extract critical
+previously unknown vulnerabilities, respectively. Among the                    message information. As a result, users need to provide as
+eight previously unknown vulnerabilities, seven of them                        inputs the speciﬁcation that details the messages of the pro-
+(87.5%) are not reported by the baseline fuzzers.                              tocol under fuzzing, e.g., Z-Wave Command Classes [43].
+                                                                               With our document slicing and the background-augmented
+6. Discussions                                                                 prompting methods (Section 3.2), LLMIF will extract the
+                                                                               precise protocol information (e.g., message format and mes-
+LLM for network protocol fuzzing. chatAFL [6] is the                           sage dependency), and use them to guide the fuzzing round.
+ﬁrst work which uses the LLM to fuzz network protocols.                             Replace the hardware radio. To fuzz the real-world
+However, with the same general-purpose LLMs (e.g., chat-                       device with a speciﬁc IoT protocol, a hardware radio is
+GPT 3.5), LLMIF outperforms chatAFL in terms of code                           necessary for transmitting the testing case and receiving
+coverage and bug identiﬁcation for the following reasons.                      the response within a speciﬁc wireless channel. Users need
+     (1) Speciﬁcation-augmented prompting for driving                          to prepare the corresponding hardware (e.g., CC2530 for
+LLMs. LLMIF uses the background-augmented prompting                            Zigbee), download the commercial protocol stack (e.g., Z-
+method (Section 3.2) which drives the general-purpose LLM                      Stack), and implement the driver that interacts with LLMIF.
+to analyze speciﬁcation contents. Compared with chatAFL                        The implementation of the driver depends on the develop-
+that directly drives the general-purpose LLM by the few-                       ment environment of the commercial protocol stack, and
+shot learning prompting method, LLMIF successfully aids                        our implemented driver for Z-Stack provides an example
+the issue of LLM’s insufﬁcient domain knowledge, and                           (Section 4.6).
+achievese precise protocol information extraction.
+     (2) Advanced fuzzing algorithms for guiding various                       7. Related Work
+fuzzing phases. LLMIF utilizes the output of the LLM
+(i.e., extracted protocol information) to guide the phases                         Format-aware IoT fuzzing. Format-aware fuzzing tools
+of seed generation, seed mutation, and testing case en-                        generate messages based on the well-formed message tem-
+richment. Moreover, LLMIF leverages the LLM to reason                          plate [3], [4], [5], [10], [42], [44]. Speciﬁcally, [42] proposes
+
+
+                                                                         892
+a network protocol fuzzing framework BooFuzz. Taking                    feeds the LLM with speciﬁcation contents, and the evalua-
+the message format description and the interesting value                tion result shows that the augmented LLM can effectively
+collection as inputs, the tool automates the testing case gen-          guide various fuzzing phases.
+eration, monitors the target’s status, and records suspicious                Augmented language model. LLMs by default possess
+cases. [4] bases on BooFuzz and designs a fuzzing tool                  general knowledge across a wide range of topics. How-
+Z-Fuzzer, which aims at fuzzing Zigbee protocol and uses                ever, [24], [25] show that LLMs may not obtain enough
+code coverage as feedback to guide the fuzzing process. [5]             knowledge for speciﬁc domains. The reasons are various,
+manually extracts 22 cluster message formats and interesting            e.g., knowledge bias exists that more popular or widely-
+ﬁeld values (e.g., attribute ID) from the speciﬁcation and de-          discussed topics, e.g., python programming, maybe over-
+velops BeeHive, which generates testing cases to enumerate              represented, while very domain-speciﬁc topics, e.g., Zigbee
+these messages and ﬁeld values. [10] relies on the message              protocol, can usually be under-represented. As a result, a
+formats recorded in the open-source protocol library to                 series of works are proposed to augment the language model
+generate testing cases. All of them require signiﬁcant human            with domain knowledge [31], [32], [49], [50], [51], [52].
+efforts to construct and maintain the message formats, which            Speciﬁcally, [31], [32], [49] employ a neural retriever to
+are labor-intensive and error-prone. [3], [44] proposes to use          acquire task-relevant information from a knowledge base,
+phone apps and APIs that control the device through the                 e.g., Wikipedia, and ﬁne-tune the language model. [50],
+vendor platform to construct the message formats. However,              [51], [52], on the other hand, teach the LLMs to call domain
+they mainly focus on inferring the platform-level message               tools for answer generation, e.g., writing SQL to query
+format (e.g., Restful API messages), which only covers a                from the database. Our work follows the former paradigm,
+small fraction of the message formats of the underlying                 i.e., retrieving domain knowledge and enhancing the LLM.
+protocol that is directly used by the device, e.g., Zigbee.             Different from previous works, we use document analysis
+     Compared with the work mentioned above, we propose                 to retrieve domain knowledge instead of training neural
+to utilize the LLM to address the main challenge of format-             networks. Moreover, we use prompt engineering to feed the
+aware IoT fuzzing. With only the speciﬁcation document                  LLM which gets rid of the ﬁne-tuning cost.
+as input, our method automatically constructs the message
+format with high accuracy while avoiding signiﬁcant hu-
+man efforts. Besides the knowledge of message formats,                  8. Conclusion
+our method also extracts useful protocol information, e.g.,
+interesting values and message dependencies, which beneﬁts
+the fuzzing process and is omitted by previous works. In                    Fuzzing the IoT protocol(e.g., Zigbee) faces critical chal-
+particular, our evaluation covers most Zigbee fuzzers [4],              lenges including obfuscated message formats, unresolved
+[5], [42], and the evaluation result shows that our method              message dependencies, and lack of testing case evalua-
+outperforms them in terms of code coverage and vulnera-                 tion. In this paper, we show that the protocol speciﬁcation
+bility identiﬁcation. Since some fuzzers [10] are not open-             contains fruitful message descriptions, which can be used
+source, we cannot evaluate their performance.                           to address the limitations and guide the fuzzing process.
+     LLM-guided fuzzing. Impressed by the remarkable suc-               To automate speciﬁcation analysis, we further augment the
+cess of the LLM in various natural language processing                  large language model with the speciﬁcation contents and
+tasks, researchers have been exploring the LLM’s potential              drive it to answer protocol-related questions. Finally, we
+in diverse domains, including in fuzzing [6], [45], [46], [47],         propose a fuzzing algorithm LLMIF, which incorporates the
+[48]. Speciﬁcally, [45] proposes CODAMOSA which uses                    augmented LLM into Zigbee fuzzing. The evaluation result
+LLMs to automatically generate testing cases for fuzzing                shows that guided by the LLM, our method increases the
+Python modules. [46] uses LLMs to generate testing cases                message coverage by 55.2% and achieves a 53.9% boost in
+for fuzzing deep-learning software libraries. [48] proposes             code coverage. Moreover, LLMIF reveals 11 vulnerabilities
+Fuzz4All which takes example codes as inputs and generates              on real-world Zigbee devices(including eight zero-day vul-
+slightly different code snippets as testing cases. Instead of           nerabilities), while the baseline tools only discovered one
+asking the LLM to directly generate testing cases, chat-                zero-day vulnerability.
+Fuzz [47] asks the LLM to modify human-written testing
+cases for mutation purposes. The most related work to our               Acknowledgments
+paper is chatAFL [6], which uses the LLM to fuzz network
+protocols. By exploiting the LLM’s understanding of the
+target protocol, chatAFL asks the LLM to construct mes-                    We thank the anonymous (meta) reviewers and shep-
+sage formats and enrich seeds. All of the mentioned LLM-                herds for their valuable comments and instructions. This
+guided fuzzers are built on the assumption that the LLM                 work is partly supported by HKPolyU Grant (ZVG0), Hong
+has sufﬁcient domain knowledge, e.g., Python grammar and                Kong RGC TRS No. T43-513/23-N, Hong Kong ITF project
+protocol details, such that they can be easily adapted to the           (ITS/359/21FP), National Natural Science Foundation of
+fuzzing task. Instead, our work initiates a case study for              China (No. 62202406), Natural Science Research Start-up
+Zigbee fuzzing to show that the assumption does not hold.               Foundation of Recruiting Talents of Nanjing University of
+Moreover, we propose an LLM augmentation approach that                  Posts and Telecommunications (Grant No. NY223164).
+
+
+                                                                  893
+References                                                                           [19] K. Mao, Z. Dou, H. Chen, F. Mo, and H. Qian, “Large language
+                                                                                          models know your contextual search intent: A prompting framework
+[1]   C. Berger, P. Eichhammer, H. P. Reiser, J. Domaschka, F. J. Hauck,                  for conversational search,” arXiv preprint arXiv:2303.06573, 2023.
+      and G. Habiger, “A survey on resilience in the iot: Taxonomy, classi-          [20] B. Lamichhane, “Evaluation of chatgpt for nlp-based mental health
+      ﬁcation, and discussion of resilience mechanisms,” ACM Computing                    applications,” arXiv preprint arXiv:2303.15727, 2023.
+      Surveys (CSUR), vol. 54, no. 7, pp. 1–39, 2021.
+                                                                                     [21] Z. Wang, F. Yang, P. Zhao, L. Wang, J. Zhang, M. Garg, Q. Lin,
+[2]   J. Wang, Z. Li, M. Sun, B. Yuan, and J. C. Lui, “Iot anomaly detection
+                                                                                          and D. Zhang, “Empower large language model to perform better
+      via device interaction graph,” in 2023 53rd Annual IEEE/IFIP Inter-
+                                                                                          on industrial domain-speciﬁc question answering,” arXiv preprint
+      national Conference on Dependable Systems and Networks (DSN).
+                                                                                          arXiv:2305.11541, 2023.
+      IEEE, 2023, pp. 494–507.
+[3]   X. Feng, R. Sun, X. Zhu, M. Xue, S. Wen, D. Liu, S. Nepal, and                 [22] G. Deng, Y. Liu, V. Mayoral-Vilches, P. Liu, Y. Li, Y. Xu, T. Zhang,
+      Y. Xiang, “Snipuzz: Black-box fuzzing of iot ﬁrmware via message                    Y. Liu, M. Pinzger, and S. Rass, “Pentestgpt: An llm-empowered
+      snippet inference,” in Proceedings of the 2021 ACM SIGSAC Confer-                   automatic penetration testing tool,” arXiv preprint arXiv:2308.06782,
+      ence on Computer and Communications Security, 2021, pp. 337–350.                    2023.
+[4]   M. Ren, X. Ren, H. Feng, J. Ming, and Y. Lei, “Z-fuzzer: device-               [23] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal,
+      agnostic fuzzing of zigbee protocol implementation,” in Proceedings                 A. Neelakantan, P. Shyam, G. Sastry, A. Askell et al., “Language
+      of the 14th ACM Conference on Security and Privacy in Wireless and                  models are few-shot learners,” Advances in neural information pro-
+      Mobile Networks, 2021, pp. 347–358.                                                 cessing systems, vol. 33, pp. 1877–1901, 2020.
+[5]   X. Wang and S. Hao, “Don’t kick over the beehive: Attacks and                  [24] X. ZHAO, J. LU, C. DENG, C. ZHENG, J. WANG, T. CHOWD-
+      security analysis on zigbee,” in Proceedings of the 2022 ACM SIGSAC                 HURY, L. YUN, H. CUI, Z. XUCHAO, T. ZHAO et al., “Domain
+      Conference on Computer and Communications Security, 2022, pp.                       specialization as the key to make large language models disruptive:
+      2857–2870.                                                                          A comprehensive survey,” arXiv preprint arXiv:2305.18703, 2023.
+[6]   R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large                    [25] Z. Luo, C. Xu, P. Zhao, X. Geng, C. Tao, J. Ma, Q. Lin, and D. Jiang,
+      language model guided protocol fuzzing,” in Proceedings of the 31st                 “Augmented large language models with parametric knowledge guid-
+      Annual Network and Distributed System Security Symposium (NDSS),                    ing,” arXiv preprint arXiv:2305.04757, 2023.
+      2024.
+[7]   V.-T. Pham, M. Böhme, and A. Roychoudhury, “Aﬂnet: a greybox                  [26] openAI, “ChatGPT,” https://openai.com/chatgpt, 2023.
+      fuzzer for network protocols,” in 2020 IEEE 13th International                 [27] Meta, “LLama 2 - Meta AI,” https://ai.meta.com/llama/, 2023.
+      Conference on Software Testing, Validation and Veriﬁcation (ICST).
+      IEEE, 2020, pp. 460–465.                                                       [28] Google, “AI ACROSS GOOGLE: PaLM 2,” https://ai.google/
+                                                                                          discover/palm2/, 2023.
+[8]   J. Yun, F. Rustamov, J. Kim, and Y. Shin, “Fuzzing of embedded
+      systems: A survey,” ACM Computing Surveys, vol. 55, no. 7, pp.                 [29] Anthropic, “Meet Claude,” https://www.anthropic.com/product, 2023.
+      1–33, 2022.
+                                                                                     [30] G. Izacard and É. Grave, “Leveraging passage retrieval with genera-
+[9]   C. Zhang, Y. Li, H. Chen, X. Luo, M. Li, A. Q. Nguyen, and Y. Liu,                  tive models for open domain question answering,” in Proceedings of
+      “Biff: Practical binary fuzzing framework for programs of iot and                   the 16th Conference of the European Chapter of the Association for
+      mobile devices,” in 2021 36th IEEE/ACM International Conference                     Computational Linguistics: Main Volume, 2021, pp. 874–880.
+      on Automated Software Engineering (ASE). IEEE, 2021, pp. 1161–
+      1165.                                                                          [31] S. Borgeaud, A. Mensch, J. Hoffmann, T. Cai, E. Rutherford, K. Mil-
+                                                                                          lican, G. B. Van Den Driessche, J.-B. Lespiau, B. Damoc, A. Clark
+[10] X. Ma, Q. Zeng, H. Chi, and L. Luo, “No more companion apps
+                                                                                          et al., “Improving language models by retrieving from trillions of
+     hacking but one dongle: Hub-based blackbox fuzzing of iot ﬁrmware,”
+                                                                                          tokens,” in International conference on machine learning. PMLR,
+     in Proceedings of the 21st Annual International Conference on Mobile
+                                                                                          2022, pp. 2206–2240.
+     Systems, Applications and Services, 2023, pp. 205–218.
+[11] X. Zhu, S. Wen, S. Camtepe, and Y. Xiang, “Fuzzing: a survey for                [32] D. Singh, S. Reddy, W. Hamilton, C. Dyer, and D. Yogatama, “End-
+     roadmap,” ACM Computing Surveys (CSUR), vol. 54, no. 11s, pp.                        to-end training of multi-document reader and retriever for open-
+     1–36, 2022.                                                                          domain question answering,” Advances in Neural Information Pro-
+                                                                                          cessing Systems, vol. 34, pp. 25 968–25 981, 2021.
+[12] J. Patra and M. Pradel, “Learning to fuzz: Application-independent
+     fuzz testing with probabilistic, generative models of input data,” TU           [33] L. Dong, N. Yang, W. Wang, F. Wei, X. Liu, Y. Wang, J. Gao,
+     Darmstadt, Department of Computer Science, Tech. Rep. TUD-CS-                        M. Zhou, and H.-W. Hon, “Uniﬁed language model pre-training for
+     2016-14664, 2016.                                                                    natural language understanding and generation,” Advances in neural
+                                                                                          information processing systems, vol. 32, 2019.
+[13] J. Wang, Z. Li, M. Sun, and J. C. Lui, “Zigbee’s network rejoin
+     procedure for iot systems: vulnerabilities and implications,” in Pro-           [34] M. Lewis, Y. Liu, N. Goyal, M. Ghazvininejad, A. Mohamed,
+     ceedings of the 25th International Symposium on Research in Attacks,                 O. Levy, V. Stoyanov, and L. Zettlemoyer, “Bart: Denoising sequence-
+     Intrusions and Defenses, 2022, pp. 292–307.                                          to-sequence pre-training for natural language generation, translation,
+[14] D. Gislason, Zigbee wireless networking.     Newnes, 2008.                           and comprehension,” in Proceedings of the 58th Annual Meeting of
+                                                                                          the Association for Computational Linguistics, 2020, pp. 7871–7880.
+[15] “LLMIF,” https://github.com/wang70880/LLMIF, 2024.
+[16] Z. Alliance, “Zigbee Cluster Speciﬁcation,” https://zigbeealliance.org/         [35] E. J. Hu, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, W. Chen
+     wp-content/uploads/2021/10/07-5123-08-Zigbee-Cluster-Library.                        et al., “Lora: Low-rank adaptation of large language models,” in
+     pdf, 2021.                                                                           International Conference on Learning Representations, 2021.
+
+[17] Y. Liu, A. R. Fabbri, P. Liu, D. Radev, and A. Cohan, “On learning to           [36] N. Ding, Y. Qin, G. Yang, F. Wei, Z. Yang, Y. Su, S. Hu, Y. Chen,
+     summarize with large language models as references,” arXiv preprint                  C.-M. Chan, W. Chen et al., “Delta tuning: A comprehensive study of
+     arXiv:2305.14239, 2023.                                                              parameter efﬁcient methods for pre-trained language models,” arXiv
+                                                                                          preprint arXiv:2203.06904, 2022.
+[18] D. Van Veen, C. Van Uden, L. Blankemeier, J.-B. Delbrouck, A. Aali,
+     C. Bluethgen, A. Pareek, M. Polacin, W. Collins, N. Ahuja et al.,               [37] Y. Wang, Q. Yao, J. T. Kwok, and L. M. Ni, “Generalizing from a few
+     “Clinical text summarization: Adapting large language models can                     examples: A survey on few-shot learning,” ACM computing surveys
+     outperform human experts,” arXiv preprint arXiv:2309.07430, 2023.                    (csur), vol. 53, no. 3, pp. 1–34, 2020.
+
+
+
+                                                                               894
+[38] J. Wei, X. Wang, D. Schuurmans, M. Bosma, F. Xia, E. Chi, Q. V.               Appendix A.
+     Le, D. Zhou et al., “Chain-of-thought prompting elicits reasoning in
+     large language models,” Advances in Neural Information Processing             Meta-Review
+     Systems, vol. 35, pp. 24 824–24 837, 2022.
+                                                                                       The following meta-review was prepared by the program
+[39] R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large
+     language model guided protocol fuzzing.”                                      committee for the 2024 IEEE Symposium on Security and
+                                                                                   Privacy (S&P) as part of the review process as detailed in
+[40] P. Godefroid, A. Kiezun, and M. Y. Levin, “Grammar-based whitebox
+     fuzzing,” in Proceedings of the 29th ACM SIGPLAN conference on                the call for papers.
+     programming language design and implementation, 2008, pp. 206–
+     215.                                                                          A.1. Summary
+[41] T. Instruments, “A fully compliant ZigBee 3.x solution: Z-Stack,”
+     https://www.ti.com/tool/Z-STACK, 2017.                                            The research work introduces a new IoT fuzzing ap-
+[42] J. Pereyda, “boofuzz documentation,” THIS REFERENCE STILL                     proach that leverages protocol speciﬁcations to create more
+     NEEDS TO BE FIXED, 2019.                                                      effective test cases. By using a large language model to ana-
+[43] Z.-W. Alliance, “Z-Wave Speciﬁcations,” https://z-wavealliance.org/           lyze speciﬁcations, the method improves code and message
+     development-resources-overview/speciﬁcation-for-developers/, 2023.            coverage, leading to the discovery of zero-day vulnerabilities
+[44] J. Chen, W. Diao, Q. Zhao, C. Zuo, Z. Lin, X. Wang, W. C. Lau,                in Zigbee implementations.
+     M. Sun, R. Yang, and K. Zhang, “Iotfuzzer: Discovering memory
+     corruptions in iot through app-based fuzzing.” in NDSS, 2018.                 A.2. Scientiﬁc Contributions
+[45] C. Lemieux, J. P. Inala, S. K. Lahiri, and S. Sen, “Codamosa:
+     Escaping coverage plateaus in test generation with pre-trained large             •    Provides a Valuable Step Forward in an Established
+     language models,” in International conference on software engineer-                   Field
+     ing (ICSE), 2023.
+                                                                                      •    Creates a New Tool to Enable Future Science
+[46] Y. Deng, C. S. Xia, H. Peng, C. Yang, and L. Zhang, “Large language              •    Identiﬁes an Impactful Vulnerability
+     models are zero-shot fuzzers: Fuzzing deep-learning libraries via
+     large language models,” in Proceedings of the 32nd ACM SIGSOFT
+     international symposium on software testing and analysis, 2023, pp.           A.3. Reasons for Acceptance
+     423–435.
+[47] J. Hu, Q. Zhang, and H. Yin, “Augmenting greybox fuzzing with                    1)    LLMIF tackles various stages of fuzzing, leading
+     generative ai,” arXiv preprint arXiv:2306.06782, 2023.                                 to more thorough testing and vulnerability discov-
+[48] C. S. Xia, M. Paltenghi, J. L. Tian, M. Pradel, and L. Zhang,                          ery. Compared to traditional approaches, LLMIF
+     “Universal fuzzing via large language models,” arXiv preprint                          achieves over 50% improvement in code and mes-
+     arXiv:2308.04748, 2023.                                                                sage coverage, making it more likely to uncover
+[49] Q. Liu, D. Yogatama, and P. Blunsom, “Relational memory-                               hidden bugs.
+     augmented language models,” Transactions of the Association for                  2)    In real-world testing on Zigbee devices, LLMIF
+     Computational Linguistics, vol. 10, pp. 555–572, 2022.                                 successfully identiﬁed four zero-day vulnerabilities,
+[50] M. Komeili, K. Shuster, and J. Weston, “Internet-augmented dialogue                    highlighting its effectiveness in uncovering critical
+     generation,” in Proceedings of the 60th Annual Meeting of the Associ-                  security issues.
+     ation for Computational Linguistics (Volume 1: Long Papers), 2022,
+     pp. 8460–8478.                                                                   3)    The impressive results of LLMIF showcase its
+                                                                                            potential as a powerful tool for securing Zigbee
+[51] Z. Cheng, T. Xie, P. Shi, C. Li, R. Nadkarni, Y. Hu, C. Xiong,
+     D. Radev, M. Ostendorf, L. Zettlemoyer et al., “Binding language                       devices. With its ability to achieve wider code cov-
+     models in symbolic languages,” in The Eleventh International Con-                      erage and identify critical vulnerabilities, LLMIF
+     ference on Learning Representations, 2022.                                             paves the way for more robust and secure Zigbee
+[52] J. Li, B. Hui, G. Qu, B. Li, J. Yang, B. Li, B. Wang, B. Qin, R. Cao,                  implementations.
+     R. Geng et al., “Can llm already serve as a database interface? a big
+     bench for large-scale database grounded text-to-sqls,” arXiv preprint         A.4. Noteworthy Concerns
+     arXiv:2305.03111, 2023.
+                                                                                      1)    The paper lacks discussion of LLMIF’s novelty
+                                                                                            compared with chatAFL.
+                                                                                      2)    The paper lacks discussion of LLMIF’s generaliza-
+                                                                                            tion for fuzzing other IoT protocols.
+                                                                                      3)    The paper misses evaluation setup details (e.g., used
+                                                                                            LLM version) and evaluation results compared with
+                                                                                            chatAFL.
+
+                                                                                   Appendix B.
+                                                                                   Response to the Meta-Review
+                                                                                       We would like to express our great gratitude towards
+                                                                                   the efforts made by the (meta) reviewers and shepherds.
+
+
+                                                                             895
+We acknowledge the meta-review and have adhered to the
+provided instructions. Subsequently, we have implemented
+the following revisions to enhance our paper.
+    Clarify the novelty of LLMIF against chatAFL. We
+added a new section (Section 6) to discuss the novelty
+of LLMIF. In summary, We outline the novel aspects of
+LLMIF in comparison to chatAFL as follows. (LLMIF)
+Speciﬁcation-augmented prompting v.s. (chatAFL) Simple
+few-shot learning prompting. (LLMIF) Advanced fuzzing
+algorithm which uses the LLM to cover four fuzzing phases
+v.s. (chatAFL) Simple fuzzing algorithm which uses the
+LLM to cover two fuzzing phases.
+    Clarify the generalization of LLMIF for fuzzing
+other IoT protocols. We added a new section (Section 6)
+to discuss the generality of LLMIF. In summary, we show
+how to extend LLMIF for fuzzing other IoT protocols with
+two steps.
+   •   Users need to update the input protocol speciﬁcation.
+   •   Users need to replace the hardware radio.
+    The paper misses some evaluation results and setup
+details. We have updated the corresponding section (Section
+5.1) in our paper to add more details about the evaluation.
+In summary: We updated Section 5.1 to introduce the details
+of the LLM setup in our evaluation, including the used
+LLM (chatGPT-3.5) and the parameter setting (temperature
+= 0). We updated Section 5.2 to compare the code coverage
+result between LLMIF and chatAFL. Speciﬁcally, compared
+with chatAFL, LLMIF improves the message coverage, edge
+coverage, and statement coverage by 82.1%, 67.4%, and
+64.1%, respectively.
+
+
+
+
+                                                               896
+

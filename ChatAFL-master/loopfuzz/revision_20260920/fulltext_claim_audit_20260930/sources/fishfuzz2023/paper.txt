@@ -1,0 +1,1282 @@
+FishFuzz: Catch Deeper Bugs by Throwing Larger Nets
+   Han Zheng, National Computer Network Intrusion Protection Center, University of Chinese
+  Academy of Science; School of Computer and Communication Sciences, EPFL; Zhongguancun
+Laboratory; Jiayuan Zhang, National Computer Network Intrusion Protection Center, University
+ of Chinese Academy of Science; School of Computer and Communication, Lanzhou University of
+Technology; Yuhang Huang, National Computer Network Intrusion Protection Center, University
+of Chinese Academy of Science; Zezhong Ren, National Computer Network Intrusion Protection
+ Center, University of Chinese Academy of Science; Zhongguancun Laboratory; He Wang, School
+  of Cyber Engineering, Xidian University; Chunjie Cao, School of Cyberspace Security, Hainan
+University; Yuqing Zhang, National Computer Network Intrusion Protection Center, University of
+ Chinese Academy of Science; Zhongguancun Laboratory; School of Cyberspace Security, Hainan
+ University; School of Cyber Engineering, Xidian University; Flavio Toffalini and Mathias Payer,
+                     School of Computer and Communication Sciences, EPFL
+                https://www.usenix.org/conference/usenixsecurity23/presentation/zheng
+
+
+              This paper is included in the Proceedings of the
+                    32nd USENIX Security Symposium.
+                            August 9–11, 2023 • Anaheim, CA, USA
+                                         978-1-939133-37-3
+
+
+                                                  Open access to the Proceedings of the
+                                                   32nd USENIX Security Symposium
+                                                        is sponsored by USENIX.
+                    F ISH F UZZ: Catch Deeper Bugs by Throwing Larger Nets
+
+       Han Zheng1,2,6 , Jiayuan Zhang1,3 , Yuhang Huang1 , Zezhong Ren1,6 , He Wang4 , Chunjie Cao5 ,
+                          Yuqing Zhang1,6,5,4 , Flavio Toffalini2 and Mathias Payer2
+             1 National   Computer Network Intrusion Protection Center, University of Chinese Academy of Science
+                                     2 School of Computer and Communication Sciences, EPFL
+                           3 School of Computer and Communication, Lanzhou University of Technology
+                                           4 School of Cyber Engineering, Xidian University
+                                         5 School of Cyberspace Security, Hainan University
+                                                      6 Zhongguancun Laboratory
+
+
+                           Abstract                                    Successful greybox fuzzers balance two aspects: explo-
+   Fuzzers effectively explore programs to discover bugs.           ration and exploitation. During exploration, the main goal is
+Greybox fuzzers mutate seed inputs and observe their ex-            to increase coverage, i.e., creating new seeds that reach new
+ecution. Whenever a seed reaches new behavior (e.g., new            program areas [8, 31]. During exploitation, the main goal is to
+code or higher execution frequency), it is stored for further       trigger bugs by executing a piece of code with diverse inputs,
+mutation. Greybox fuzzers directly measure exploration and,         i.e., mutating existing seeds to trigger bugs in these already
+by repeating execution of the same targets with large amounts       covered program areas. Unfortunately, fuzzers have no direct
+of mutated seeds, passively exploit any lingering bugs. Di-         feedback for exploitation and assume that random mutations
+rected greybox fuzzers (DGFs) narrow the search to a few            will execute the same code sufficiently well. Directed Greybox
+code locations but so far generalize distance to all targets into   Fuzzers (DGF [3]) prioritize exploitation by directing explo-
+a single score and do not prioritize targets dynamically.           ration towards a specific code location (target), improving
+   F ISH F UZZ introduces an input prioritization strategy that     the likelihood to find bugs at that location [3, 5, 7, 21]. DGFs
+builds on three concepts: (i) a novel multi-distance metric         leverage the distance between seeds and targets to prioritize
+whose precision is independent of the number of targets, (ii)       inputs more likely to trigger errors.
+a dynamic target ranking to automatically discard exhausted            Recent DGFs try to balance exploitation and exploration
+targets, and (iii) a smart queue culling algorithm, based on        to automatically trigger bugs in larger sets of targets (on the
+hyperparameters, that alternates between exploration and ex-        order of thousands) [5, 7, 21, 32]. However, we observe two
+ploitation. F ISH F UZZ enables fuzzers to seamlessly scale         core limitations. First, they model the distance between seeds
+among thousands of targets and prioritize seeds toward inter-       and targets as a single harmonic average. This means that,
+esting locations, thus achieving more comprehensive program         regardless of the number of targets, they always collapse the
+testing. To demonstrate generality, we implement F ISH F UZZ        seed-target distance into a single scalar. Therefore, for large
+over two well-established greybox fuzzers (AFL and AFL++).          target sets, the distance results are distorted, and the fuzzer
+We evaluate F ISH F UZZ by leveraging all sanitizer labels as       loses precision. DGFs average the distance because tracing
+targets. In comparison to modern DGFs and state-of-the-art          each target individually (e.g., at the basic block level) results
+coverage guided fuzzers, F ISH F UZZ reaches higher coverage        in prohibitive overhead. Second, current works assign a time-
+compared to the direct competitors, finds up to 2.8x more           invariant priority to the targets. They use different techniques
+bugs compared with the baseline and reproduces 68.3% ex-            (e.g., static analysis, sanitizer labels) to infer error-prone tar-
+isting bugs faster. F ISH F UZZ also discovers 56 new bugs (38      gets ahead of time, i.e., before the beginning of the fuzzing
+CVEs) in 47 programs.                                               session. However, we observe that the priority of a target
+                                                                    changes during the fuzzing campaign and a fuzzer must ad-
+1   Introduction                                                    just its strategy as some targets may be easier to reach than
+                                                                    others. Targets that have been hit frequently are “well ex-
+Greybox fuzzing is an established automated program testing         plored” and therefore less likely to be buggy. Less explored
+technique aimed at finding bugs. Fuzzing is as simple as effec-     targets should therefore be prioritized to uncover new bugs.
+tive: execute the target program with inputs (seeds), observe       Therefore, a time-invariant priority might miss-classify the
+its behavior, and report observed crashes. The seed that trig-      importance of a code location and waste computing resources.
+gered the crash allows reproduction of the crash later during          Observing these challenges, we propose F ISH F UZZ that (i)
+debugging. This effectiveness resulted in considerable interest     estimates a more precise distance between seeds and targets,
+in more sophisticated designs [2, 5–8, 10, 21, 25, 27, 31].         (ii) dynamically ranks interesting targets among thousands,
+
+
+
+USENIX Association                                                                     32nd USENIX Security Symposium           1343
+and (iii) automatically prioritizes inputs. F ISH F UZZ builds          • A distance metric between seeds and targets that is in-
+on three key contributions: (1) a novel distance metric more              dependent of the size of the target set and robust against
+robust to indirect jumps that can select the “closest” seed for           unresolved indirect jumps.
+each target (thus improving exploration), (2) a dynamic target
+ranking that automatically discards exhausted targets and               • A dynamic target ranking that automatically guides the
+steers the fuzzer’s energy towards (more) promising locations             fuzzer’s energy towards promising locations, while dis-
+(thus improving exploitation), and (3) a novel queue culling              carding thoroughly explored ones.
+algorithm to efficiently orchestrate between exploration and            • A detailed evaluation against the state-of-the-art and the
+exploitation. The insight behind our approach is analogous to             discovery of 56 bugs (38 CVEs) in 47 programs.
+trawling (which inspired our fuzzer’s name). After casting a
+wide net (capturing many possible targets), the net is closed         The full source code is released at https://github.com/
+gradually. During exploration our fuzzer tries to reach as many     HexHive/FishFuzz. The artifact with a demonstration is
+targets as possible while during exploitation, our fuzzer tracks    available at https://zenodo.org/record/6405418.
+how well each target is explored. Unlike previous works,
+F ISH F UZZ easily handles tens of thousands of targets without
+loss of precision (e.g., in our largest target, we cover over 20k
+                                                                    2     Background
+targets). Concurrently, F ISH F UZZ automatically prioritizes       This section introduces background information of input pri-
+rarely tested targets, which are more likely to contain bugs [18,   oritization, upon which we build F ISH F UZZ (§2.1). Moreover,
+25]. The combination of these three strategies allows the           we define F ISH F UZZ’s scope (§2.2).
+fuzzer to reach more targets (during exploration) and then
+spread its energy evenly across the discovered targets (during
+exploitation). Together, this results in improved bug-finding       2.1     Input prioritization
+capabilities.                                                       Modern fuzzers, such as AFL [31] and AFL++ [8], take a
+   We show the generality of F ISH F UZZ by deploying our           program as input and a set of inputs (seeds) to submit to the
+strategies over two well-established greybox fuzzers: AFL and       program. Their workflow is loop-based: they select seeds,
+AFL++. Then, we compare our prototypes against three mod-           mutate them, and submit the mutated inputs to the program.
+ern DGFs (i.e., ParmeSan [21], TortoiseFuzz [27], and SAV-          The fuzzer collects information about the program execu-
+IOR [7]), four modern two-stage fuzzers (i.e., AFLFast [4],         tion (e.g., code coverage) to guide the next fuzz iteration.
+FairFuzz [17], EcoFuzz [29], K-Scheduler [23]) as well as           Usually, fuzzers select seeds to improve the code coverage
+against AFL++ [8] and AFL [31]. We conduct experiments              (code-coverage-guided fuzzers), but this behavior can be ad-
+over f our benchmark sets. The first two are composed of            justed with different metrics and purposes. To select inter-
+11 and 8 programs taken from TortoiseFuzz [27] and SAV-             esting seeds, fuzzers adopt two strategies: input filtering and
+IOR [7], respectively. For the third one, we choose 7 programs      queue culling. With input filtering, we refer to strategies that
+that cover different input formats, e.g., document, image, text,    discard unproductive seeds, while queue culling gives more
+executable. The last benchmark selects 30 real-world pro-           priority to interesting seeds (without discarding others).
+grams from other top-tier fuzzing works. During exploration,           Our work focuses on queue culling strategies. Specifically,
+we achieve higher coverage (up to 146% more) and hit more           these approaches use a specific flag, called favored, to indicate
+targets (up to 112% more) compared with the state-of-the-           whose seeds will be selected in the next fuzz iteration. The
+art. For exploitation, F ISH F UZZ triggers 2.8x more targets       favored setting can follow various strategies depending on the
+and finds up to 2x unique bugs in comparison to its com-            targeted results. For instance, we can select seeds to improve
+petitors. More precisely, F ISH F UZZ reproduces 99 unique          the coverage, or we can guide the testing toward specific code
+previous bugs, among which 71 (68.3%) faster than previous          locations in an attempt to trigger a specific bug.
+works. Moreover, we discover 56 new bugs from which 38                 AFL [31] maintains a map (top-rated) that pairs the vis-
+are already confirmed as CVEs. Finally, we investigate the          ited edge and the best input for visiting it, where the best input
+different bugs discovered when deploying F ISH F UZZ over           is simply the smallest and fastest one to reach that edge. While
+AFL or AFL++. Our results show that the base fuzzer influ-          executing inputs, AFL traces the visited edges and assigns
+ences the type of bugs discovered (i.e., AFL/F ISH F UZZ finds      the new input to the edges in top-rated if the input is smaller
+different bugs than AFL++/F ISH F UZZ). This insight suggests       or can reach these edges faster. In this way, AFL can easily
+F ISH F UZZ enhances the existing bug discovery capabilities        find a suitable input for an edge through a fast look-up. More
+by redirecting their energy more efficiently.                       advanced fuzzers, such as Angora [6] or AFL-Sensitive [26],
+   To sum up, our contributions are:                                include additional information, such as the calling stack, the
+                                                                    memory access address, and the n basic blocks execution
+   • F ISH F UZZ: a novel input prioritization strategy that max-   path. More recent fuzzers [27] infer the best seed based on
+     imizes the number of explored and exploited targets.           a combination of the static analysis and the seed’s execution
+
+
+
+1344    32nd USENIX Security Symposium                                                                         USENIX Association
+                 Code Space                                               Table 2: Number of targets used by SAVIOR and F ISH F UZZ.
+                                               Greybox Fuzzers
+
+                                               Direct Greybox Fuzzers
+                                                                                  programs      SAVIOR       F ISH F UZZ     Rate
+                                               Sanitizer Guided Fuzzers           djpeg              860           4927      5.73
+                                               FishFuzz                           jasper            2576           4194      1.63
+                                               Vulnerability                      readelf            236           3160     13.39
+                                                                                  tcpdump           4114          10221      2.48
+Figure 1: The image depicts the scope of F ISH F UZZ relative                     tiff2pdf           333           4235     12.72
+to other fuzzer families. Greybox Fuzzers target the whole                        tiff2ps            333           2740      8.23
+code space, Direct Greybox Fuzzers target specific targets,                       xmllint           2627           5567      2.12
+Sanitizer-Guided Fuzzers target the sanitizer label but not all,                  sum              11079          35044      3.16
+F ISH F UZZ targets all the sanitizer labels.
+
+Table 1: Number of targets used by ParmeSan and F ISH F UZZ.
+                                                                          niques to “hammer” the reached locations. However, their
+      programs                ParmeSan   F ISH F UZZ           Rate       seed-target metrics average the distance from a seed to the
+      flvmeta                      300        4157         13.86          whole target set, thus losing precision if the target set contains
+      MP4Box                      6809      107930         15.85          more than one target. As an extension of DGF, Sanitizer-
+      lou_checktable               127        1853         14.59          guided Fuzzers (SGF) [7, 21] stretch the target set over any
+      tiff2pdf                    1015       14938         14.72          location labeled by sanitizers, thus considering thousands of
+      nasm                         899        9160         10.19          targets. SGFs ideally consider all labeled code as possible
+      nm-new                      1813       41901         23.11          buggy and then direct the exploration toward those locations
+      gif2tga                       10         474         47.40          in an attempt to trigger an exception. However, SGFs inherit
+                                                                          similar seed-target distance from DGFs, thus suffering from
+      sum                        10973      180413         16.44          similar precision issues. Therefore, SGFs propose static anal-
+                                                                          ysis and heuristics to focus on promising targets to make
+                                                                          the problem tractable. In practice, SGFs might discard rel-
+path. Regardless of their approaches, we observe that current             evant vulnerabilities or test code locations that are already
+queue culling algorithms estimate the target’s priority ahead-            bug-free [21]. Given this background, F ISH F UZZ extends and
+of-time, without reconsidering them during the campaign.                  improves upon DGFs and SGFs by handling arbitrarily large
+Therefore, if a portion of code has been triggered, the cull              target sets without losing precision or discarding real bugs.
+queue keeps selecting seeds for that location, thus wasting               Unlike previous works, F ISH F UZZ considers all the sanitizer
+energy. Conversely, F ISH F UZZ dynamically deprioritizes the             labels (e.g., from ASan [11] and UBSan [12]) and handles
+targets during the fuzzing campaign (§4.2).                               16x and 3x more targets compared with Parmesan [21] and
+                                                                          SAVIOR [7] respectively, which are state-of-the-art SGFs (Ta-
+                                                                          ble 1 and Table 2). To achieve our goal, we must solve the
+2.2    F ISH F UZZ’s scope                                                following three challenges:
+Figure 1 depicts the relation of current fuzzer families                  C1: Designing a distance metric to improve the precision in
+with F ISH F UZZ. The outer box represents the whole code                 the exploration phase. Our metric allows a fuzzer to select
+space, which might contain vulnerabilities (represented as red            the closest seed for each function containing targets, thus
+crosses). Fuzzers try to trigger vulnerabilities by exploring             improving precision. Conversely, current distance metrics
+code and exploiting the vulnerabilities. Greybox fuzzers focus            employed in DGF and SGF average over multiple targets,
+on exploration: covering the entire code space regardless of              thus losing precision with the growth of the target set.
+the presence of vulnerabilities. As an opposite strategy, Direct
+                                                                          C2: Designing a mechanism to dynamically select interest-
+Greybox Fuzzers (DGFs) [3] try to reach and trigger targets
+                                                                          ing targets and discard unpromising ones, thus improving
+in a target set instead of the whole code space. The target set
+                                                                          the exploitation phase. Conversely, current SGFs use either
+is usually manually defined. DGFs achieve this goal by mod-
+                                                                          heuristics or imprecise analysis that might (i) ignore inter-
+eling exploration and exploitation as distinct phases. First,
+                                                                          esting code locations and (ii) waste energy toward already
+they mutate seeds so that they hit the targets (exploration
+                                                                          triggered targets.
+phase). Second, they try to trigger the targets (exploitation
+phase). Specifically, the exploration phase uses seed-target              C3: Designing a smart queue culling algorithm that orches-
+distance metrics to infer how “far” a seed is from a given                trates exploration and exploitation to maximize the targets
+target set, while exploitation relies on standard fuzzing tech-           reached and triggered.
+
+
+
+USENIX Association                                                                           32nd USENIX Security Symposium           1345
+3     F ISH F UZZ’s Design                                          of fi to the callee function f , and is computed with the func-
+                                                                    tion dbb(ma , mb ) (i.e., distance from basic block ma to mb ).
+The design of F ISH F UZZ revolves around the concepts of           Formally speaking, given two functions fi and f , we defined
+distance measurement and dynamic target selection, and poses        weight( fi , f ) as follows:
+the base for our queue culling algorithm in §4. Specifically,                                 (
+we first formalize the structures for modelling targets’ priority                               min dbb(m, m f ) if ∃m f ∈ fi
+                                                                           weight( fi , f ) =                                   (1)
+in §3.1, then we introduce our distance measurement in §3.2.                                    ∞                otherwise,
+
+                                                                    where m is the prologue of the function fi , and m f is a basic
+3.1    Dynamic Target Priority                                      block belonging to fi and contains a function call to function
+                                                                     f (so f is a callee of fi ). If f is a callee of fi , the weight
+One of F ISH F UZZ’s key features is to focus the fuzzer’s
+                                                                    between fi and f is the minimum distance between m and m f .
+energy by selecting more promising targets. To achieve
+                                                                    Otherwise, it is unreachable (∞). To handle multiple function
+this, we associate to each target t a triple of meta-data
+                                                                    calls to f , we consider the minimum distance to leave fi only.
+(hit_frequency, reached, triggered), where hit_frequency in-
+                                                                       Once the weights are computed, F ISH F UZZ pre-computes
+dicates how often a target has been traversed by the seeds,
+                                                                    the distance between two functions as the sum of their weight
+reached if the target has been executed at least once, and
+                                                                    along the shortest path between two functions based on the
+triggered if the execution of the target crashes. The targets’
+                                                                    compilation-extracted CG. Formally speaking, the distance
+metadata are organized in a set T . During the campaign, we
+                                                                    between two functions fa and fb is defined as follow:
+update T through a shared memory region between the fuzzer
+and the tested program. Then, F ISH F UZZ selects seeds to                     dff( fa , fb ) =        ∑              weight( fi , fi+i ),   (2)
+hit less-explored targets, i.e., those with low hit_frequency.                                    fi ∈sp( fa , fb )
+Since the selection is intertwined with the queue algorithm,
+we detail the process in §4.2.                                      where sp( fa , fb ) is the shortest path between fa and fb using
+                                                                    Dijkstra’s algorithm [15], and weight( fi , fi+1 ) is Eq. 1 over
+                                                                    two consecutive functions in the path.
+3.2    Distance Measurement
+                                                                    Dynamic Seed to Function Distance. Having the static
+To overcome the imprecision of current seed-target distance
+                                                                    distance map, we define a function dsf(s, f ) that represents
+metrics [3, 21, 27], we propose to estimate the “closest” seed
+                                                                    the distance between the functions traversed by the seed s and
+for each target independently. However, tracing the distance
+                                                                    a function f as follows:
+at the basic block level would require an enormous amount of
+information, which would slow down the fuzzing campaign.
+                                                                                         (
+                                                                                          min fs ∈ξ(s) dff( fs , f ) if f 6∈ ξ(s)
+To reduce the tracing overhead, we measure the minimal dis-                 dsf(s, f ) =                                          (3)
+tance between the seed and functions on the call graph. This                              0                          otherwise,
+approach reduces the number of required instrumentations.
+                                                                    where ξ(s) represents the functions traversed by the execution
+Finally, we rely on standard fuzzing techniques for the inner
+                                                                    of the seed s. If f is traversed by the execution path of s, we
+function exploration (see §4.2).
+                                                                    consider the distance as zero.
+   Overall, we first pre-calculate a static map that contains          With the dynamic seed distance, F ISH F UZZ chooses the
+the minimum distance among functions, which we call static          closest seed for a target function based on the intuition that a
+distance map. Then, we leverage the static distance map to          seed closer to a target has higher probability to reach it. We
+estimate the closest seed to a function at runtime (i.e., the       mainly use dsf in the inter-function exploration (§4.2).
+seed that visits the function closest to the target). In the last
+part of the section, we discuss how to handle indirect calls.
+                                                                    Indirect Call handling. Unresolved indirect calls might
+                                                                    stop a fuzzer from reaching interesting code regions. In F ISH -
+Static Distance Map. The static distance map is a look-up           F UZZ, the dynamic seed to function distance (Eq. 3) already
+table that contains the minimum distance for each function          provides an approximation of indirect calls without the burden
+pair. The distance is estimated over the control-flow-graph         to resolve them. We illustrate this property in Figure 2, which
+(CFG) and the call-graph (CG), which we extract during com-         shows a CG where the functions pair fc - fd , and fb - fg , are
+pilation from LLVM-IR [19]. This initial analysis, for now, is      connected through an (unresolved) indirect call. This example
+oblivious to indirect calls.                                        contains three cases: ID1 and ID2 show when F ISH F UZZ can
+   To calculate the static distance map, F ISH F UZZ assigns a      resolve the seed-target distance, while ID3 exemplifies when
+weight for each function pair ( fi , f ) such that f is a callee    F ISH F UZZ cannot resolve the distance.
+of fi . The weight represents the minimum number of condi-             Case ID1. We assume the fuzzer has generated a seed
+tional edges that a seed might traverse from the entry point        s1 that traverses fa , fc , fd , and finally hits f f (red). When
+
+
+
+1346    32nd USENIX Security Symposium                                                                                       USENIX Association
+                                                                                                          ③ Program preparation (4.1)
+                                                                                                                                                                             ⑥ Cull Queue (4.2)
+                                                                                                                 Static Analysis        ⑦ Distance Metric (3.2)
+                                               fa                                                                                                                                                 Queue
+
+
+                                     th
+
+
+
+
+                                                                  s1
+                                                                                                                                                                                       +
+                                  pa                                                         Program
+
+
+
+
+                                                                   ’e
+                              n
+                          tio
+
+
+
+
+                                                                     xe
+                      cu                  fb             fc                                                                                                                          isFavor?
+
+
+
+
+                                                                     cu
+                                                                                                                Targets Extraction      ⑧ Targets Ranking (3.2)
+                     e
+                  ex
+
+
+
+
+                                                                          tio
+                                                                                            compilation
+              ’
+
+
+
+
+                                                                           n
+            s2                                                                             ①     +
+
+
+
+
+                                                                                pa
+                                                          )
+                         fg                                                                  sanitizers
+
+
+
+
+                                                                                 th
+                                                                     fd
+
+
+
+
+                                                         ,f
+                                                              e
+                                                                                                                                                                        Update         Select
+
+
+
+
+                                                    f(f
+                                                         d
+                                                                                                                                                                        targets        useful
+
+
+
+
+                                                    df
+                                                                                                                                          ④ Fork Server                 ranking        seeds          Save
+                                                                                                                                                                                                   interesting
+            dsf(s1, fe) = dff(fd,fe)                                                                         ② Instrumented                                 Execute &
+                                                                                                                                                                                                      seeds
+
+                                                                                                                                                             Monitor
+
+            dsf(s2, fg) = 0                          fe                              ff      : FishFuzz
+                                                                                                                    Program                   Program
+                                                                                                                                              Instances
+                                                                                                                                                                              ⑤ Fuzz Loop
+                                                                                               components
+            dsf(s1, fg) = ∞
+
+                                                                                                          Figure 3: Overview of F ISH F UZZ workflow.
+Figure 2: Example of handling indirect calls. In this CG fc
+- fd and fb - fg are connected through unresolved indirect
+calls. The execution path of the seed s1 (red) traverses the                              the design and expands crucial queue components, while we
+indirect call between fc and fd . This allows F ISH F UZZ to                              detail the implementation in §5 and evaluate in §6.
+notice the existence of a path to fd , and then calculate the                                The overall workflow is depicted in Figure 3 and follows
+distance dsf(s1 , fe ) = dff( fd , fe ). If a function is isolated from                   the standard fuzzing procedures [8, 21, 27, 31]. Given a target
+the CG (e.g., fg ), we may exercise a seed s2 (green) that hits                           program, we compile and instrument it with specific sanitizers
+the isolated function. In this case, we consider the distance                              1 , this phase makes the instrumented program ready for the
+dsf(s2 , fg ) = 0. If the seed has not resolved jumps toward a                            fuzzing campaign 2 , and extracts initial information useful
+function, such as for s1 and fg , then we consider its distance                           for F ISH F UZZ 3 . Then, the instrumented program follows
+dsf(s1 , fg ) = ∞.                                                                        the standard greybox workflow in which a fork server handles
+                                                                                          the program lifecycle 4 . Meanwhile, a fuzz loop selects in-
+                                                                                          puts from a queue and submits them to the program instances
+this occurs, F ISH F UZZ has sufficient information to compute                             5 . The input selection is handled by our queue culling 6
+the distance between s and fe , which is exactly the distance                             which relies on our distance measurement 7 and ranking 8 .
+between fd and fe (Eq. 2). Our approach is an approximation                                  As previously stated, the majority of the workflow follows
+because there could be other hypothetical hidden paths behind                             the standard greybox fuzzers [4, 8, 31], only program prepa-
+not-yet-resolved indirect calls.                                                          ration §4.1 and queue culling §4.2 differ. We discuss these
+   Case ID2. In this case, fg has no direct calls to resolve                              components in the rest of the section.
+the distance calculation. Therefore, we assume the fuzzer
+generates a seed s2 that traverses fg (green). According to
+Eq. 3, the distance is zero since s2 hits the target function.                            4.1        Program Preparation
+   Case ID3. The execution path of s1 does not reach any
+                                                                                          In the program preparation phase, we compile the program
+function directly connected to fg . In this case, we set the
+                                                                                          and generate a fuzzing-compatible binary. We also instrument
+distance between s1 and fg as infinite (∞), and consider fg
+                                                                                          the code with extra components for code coverage and secu-
+unreachable by s1 .
+                                                                                          rity sanitizers similarly to previous works [3, 6, 21, 27, 31].
+   Generally, whenever a seed traverses an indirect call, F ISH -                         Finally, we perform static analysis over LLVM-IR [19] to
+F UZZ can use nearby (connected) functions to estimate the                                build the static distance map (§3.2). The F ISH F UZZ design
+minimum distance between the seed and the target function                                 is agnostic to the sanitizer, in our experiment, we success-
+(Case ID1). If a function has no direct connections, we have                              fully tested ASan [11, 22] and UBSan [12]. Alternatively, one
+two cases (i) the fuzzer generates a seed that traverses the                              can use other targets such as assertions. We opt for sanitizer
+function (Case ID2), or (ii) the function is unreachable for a                            targets due to their straightforward security implications.
+given seed (Case ID3).
+
+                                                                                          4.2        Queue Culling Algorithm
+4    F ISH F UZZ’s Queue Culling Strategy
+                                                                                          We design the queue culling by taking inspiration from the
+Our queue culling strategy leverages the dynamic target prior-                            trawl fishing technique. At the beginning of the fuzzing cam-
+ity (§3.1) and the distance measurement (§3.2) to address both                            paign, F ISH F UZZ prioritizes the function exploration (expand-
+challenges described in §2.2. F ISH F UZZ allows DGFs to scale                            ing the net). When no new functions are reached, F ISH F UZZ
+exploration and exploitation over programs with thousands of                              focuses on maximizing the reached targets (the net starts clos-
+targets without losing precision. Most importantly, we design                             ing). Once no new targets are reached, the cull logic changes
+the queue culling to be easily integrated into modern Greybox                             again and tries to trigger the interesting targets (catching as
+Fuzzers [31]. To prove our claims, we implement and test                                  many fish as possible). Since every phase requires differ-
+F ISH F UZZ over AFL and AFL++. This section focuses on                                   ent metrics (i.e., number of functions or targets reached/trig-
+
+
+
+USENIX Association                                                                                                         32nd USENIX Security Symposium                                             1347
+             Inter-function
+                                                           new function traversed              Algorithm 1: Cull logic for the inter-function explo-
+              exploration                                                                      ration phase.
+             new function traversed
+                                                                                              1    interFunctionCullQueue(Queue, Functions)
+
+                                      no new function
+                                                                                                      for s ∈ Queue do
+                                         traversed
+                                                                                               2
+                                                                         Exploitation phase
+                                                                                               3          s. f avored = 0
+                                                                                               4      end
+                                                        no new target reached                  5      for f ∈ Functions do
+             Intra-function
+              exploration                                                                      6          if f .unexplored ∧ f .hasTargets then
+                                                        no new target triggered
+                                                                                               7                s ← getClosestSeedToFun(Queue, f )
+                                                                                               8                s. f avored = 1
+Figure 4: F ISH F UZZ uses an exploration phase to select seeds
+                                                                                               9          end
+closer to targets, while the exploitation phase focuses on
+                                                                                              10      end
+the targets triggering. Additionally, F ISH F UZZ uses two sub-
+exploration phases, one is specialized to reach larger number
+of functions (inter-function), while the second to maximize
+                                                                                               Algorithm 2: Cull logic for the exploitation phase.
+the reached targets (intra-function).
+                                                                                              1    exploitationCullQueue(Queue, Targets)
+                                                                                               2      for s ∈ Queue do
+gered), we adopt a multiphase approach as suggested from                                       3          s. f avored = 0
+previous works [21]. Specifically, F ISH F UZZ relies on three                                 4      end
+phases: inter-function exploration, intra-function exploration,                                5      trgs_to_visit ← 0/
+and exploitation – all pictured in Figure 4. The purpose of the                                6      for t ∈ Targets do
+inter-function exploration is to reach interesting functions (i.e.,                            7          if t.reached then
+expanding the net). This phase leverages the Distance Mea-                                     8                trgs_to_visit ← trgs_to_visit ∪ {t}
+surement (§3.2) to select seeds closer to functions containing                                 9          end
+untriggered targets (thus addressing C1). Intra-function ex-                                  10      end
+ploration focuses on testing internal functions based on the                                  11      trgs_to_visit ← orderByHit(trgs_to_visit)
+original fuzzer’s algorithm and tries to hit as many targets as                               12      threshold ← |trgs_to_visit| ∗ 20%
+possible (i.e., start closing the net). Finally, the exploitation                             13      for (p,t) ∈ enumerate(trgs_to_visit) do
+phase maximizes the number of targets triggered (i.e., catch-                                 14          if p < threshold then
+ing the fish). This phase uses the Dynamic Target Ranking                                     15                s ← getFastestSeedToTarget(Queue,t)
+(§3.1) to maximize the triggered targets (thus addressing C2).                                16                s. f avored = 1
+   The switch among the different phases happens at specific                                  17          end
+events: (i) every time a new function is traversed (i.e., in-                                 18      end
+ter-function exploration), (ii) if no new function is traversed
+for a period of time (i.e., intra-function exploration), (iii) if
+no new target is reached for a period of time (i.e., exploita-
+tion), and (iv) if no new target is triggered for a period of                                 tion that also contains targets (line 6). After the favored seeds
+time. Swinging among the events allows F ISH F UZZ to pri-                                    are submitted to the program, F ISH F UZZ updates the list
+oritize each seed according to the needs, i.e., reaching new                                  of explored Functions and repeats the process. getClosest-
+targets in exploration or hammering under-tested locations in                                 SeedToFun finds the closest seed s to the function f through a
+explotation (thus addressing C3). In our experiments, we de-                                  seed-function distance (§3.2). If multiple seeds are equidistant
+termined these timeouts for each event and leave a discussion                                 to f , we prefer the one with the lowest execution time.
+for fine-tuning in §7.1. In the rest, we detail the inter-function
+exploration and the exploitation phase. For intra-function ex-                                Exploitation Phase. In the exploitation phase, F ISH F UZZ
+ploration, we re-use the original cull algorithm (for AFL [8]                                 tries to trigger the maximum number of targets previously
+and AFL++ [31]) and thus omit its description.                                                reached. Our intuition is to keep hitting the same target with
+                                                                                              different seeds (that can reach the target), thus increasing the
+Inter-function Exploration Phase. In this phase, F ISH -                                      chance to expose the bug. Algorithm 2 shows the pseudo-
+F UZZ selects seeds to maximize the reached functions con-                                    code of this phase. Specifically, we first select those targets
+taining untriggered targets. The cull algorithm of this phase                                 that are reached through either the inter- or the intra-function
+is shown in Algorithm 1. Specifically, given a Queue of seeds                                 exploration phase (line 6 to line 10). Among the trgs_to_visit,
+and a set of Functions from the target program, F ISH F UZZ                                   we select the top 20% of fewest hit targets (line 12 and line 14).
+sets f avored = 1 to the closest seed for each unexplored func-                               For each suitable target, getFastestSeedToTarget returns the
+
+
+
+1348    32nd USENIX Security Symposium                                                                                                   USENIX Association
+fastest seed s that hits t, thus finally setting s as favored. As   since they are the base for FF AFL and FF AFL , respectively.
+the fastest seed, we select the seed with the lowest execution      Moreover, we deploy F ISH F UZZ over QSYM [30] to answer
+time, which is measured in modern fuzzers [1, 27]. In this          RQ4. For our evaluation, we choose ASan and UBSan as
+phase, we have a high probability to find seeds that hit targets,   sanitizers as mentioned in §5.
+which are generated during the exploration phase. Finally,
+the function getFastestSeedToTarget uses the dynamic target
+priority in §3.1. In our experiments, we select the top 20% of      Benchmarks Selected. We choose f our benchmarks. Two
+the fewest hit targets, we leave a discussion about parameters’     sets of programs come from TortoiseFuzz [27] and SAV-
+choice in §7.                                                       IOR [7]. Since we use the TortoiseFuzz benchmark set with
+                                                                    the ASan sanitizer, we call it ASan benchmark. Likewise, the
+                                                                    SAVIOR benchmark contains only UBSan sanitizers, thus
+5     Implementation                                                we name it UBSan benchmark. Regarding the ASan bench-
+                                                                    mark, it contains 11 programs, nine of which from Tortoise-
+We provide two prototypes of F ISH F UZZ: FF AFL and                Fuzz [27],2 plus nm-new and tcpdump. Only for ParmeSan,
+FF AFL++ , which are based on AFL [31] version 2.57b and            we remove four programs from the ASan benchmark due to
+AFL++ [8] version 4.00c, respectively. For the instrumenta-         a non-resolvable exception while instrumenting the targets—
+tion, we extended LLVM [19] version 12.0.1.1                        while the other fuzzers handle all programs. Regarding the
+   We implement the inter-function exploration and the ex-          UBSan benchmark, we choose 8 programs from SAVIOR and
+ploitation phases as two cull queue functions in AFL (2, 500        remove one because it is incompatible with Ubuntu 16.04.3
+LoC) and in AFL++ (1, 800 LoC). For the program anal-               For testing the Two-Stage fuzzers, we design an ad-hoc bench-
+ysis, we develop additional analysis passes for LLVM to             mark, called Two-Stage benchmark, which covers programs
+extract CFG, CG, and to estimate the static function dis-           accepting different input formats, e.g., document, image, text,
+tance. Moreover, we develop an additional instrumentation           or executable. Finally, we compose a benchmark of 30 real-
+pass to extract information for the dynamic seed to func-           world programs for the experiments in §6.3. All in all, our
+tion metric. The LLVM code is around 1, 500 LoC in total.           evaluation covers 47 programs.
+Additionally, we have a few python scripts for the compi-
+lation process, which are around 200 LoC. As for sanitiz-
+ers, we use ASan [11, 22] and UBSan [12] distributed with           Experiment Setup. All experiments are performed on a
+the compiler-rt libraries from LLVM/Clang. We open-source           Xeon Gold 5218 CPU (22M Cache, 2.30 GHz) equipped with
+F ISH F UZZ and materials for replicating the experiments at        64GB of memory. We evaluate the ASan and UBSan bench-
+https://github.com/HexHive/FishFuzz.                                marks on Ubuntu 16.04 to reproduce the original environment
+                                                                    of their respective works. For the two-stage campaign, we
+                                                                    opt for Ubuntu 18.04 to provide the same OS to the base-
+6     Evaluation                                                    line fuzzers. Finally, we choose Ubuntu 22.04 for real-world
+We evaluate F ISH F UZZ to answer the following research            programs. All experiments are run in docker containers with
+questions. RQ1: How many targets are reached? (§ 6.1)               one core assigned. For a fair evaluation, we choose the mini-
+ RQ2: How efficiently does F ISH F UZZ find bugs? (§ 6.2)           mized seeds provided by AFL as the initial corpus. If none
+ RQ3: Can F ISH F UZZ find new bugs? (§ 6.3) RQ4: Can               are present, we leverage the program test cases. Since most
+other fuzzers benefit from our strategies? (§6.4) RQ5: How          fuzzers use a deterministic stage,4 we do likewise in AFL++.
+does F ISH F UZZ improve the original fuzzer? (§6.5) We con-        Our artifact contains the full seed corpus and fuzzer configu-
+duct all the experiments by following the best practice de-         rations.
+scribed in [24] using the two F ISH F UZZ implementations:
+FF AFL and FF AFL++ . For simplicity, we refer to F ISH F UZZ       F ISH F UZZ Hyperparameter Setup. For our evaluation,
+when indicating the two prototypes, and specify which when          we fine-tune F ISH F UZZ’s hyperparameters for ASan sanitizer
+needed. In RQ5, we discuss the differences between FF AFL           (§4.2) since we focus on vulnerabilities, which are commonly
+and FF AFL++ .                                                      found with ASan. For UBSan, we conduct a preliminary in-
+                                                                    vestigation using the same hyperparameters, and discuss their
+Compared Fuzzers. We test F ISH F UZZ against different             tuning in §7. Therefore, we use the same set of hyperparame-
+families of fuzzers. First, we select three of the most recent      ters for ASan, UBSan, and Two-Stage benchmarks. Specifi-
+DGFs in the literature: TortoiseFuzz [27], ParmeSan [21],           cally, we set 30 min for inter-function exlporation, 10 min for
+and SAVIOR [7]. Then, we include an array of Two-Stage              intra-function exploration, and 1 hour for exploitation (§4.2).
+fuzzers: AFLFast [4], FairFuzz [17], EcoFuzz [29], and K-
+                                                                      2 We discard libming due to incompatibility with clang-12
+Scheduler [23]. We also include AFL [31] and AFL++ [8]                3 objdump  runs out of memory during compilation.
+    1 We   also successfully test it on LLVM 10.0.1                   4 https://afl-1.readthedocs.io/en/latest/about_afl.html
+
+
+
+
+USENIX Association                                                                    32nd USENIX Security Symposium         1349
+6.1    RQ1: How many targets are reached?
+We evaluate if the exploration phase of F ISH F UZZ can reach
+more targets with respect to its competitors. To this end, we set
+the following experiments. First, we exercise ParmeSan and
+TortoiseFuzz against the ASan benchmark, SAVIOR against
+the UBSan benchmark, and the Two-Stage fuzzers against
+their benchmark. Then, we evaluate F ISH F UZZ against the
+ASan, UBSan, and Two-Stage benchmarks. For ASan, we run
+10 rounds 60 hours each, while for UBSan and Two-Stage, we
+run 10 rounds 24 hours each (as in the original papers [7, 27]).
+The results for ASan, UBSan, and Two-Stage benchmarks are
+in Table 3, Table 4, and Table 5, respectively, along with a                    (a) Time-To-Exposure for ASan Evaluations.
+dedicated analysis of p-values in §A.2.
+   Overall, Table 3, Table 4, and Table 5 show F ISH F UZZ’s
+prototypes achieve higher coverage in all three benchmarks.
+Specifically, FF AFL++ achieves better coverage in the ASan
+and Two-Stage benchmarks (+11.69% and +2.87% compared
+against the second best), while FF AFL has better performance
+with UBSan (+1.99% compared against the second best). For
+the UBsan benchmark, we observe that AFL++ and SAV-
+IOR reach better coverage for 3 programs (djpeg, tiff2pdf,
+and xmllint). We look closely at these cases and conclude
+that UBSan’s targets are easier to reach compared to ASan’s
+ones. This can be observed by looking at each fuzzers’ per-                   (b) Time-To-Exposure for Two-Stage Evaluations.
+formances (Table 4), they have similar results for almost all
+the programs. However, when considering the aggregate re-             Figure 5: Time-To-Exposure for ASan and Two-Stage bench-
+sults, F ISH F UZZ’s prototypes achieve higher coverage. These        marks.
+results also reflect in the p-values (Table 11), which are not
+statistically significant for the UBSan benchmark. The only
+exceptions are tcpdump and readelf. We remark that, even              of 60 hours for ASan, while 24 hours per run for UBSan
+though F ISH F UZZ is not fine-tuned for UBSan, FF AFL ob-            and Two-Stage (as in the original paper [7, 21]). Then, we
+tains similar or better performances than its competitors (see        measure the number of unique bugs for ASan and Two-Stage
+§ 7). We further investigate the incongruence between the             and the number of triggered targets in UBSan. For ASan/Two-
+results of SAVIOR, ParmeSan, and TortoiseFuzz compared                Stage, we report the number of unique bugs because each
+to their papers [7, 21, 27]. For SAVIOR and TortoiseFuzz, the         bug can be associated with multiple targets, thus it could be
+original papers assign 3 cores to each fuzzing campaign. Con-         ambiguous simply referring to the targets. Conversely, UBSan
+versely, we assign one core each to provide the same amount           targets might not be associated with a bug, thus we prefer
+of resources to each fuzzer. ParmeSan does not mutate the             to indicate the targets themselves. For instance, an integer
+initial seed length and uses custom seeds in their evaluation,        overflow in jasper was considered as an intended behavior
+while we choose the initial corpus from AFL’s test cases.             by the maintainer, and thus not considered a bug.
+For AFL++, we observe the deterministic stage sometimes                  For ASan/Two-Stage, we identify unique bugs by first hash-
+reduces efficiency, thus resulting in worse performance than          ing stack traces to disambiguate crashes, followed by manu-
+AFL, as also observed by Wu et al. [28].                              ally triaging bugs. For UBSan, we extract the output patterns
+   Takeaway: Our experiment shows that the exploration                and identify their source locations (as done by SAVIOR’s
+phase of F ISH F UZZ reaches more targets compared to modern          authors after contacting them). In our evaluation, we observe
+fuzzers and with similar, if not better, results of their baseline.   that ASan targets require, on average, more hits than UBSans
+                                                                      targets before triggering a crash. We thus consider UBsan’s
+                                                                      targets simpler, § A.1 provides a detailed discussion about
+6.2 RQ2: How efficiently does F ISH F UZZ find                        ASan and UBSan targets.
+    bugs?
+We evaluate the ability of the exploitation phase in triggering       Bugs Found. The results for the ASan, UBSan and Two-
+bugs. To this end, we choose the ASan, UBSan, and Two-                Stage benchmarks are shown in Table 6, Table 4, and Table 7,
+Stage benchmarks. Similar to § 6.1, we exercise 10 rounds             respectively. Overall, F ISH F UZZ triggers more bugs/targets
+
+
+
+1350    32nd USENIX Security Symposium                                                                         USENIX Association
+Table 3: Edge coverage and targets reached in the ASan benchmark. The results refer to the average of 10 rounds for 60 hours
+each.
+
+                             FF AFL                    FF AFL++                      AFL                      AFL++                  ParmeSan              TortoiseFuzz
+                       cov        reach        cov           reach           cov       reach        cov           reach        cov         reach        cov        reach
+ exiv2                  19373.9    9524.1          21199.1   10168.6         11140.9      6764.0     19889.6          9676.5         -           -       8612.5           5888.0
+ flvmeta                  996.0     152.0            994.6     151.7           995.2       151.8       996.0           152.0     961.8       150.0         994.2           152.0
+ MP4Box                 13751.1    1663.4          11580.6    1371.3         11524.2      1405.0      9320.7          1215.5   10411.0      1160.8       9855.0           1238.9
+ lou_checktable          2605.6     242.4           2816.3     305.4          2620.4       240.7      2131.9           187.5    1760.2       138.9       2392.7            214.1
+ tiff2pdf               18517.6    3484.9          18466.1    3494.9         18047.8      3337.1     17919.5          3361.5   12069.6      2436.7      15850.9           2977.7
+ nasm                   11295.3    1860.6          12048.9    2018.3         10974.5      1751.7     11541.7          1889.7    8441.9      1489.9        10275           1698.4
+ tcpprep                 1042.7     212.2            961.1     187.7          1030.6       209.0      1037.8           211.9         -           -         995.8           209.5
+ catdoc                   707.0     121.0            418.0      80.0             705       120.6       418.0            80.0         -           -         682.6           119.1
+ tcpdump                26389.8    5924.0          29601.9    6765.9         25010.1      5187.6     23048.8          5131.8         -           -      16667.4           3364.2
+ nm-new                 15458.7    3731.4          15632.7    3788.7         13998.7      3237.7     15430.4          3755.9    9505.3      2709.4      13223.3           3123.3
+ gif2tga                  747.1     132.4            743.9     132.3           728.1       123.9       745.2           132.8     722.9       125.7         735.2           126.6
+ sum                   110884.8   27048.4      114463.2      28464.8         96775.5     22529.1    102479.6         25795.1   43872.7      8211.4      80284.6          19111.8
+
+
+Table 4: Edge coverage, targets reached and triggered in UBSan benchmark. The results refer to the average of 10 rounds for 60
+hours each.
+
+                        FF AFL                         FF AFL++                            AFL                            AFL++                             SAVIOR
+             cov        reach     trigger    cov        reach     trigger      cov        reach     trigger    cov        reach       trigger   cov          reach        trigger
+ djpeg       12285.8     3940.6    138.2     12243.7     3953.2      137.8     11846.9     3866.1      134     12490.6     3987.7      141.9    11,919.9        3874.3        134.4
+ jasper      10708.1     1751.4     48.9     10158.6     1639.3       37.9     10313.8     1682.2     36.7       10553     1708.8       52.7    10,472.0        1664.7         44.5
+ objdump     10128.3     1092.7     95.8      9084.4       1123       90.7      9800.1     1040.2     94.9      9430.5      995.6       92.2    -           -             -
+ readelf      2041.9      163.7     28.3      1852.6      141.7         23      1895.6      148.3     21.8      1947.1      152.4       26.7      2,097.9        173.6         22.9
+ tcpdump     24615.0     3863.6    152.6       24929     4033.1      154.7     24198.9     3709.3    143.9     22553.9       3472      134.1    17,690.6          2752         93.5
+ tiff2pdf    13160.1     1932.9     14.2     13004.9     1885.2       15.3     13237.9     1935.6     16.2     12985.6     1908.8       13.6    12,611.7        1816.9         12.5
+ tiff2ps      9073.4     1172.1     14.9      9007.4     1160.1       13.6      9048.9       1165     13.5      8772.2     1118.5       10.5      8,765.1       1126.9         11.4
+ xmllint      8029.3      722.3     15.2      8048.7      718.8       15.9      7940.2      693.6     12.9      8265.9      736.7       15.1      7,849.9        711.2         13.9
+ sum         90041.9    14639.3    508.1     88329.3    14654.4      488.9     88282.3    14240.3    473.9     86998.8    14080.5      486.8    71,407.0    12119.6           333.1
+
+
+
+                                                                                           more unique bugs than FF AFL++ (3.01%). Most importantly,
+                                                                                           both FF AFL and FF AFL++ trigger more bugs compared to
+                                                                                           their baseline fuzzers (i.e., AFL and AFL++) in both ASan
+                                                                                           and Two-Stage benchmarks, thus showing F ISH F UZZ im-
+                                                                                           proves the bugs finding capabilities in the original fuzzers. For
+                                                                                           the UBSan benchmark, we observe FF AFL (508.1) triggers
+                                                                                           more targets compared to SAVIOR (333.1), while FF AFL++
+                                                                                           achieves the second-best result (488.9). In particular, we acti-
+                                                                                           vate from 2.83% to 52.54% more targets than SAVIOR on av-
+(a) Unique bugs found in the
+                                                                                           erage. UBSan’s results suffer from a similar problem in terms
+ASan benchmark and compared                 (b) Triggered targets in the UB-
+with F ISH F UZZ, TortoiseFuzz,             San benchmark and compared                     of coverage, since UBSan’s targets are simpler compared to
+and ParmeSan.                               with F ISH F UZZ and SAVIOR.                   ASan, the solely exploration triggers fewer targets (more de-
+                                                                                           tails in §A.1). In the current evaluation, we test UBSan with
+            Figure 6: Bugs found and triggered targets.                                    the same tuning as ASan, thus we give higher importance
+                                                                                           to exploitation rather than exploration. Conversely, hyperpa-
+                                                                                           rameters that prioritize exploration produce better results for
+compared to the state-of-the-art. Specifically, both FF AFL                                UBSan. §7.1 shows a discussion of hyperparameters.
+and FF AFL++ find 40.1 and 38 unique bugs on average in
+the ASan benchmark (Table 6), doubles than either AFL++
+(18.9), TortoiseFuzz (18), or ParmeSan (14.2). We observe a                                Time-To-Exposure. We measure the Time-to-Exposure for
+similar pattern for the Two-Stage benchmark (Table 7), where                               the ASan and Two-Stage benchmarks. Similar to the bug
+F ISH F UZZ prototypes find more bugs than its competitors                                 report, we only consider the time to exposure for the ASan
+on average (from 57.89% to 346.81% more unique bugs).                                      and Two-Stage benchmarks whose bugs are uniquely iden-
+Here, the only exception is EcoFuzz, which can find slightly                               tifiable with an ID. For comparison, we consider the lowest
+
+
+
+USENIX Association                                                                                                   32nd USENIX Security Symposium                           1351
+Table 5: Edge coverage and targets reached in the Two Stage Evaluation benchmark. The results refer to the average of 10 rounds
+for 24 hours each.
+
+                        FF AFL                   FF AFL++                   AFL                     AFLFast            FairFuzz             EcoFuzz        K-Scheduler            AFL++
+ program          cov            reach     cov         reach        cov        reach          cov       reach    cov         reach    cov       reach    cov      reach     cov       reach
+ cflow             3974.3       999.5       3979.2       1000.8         3963.6      991.1     3952.0     988.5    3940.1      985.0   3964.8     997.1    3938.9    985.0    3954.2    989.2
+ mujs              6474.4      1558.3       6596.6       1594.8         6009.2     1469.9     6122.8    1470.1    6299.4     1520.0   6156.5    1482.3    6022.5   1451.4    6433.6   1547.9
+ tic               4731.4       925.5       4819.3        944.2         4135.4      785.5     4271.1     823.6    4469.9      864.2   4550.9     881.6    4272.5    807.9    4586.7    888.9
+ mutool            8367.7      2158.5       8298.8       2138.5         8132.1     2093.1     8231.4    2100.1    8268.8     2112.6   8215.7    2097.7         -        -    8254.7   2104.4
+ dwarfdump         3091.1       730.1       2973.9        704.1         2999.8      698.9     2789.5     641.9    2966.1      690.0   3005.7     707.7    2940.9     695     2967.0    702.9
+ w3m               3605.4       822.2       3695.7        828.4         2822.7      730.0     2833.0     734.0    2836.0      734.0   3655.6     821.9    2963.3    748.3    3646.9    817.6
+ cxxfilt           7700.4      1685.8       8027.8       1777.9         6843.0     1350.0     7062.2    1416.4    7154.0     1436.3   6968.8    1393.2    6875.5   1369.7    7476.0   1513.4
+ sum              37944.7      8879.9      38391.3       8988.7     34905.8        8118.5     35262     8174.6   35934.3     8342.1   36518     8381.5   27013.6   6057.3   37319.1   8564.3
+
+
+
+Table 6: Unique bugs found in the ASan benchmark after 10                                                   belonging to gpac and mutool respectively. For UBSan (Fig-
+rounds of 60 hours each.                                                                                    ure 6b), instead, we triggered 707 targets in total, while 8
+                                                                                                            targets were triggered by SAVIOR only. After investigation,
+                    FF AFL     FF AFL++     AFL           AFL++          ParmeSan       TortoiseFuzz
+                                                                                                            we notice that FF AFL and FF AFL++ do not reach the missing
+ tcpdump                 0.6         0.8           0.7            0.2               -              0
+ catdoc                  0.9           0           1.0              0               -              0        targets. Since SAVIOR is based on symbolic execution, we
+ exiv2                   1.3         0.8             0            0.7               -              0        thus conclude SAVIOR and F ISH F UZZ share a fundamen-
+ flvmeta                 2.0         2.0           2.0              2             1.7            2.0
+ lou_checktable          1.9         3.0           0.4              0               0            0.1        tally different exploration phase that reaches different code
+ nasm                    3.3         3.1           2.2            2.6               0            1.1
+ nm-new                  6.6         6.7           1.6            0.1               0            0.6        sections. This leaves room for future alternative exploration
+ tcpprep                 1.8         2.0           2.0            1.8               -            2.0        phases in F ISH F UZZ.
+ tiff2pdf                0.3         0.1             0            0.2               0            0.2
+ gif2tga                 4.0         4.0           4.0            4.0             4.0            4.0           Table 9 shows the overlapping bugs found in Two-Stage
+ MP4Box                 17.4        15.5          14.8            7.3             8.5            8.0
+                                                                                                            benchmark. Since this benchmark contains too many fuzzers
+ sum                    40.1        38.0          28.7         18.9              14.2          18.0
+                                                                                                            for a useful Venn Diagram, we opt for a table whose cells
+ sum (- MP4Box)         22.7        22.5          13.9         11.6               5.7          10.0
+ vs FF AFL                                  +39.72%       +112.17%       +182.39%         +122.78%
+                                                                                                            indicate two overlap measurements for each combination of
+ vs FF AFL++                                +32.40%       +101.06%       +167.61%         +111.11%          fuzzers. Specifically, given a pair of fuzzers, we indicate the
+                                                                                                            overlap with two numbers: a and b; a is the number of bugs
+                                                                                                            found exclusively by the two fuzzers (but not others), while
+time-to-exposure between FF AFL and FF AFL++ . Our results                                                  b is the number of bugs found by both fuzzers (and other
+show that, out of 104 known bugs, F ISH F UZZ finds 71 of                                                   fuzzers). For example, the intersection between FF AFL and
+them faster than previous work (68.3%), 8 in the same time                                                  FF AFL++ shows 7 and 20: 7 bugs are found exclusively by
+(7.7%), and only 25 took slightly longer (24.0%). §A.5 shows                                                FF AFL and FF AFL++ , while 20 bugs are found by FF AFL
+detailed data for all the bugs found. Additionally, Figure 5                                                and FF AFL++ and other fuzzers. We also note Table 9 is mir-
+shows the bug discovery over time. The images show FF AFL                                                   rored since a and b are reflexive (i.e., a and b are not influ-
+and FF AFL++ are almost always above their competitors, espe-                                               enced by the pair order). Overall, we notice that FF AFL and
+cially at the end of the fuzzing session. Only EcoFuzz seems                                                FF AFL++ have a large intersection with the other competitors,
+competitive with FF AFL++ . Most importantly, F ISH F UZZ’s                                                 specifically FF AFL is significantly bigger than their respec-
+prototypes always outperform their baseline (i.e., AFL and                                                  tive baseline. This means FF AFL finds the same bugs as the
+AFL++). F ISH F UZZ finds 38 new bugs not previously discov-                                                other competitors and more bugs than their original versions
+ered, we discuss them in a dedicated section in §6.3.                                                       (i.e., AFL). For instance FF AFL ’s row has the largest b value
+                                                                                                            among other combinations of fuzzers, showing it can cover a
+                                                                                                            large number of bugs. FF AFL++ , instead, has a similar overlap
+Bugs Analysis. Finally, we analyze the overlap of unique                                                    as EcoFuzz. We conduct a dedicated study about FF AFL and
+bugs and triggered targets found by F ISH F UZZ and its com-                                                FF AFL++ respect AFL and AFL++ in §6.5.
+petitors. For this analysis, we adopt the following procedures.
+                                                                                                               Takeaway: Our experiments show the ability of our ex-
+First, we ignore AFL and AFL++, which receive a dedicated
+                                                                                                            ploitation phase to discover more bugs and trigger more tar-
+analysis in §6.5. Then, we use two Venn Diagrams for ASan
+                                                                                                            gets compared to the state-of-the-art. Additionally, we show
+and UBSan in Figure 6a and Figure 6b, since the results are
+                                                                                                            that F ISH F UZZ finds known bugs faster.
+suitable for this demonstration. For the Two-Stage benchmark,
+instead, we use Table 9, which contains more detailed overlap
+information for each combination of fuzzers in that bench-                                                  6.3        RQ3: Can F ISH F UZZ find new bugs?
+mark. For ASan (Figure 6a), FF AFL and FF AFL++ share 93
+and 75 unique bugs with ParmeSan and TortoiseFuzz. We did                                                   We challenge the ability of F ISH F UZZ to find new CVEs
+not manage to find only 4 for ParmeSan and one for AFL++,                                                   in real applications. For this experiment, we choose 30 pro-
+
+
+
+1352       32nd USENIX Security Symposium                                                                                                                          USENIX Association
+                     Table 7: Unique bugs found in Two-Stage benchmark after 10 rounds of 24 hours each.
+
+                          FF AFL    FF AFL++    AFL          AFL++        AFLFast     FairFuzz     EcoFuzz     KScheduler
+           cflow              2.0         2.3          0.8          1.5         1.0          1.7         1.5           1.7
+           mujs               4.5         4.5          0.4          1.2         0.6          0.8         1.4           0.3
+           tic                3.4         3.9          0.9          1.7         0.7          1.1         0.7           0.1
+           mutool             1.0         0.4          0.7          0.9         0.5          1.3         1.1             -
+           dwarfdump          2.0         1.7          2.0          1.6         1.5          2.0         1.9           2.0
+           w3m                  0           0            0            0           0            0           0             0
+           cxxfilt            8.1         0.1          3.2          0.2         0.4            0         6.7           1.8
+           sum               21.0        12.9          8.0          7.1         4.7          6.9        13.3           5.9
+           vs FF AFL                            +162.50%     +195.77%     +346.81%    +204.35%     +57.89%      +255.93%
+           vs FF AFL++                           +61.25%      +81.69%     +174.47%     +86.96%      -3.01%      +118.64%
+
+
+
+grams from top tiers publications, i.e., TortoiseFuzz [27],           to QSYM+AFL and up to 21.21% and 14.60% for targets
+SAVIOR [7], GREYONE [9], FuzzGen [14], as well as from                reached and coverage, respectively. Finally, F ISH F UZZ also
+the fuzzing community. For each program, we deployed ASan             improves the number of seeds in the queue by reaching
+and UBSan, respectively. We run a session one week long for           41.25% more seeds at maximum (i.e., path column).
+each program.                                                            Takeaway: This experiment demonstrates that F ISH F UZZ
+   In total, we found 56 new bugs, 38 of which were confirmed         is compositional and improves the performance of other
+CVEs. F ISH F UZZ finds most of the bugs/CVEs in less than            fuzzers.
+three days (46), while 10 bugs require from three to seven
+days. We found 44 bugs with the ASan sanitizers and 12 bugs
+with UBSan. The most common bugs are heap-overflow (15),              6.5 RQ5 - How F ISH F UZZ improve the fuzzer
+reachable assertions (7), stack-exhausted (6), divide-by-zero             capabilities?
+(2), and shift exponentially (1). We report the full list of bugs
+founds in our artifact. Most importantly, the bugs found are          F ISH F UZZ is a generic input prioritization technique that can
+from exhaustively fuzzed programs (i.e., programs intensively         be deployed over any fuzzer. The purpose of F ISH F UZZ is
+tested by other state-of-the-art fuzzers). For instance, F ISH -      to select better seeds for exploration or exploitation, without
+F UZZ finds CVE-2022-27943 in nm-new (binutils), one of               altering the original fuzzer mutators or other mechanisms.
+the most widely used fuzzing test suites. Moreover, F ISH -           Therefore, the performance of F ISH F UZZ might change de-
+F UZZ also finds five bugs in Android and Apple OS libraries          pending on the originally chosen fuzzer. In this section,
+(libavc, libmpeg2, liblouis), two of which (CVE-2022-                 we study these differences by looking at how FF AFL and
+26981, CVE-2022-31783) have been confirmed to enable                  FF AFL++ improve over their baselines AFL and AFL++.
+remote code execution and receive acknowledgments from                   Looking at Table 3 and Table 5, we observe that FF AFL
+Apple and Huawei (EulerOS-SA-2022-2226, HT213340).                    and FF AFL++ cover more edges compared to their baselines
+   Takeaway: F ISH F UZZ is effective in finding new CVEs             (13.0% and 9.3%), as well as reach more targets (17.2% and
+since it manages to find 38 new vulnerabilities in less than a        9.0%). Similar differences also appear when comparing sin-
+week over programs already deeply tested by previous works.           gle programs, for exiv2 (ASan benchmark), FF AFL++ and
+                                                                      AFL++ achieve significantly better coverage compared to
+                                                                      FF AFL /AFL (9.4% and 78.5% respectively). However, in
+6.4 RQ4: Can other fuzzers benefit from our                           catdoc, FF AFL++ /AFL++ perform worse than FF AFL /AFL
+    strategies?                                                       (about 40.8% lower).
+                                                                         More interestingly, bugs covered by FF AFL++ and FF AFL
+To answer this question, we combine QSYM [30] with FF AFL             are different. Since F ISH F UZZ does not modify the origi-
+and AFL to measure if our cull queuing improves the perfor-           nal queue culling for intra-function exploration, FF AFL and
+mance. Specifically, we run QSYM with one AFL-primary                 FF AFL++ show different results for bug discovery. For exam-
+and one concolic executor (more details in QSYM original pa-          ple, in Table 7, AFL++ does not perform well in cxxfilt
+per [30]). We run the experiments against UBSan benchmark             (0.2 bugs on average) while AFL discovers 3.2 bugs. In
+for 10 rounds of 24 hours each.                                       Two-Stage, FF AFL and AFL cover the same seven bugs, how-
+   Table 8 shows that combining QSYM+F ISH F UZZ im-                  ever, CVE-2017-13731 is only covered by FF AFL++ /AFL++.
+proves every aspect of the original fuzzer. For instance,             In ASan, we observe similar cases: gpac_issue_1250 and
+we improve the triggered targets up to 33.29% compared                catdoc_issue_8 are only covered by AFL/FF AFL . For all
+
+
+
+USENIX Association                                                                      32nd USENIX Security Symposium          1353
+Table 8: Running QSYM+FF AFL against QSYM+AFL in the UBSan benchmark. The results refer to the average of 10 rounds
+for 24 hours each. Column path represents the number of seeds in the queue.
+
+                        QSYM+AFL                                QSYM+FF AFL                                 vs QSYM+FF AFL
+            path      cov    reach         trigger   path      cov    reach            trigger   path      cov     reach       trigger
+ djpeg       1315.9   10640.0     3435.4     91.7     2264.5   11964.9        3905.0    138.1    +72.09%   +12.45%   +13.67%   +50.60%
+ jasper      1029.7    9563.0     1430.1     29.0     1596.5   10565.7        1687.3     40.8    +55.05%   +10.49%   +17.98%   +40.69%
+ readelf      516.8    2470.8      220.9     20.1      654.7    2517.6         218.6     23.8    +26.68%    +1.89%    -1.04%   +18.41%
+ objdump     1812.8    9223.6      968.0     60.6     2142.7   10083.4        1112.4     78.6    +18.20%    +9.32%   +14.92%   +29.70%
+ tcpdump     1760.1   13010.3     1981.8     73.7     2470.5   16924.3        2626.8     93.0    +40.36%   +30.08%   +32.55%   +26.19%
+ tiff2pdf    1258.5    9131.7      993.2     12.0     1806.8    9878.1        1144.1     12.4    +43.57%    +8.17%   +15.19%    +3.33%
+ tiff2ps      815.2    6355.7      540.2      6.7     1594.6    8221.0        1022.7      7.1    +95.61%   +29.35%   +89.32%    +5.97%
+ xmllint     2272.2    8112.0      691.0     10.5     2698.5    8355.3         720.1     11.8    +18.76%    +3.00%    +4.21%   +12.38%
+ sum        10781.2   68507.1   10260.6     304.3    15228.8   78510.3       12437.0    405.6    +41.25%   +14.60%   +21.21%   +33.29%
+
+
+
+these cases, we leave detailed tables in §A.5.                           7.3      Combining F ISH F UZZ with other works
+   Takeaway: F ISH F UZZ enhances the capabilities of the
+                                                                         BEACON [13], a concurrent DGF uses software analysis (e.g.,
+original fuzzers by directing the energy toward promising
+                                                                         static or dynamic) to foresee (and discard) unreachable por-
+locations. More importantly, F ISH F UZZ does not change the
+                                                                         tions of code. F ISH F UZZ would benefit from these techniques
+intra-function exploration, thus triggering different bugs.
+                                                                         to speed up the initial exploration phase or better re-assign
+                                                                         energy to targets. Similarly, we consider combining SAV-
+7     Discussion                                                         IOR [7] with our exploration phase to investigate if different
+                                                                         approaches can lead to better performances.
+We discuss hyperparameters tuning (§7.1), target size (§7.2),
+and combination with orthogonal techniques (§7.3).
+                                                                         8     Related Works
+
+7.1    Hyperparameter Tuning                                             F ISH F UZZ improves existing fuzzing work across two re-
+                                                                         search areas: Directed Greybox Fuzzers (§8.1) and Two-Stage
+F ISH F UZZ uses a finite-state machine to alternate exploration         Fuzzers (§8.2).
+and exploitation, whose switching is governed by hyperparam-
+eter (§4.2). In our experiments, we empirically try different
+settings and observe that a long exploitation time (i.e., 1 hour)        8.1      Directed Greybox Fuzzers
+leads to better performances for ASan. However, this setting             DGF is a branch of fuzzing that specializes fuzzers for hitting
+brings to non-optimal performance for UBSan. We argue this               a given set of targets (instead of improving code-coverage).
+is because UBSan’s targets are simpler, thus they require less              Böhme et al. discusses the first prototype, AFLGo [3],
+exploitation time. To validate our hypothesis, we conduct an             which models the seed-target distance as a harmonic aver-
+additional study in §A.3. The results suggest different hyper-           age distance. However, the AFLGo approach loses precision
+parameters can improve up to 12.03% coverage and 37.29%                  for large target sets. In this regard, F ISH F UZZ relies on a
+triggered targets. To sum up, different scenarios require their          novel seed-target distance whose precision is not affected by
+own set of hyperparameters, likewise for ML/DL [33],                     the number of targets. Improvements to AFLGo were further
+                                                                         proposed by Chen et al. with Hawkeyes [5] and Peiyuan et
+7.2    Target Set Size                                                   al. with FuzzGuard [33]. These works try to handle indirect
+                                                                         calls by adopting heavy-weight static analysis (Hawkeyes) or
+F ISH F UZZ is designed to handle large target sets (up to 20k           using deep learning to discard unfruitful inputs (FuzzGuard),
+in our experiments § 6). Even though F ISH F UZZ scales up               respectively. Conversely, F ISH F UZZ does not need any com-
+efficiently in these cases, we also observe a drop of perfor-            plex analysis to resolve indirect jumps, while its seed selection
+mances for small target sets (e.g., at around tens targets). We          automatically promotes interesting inputs.
+plan to tackle this problem in two directions. First, we could              Steps toward more scalable DGF are discussed by Öster-
+employ different mutators to direct seeds faster, such as [20].          lund with ParmeSan [21] and Chen with SAVIOR [7], respec-
+Second, we believe this observation suggests the need for spe-           tively. Both ParmeSan and SAVIOR consider all the sanitizer
+cific ad-hoc seed-distance metrics according to the context.             labels as targets. Additionally, SAVIOR introduces a heavy
+Therefore, we will investigate the performance of different              reachable analysis to select interesting inputs. Both works
+seed-target metrics and infer the best trade-off as future work.         suffer from the original AFLGo limitation since they collapse
+
+
+
+1354    32nd USENIX Security Symposium                                                                               USENIX Association
+Table 9: Unique bug finding overlap for the Two-Stage benchmark. For each pair of fuzzers, we indicate two overlap measurements
+a/b; where a indicates the bugs found exclusively by both fuzzers, while b indicates the bugs found by both fuzzers but possibly
+also others. As an example, the intersection FF AFL and FF AFL++ indicates 7/20: 7 is the number of bugs found exclusively
+by FF AFL and FF AFL++ , while 20 are bugs found by FF AFL and FF AFL++ and by other fuzzers as well. The table is mirrored
+because a and b are reflexive (the pair order does not matter).
+
+                           FF AFL     FF AFL++    AFL     AFL++       AFLFast     FairFuzz     EcoFuzz     KScheduler
+            FF AFL            2/29         7/20    0/14       0/11        0/13         0/10        1/19            0/13
+            FF AFL++          7/20         0/21     0/9       1/12         0/9         0/10        0/12             0/8
+            AFL               0/14          0/9    0/15       0/10        0/11          0/9        0/15            0/11
+            AFL++             0/11         1/12    0/10       0/13         0/8         0/10        0/11             0/7
+            AFLFast           0/13          0/9    0/11        0/8        0/13          0/9        0/13            0/11
+            FairFuzz          0/10         0/10     0/9       0/10         0/9         0/11        0/11             0/7
+            EcoFuzz           1/19         0/12    0/15       0/11        0/13         0/11        0/20            0/13
+            KScheduler        0/13          0/8    0/11        0/7        0/11          0/7        0/13            0/13
+
+
+the seed-target distance into a scalar, thus losing precision.       nation of adaptive energy schedule and game theory to avoid
+F ISH F UZZ differs from these works for two reasons. First, it      testing unfruitful seeds. Their approach does not discuss seed
+employs a novel seed-target distance that overcomes scalabil-        selection strategies, thus being orthogonal to F ISH F UZZ.
+ity limitations. Second, it uses a faster exploitation phase to         Wang et al. [27] select interesting targets upon extensive
+trigger more targets.                                                software analysis, that are then combined with a novel queue
+   Lee et al. propose CAFL [16] (Constraint guided directed          culling strategy. However, their approach considers only time-
+greybox fuzzing). The goal of this work is to synthesize a           invariant targets, thus not adjusting the fuzzer’s energy toward
+POC from a given crash by following a similar approach               more promising code locations. Conversely, the queue culling
+to AFLGo. In their scenario, CAFL considers only one tar-            mechanism of F ISH F UZZ is adaptive and can be potentially
+get, while F ISH F UZZ is designed to handle a large number          used to improve the performance of Wang’s work.
+of targets. Finally, Zhu et al. discuss Regression Greybox
+Fuzzing [32], their work contains methods to select possible
+bogus code locations by analyzing the repository history. This
+approach is then combined with a more efficient power sched-
+                                                                     9   Conclusion
+ule policy. We consider this work as orthogonal to F ISH F UZZ
+since we focus on the input prioritization strategy, while they
+recognize interesting code locations for testing.                    Exploration and exploitation are fuzzers’ key components for
+   Huang et al. introduce BEACON [13], which uses sophisti-          finding bugs. Greybox fuzzers overly focus on explorations.
+cated static analysis to remove unfeasible paths, thus speeding      Directed Greybox Fuzzing has been hampered by averaged
+up the exploration phase. Conversely, F ISH F UZZ aims at im-        distance metrics that over-eagerly aggregate paths into scalars
+proving the exploitation phase and trigger targets. We consider      and simple energy distribution that simply assigns equal pri-
+their approach as orthogonal to F ISH F UZZ, we further plan         orities to all targets in a round-robin fashion.
+to combine the two strategies in the future.                            We draw inspiration from trawl fishing where a wide net
+                                                                     is cast and pulled to reach many targets before they are har-
+                                                                     vested. F ISH F UZZ improves the exploration and exploitation
+8.2    Two-Stage Fuzzers                                             phases with explicit feedback for both phases and a dynamic
+Two-Stage fuzzers use exploration and exploitation phases            switching strategy that alternates mutation and energy distri-
+to reach and trigger multiple targets. Böhme et al. proposes         bution based on the current phase. Additionally, our dynamic
+AFLFast [4], which relies on Markov chains to probabilisti-          target ranking automatically discards exhausted targets and
+cally select seeds that improve the coverage. Their contribu-        our novel multi-distance metric keeps track of tens of thou-
+tion is mainly energy distribution related, while queue culling      sands of targets without loss of precision.
+and seed distance are not discussed.                                    We evaluate F ISH F UZZ against 47 programs and have, so
+   Lemieux et al. [17] study new mutation strategies and seed        far, discovered 56 new bugs (38 CVEs). F ISH F UZZ is avail-
+selections to hit rare branches. Their contribution is more          able at https://github.com/HexHive/FishFuzz and we
+related to improving code coverage, while F ISH F UZZ also           provide a test environment to play with our novel input priori-
+maximizes the targets triggered. Yue et al. discuss a combi-         tization mechanism.
+
+
+
+USENIX Association                                                                     32nd USENIX Security Symposium          1355
+Acknowledgments                                                     fuzzing research. In 14th USENIX Workshop on Offen-
+                                                                    sive Technologies (WOOT 20). USENIX Association,
+We thank the anonymous reviewers and our shepherd for               August 2020.
+their feedback. This work was supported, in part, by the Na-
+tional Natural Science Foundation of China (U1836210), the      [9] Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xi-
+Key Research and Development Science and Technology of              aojun Qin, Dong Wu, and Zuoning Chen. {GREYONE}:
+Hainan Province (GHYF2022010), the China Scholarship                Data flow sensitive fuzzing. In 29th USENIX Security
+Council, the European Research Council (ERC) under the              Symposium (USENIX Security 20), pages 2577–2594,
+European Union’s Horizon 2020 research and innovation pro-          2020.
+gram (grant agreement No. 850868), SNSF PCEGP2_186974,
+                                                               [10] Patrice Godefroid, Michael Y Levin, and David Molnar.
+and DARPA HR001119S0089-AMP-FP-034.
+                                                                    Sage: Whitebox fuzzing for security testing: Sage has
+                                                                    had a remarkable impact at microsoft. Queue, 10(1):20–
+References                                                          27, 2012.
+
+                                                               [11] Google. Addresssanitizer. https://github.com/
+ [1] AFL.    technical_details.txt. https://github.
+                                                                    google/sanitizers/wiki/AddressSanitizer,
+     com/google/AFL/blob/master/docs/technical_
+                                                                    2014.
+     details.txt, 2019.
+                                                               [12] Google. Undefinedbehaviorsanitizer. https://clang.
+ [2] Domagoj Babic, Stefan Bucur, Yaohui Chen, Franjo               llvm.org/docs/UndefinedBehaviorSanitizer.
+     Ivancic, Tim King, Markus Kusano, Caroline Lemieux,            html, 2017.
+     László Szekeres, and Wei Wang. Fudge: Fuzz driver
+     generation at scale. In Proceedings of the 2019 27th      [13] Heqing Huang, Yiyuan Guo, Qingkai Shi, Peisen Yao,
+     ACM Joint Meeting on European Software Engineer-               Rongxin Wu, and Charles Zhang. Beacon: Directed
+     ing Conference and Symposium on the Foundations of             grey-box fuzzing with provable path pruning.
+     Software Engineering, 2019.
+                                                               [14] Kyriakos Ispoglou, Daniel Austin, Vishwath Mohan, and
+ [3] Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen,                Mathias Payer. {FuzzGen}: Automatic fuzzer genera-
+     and Abhik Roychoudhury. Directed greybox fuzzing. In           tion. In 29th USENIX Security Symposium (USENIX
+     Proceedings of the 2017 ACM SIGSAC Conference on               Security 20), pages 2271–2287, 2020.
+     Computer and Communications Security, pages 2329–
+     2344, 2017.                                               [15] Donald B Johnson. A note on dijkstra’s shortest path
+                                                                    algorithm. Journal of the ACM (JACM), 20(3):385–388,
+ [4] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-              1973.
+     hury. Coverage-based greybox fuzzing as markov chain.
+                                                               [16] Gwangmu Lee, Woochul Shim, and Byoungyoung Lee.
+     IEEE Transactions on Software Engineering, 45(5):489–
+                                                                    Constraint-guided directed greybox fuzzing. In 30th
+     506, 2017.
+                                                                    USENIX Security Symposium (USENIX Security 21),
+ [5] Hongxu Chen, Yinxing Xue, Yuekang Li, Bihuan Chen,             pages 3559–3576. USENIX Association, August 2021.
+     Xiaofei Xie, Xiuheng Wu, and Yang Liu. Hawkeye:           [17] Caroline Lemieux and Koushik Sen. Fairfuzz: A tar-
+     Towards a desired directed grey-box fuzzer. In Proceed-        geted mutation strategy for increasing greybox fuzz test-
+     ings of the 2018 ACM SIGSAC Conference on Computer             ing coverage. In Proceedings of the 33rd ACM/IEEE
+     and Communications Security, pages 2095–2108, 2018.            International Conference on Automated Software Engi-
+                                                                    neering, pages 475–485, 2018.
+ [6] Peng Chen and Hao Chen. Angora: Efficient fuzzing by
+     principled search. In 2018 IEEE Symposium on Security     [18] Yiwen Li, Brendan Dolan-Gavitt, Sam Weber, and Justin
+     and Privacy (SP), pages 711–725. IEEE, 2018.                   Cappos. Lock-in-pop: Securing privileged operating sys-
+                                                                    tem kernels by keeping on the beaten path. In USENIX
+ [7] Yaohui Chen, Peng Li, Jun Xu, Shengjian Guo, Rundong
+                                                                    Annual Technical Conference, pages 1–13, 2017.
+     Zhou, Yulong Zhang, Tao Wei, and Long Lu. Savior:
+     Towards bug-driven hybrid testing. In 2020 IEEE Sym-      [19] llvm. The LLVM Compiler Infrastructure Project. http:
+     posium on Security and Privacy (SP), pages 1580–1596.          //llvm.org/.
+     IEEE, 2020.
+                                                               [20] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-
+ [8] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and            Han Lee, Yu Song, and Raheem Beyah. {MOPT}: Opti-
+     Marc Heuse. AFL++ : Combining incremental steps of             mized mutation scheduling for fuzzers. In 28th USENIX
+
+
+
+1356   32nd USENIX Security Symposium                                                                  USENIX Association
+     Security Symposium (USENIX Security 19), pages 1949–        [31] Michal Zalewski. american fuzzy lop.            https://
+     1966, 2019.                                                      lcamtuf.coredump.cx/afl/, 2013.
+
+[21] Sebastian Österlund, Kaveh Razavi, Herbert Bos, and         [32] Xiaogang Zhu and Marcel Böhme. Regression greybox
+     Cristiano Giuffrida. {ParmeSan}: Sanitizer-guided grey-          fuzzing. In Proceedings of the 2021 ACM SIGSAC
+     box fuzzing. In 29th USENIX Security Symposium                   Conference on Computer and Communications Security,
+     (USENIX Security 20), pages 2289–2306, 2020.                     pages 2169–2182, 2021.
+
+[22] Konstantin Serebryany, Derek Bruening, Alexander            [33] Peiyuan Zong, Tao Lv, Dawei Wang, Zizhuang Deng,
+     Potapenko, and Dmitriy Vyukov. {AddressSanitizer}:               Ruigang Liang, and Kai Chen. FuzzGuard: Filtering out
+     A fast address sanity checker. In 2012 USENIX An-                unreachable inputs in directed grey-box fuzzing through
+     nual Technical Conference (USENIX ATC 12), pages                 deep learning. In 29th USENIX Security Symposium
+     309–318, 2012.                                                   (USENIX Security 20), pages 2255–2269. USENIX As-
+                                                                      sociation, August 2020.
+[23] Dongdong She, Abhishek Shah, and Suman Jana. Effec-
+     tive seed scheduling for fuzzing with graph centrality      A     Appendix
+     analysis. arXiv preprint arXiv:2203.12064, 2022.
+
+[24] Erik van der Kouwe, Gernot Heiser, Dennis Andriesse,
+                                                                 A.1     UBSan vs ASan targets
+     Herbert Bos, and Cristiano Giuffrida. SoK: Benchmark-       We observe that UBSan targets tend to require less exploita-
+     ing Flaws in Systems Security. In EuroS&P, June 2019.       tion time compared to ASan targets. Therefore, we conduct a
+                                                                 dedicated study regarding the difficulties to trigger targets in
+[25] Jonas Wagner, Volodymyr Kuznetsov, George Candea,           the two sanitizers. First, we instrument the Two-Stage bench-
+     and Johannes Kinder. High system-code security with         mark with ASan and UBSan respectively (more info in §6
+     low overhead. In 2015 IEEE Symposium on Security            “Benchmarks Selected”). Then, we count the visit frequencies
+     and Privacy, pages 866–879. IEEE, 2015.                     of targets before triggering a crash and report the average. We
+                                                                 observe that in most programs, ASan’s average hit rate is sig-
+[26] Jinghan Wang, Yue Duan, Wei Song, Heng Yin, and             nificantly higher than UBSan’s. For instance, in cxxfilt and
+     Chengyu Song. Be sensitive and collaborative: Ana-          mujs, ASan’s hit counts are 1.23X and 1.40X higher than UB-
+     lyzing impact of coverage metrics in greybox fuzzing.       San’s. In mutool and tic, instead, the differences are more
+     In 22nd International Symposium on Research in At-          pronounced, i.e., ASan requires 23.17X and 1369.87X higher
+     tacks, Intrusions and Defenses (RAID 2019), pages 1–15,     hit rates than UBSan. Observing these results, we conclude
+     2019.                                                       that UBSan targets are simpler, thus requiring less exploita-
+                                                                 tion time. Our hyperparameter study observes similar results
+[27] Yanhao Wang, Xiangkun Jia, Yuwei Liu, Kyle Zeng,
+                                                                 in §7.1.
+     Tiffany Bao, Dinghao Wu, and Purui Su. Not all cov-
+     erage measurements are equal: Fuzzing by coverage
+     accounting for input prioritization. In NDSS, 2020.         A.2     P-Values
+[28] Mingyuan Wu, Ling Jiang, Jiahong Xiang, Yanwei              Table 10, Table 11, and Table 12 contain the p-values from
+     Huang, Heming Cui, Lingming Zhang, and Yuqun                the Mann-Whitney U test. The numbers are the respective
+     Zhang. One fuzzing strategy to rule them all. In Proceed-   p-values from the Table 3, Table 4, and Table 5. We com-
+     ings of the 44th International Conference on Software       pute the p-values for coverage, target reached/triggered in all
+     Engineering, pages 1634–1645, 2022.                         our benchmarks by using scipy version 1.8.0 and the results
+                                                                 from FF AFL++ as baseline. We chose FF AFL++ as baseline,
+[29] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu,         instead of FF AFL , because the latter produces unexpected
+     Kai Lu, and Xu Zhou. {EcoFuzz}: Adaptive {Energy-           results due to an anomality with the statistical test if all val-
+     Saving} greybox fuzzing as a variant of the adversarial     ues of one target are equal. For instance, even though FF AFL
+     {Multi-Armed} bandit. In 29th USENIX Security Sym-          and TortoiseFuzz achieve similar coverage on flvmeta, con-
+     posium (USENIX Security 20), pages 2307–2324, 2020.         sidering FF AFL++ as baseline produces a p-value of 0. This
+                                                                 happens because FF AFL explores exactly 996 edges every
+[30] Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and           round, so the probability for FF AFL to achieve different edge
+     Taesoo Kim. QSYM : A practical concolic execution en-       coverage is 0. TortoiseFuzz, instead, explores 995 and 994
+     gine tailored for hybrid fuzzing. In 27th USENIX Secu-      edges during the 10 rounds. Conversely, using FF AFL++ as
+     rity Symposium (USENIX Security 18), pages 745–761,         baseline procudes more representative p-values. For com-
+     Baltimore, MD, August 2018. USENIX Association.             pleteness, we release all the raw measurement data along
+
+
+
+USENIX Association                                                                 32nd USENIX Security Symposium           1357
+                          Table 10: p-values of the Mann-Whitney U test from the experiments in Table 3.
+
+                          FF AFL             FF AFL++                 AFL               AFL++               TortoiseFuzz             ParmeSan
+ programs              cov     reach        cov reach           cov      reach       cov    reach           cov     reach           cov    reach
+ exiv2                0.0046     0.0028         1       1   0.0004        0.0004    0.2123     0.1405     0.0002     0.0002       0.0001     0.0001
+ flvmeta              0.1681     0.1681         1       1   0.6264        0.6264    0.1681     0.1681      0.017     0.1681       0.0001     0.0001
+ MP4Box               0.0073     0.0004         1       1   0.7337        0.3845    0.0002     0.0002      0.001      0.001       0.1212      0.001
+ lou_checktable       0.1857     0.0015         1       1   0.1855        0.0004    0.0045     0.0002     0.0257     0.0002       0.0002     0.0001
+ tiff2pdf             0.6232          1         1       1   0.0036        0.0006    0.0022     0.0017     0.0002     0.0002       0.0002     0.0002
+ nasm                 0.0002     0.0004         1       1   0.0002        0.0002    0.0008     0.0006     0.0002     0.0002       0.0002     0.0002
+ tcpprep              0.0007     0.0085         1       1   0.0689        0.4425    0.0001     0.0226     0.1397     0.8755       0.0001     0.0001
+ catdoc                    0          0         1       1   0.0001             0         1          1     0.0001          0            0          0
+ tcpdump              0.0006     0.0008         1       1   0.0002        0.0002    0.0002     0.0002     0.0002     0.0002       0.0001     0.0001
+ nm-new                0.162     0.1405         1       1   0.0002        0.0002    0.5708     0.7912     0.0002     0.0002       0.0002     0.0002
+ gif2tga              0.0659     0.8236         1       1   0.0002        0.0001    0.7592     0.5171     0.0012     0.0001       0.0006     0.0008
+
+
+                          Table 11: p-values of the Mann-Whitney U test from the experiments in Table 4.
+
+                      FF AFL                    FF AFL++                    AFL                         AFL++                       SAVIOR
+ programs    cov      reach     trigger   cov   reach trigger     cov       reach   trigger    cov       reach   trigger    cov      reach trigger
+ djpeg      0.6232    0.3603    0.6998     1        1       1    0.0046    0.0013   0.0344    0.4274    0.6772   0.1333    0.0091   0.0045    0.1003
+ jasper     0.0058    0.0282    0.0045     1        1       1     0.162    0.4053   0.5959    0.0173    0.1301   0.0004     0.064   0.1617     0.405
+ readelf    0.0013    0.0028    0.0004     1        1       1    0.1403     0.185   0.4253    0.0757    0.0818   0.1081     0.001   0.0019    0.0773
+ objdump       0.65    0.273    0.6429     1        1       1    0.0452    0.0211   0.7018    0.0058    0.0022   0.7026    0.0001   0.0001    0.0001
+ tcpdump    0.1212    0.1041    0.9396     1        1       1    0.0539    0.0211   0.0489    0.0036    0.0019   0.0002    0.0002   0.0002    0.0002
+ tiff2pdf   0.5205    0.5706    0.7885     1        1       1    0.3075    0.3071   0.0108    0.6232    0.8205   0.1153    0.0257   0.1405    0.0224
+ tiff2ps    0.2119       0.13    0.298     1        1       1    0.0539    0.1859   0.8479    0.0006    0.0005   0.0056    0.0113   0.0058    0.0458
+ xmllint    0.4055    0.3432    0.0198     1        1       1    0.9097     0.009   0.0021    0.6776    0.0491   0.0147    0.0003   0.0021    0.0001
+
+
+
+with p-values (with both FF AFL and FF AFL++ as baseline) in                  A.4     Ablation Study
+https://github.com/HexHive/FishFuzz.
+                                                                              We run a campaign on our UBSan dataset (24h each for 5
+                                                                              rounds) by using only inter-function and exploitation (§4.2).
+A.3    Hyperparameter Study                                                   This experiment shows the independent contribution for edge/-
+                                                                              function coverage and reached/triggered targets. Note that
+F ISH F UZZ’s performance depends on a set of inter-dependent                 intra-function (Figure 4) is the original AFL/AFL++ one,
+parameters.                                                                   thus we ignore it. As shown in Table 13, the combination
+   Different Exploration/Exploitation Timeout. We mea-                        of all phases produces the best results. FF AFL covers 5.29%
+sure coverage, the number of reached/triggered targets on our                 more edges and triggered 16.02% compared against best of
+UBSan benchmark with FF AFL++ . We leverage different time-                   inter-function and exploitation stage. For the inter-function,
+outs for inter-function (15, 20, 30 mins), intra-function(10,                 although it reaches 3.73% less basic block compared with
+20 mins), and exploitation phases (30, 40, 60 mins). The per-                 exploitation stage, it still finds slightly more functions than
+formance changes as follows comparing the best/worst set-                     exploitation (1.54%).
+tings: in tcpdump, the coverage improves by 12.03%, while in
+readelf the reached targets improve by 15.43%. We also no-
+tice that in tiff2ps the number of triggered targets improves                 A.5     Time-To-Exposure Details
+by 37.29%.                                                                    Table 14 and Table 15 show the unique bugs found in ASan
+   Target Ranking Threshold. We also study the impact of                      and the Two-Stage benchmarks (more info in §6 “Benchmarks
+different target ranking thresholds (i.e., the variable thresh-               Selected”) and the respective time-to-exposure.
+old in line 14). We evaluate our UBSan benchmark for 5
+rounds with threshold top 10%, 20%, and 40% fewer hit tar-
+gets, respectively. The results suggest the threshold setting
+only affects 0.60% of the coverage and 2.91% of the triggered
+targets respectively. Therefore, this hyperparameter does not
+affect the capability of F ISH F UZZ to exploit/reach targets.
+
+
+
+1358   32nd USENIX Security Symposium                                                                                        USENIX Association
+                                    Table 12: p-values of the Mann-Whitney U test from the experiments inTable 5.
+
+                       FF AFL              FF AFL++                  AFL               AFL++                      AFLFast                 FairFuzz                EcoFuzz               KScheduler
+ program            cov     reach         cov reach            cov      reach       cov    reach                cov    reach            cov     reach           cov    reach           cov    reach
+ cflow             0.0122      0.0381         1           1   0.0026    0.0001    0.0002       0.0001       0.0243        0.0001       0.0026      0.0001     0.0002      0.0004     0.0002        0.0001
+ mujs              0.0073      0.0036         1           1   0.0002    0.0002    0.0008       0.0003       0.0002        0.0002       0.0002      0.0002     0.0002      0.0002     0.0002        0.0002
+ tic               0.0451      0.0407         1           1   0.0003    0.0002    0.0017       0.0013       0.0002        0.0002       0.0004      0.0003     0.0013      0.0013     0.0003        0.0002
+ mupdf             0.0101      0.0957         1           1   0.0002    0.0003    0.1403       0.0113       0.0065         0.001       0.1212      0.0112     0.0091       0.001     0.0001        0.0001
+ dwarfdump         0.0139      0.4457         1           1   0.1402    0.8197    0.6219       0.3416       0.0003        0.0003       0.9096      0.0807     0.2411      0.9696     0.2727        0.1846
+ w3m                0.289       0.676         1           1   0.0001    0.0001    0.0019       0.0002       0.0001        0.0001       0.0001      0.0001     0.0125       0.068     0.0002        0.0002
+ cxxfilt           0.0002      0.0002         1           1   0.0002    0.0002    0.0002       0.0002       0.0002        0.0002       0.0002      0.0002     0.0002      0.0002     0.0002        0.0002
+
+
+
+
+Table 13: average edge/function coverage and target reached/triggered in UBSan benchmark. all means combination of all
+strategies (FF AFL ), explore is Algorithm 1 only and exploit is Algorithm 2 only.
+
+                                                  all                                                   explore                                                       exploit
+ programs                cov            func              reach      trigger           cov           func      reach            trigger               cov           func      reach               trigger
+ djpeg               12427           147.2               3969.4        140.4     11621.8           141              3842           133.8        11651.6             141            3846.8            134
+ jasper            10775.2           468.2               1772.6         50.4      9783.2           449            1609.6            33.2         9592.4           436.2            1587.2           31.2
+ readelf              2008            51.2                157.6           28        2112          53.2               178            27.6         1889.4            49.4             149.2           19.6
+ objdump           10320.4           292.6               1118.8         97.6      9004.6         271.8             985.2            77.4         9154.6           268.2             982.6           87.6
+ tcpdump           24422.8           471.8               3822.6        154.8     22972.8         461.4            3596.6             146          24279           439.6              3678          131.2
+ tiff2pdf          13076.8           282.4                 1919         19.4      11104          270.6            1424.6            12.4        12673.8           275.2            1847.4           15.8
+ tiff2ps              9088           198.4               1177.8         15.8      8457.6         189.8            1070.2             8.6         8738.6           191.4            1129.2           10.6
+ xmllint            8069.4           306.8                723.6           15      7523.8         298.2             679.4            10.4           7681           301.6               690           11.6
+ sum               90187.6         2218.6               14661.4        521.4     82579.8             2135       13385.6            449.4        85660.4         2102.6         13910.4             441.6
+
+
+
+
+       Table 14: Time-To-Exposure of 30 real world bugs found after 10 rounds of 24 hours in the Two Stage benchmark.
+
+BUG                programs     stack trace                                                   type               FF AFL     FF AFL++    AFL        AFLFast    FairFuzz   EcoFuzz    K-Scheduler    AFL++
+CVE-2019-16165     cflow        reference->expression                                         UAF                 2:27:54    0:19:32    10:18:24    9:02:05   10:10:57    9:52:40       1:54:52     0:24:49
+CVE-2019-16166     cflow        nexttoken->parse_function_declaration                         HOF                15:54:06    9:36:24    19:30:12   20:11:16   17:19:06   20:45:32      13:06:41    14:01:42
+cflow_unknow_1     cflow        collect_processor->hash_do_for_each->collect_symbols          HOF                18:51:31   16:06:51    24:00:00   22:51:20   20:47:46   13:25:35      21:19:50    24:00:00
+CVE-2022-30974     mujs         compile->compile                                              stack exhastion     0:59:15   14:56:30    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+mujs_unknow_1      mujs         jsP_foldconst->jsP_foldconst                                  stack exhastion     1:53:49   15:48:42    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+mujs_unknow_2      mujs         unary->unary                                                  stack exhastion     1:01:13   16:19:47    24:00:00   24:00:00   24:00:00   11:55:31      24:00:00    24:00:00
+mujs_unknow_3      mujs         count->count                                                  stack exhastion    20:24:15   22:40:38    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2018-5759      mujs         jsC_cexp->jsC_cexp                                            stack exhastion    13:30:49   21:46:19    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2017-5627      mujs         js_pushstring->Fp_toString                                    HOF                14:21:28   10:40:18    17:54:54   12:30:47   15:24:11   19:51:40      17:00:15     8:16:52
+CVE-2018-6191      mujs         js_strtod->lexnumber                                          GOF                23:57:36   19:54:45    21:38:13   24:00:00   23:23:10   22:11:11      24:00:00    19:26:52
+tic_leak_1         tic          strdup->_nc_set_writedir->main                                leak               13:20:26   20:36:24    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+tic_leak_2         tic          malloc->_nc_init_termtype->_nc_init_entry                     leak                9:27:45   10:23:48    24:00:00   21:52:12   20:56:50   20:03:57      24:00:00    15:30:04
+tic_leak_3         tic          malloc->_nc_resolve_uses2->main                               leak               16:39:44   22:49:26    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    22:24:48
+CVE-2021-39537     tic          _nc_captoinfo->_nc_parse_entry->_nc_read_entry_source         HOF                17:36:37    1:01:29     4:32:25   11:47:47    7:06:39   15:02:31      21:55:41     3:54:42
+CVE-2017-13731     tic          postprocess_termcap->_nc_parse_entry->_nc_read_entry_source   HOF                24:00:00   22:52:34    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    21:38:29
+CVE-2022-29458     tic          convert_strings->_nc_read_termtype                            HOF                17:23:15   10:39:59    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2017-13729     tic          __interceptor_strlen.part.36->_nc_save_str                    UAF                20:10:17   19:11:37    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2017-17858     mutool       ensure_solid_xref->pdf_get_xref_entry                         HOF                 9:59:33   18:56:29    17:47:20   17:17:42    5:48:57   19:19:19      24:00:00    11:28:14
+CVE-2016-6265      mutool       pdf_load_xref->pdf_init_document                              OBW                24:00:00   24:00:00    21:32:51   24:00:00   15:57:10   19:49:54      24:00:00    19:33:02
+CVE-2019-14249     dwarfdump    read_gs_section_group                                         FPE                 0:00:05    0:00:02     0:00:03    0:23:27    0:23:43    0:24:23       0:23:19     0:00:02
+CVE-2022-39170     dwarfdump    _dwarf_destruct_elf_nlaccess                                  double free         4:21:22   10:25:58     1:20:58   12:45:42    2:41:26    6:44:44       5:25:28    10:13:38
+dwarf_unknow_1     dwarfdump    dwarf_pe_load_dwarf_section_headers                           HOF                23:50:30   24:00:00    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2018-18484     cxxfilt      cplus_demangle_type->d_bare_function_type->d_function_type    stack exhastion     1:08:31   24:00:00    16:37:15   22:34:27   24:00:00    7:35:09      20:34:34    24:00:00
+CVE-2018-17985     cxxfilt      cplus_demangle_type->cplus_demangle_type                      stack exhastion     1:12:08   24:00:00    13:33:11   22:33:52   24:00:00    1:35:54      18:01:46    24:00:00
+cxxfilt_unknow_1   cxxfilt      d_pointer_to_member_type->cplus_demangle_type                 stack exhastion     3:03:39   24:00:00    19:40:40   22:34:38   24:00:00    7:05:33      23:17:13    24:00:00
+CVE-2018-18700     cxxfilt      d_name->d_encoding->d_local_name                              stack exhastion     1:11:57   24:00:00    19:21:04   22:32:31   24:00:00    4:58:06      19:53:30    24:00:00
+CVE-2018-9138      cxxfilt      demangle_nested_args->do_type->do_arg->demangle_args          stack exhastion     2:01:55   23:13:48    21:33:11   24:00:00   24:00:00    4:09:24      21:51:43    21:37:46
+cxxfilt_unknow_2   cxxfilt      d_template_arg->d_template_args_1                             stack exhastion     5:24:50   24:00:00    24:00:00   24:00:00   24:00:00   16:52:02      20:05:49    24:00:00
+CVE-2019-9071      cxxfilt      d_count_templates_scopes->d_count_templates_scopes            stack exhastion     6:04:27   24:00:00    24:00:00   24:00:00   24:00:00   24:00:00      24:00:00    24:00:00
+CVE-2019-9070      cxxfilt      d_expression_1->d_expression_1                                stack exhastion     4:48:47   24:00:00    24:00:00   24:00:00   24:00:00   21:39:56      24:00:00    24:00:00
+CVE-2018-9996      cxxfilt      demangle_real_value->demangle_template_value_parm             stack exhastion    20:17:37   24:00:00    23:27:07   24:00:00   24:00:00   20:13:10      24:00:00    24:00:00
+
+
+
+
+USENIX Association                                                                                                                     32nd USENIX Security Symposium                               1359
+           Table 15: Time-To-Exposure of 72 real world bugs found after 10 rounds of 60 hours in the ASan benchmark.
+
+bug id                   programs         stack trace                                                    bug type                 FF AFL     FF AFL++   AFL        AFL++      ParmeSan   TortoiseFuzz
+CVE-2018-19325           tcpdump          EXTRACT_32BITS->mfr_print                                      heap overflow            38:26:44   35:53:56   50:48:10   56:36:43   60:00:00      60:00:00
+CVE-2017-16808           tcpdump          lookup_emem->etheraddr_string                                  heap overflow            60:00:00   57:19:30   59:48:41   60:00:00   60:00:00      60:00:00
+catdoc_issue_8           catdoc           find_file                                                      null pointer             13:36:47   60:00:00    9:58:12   60:00:00   60:00:00      60:00:00
+CVE-2020-18898           exiv2            printIFDStructure->printIFDStructure                           stack exhaustion         15:46:29   40:10:20   60:00:00   31:50:12   60:00:00      60:00:00
+CVE-2018-17282           exiv2            Exiv2::DataValue::copy                                         SEGV                     48:25:23   50:31:59   60:00:00   54:37:08   60:00:00      60:00:00
+flvmeta_issue_13         flvmeta          __interceptor_strcmp.part.26 ->xml_on_metadata_tag_only        SEGV                      0:00:00    0:00:00    0:00:00    0:00:00    0:05:17       0:00:00
+flvmeta_issue_14         flvmeta          __strftime_l ->xml_amf_data_dump                               SEGV                      0:13:34    0:07:40    0:07:26    0:04:04   20:32:55       0:18:13
+liblouis_issue_728-1     lou_checktable   vsnprintf->compileError                                        stack-overflow           20:05:21   29:34:34   50:44:01   60:00:00   60:00:00      59:40:42
+liblouis-java_issue_10   lou_checktable   compileUplow ->compileRule                                     UAF                      36:39:59   38:28:58   60:00:00   60:00:00   60:00:00      60:00:00
+liblouis_issue_573       lou_checktable   pattern_compile_expression->pattern_compile_expression         Stack Exhaustion         53:31:54   53:52:37   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-11685           lou_checktable   compileHyphenation->compileRule                                stack overflow           60:00:00   40:19:42   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-8883            nasm             parse_line ->assemble_file                                     global-buffer-overflow    0:03:04    0:02:46    0:02:02    0:02:21   60:00:00       0:05:51
+CVE-2019-6291            nasm             expr6 ->expr6                                                  stack-overflow           23:58:18   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-8882            nasm             ieee_shr ->to_float                                            stack-underflow          16:29:29    6:24:29   47:39:19   25:51:22   60:00:00      60:00:00
+CVE-2021-33457           nasm             expand_mmac_params->pp_getline                                 heap overflow            60:00:00   57:34:31   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-16517           nasm             islocal ->find_label                                           SEGV                     48:33:10   28:15:12   51:25:28   32:44:35   60:00:00      59:56:40
+CVE-2018-18484           nm-new           cplus_demangle_type ->d_bare_function_type ->d_function_type   Stack Exhaustion         28:44:07   42:01:53   48:18:18   60:00:00   60:00:00      59:15:02
+CVE-2018-9138            nm-new           do_type->do_arg                                                Stack Exhaustion         24:43:11   42:30:07   46:57:50   59:49:47   60:00:00      51:02:03
+CVE-2019-9070            nm-new           d_expression_1 ->d_expression_1                                Stack Exhaustion         32:00:16   41:54:22   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-17985           nm-new           cplus_demangle_type ->cplus_demangle_type                      Stack Exhaustion         20:18:26   39:15:26   48:14:18   60:00:00   60:00:00      58:44:38
+binutils-unknow-1        nm-new           cplus_demangle_type ->d_pointer_to_member_type                 Stack Exhaustion         12:00:38   54:34:15   53:07:52   60:00:00   60:00:00      60:00:00
+CVE-2019-9071            nm-new           d_count_templates_scopes ->d_count_templates_scopes            Stack Exhaustion         25:32:00   41:35:26   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-18700           nm-new           d_local_name ->d_name ->d_encoding                             Stack Exhaustion         20:05:55   39:14:25   50:40:09   60:00:00   60:00:00      59:05:22
+binutils-unknow-2        nm-new           d_template_args_1 ->d_template_args ->d_template_arg           Stack Exhaustion         04:02:40   49:18:08   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-9996            nm-new           demangle_real_value->demangle_template_value_parm              Stack Exhaustion         48:34:55   58:00:44   60:00:00   60:00:00   60:00:00      60:00:00
+binutils_issue_1375935   nm-new           d_print_comp->d_print_comp_inner                               Stack Exhaustion         58:50:22   58:37:44   60:00:00   60:00:00   60:00:00      60:00:00
+CVE-2018-20552           tcpprep          packet2tree ->add_tree_ipv4                                    heap overflow            14:40:00    0:04:11    0:01:09   12:03:27   60:00:00       0:10:09
+CVE-2020-24266           tcpprep          get_l2len ->get_ipv4                                           heap overflow             1:27:17    1:35:06    0:13:18    0:52:37   60:00:00       1:14:46
+CVE-2018-17795           tiff2pdf         t2p_write_pdf->main                                            heap overflow            58:13:04   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+libtiff_issue_258        tiff2pdf         t2p_read_tiff_data->t2p_write_pdf                              null pointer             57:22:05   59:43:58   60:00:00   54:19:59   60:00:00      53:09:29
+ngiflib_issue_11         gif2tga          WritePixel ->DecodeGifImg                                      heap overflow             0:00:00    0:00:00    0:00:00    0:00:00    0:00:00       0:00:00
+ngiflib_issue_1          gif2tga          WritePixels ->DecodeGifImg                                     heap overflow             0:00:04    0:00:03    0:00:04    0:00:02    0:00:14       0:00:06
+CVE-2019-20219           gif2tga          GifIndexToTrueColor ->WritePixels                              heap overflow             0:00:04    0:00:03    0:00:04    0:00:02    0:06:38       0:00:07
+ngiflib_issue_4          gif2tga          DecodeGifImg ->LoadGif                                         heap overflow             0:00:04    0:00:03    0:00:04    0:00:04    0:08:35       0:00:07
+gpac_issue_1333          MP4Box           gf_isom_box_dump_ex->gf_isom_box_array_dump                    UAF                       0:00:40    0:00:28    0:00:40    0:00:18   18:42:19       0:02:21
+gpac_issue_1661          MP4Box           gf_isom_box_del->gf_isom_box_del                               UAF                       0:02:37    0:01:34    0:02:19    0:01:04    0:02:54       0:08:15
+gpac_issue_1099          MP4Box           gf_isom_oinf_read_entry->gf_isom_box_parse_ex                  heap overflow             0:38:38    2:05:03    1:44:01    1:51:07    0:33:06       2:07:35
+gpac_issue_1250          MP4Box           gf_m2ts_process_data->gf_import_mpeg_ts                        heap overflow            15:17:10   29:21:37   23:39:24   56:02:08   60:00:00      36:55:54
+gpac_issue_1422          MP4Box           gf_m2ts_section_complete->gf_m2ts_gather_section               heap overflow             3:49:32   29:51:36   37:24:53   59:02:10   60:00:00      58:46:16
+gpac_issue_1446          MP4Box           gf_m2ts_get_adaptation_field->gf_m2ts_process_data             stack overflow            3:12:32   27:46:30   39:13:11   57:48:21   60:00:00      60:00:00
+CVE-2018-13005           MP4Box           urn_Read->gf_isom_box_parse_ex                                 heap overflow            18:32:11   22:18:47   15:57:09   51:38:52   60:00:00      33:33:56
+gpac_unknow_1            MP4Box           gf_isom_sample_entry_get_bitrate->AVC_RewriteESDescriptorEx    UAF                      12:19:05   33:58:37   49:39:20   58:38:01   60:00:00      26:23:00
+CVE-2018-7752            MP4Box           gf_media_avc_read_sps->avcc_Read                               stack overflow           19:13:32    5:58:45   25:31:18    4:14:43   20:01:51      31:10:59
+CVE-2018-21015           MP4Box           AVC_DuplicateConfig->merge_avc_config                          null pointer             51:20:32   53:43:02   57:46:19   60:00:00   48:39:58      60:00:00
+CVE-2019-20169           MP4Box           trak_Read->gf_isom_box_parse_ex                                UAF                      16:24:41   27:59:42   18:36:35    2:08:12    2:11:47      41:07:32
+gpac_issue_1096          MP4Box           metx_Read->gf_isom_box_parse_ex                                heap overflow            40:03:46   49:09:00   46:08:35   48:12:03   60:00:00      51:47:14
+gpac_issue_1097          MP4Box           printf_common->ReportGenericError                              heap overflow            22:12:04   60:00:00   60:00:00   51:19:56   60:00:00      47:19:37
+CVE-2019-20630           MP4Box           BS_ReadByte->gf_bs_read_int                                    heap overflow            34:10:31   52:56:22   58:25:29   60:00:00   60:00:00      60:00:00
+gpac_unknow_2            MP4Box           gf_m2ts_process_tdt_tot->gf_m2ts_section_complete              heap overflow            22:07:45   40:21:03   46:47:03   60:00:00   60:00:00      60:00:00
+CVE-2019-20629           MP4Box           gf_m2ts_process_pmt->gf_m2ts_section_complete                  heap overflow            48:20:55   52:10:17   55:44:50   60:00:00   60:00:00      60:00:00
+CVE-2019-20632           MP4Box           gf_odf_delete_descriptor                                       null pointer             50:10:54   57:45:29   59:20:16   60:00:00   60:00:00      60:00:00
+gpac_issue_1445          MP4Box           __asan_memcpy->gf_bs_read_data                                 heap overflow            48:55:11   55:55:11   59:00:47   60:00:00    5:03:02      60:00:00
+gpac_issue_1317          MP4Box           GF_IPMPX_ReadData->gf_ipmpx_data_parse                         heap overflow            55:22:35   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_3            MP4Box           gf_list_enum->gf_odf_delete_descriptor_list                    heap overflow            50:24:04   57:44:56   59:20:34   60:00:00   60:00:00      60:00:00
+gpac_issue_1327-1        MP4Box           gf_isom_box_parse_ex->gf_isom_box_array_read_ex                heap overflow            60:00:00   60:00:00   60:00:00   60:00:00    0:26:17      60:00:00
+gpac_unknow_4            MP4Box           gf_isom_parse_movie_boxes                                      null pointer             60:00:00   57:25:18   38:59:37   54:17:28   60:00:00      60:00:00
+gpac_unknow_5            MP4Box           gf_m2ts_process_sdt->gf_m2ts_section_complete                  heap overflow            46:00:58   52:43:55   52:40:11   60:00:00   60:00:00      60:00:00
+gpac_issue_1332          MP4Box           stbl_AddBox->gf_isom_box_array_read_ex                         null pointer             60:00:00   60:00:00   60:00:00   60:00:00   36:53:28      60:00:00
+gpac_unknow_6            MP4Box           sgpd_dump->gf_isom_box_dump_ex                                 heap overflow            60:00:00   60:00:00   60:00:00   60:00:00   45:56:20      60:00:00
+gpac_unknow_7            MP4Box           abst_Read->gf_isom_box_parse_ex                                heap overflow            52:18:32   60:00:00   56:48:01   60:00:00   58:56:05      60:00:00
+gpac_issue_1446          MP4Box           on_m2ts_import_data->gf_m2ts_reframe_nalu_video                heap overflow            58:45:40   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_8            MP4Box           gf_m2ts_reframe_aac_adts->gf_m2ts_flush_pes                    heap overflow            59:12:06   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_9            MP4Box           gf_mp3_get_next_header_mem->gf_m2ts_reframe_mpeg_audio         heap overflow            59:14:31   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_10           MP4Box           __asan_memcpy->gf_m2ts_reframe_aac_latm                        heap overflow            59:15:20   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_11           MP4Box           __interceptor_memchr.part.36->gf_m2ts_reframe_nalu_video       heap overflow            59:16:03   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_12           MP4Box           gf_m2ts_reframe_mpeg_video->gf_m2ts_flush_pes                  heap overflow            59:24:00   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_unknow_13           MP4Box           audio_sample_entry_AddBox->gf_isom_box_array_read_ex           null pointer             60:00:00   60:00:00   60:00:00   60:00:00   55:19:00      60:00:00
+CVE-2018-13006           MP4Box           __interceptor_strlen.part.24->hdlr_dump                        heap overflow            55:50:01   23:23:05   60:00:00   58:13:36   60:00:00      60:00:00
+gpac_issue_1348          MP4Box           dimC_Read->gf_isom_box_parse_ex                                heap overflow            57:38:37   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_issue_1262          MP4Box           txtc_Read->gf_isom_box_parse_ex                                heap overflow            59:21:35   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_issue_1328          MP4Box           GF_IPMPX_AUTH_Delete->gf_ipmpx_data_del                        heap overflow            57:03:56   60:00:00   60:00:00   60:00:00   60:00:00      60:00:00
+gpac_issue_1338          MP4Box           ilst_item_Read->gf_isom_box_parse_ex                           null pointer             58:11:06   47:49:35   49:06:22   60:00:00   60:00:00      59:52:36
+gpac_unknow_14           MP4Box           ilst_item_del->gf_isom_box_del                                 heap overflow            60:00:00   48:50:21   49:42:13   60:00:00   60:00:00      60:00:00
+
+
+
+
+1360      32nd USENIX Security Symposium                                                                                                                              USENIX Association
+

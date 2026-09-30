@@ -1,0 +1,1327 @@
+                                            Make out like a (Multi-Armed) Bandit: Improving the Odds of
+                                                     Fuzzer Seed Scheduling with T-Scheduler
+                                                               Simon Luo                                                 Adrian Herrera                                           Paul Quirk
+                                              The University of New South Wales                                Australian National University                                    Michael Chase
+                                                           Australia                                                      Australia                               Defence Science & Technology Group
+                                                   simon.luo@unsw.edu.au                                                                                                       Australia
+
+                                                                                   Damith C. Ranasinghe                                          Salil S. Kanhere
+                                                                                       University of Adelaide                         The University of New South Wales
+                                                                                             Australia                                             Australia
+arXiv:2312.04749v1 [cs.CR] 7 Dec 2023
+
+
+
+
+                                        ABSTRACT                                                                                      In Proceedings of The 19th ACM ASIA Conference on Computer and Com-
+                                        Fuzzing is an industry-standard software testing technique that                               munications Security (AsiaCCS ’24). ACM, New York, NY, USA, 17 pages.
+                                                                                                                                      https://doi.org/XXXXXXX.XXXXXXX
+                                        uncovers bugs in a target program by executing it with mutated
+                                        inputs. Over the lifecycle of a fuzzing campaign, the fuzzer ac-
+                                        cumulates inputs inducing new and interesting target behaviors,                               1     INTRODUCTION
+                                        drawing from these inputs for further mutation and generation of
+                                                                                                                                                   “Make out like a bandit”. Idiom. To make a large profit.
+                                        new inputs. This rapidly results in a large pool of inputs to select
+                                        from, making it challenging to quickly determine the “most promis-                                                                                  Merriam-Webster Dictionary
+                                        ing” input for mutation. Reinforcement learning (RL) provides a                                   Fuzzing is a software testing technique for automatically finding
+                                        natural solution to this seed scheduling problem—a fuzzer can dy-                             bugs and vulnerabilities in a target program. Fuzzers find bugs by
+                                        namically adapt its selection strategy by learning from past results.                         mutating inputs to induce new behavior in the target. Intuitively,
+                                        However, existing RL approaches are (a) computationally expensive                             mutated inputs are more likely to exercise corner cases in the tar-
+                                        (reducing fuzzer throughput), and/or (b) require hyperparameter                               get’s behaviors, leading to bugs. While most of these mutations do
+                                        tuning (reducing generality across targets and input types). To this                          not lead to anything interesting, there remains a chance that the
+                                        end, we propose T-Scheduler, a seed scheduler built upon multi-                               mutated input induces new and interesting target behaviors.
+                                        armed bandit theory to automatically adapt to the target. Notably,                                Intelligently selecting which inputs to mutate is critical for max-
+                                        our formulation does not require the user to select or tune hyper-                            imizing fuzzer effectiveness; inputs more likely to uncover new
+                                        parameters and is therefore easily generalizable across different                             behaviors should be prioritized for mutation. This prioritization of
+                                        targets. We evaluate T-Scheduler over 35 CPU-yr fuzzing effort,                               inputs is known as seed scheduling 1 [27, 40]. Seed schedulers typi-
+                                        comparing it to 11 state-of-the-art schedulers. Our results show that                         cally use heuristics to determine an input’s position in the fuzzer’s
+                                        T-Scheduler improves on these 11 schedulers on both bug-finding                               queue. In a coverage-guided greybox fuzzer—the most common
+                                        and coverage-expansion abilities.                                                             type of fuzzer—seed scheduling can be driven by a combination of:
+                                                                                                                                      (i) code coverage (inputs leading to new code uncover new behav-
+                                        CCS CONCEPTS                                                                                  iors); (ii) input size (smaller inputs are faster to mutate); (iii) exe-
+                                        • Security and privacy → Software and application security;                                   cution time (inputs with shorter execution time mean more fuzzer
+                                        • Computing methodologies → Machine learning.                                                 iterations); (iv) the number of times the input has been previously
+                                                                                                                                      selected (avoiding local optima); and (v) similarity with other inputs
+                                        KEYWORDS                                                                                      (improving diversity). However, seed scheduling is challenging be-
+                                        Fuzzing, Software Testing, Thompson Sampling, Reinforcement                                   cause of a combination of the (a) large number of inputs generated
+                                        Learning, Multi-Armed Bandits                                                                 via mutation (and thus requiring prioritization), (b) large search
+                                        ACM Reference Format:                                                                         space of the target, and (c) computational requirements (e.g., CPU
+                                        Simon Luo, Adrian Herrera, Paul Quirk, Michael Chase, Damith C. Ranas-                        time, memory, and storage).
+                                        inghe, and Salil S. Kanhere. 2024. Make out like a (Multi-Armed) Ban-                             Machine learning (ML)—in particular, reinforcement learning
+                                        dit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler.                           (RL)—is commonly applied to solve challenges in fuzzing [9, 11,
+                                                                                                                                      12, 16, 20, 25, 31, 32, 39, 40, 42, 50]. Notably, RL has been used to
+                                        Permission to make digital or hard copies of all or part of this work for personal or
+                                        classroom use is granted without fee provided that copies are not made or distributed
+                                                                                                                                      adaptively learn seed scheduling strategies more likely to lead to
+                                        for profit or commercial advantage and that copies bear this notice and the full citation     increased code coverage. In turn, this increases the likelihood of
+                                        on the first page. Copyrights for components of this work owned by others than ACM            uncovering new bugs (after all, one cannot find bugs in code that is
+                                        must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+                                        to post on servers or to redistribute to lists, requires prior specific permission and/or a   never executed). However, integrating RL into fuzzing introduces
+                                        fee. Request permissions from permissions@acm.org.                                            two challenges: performance tradeoffs and hyperparameter tuning.
+                                        AsiaCCS ’24, July 01–05, 2024, Singapore
+                                        © 2024 Association for Computing Machinery.
+                                                                                                                                      1We use the term “seed scheduling”, rather than “seed selection”, to disambiguate it
+                                        ACM ISBN 978-1-4503-XXXX-X/18/06. . . $15.00
+                                        https://doi.org/XXXXXXX.XXXXXXX                                                               from the (offline) process of selecting an initial set of inputs to bootstrap the fuzzer.
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                      Luo et al.
+
+
+   Performance tradeoffs. A fuzzer’s iteration rate is the number of                                               Save for
+                                                                            (a) Seeds               Discard
+inputs the fuzzer executes per unit of time; the faster the fuzzer’s it-                                           analysis
+eration rate, the quicker the fuzzer can discover new and interesting
+                                                                             (b) Queue
+behaviors. However, balancing performance and “cleverness” in se-
+lecting the best input to mutate is difficult. Moreover, RL algorithms
+require computational resources to train and evaluate, impacting a               (f) Filtering       (d) Is        Crash
+                                                                                 & favoring       interesting?    detected?
+fuzzer’s iteration rate. Naïvely introducing RL into a fuzzer (notably,
+for seed scheduling) can increase run-time overhead without any                   (e) Select                      Execute &            (c) Coverage map
+                                                                                                  Mutate input
+performance improvement. For example, we found AFL-Hier [40]                        input                          monitor
+                                                                                                                              Update
+(a fuzzer using RL for seed scheduling) introduced >2× overhead
+over AFL++’s [15] heuristic-based scheduler without any improve-
+ment in fuzzing outcomes.                                                                Figure 1: Overview of Greybox Fuzzing.
+
+   Hyperparameter tuning. RL algorithms use hyperparameters to
+configure their learning process. The number of hyperparameters
+depends on the RL algorithm used. For example, AFLFast [7], Eco-
+Fuzz [46], AFL-Hier [40], and MobFuzz [48] (fuzzers using RL in              approach outperforms current state-of-the-art schedulers across
+their seed schedulers) each have two hyperparameters. Hyperpa-               both bug-finding and coverage-expansion metrics (Section 4).
+rameters must be set before learning (and hence fuzzing) begins.           • Analysis of seed scheduler costs. Seed schedulers must care-
+However, empirically selecting optimal hyperparameter values is              fully balance overhead costs and precision. To this end, we em-
+time-consuming and difficult to generalize; optimal values are likely        pirically analyze the cost of existing schedulers to understand
+to vary across targets and input formats. Suboptimal hyperparame-            their impact on fuzzing outcomes (Section 4.4).
+ter values reduce fuzzing performance.
+                                                                           We release our implementation and results at https://github.com/
+                                                                           asiaccs2024-t-scheduler.
+We propose an RL approach that addresses these challenges and
+improves fuzzing outcomes. Our approach models seed scheduling
+as a multi-armed bandit (MAB) problem, which we solve using                2 BACKGROUND
+Thompson sampling. Thompson sampling allows us to adaptively
+                                                                           2.1 Fuzzing
+and efficiently model the probability of the fuzzer uncovering new
+and interesting behaviors. In doing so, the fuzzer can make more           Fuzz testing (“fuzzing”) is a dynamic analysis for uncovering bugs in
+intelligent seed scheduling decisions with (a) no hyperparameters to       software. In a security context, fuzzers have been wildly successful
+tune, (b) theoretical optimality guarantees [2], and (c) constant-time     at discovering tens of thousands of security-critical vulnerabilities
+overheads. Our approach also uses a self-balancing mechanism to            in widely-used code [10]. Bugs are found by (rapidly) subjecting
+prioritize inputs covering rare paths and newly-discovered code.           a target program to automatically-generated inputs. The fuzzer
+   We implement our RL-based seed scheduler, T-Scheduler, in               generates inputs to expose and explore corner cases in the target
+AFL++ (the current state-of-the-art coverage-guided greybox fuzzer)        not considered by the developer. Intuitively, it is in these corner
+and evaluate it on 35 programs across two widely-used fuzzer bench-        cases where bugs are most likely to lie.
+marks (Magma [17] and FuzzBench [28]). Our evaluation shows                    Figure 1 illustrates the fuzzing process. A fuzzing campaign
+that T-Scheduler consistently improves on 11 state-of-the-art seed         begins with curating a corpus of “well-formed” inputs. These in-
+schedulers on 26 programs. We contribute:                                  puts are commonly exemplar input data accepted by the target
+                                                                           (Fig. 1(a)) [18, 30]. At run time, the fuzzer maintains a queue—
+• A theoretical formulation of the seed scheduling problem.                initially populated from this curated corpus—from which an input
+  We formulate seed scheduling as a MAB problem. Our formu-                is selected to fuzz (Fig. 1(b)). The selected input is mutated and fed
+  lation allows the fuzzer to prioritize inputs corresponding to           into the target to expose corner cases in program behavior. How
+  newly-discovered target behaviors, based on learning the histori-        does the fuzzer select these inputs?
+  cal success of past seed inputs (Sections 3.1 to 3.5).                       Greybox fuzzers use lightweight instrumentation to track code
+• An RL-based seed scheduler with no hyperparameters. We                   executed (or “covered”) by the target (in contrast, blackbox fuzzers
+  design and implement T-Scheduler, based on solving our MAB               have no internal view of the target). The fuzzer records code cover-
+  problem using Thompson sampling. Using Thompson sampling                 age in a coverage map, which tracks the number of times a particular
+  means that we benefit from the inherent theoretical guarantee            coverage element—typically, an edge in the target’s control-flow
+  that model errors grow sublinearly—important for facilitating            graph (CFG)—is executed (Fig. 1(c)). By tracking code coverage,
+  long fuzzing campaigns. Moreover, our implementation has no              the fuzzer can determine if the mutated input triggers new target
+  hyperparameters, making it more generalizable to different tar-          behaviors. Inputs triggering new behaviors are saved back into the
+  gets and input formats. We integrate our implementation into             queue; otherwise, the input is discarded (Fig. 1(d)). This guides the
+  AFL++ (Section 3.5).                                                     fuzzer to prioritize inputs leading to new program behaviors (as
+• An effective and generalizable seed scheduler. We evaluate               captured by the instrumentation). Selecting and prioritizing inputs
+  T-Scheduler by fuzzing real-world programs (>35 CPU-yr). Our             for mutation is handled by the seed scheduler (Fig. 1(e)).
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+2.2     Seed Scheduling                                                                perform, and (b) receives feedback on its selection in the form of a
+An efficient seed scheduler (the blue box in Fig. 1) must satisfy                      reward. The agent’s objective is thus to maximize the cumulative
+two competing constraints. First, the seed scheduler must select                       reward over a given time.
+the most-promising input for mutation; i.e., the input most likely to                     These concepts apply naturally to fuzzing. In particular, the
+cover new program behaviors. Second, it must make this selection                       fuzzer’s seed scheduler must select an input (to mutate) from a
+from a (potentially) large queue with minimal run-time overhead.                       pool of constantly-changing possibilities. Ideally, this selection
+AFL-based [47] fuzzers solve this problem by bounding the input                        maximizes the discovery of new code, or (ideally) a bug. The seed
+queue to a fixed size via an input filtering and favoring phase [43].                  scheduler must balance exploring the input queue and exploiting
+                                                                                       the input uncovering the most code. This requires a careful trade-
+   Input filtering and favoring. The fuzzer only retains inputs that                   off between making intelligent input prioritization decisions and
+induce new and interesting behaviors in the target; e.g., an input                     maintaining the fuzzer’s iteration rate. We satisfy this trade-off by
+that covers a new element in the coverage map. These inputs are                        formulating seed scheduling as a multi-armed bandit.
+made available for future mutations, potentially uncovering more
+                                                                                       2.3.1 Multi-Armed Bandit. The multi-armed bandit (MAB) is a well-
+new behaviors. AFL “favors” an input if it is the fastest and smallest
+                                                                                       explored RL problem focusing on the trade-off between exploration
+input for any of the coverage map elements [7] (Fig. 1(f)). Thus,
+                                                                                       and exploitation [24]. Given a state, the agent selects an action 𝑎𝑘 ∈
+tracking favored inputs gives the fuzzer a minimal set of inputs
+                                                                                       A at each time step 𝑡 ∈ [1, . . . ,𝑇 ]. The agent’s goal is to maximize
+(that are both small and fast) covering all of the elements seen
+                                                                                       the cumulative reward (by performing a sequence of actions) over 𝑇 .
+in the coverage map so far (approximating a weighted minimum
+                                                                                          The classic MAB involves 𝐾 slot machines (“bandits”), where
+set cover, with size and speed as weights [15]). Maintaining a set
+                                                                                       each 𝑘 ∈ [1, . . . , 𝐾] has an unknown probability 𝜃𝑘 of paying out
+of favored inputs implicitly reduces the seed scheduling problem
+                                                                                       when played. At each time step 𝑡, the player (i.e., agent) selects a
+from an unbounded number of inputs (the union of the initial seed
+                                                                                       slot machine to play. Once played, the player is either rewarded
+corpus and the inputs generated so far) to a bounded number of
+                                                                                       with a payout (with probability 𝜃𝑘 ) or receives nothing (with prob-
+inputs: the number of favored inputs; i.e., the coverage map’s size.
+                                                                                       ability 1 − 𝜃𝑘 ). Naturally, any rational player would focus on the
+After filtering and favoring, the scheduler has a bounded number of                    bandit paying out the most (thus achieving their goal of maximizing
+inputs from which to select an input to fuzz. From this, the scheduler                 the cumulative reward). Unfortunately, this information is unknown
+selects the “best” input to mutate. For example, AFL selects an input                  to the player. Consequently, the player must trade-off between ex-
+based on a score calculated using a set of heuristics. These heuris-                   ploiting the bandit with the (current) highest expected payout and
+tics calculate a performance score based on an input’s: (i) coverage;                  exploring different bandits to learn more about the probability 𝜃𝑘
+(ii) execution time (faster inputs are preferred); (iii) “depth” (i.e., the            (in the hope of finding a higher payout). What is the best strategy
+number of inputs mutated to reach the given input); and (iv) the                       for selecting between exploration and exploitation?
+fuzzer’s run time (newer inputs are prioritized). A power sched-                          Thompson sampling [37] is a popular approach for addressing
+ule [7, 15] then distributes fuzzing time across inputs by scaling the                 this exploration/exploitation trade-off. This popularity is due to
+performance score based on the number of times the input has been                      simplicity, fast execution time, and optimality guarantees (ensuring
+selected, biasing fuzzing time to less-fuzzed inputs. Higher energy                    errors grow sublinearly over time [2]). Consequently, we adopt
+means the fuzzer spends more time mutating the corresponding                           Thompson sampling in T-Scheduler, our RL-based seed scheduler.
+(favored) input.
+    Notably, AFL’s heuristics are based on intuition and experimenta-                  3     APPROACH
+tion. Other fuzzers (e.g., EcoFuzz [46], AFL-Hier [40], MobFuzz [48],                 Our seed scheduler, T-Scheduler, formulates greybox fuzzing as a
+and K-Scheduler [35]) also rely on hyperparameters that must be                       Beta-Bernoulli bandit, which we solve with Thompson sampling.
+tuned per target to achieve optimal results. In contrast, our approach                We first provide a high-level description of the T-Scheduler algo-
+(described in Section 3) replaces these heuristics with an RL algo-                   rithm (Section 3.2) and a motivating example (Section 3.2.1), fol-
+rithm that uses run-time statistics to dynamically learn and adapt                    lowed by a mathematical formulation of our Beta-Bernoulli bandit
+a seed schedule. Moreover, our approach has no hyperparameters                        model (Sections 3.3 to 3.5).
+to tune, leading to more efficient and informed input selection.
+                                                                                       3.1     Notation and Definitions
+2.3     Reinforcement Learning                                                         A fuzzer measures its progress fuzzing target P in a coverage
+Reinforcement learning (RL) is an ML paradigm that trains an                           map C(P, 𝜄) ∈ N𝐾 of size 𝐾. Typically, each feature 𝑥 ∈ C(P, 𝜄)
+agent by observing changes in state and rewarding the selected                         records the number of times a particular edge in the target’s control-
+actions [36]. The agent aims to select the best action to maximize                     flow graph (CFG)2 is executed by an input 𝜄 ∈ I, where I is the set
+the cumulative reward. However, the expected reward for each                           of inputs representing the union of the initial corpus and the set of
+action is often unknown and must be learned dynamically via                            inputs generated by the fuzzer. We refer to this count as a hit count
+experimentation. This experimentation leads to a trade-off between                     (given by the function hit_count).
+exploiting what is already known and exploring territory.                                 Feature rareness prioritizes features covered less by I. We adopt
+   An RL algorithm is typically defined in terms of states, actions,                   the definition by Wang et al. [40], where feature rareness is the
+and rewards. The state is a set of variables describing the environ-                   2 Some fuzzers eschew edge coverage for other coverage metrics (e.g., context-sensitive
+ment. Based on the current state, the agent (a) selects an action to                   edge or data flow). Our approach is agnostic to the underlying coverage metric.
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                                                  Luo et al.
+
+
+                                                                                                                     Line 2
+inverse of 𝑥’s hit count. Feature hit counts and rareness are defined                                        𝑡 = 1 (𝑎 ← 15, 𝑏 ← 0)
+for each feature in the coverage map and the inputs generated so                                             𝑡 = 2 (𝑎 ← 25, 𝑏 ← 0)
+                                                                                                             𝑡 = 3 (𝑎 ← 0, 𝑏 ← 15)
+far. These definitions enable a seed scheduler that prioritizes both                                         𝑡 = 4 (𝑎 ← 0, 𝑏 ← 25)
+newly-discovered and hard-to-reach code.                                                                     𝑡 = 5 (𝑎 ← 25, 𝑏 ← 5)
+                                                                                                            𝑡 = 6 (𝑎 ← 25, 𝑏 ← 25)
+                                                                                                                                             a ≤ 10
+3.2       The T-Scheduler Algorithm                                                                             a > 10
+
+                                                                                                                       Line 3                                      Line 6
+                                                                                                        𝑡   = 0, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.25        𝑡 = 0, 𝛼       = 1, 𝛽 = 1, 𝑝¯ = 0.25
+                                                                                                        𝑡   = 1, 𝛼   = 2, 𝛽 = 1, 𝑝¯ = 0.29        𝑡 = 1, 𝛼       = 2, 𝛽 = 1, 𝑝¯ = 0.29
+ Algorithm 1: T-Scheduler.                                                                              𝑡   = 2, 𝛼   = 3, 𝛽 = 1, 𝑝¯ = 0.28 a ≤ 20 𝑡 = 2, 𝛼       = 3, 𝛽 = 1, 𝑝¯ = 0.28
+                                                                                                        𝑡   = 3, 𝛼   = 3, 𝛽 = 1, 𝑝¯ = 0.30        𝑡 = 3, 𝛼       = 3, 𝛽 = 2, 𝑝¯ = 0.24
+ 1   𝜶 ← {1 | 𝑘 ∈ [1, . . . , 𝐾 ] }
+                                                                                                        𝑡   = 4, 𝛼   = 3, 𝛽 = 1, 𝑝¯ = 0.31        𝑡 = 4, 𝛼       = 3, 𝛽 = 3, 𝑝¯ = 0.21
+ 2   𝜷 ← { 1| 𝑘 ∈ [1, . . . , 𝐾 ] }                                                                     𝑡   = 5, 𝛼                ¯
+                                                                                                                     = 3, 𝛽 = 2, 𝑝 = 0.29         𝑡 = 5, 𝛼       = 3, 𝛽 = 4, 𝑝¯ = 0.24
+                                                                                                        𝑡   = 6, 𝛼   = 4, 𝛽 = 2, 𝑝¯ = 0.27        𝑡 = 6, 𝛼       = 3, 𝛽 = 5, 𝑝¯ = 0.21
+ 3   Function UpdatePosterior( C ( P, 𝜄 ) , 𝜶 , 𝜷 )
+ 4      for 𝑘, 𝑥 ∈ C ( P, 𝜄 ) do                                                                                a > 20                        a ≤ 20
+                                                                            1   void foo ( int a ,
+ 5           if 𝑥 ≠ 0 then
+ 6                if IsInteresting (𝜄 ) then                                         int b ) {                         Line 4                                      Line 5
+ 7                     𝛼𝑘 ← 𝛼𝑘 + 1                                          2     if ( a > 10)          𝑡   = 0, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.25          𝑡   = 0, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.25
+                                                                            3       if ( a > 20)        𝑡   = 1, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.21          𝑡   = 1, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.21
+ 8                else
+                                                                                                        𝑡   = 2, 𝛼   = 2, 𝛽 = 1, 𝑝¯ = 0.25 b > 10   𝑡   = 2, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.19
+ 9                     𝛽𝑘 ← 𝛽𝑘 + 1                                          4          if ( b > 10)
+                                                                                                        𝑡   = 3, 𝛼   = 2, 𝛽 = 1, 𝑝¯ = 0.26          𝑡   = 3, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.20
+                                                                            5            bug () ;       𝑡   = 4, 𝛼   = 2, 𝛽 = 1, 𝑝¯ = 0.28          𝑡   = 4, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.21
+10        return 𝜶 , 𝜷                                                      6   }                       𝑡   = 5, 𝛼   = 2, 𝛽 = 2, 𝑝¯ = 0.24          𝑡   = 5, 𝛼   = 1, 𝛽 = 1, 𝑝¯ = 0.24
+                                                                                                        𝑡   = 6, 𝛼   = 3, 𝛽 = 2, 𝑝¯ = 0.25          𝑡   = 6, 𝛼   = 2, 𝛽 = 1, 𝑝¯ = 0.27
+11   Function SelectInput(𝜶 , 𝜷 )
+12      for 𝑘 ← [1, . . . , 𝐾 ] do                                          (a) The program. The (b) CFG showing the changing parame-
+13           𝜃ˆ𝑘 ∼ Beta(𝛼𝑘 , 𝛽𝑘 )                                           parameters a and b are ters 𝛼𝑘 and 𝛽𝑘 at each time step 𝑡 . The
+14           𝜓𝑘 ∼ Beta(𝛼𝑘 + 𝛽𝑘 , 𝛼𝑘2 )                                      derived from user in- mean probability for each time step is
+15        𝑎𝑡 ← arg max[𝜓 1𝜃ˆ1 , . . . ,𝜓𝐾 𝜃ˆ𝐾 ]                             put.                             ¯
+                                                                                                   shown as 𝑝.
+16        I (𝑡 +1) ← FavoredInputs (𝑎𝑡 )
+17        return I (𝑡 +1)                                                   Figure 2: An example showing how T-Scheduler updates its
+                                                                            parameters after each input is executed. Six different values
+                                                                            for a and b (corresponding to six different inputs) are shown
+   We present the T-Scheduler algorithm in Algorithm 1. It con-             in the root node. The parameter 𝛼 is incremented when the
+sists of two functions: UpdatePosterior and SelectInput.                    input discovers new program behavior, otherwise 𝛽 is incre-
+   The UpdatePosterior function—called each time an input 𝜄 is              mented. The probability 𝑝¯𝑘 is the normalized mean of the
+executed—uses two 𝐾-length vectors—𝜶 and 𝜷 (Lines 7 and 9)—to               Beta distribution in Line 13 in Algorithm 1 using Eq. (1).
+store the number of times a coverage map feature is hit or missed,
+respectively. Each element 𝛼𝑘 and 𝛽𝑘 (where 𝑘 ∈ [1, . . . , 𝐾]) rep-
+resents the number of times 𝜄 hits or misses 𝑥 ∈ C(P, 𝜄). These             feedback of past scheduling decisions, respectively. The scheduler
+vectors are used to compute a probability distribution for each cov-        uses the updated parameters 𝛼 and 𝛽 to assign a probability for
+erage map feature, modeling the probability of an input inducing            selecting an input (Line 13). We show the mean of this probability
+new behaviors in P.                                                         distribution
+   The SelectInput function is called when the queue has been                                           E[Beta(𝛼𝑘 , 𝛽𝑘 )]
+                                                                                               𝑝¯𝑘 = Í𝐾                      ,             (1)
+exhausted. It samples 𝜽 = [𝜃 1, . . . , 𝜃 𝐾 ] from 𝐾 Beta distributions                                𝑘=1
+                                                                                                           E[Beta(𝛼𝑘 , 𝛽𝑘 )]
+(Line 13) to determine the “best” input to fuzz (see Section 3.3).
+                                                                            because of the difficulty visualizing 𝜃ˆ𝑘 in Fig. 2. Importantly, Algo-
+However, using only 𝜽 leads the fuzzer to repeatedly select the
+                                                                            rithm 1 does not need to compute 𝑝¯𝑘 and is only used to visualize
+same inputs, because it implicitly penalizes rarely-covered fea-
+                                                                            how the mean of the probability distribution changes over time.
+tures in the coverage map. Thus, we introduce a correction fac-
+                                                                               Figure 2 uses six example inputs to show how the parameters
+tor 𝝍 = [𝜓 1, . . . ,𝜓𝐾 ] (Line 14) based on feature rareness to penalize
+                                                                            are updated. Inputs discovering new program behaviors are stored
+frequently-covered coverage map features (see Section 3.4).
+                                                                            in the corresponding node and 𝑝¯ is the probability of the input
+   Finally, the next input to fuzz is chosen from FavoredInputs
+                                                                            being selected by the scheduler. This assumes that prior inputs
+using 𝜃ˆ𝑘 and 𝜓𝑘 (Lines 15 to 16; see Section 3.5). FavoredInputs
+                                                                            that discovered new program behaviors are more likely to discover
+stores a single “best” input corresponding to each feature in the
+                                                                            new program behaviors. At 𝑡 = 1, the input covers lines 3 and 6
+coverage map. Per Section 2.2, the fuzzer determines this input by a
+                                                                            (Section 3.2.1) for the first time, so 𝛼 is incremented and 𝑝¯ increases.
+combination of execution time, input size, and the number of times
+                                                                            At 𝑡 = 2, the input covers lines 3, 4, and 6. Line 4 is covered for the
+the input has been fuzzed.
+                                                                            first time and 𝛼 is incremented for lines 3, 4, and 6. Notably, 𝑝¯ in
+3.2.1 Motivating Example. We use the example in Fig. 2 to illustrate        line 4 increases but 𝑝¯ decreases at lines 3 and 6 because we favor
+T-Scheduler’s approach. T-Scheduler is an adaptive scheduler,               rarer paths. The input covers line 6 at 𝑡 = 3 and 𝑡 = 4. Line 6 has
+meaning the probability of selecting a given input (for mutation)           already been covered, so 𝛽 is incremented and 𝑝¯ decreases (because
+changes as the scheduler receives coverage feedback from the fuzzer.        we penalize inputs that do not uncover new program behaviors).
+In this example, coverage feedback is used to update 𝛼 (Line 7              Similarly, at 𝑡 = 5 the input covers lines 3, 4, and 6, which have also
+in Algorithm 1) and 𝛽 (Line 9), storing the positive and negative           been covered by previous inputs. Thus, 𝑝¯ decreases at these lines
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                                                                                                    AsiaCCS ’24, July 01–05, 2024, Singapore
+
+                         1.0                                                          1.0
+                                                                                                                                                                                 With the T-Scheduler algorithm presented, we now turn our
+Scheduling Probability
+
+
+
+
+                                                             Scheduling Probability
+                         0.8                                                          0.8                                                 0.3
+
+
+
+
+                                                                                                                         Average Regret
+                         0.6                                                          0.6
+                                                                                                                                                                              attention to the probabilistic modeling that underpins our approach.
+                                                                                                                                          0.2
+                         0.4                                                          0.4
+                                                                                                                                          0.1
+                         0.2                                                          0.2                                                                                     3.3    Adapting the Beta-Bernoulli Bandit
+                                                                                                                                          0.0
+                         0.0                                                          0.0
+                               0    250   500   750   1000                                  0   250   500   750   1000                          0    250   500   750   1000
+                                                                                                                                                                              Thompson sampling frames exploration and exploitation as a Bayesian
+                                   (a) Greedy.                                         (b) T-Scheduler.                                             (c) Regret.               posterior estimation, choosing an action that maximizes a reward
+                                                                                                                                                                              based on a randomly-drawn prior belief (Section 2.3.1). We assume
+Figure 3: An example scheduler demonstrating the probabil-                                                                                                                    that information derived from previous inputs can be used to im-
+ity of an input being selected over 1,000 iterations (the 𝑥-axis                                                                                                              prove input scheduling in the future. The reward function provides
+is iteration count). The regret quantifies the error by taking                                                                                                                feedback to the fuzzer after each input 𝜄 is executed. In particu-
+the difference between the optimal decision and the input                                                                                                                     lar, the fuzzer is (positively) rewarded for discovering new target
+selected. The inputs 𝜄 1 , 𝜄 2 , and 𝜄3 have latent probabilities                                                                                                             behaviors, and penalized otherwise.
+of 0.7, 0.8, and 0.9, respectively. The greedy algorithm has a                                                                                                                   We begin our formulation with a 𝐾-armed bandit; i.e., there are 𝐾
+constant regret, while the T-Scheduler algorithm’s regret                                                                                                                     actions for the fuzzer to choose from. Here, 𝐾 is the size of C(P, 𝜄),
+approaches zero over time. Highlight colors reflect those in                                                                                                                  and each entry of the coverage map corresponds to a favored input
+the plots.                                                                                                                                                                    in a many-to-one relationship (Section 2.2). We define a fuzzing
+                                                                                                                                                                              campaign with respect to a time step 𝑡 ∈ [1, . . . ,𝑇 ], where 𝑇 is the
+                                                                                                                                                                              length of the campaign (i.e., the number of executed inputs). Each
+                                                                                                                                                                              input 𝜄 (𝑡 ) at time step 𝑡 will produce a coverage map C(P, 𝜄) (𝑡 ) .
+while 𝑝¯ increases for lines 2 and 6. Finally, line 5 is covered for the
+                                                                                                                                                                              After performing action 𝑘 ∈ [1, . . . 𝐾] the fuzzer is rewarded by:
+first time at 𝑡 = 6. This results in 𝛼 increasing at lines 3, 4, and 5
+and 𝑝¯ changing disproportionally to favor rarer paths.                                                                                                                                                    (𝑡 )
+                                                                                                                                                                                                  (
+                                                                                                                                                                                            (𝑡 )    1, if 𝑥𝑘 ≠ 0 and 𝜄 (𝑡 ) is interesting,
+   The scheduler selects an input to executed based on the proba-                                                                                                                         𝑟𝑘 :=            (𝑡 )                                    (2)
+                                                                                                                                                                                                    0, if 𝑥𝑘 ≠ 0,
+bility that mutating the input will lead to new program behaviors.
+This probability is unknown. Thus, inputs with a higher probability                                                                                                                    (𝑡 )
+                                                                                                                                                                              where 𝑥𝑘 ∈ C(P, 𝜄) (𝑡 ) is the coverage map feature at index 𝑘.
+for discovering new program behaviors must be estimated and pri-
+oritized by the scheduler. Figure 3 illustrates the impact different                                                                                                          For each time step 𝑡 the reward is represented as the vector r (𝑡 ) =
+                                                                                                                                                                                 (𝑡 )          (𝑡 )
+scheduling algorithms have on these estimates. Here, we assume                                                                                                                [𝑟 1 , . . . , 𝑟 𝐾 ]. The fuzzer is rewarded for inducing interesting
+that a scheduler has three inputs to select from—𝜄 1 , 𝜄 2 , and 𝜄 3 —with                                                                                                    behaviors in the target (e.g., uncovering new code). Intuitively, this
+probabilities 0.7, 0.8, and 0.9 that a mutation will discover new pro-                                                                                                        ensures the scheduler selects inputs that are more likely to induce
+gram behavior (which is unknown and needs to be estimated by                                                                                                                  new behaviors in P.
+the scheduler in a fuzzing campaign), respectively to demonstrate
+                                                                                                                                                                              3.3.1 Estimating Probabilities and Rewarding the Fuzzer. The prob-
+the behavior of the algorithm.3 Here, we can see input 𝜄 3 should
+                                                                                                                                                                              ability that the fuzzer generates an input (by mutating the current
+be selected because it has the highest probability to discover new
+                                                                                                                                                                              input) inducing new behaviors is 𝜽 = [𝜃 1, . . . , 𝜃 𝐾 ]. Importantly, 𝜽
+program behavior. But the scheduler does not know these values
+                                                                                                                                                                              is unknown and must be estimated over time through experimenta-
+and is required to estimate them to assign a scheduling probability
+                                                                                                                                                                              tion. Per Section 2.3, learning 𝜽 requires a careful balance between
+to each input. Figures 3a and 3b show the convergence of 𝑝¯ for
+                                                                                                                                                                              exploration and exploitation to maximize the cumulative reward
+two scheduling approaches—a greedy algorithm and T-Scheduler—
+                                                                                                                                                                              over 𝑇 . The estimated 𝜽 guides the seed scheduler to select the next
+when selecting inputs using the scheduling probabilities (𝑝¯ or 𝜃ˆ).
+                                                                                                                                                                              (best) input to fuzz.
+T-Scheduler allows for sub-optimal decisions at a given time by
+                                                                                                                                                                                 We design the reward function in Eq. (2) such that 𝜃𝑘 (the poste-
+sampling from a distribution (Line 13 in Algorithm 1) meaning
+                                                                                                                                                                              rior distribution) can be estimated using the Beta-Bernoulli bandit.
+the input with the highest 𝑝¯ is not always selected. These sub-
+                                                                                                                                                                              In this setting, 𝜃𝑘 is the probability that the input induces new
+optimal decisions allow the model to “explore” early on in the
+                                                                                                                                                                              behaviors in P, and is estimated by a Bernoulli distribution with
+fuzzing campaign and “exploit” inputs when it has more informa-                                                                                                                                (𝑡 )                                                (𝑡 )
+tion. The greedy approach shown in Fig. 3a always tries to select the                                                                                                         observations 𝑟𝑘 (the likelihood) and a Beta distribution over 𝜃ˆ𝑘
+highest scheduling probability which does not lead to the optimal                                                                                                             (the prior distribution); i.e.,
+solution. Figure 3c illustrates the regret of T-Scheduler converging                                                                                                                             (𝑡 )
+                                                                                                                                                                                                𝑟𝑘
+                                                                                                                                                                                                              (𝑡 ) (𝑡 )              (𝑡 )
+                                                                                                                                                                                                        ∼ 𝑝 (𝑟𝑘 |𝜃ˆ𝑘 ) = Bernoulli(𝜃ˆ𝑘 )                   (3)
+to zero over time leading to the optimal solution while a constant re-
+gret remains for the greedy approach. In this example, this can only                                                                                                          and
+                                                                                                                                                                                                (𝑡 )     (𝑡 )      (𝑡 )        (𝑡 ) (𝑡 )
+be achieved if the scheduler always picks 𝜄 3 . Current state-of-the-art                                                                                                                      𝜃ˆ𝑘 ∼ 𝑝 (𝜃ˆ𝑘 ; 𝛼𝑘 , 𝛽𝑘 ) = Beta(𝛼𝑘 , 𝛽𝑘 ).                   (4)
+schedulers (e.g., AFLFast [7], Entropic [5], and TortoiseFuzz [43])
+use a greedy approach to make decisions. T-Scheduler makes more                                                                                                                 The prior distribution is modeled as a Beta distribution with
+                                                                                                                                                                                                     (𝑡 )         (𝑡 )                (𝑡 )         (𝑡 )
+optimal decisions (compared to greedy algorithms), particularly in                                                                                                            parameters 𝜶 (𝑡 ) = [𝛼 1 , . . . , 𝛼𝐾 ] and 𝜷 (𝑡 ) = [𝛽 1 , . . . , 𝛽𝐾 ]
+long fuzzing campaigns.                                                                                                                                                                                                                        (0)         (0)
+                                                                                                                                                                              (Lines 7 and 9, Algorithm 1), while the parameters 𝛼𝑘 and 𝛽𝑘
+                                                                                                                                                                              are initialized to 1 at 𝑡 = 0 (Lines 1 and 2, Algorithm 1). The pa-
+3 Ina fuzzing campaign these probabilities change as new program behaviors are                                                                                                rameter 𝜶 − 1 represents the number of times each 𝑥 ∈ C(P, 𝜄)
+discovered.                                                                                                                                                                   has been covered (for all I executed so far) by an interesting input,
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                                     Luo et al.
+
+
+while 𝜷 − 1 represents the number of times each 𝑥 ∈ C(P, 𝜄) was                   actions that are not selectable. We describe this issue and how we
+covered by input that was not considered interesting.                             correct for it in Section 3.4.
+                                                      (𝑡 )
+  Using Bayes rule, the posterior distribution 𝑝 (𝜃ˆ|𝑟𝑘 ) is
+                                                                                  3.4       Rareness Correction
+                                    (𝑡 ) (𝑡 )      (𝑡 ) (𝑡 ) (𝑡 )
+                  (𝑡 ) (𝑡 )     𝑝 (𝑟𝑘 |𝜃ˆ𝑘 )𝑝 (𝜃ˆ𝑘 ; 𝛼𝑘 , 𝛽𝑘 )                    Section 3.3 introduced the standard MAB setting, where we assume
+             𝑝 (𝜃ˆ𝑘 |𝑟𝑘 )     =
+                                                  (𝑡 )                            all 𝐾 actions are selectable. However, this is not the case in practice:
+                                              𝑝 (𝑟𝑘 )                      (5)
+                                                                                  the fuzzer cannot select inputs corresponding to unexercised cov-
+                                  (𝑡 ) (𝑡 )    (𝑡 ) (𝑡 ) (𝑡 )
+                           ∝ 𝑝 (𝑟𝑘 |𝜃ˆ𝑘 )𝑝 (𝜃ˆ𝑘 ; 𝛼𝑘 , 𝛽𝑘 ).                      erage map features. Moreover, the update rule in Eq. (7) penalizes
+                                  (𝑡 ) (𝑡 ) (𝑡 )                                  rarely-covered features in C.
+   The prior    distribution 𝑝 (𝜃ˆ𝑘 ; 𝛼𝑘 , 𝛽𝑘 ) represents the        distribu-       We use feature rareness to penalize frequently-covered coverage
+tion at the previous time step; i.e.,                                             map features, introducing a correction factor to account for the
+                      (𝑡 ) (𝑡 ) (𝑡 )        (𝑡 −1) (𝑡 −1)
+                 𝑝 (𝜃ˆ𝑘 ; 𝛼𝑘 , 𝛽𝑘 ) := 𝑝 (𝜃ˆ𝑘     |𝑟𝑘     ),               (6)    update rule’s penalty. This ensures favored inputs corresponding
+                                                                                  to less-covered features in the coverage map have a greater chance
+                          (𝑡 ) (𝑡 )
+while the likelihood 𝑝 (𝑟𝑘 |𝜃ˆ𝑘 ) takes into account the coverage                 of being selected, prioritizing newly-discovered and hard-to-reach
+achieved at the current time step. Equation (6) provides a mech-                  code. We apply this penalty using the chain rule on the joint prob-
+anism for the fuzzer to update its model to ensure it selects the                                                                          (𝑡 +1)
+                                                                                  ability between the reward at the next time step 𝑟˜𝑘            and the
+“best” seed. The recursive structure defined in Eqs. (5) and (6) means                                                                                (𝑡 )
+                                                                                  probability of the fuzzer selecting an input covering feature 𝑘, 𝜃ˆ :
+the model is dependent on previously selected inputs. The fuzzer                                                                                                   𝑘
+continuously updates the model by receiving feedback from the                           (𝑡 +1)             (𝑡 )           (𝑡 ) (𝑡 +1)          (𝑡 +1)
+                                                                                   𝑝 (𝑟˜𝑘        = 1|𝜃 = 𝜃ˆ𝑘 ) ∝ 𝑝 (𝜃 = 𝜃ˆ𝑘 |𝑟˜𝑘      = 1)𝑝 (𝑟˜𝑘      = 1), (9)
+reward function (Eq. (2)) at each timestep. This approximates the
+                             (𝑡 ) (𝑡 )                                                      (𝑡 +1)
+posterior distribution 𝑝 (𝜃ˆ𝑘 |𝑟𝑘 ), which is now the probability                 where 𝑟˜𝑘      is the predicted reward at the next time step.
+that a fuzzer-generated input will cover this feature in the coverage                Eq. (9) is a binary classification with dependent variables. Here,
+                                                                                                                                               (𝑡 +1)
+map.                                                                              the conditional probability with dependent variable 𝑟˜𝑘             = 1 is
+                                                                                  drawn from Eq. (8), and the constraint for rareness applied by the
+3.3.2 Improving Performance. Directly sampling from Eq. (5) to                                                 (𝑡 +1)
+compute 𝜽 is computationally expensive. However, using the Beta                   marginal probability of 𝑟˜𝑘         = 1 is
+distribution (which is a conjugate prior to the Bernoulli distribu-                         (𝑡 )       (𝑡 +1)
+                                                                                                                            
+                                                                                                                              (𝑡 ) (𝑡 )
+                                                                                                                                              
+                                                                                                                                          (𝑡 ) 2
+tion) avoids expensive numerical computations (that are typical                           𝜓𝑘 ∼ 𝑝 (𝑟˜𝑘         = 1) = Beta 𝛼𝑘 + 𝛽𝑘 , 𝛼𝑘             .    (10)
+in Bayesian inference), leading to simpler updates after each time
+                                                                                                                        (𝑡 ) (𝑡 +1)
+step. In particular, solving Eq. (5) with Eqs. (3) and (4) gives the                 The conditional probability 𝑝 (𝜃ˆ𝑘 |𝑟˜𝑘        = 1) represents the
+following update rule for the posterior distribution:                             probability action 𝑎𝑘 selects an 𝜄 that will discover new behaviors.
+                                                                                                                 (𝑡 +1)
+              (𝑡 )   (𝑡 )        (𝑡 −1)    (𝑡 −1)   (𝑡 )       (𝑡 )               The marginal probability 𝑝 (𝑟˜𝑘        = 1) applies a constraint pe-
+          (𝛼𝑘 , 𝛽𝑘 ) = (𝛼𝑘      , 𝛽𝑘    ) + (𝑟𝑘 , 1 − 𝑟𝑘 ).        (7)
+                                                                                  nalizing features in the coverage map with a high hit count, thus
+This is the approach taken in UpdatePosterior (Algorithm 1): the                  prioritizing under-explored code. Eq. (11) shows this:
+              (𝑡 )     (𝑡 )
+parameters 𝛼𝑘 and 𝛽𝑘 are updated incrementally (at each time                                                                             (𝑡 )    (𝑡 )
+                                                                                              (𝑡 )              (𝑡 +1)                 𝛼 𝑘 + 𝛽𝑘
+step) with each observation of success and failure, respectively. The                        𝜙𝑘      =   E[𝑝 (𝑟˜𝑘        = 1)] =                       .          (11)
+                                                                                                                                   (𝑡 ) 2
+                                                                                                                                       
+update rule has been illustrated in Fig. 2, where 𝛼𝑘 is incremented                                                                           (𝑡 ) (𝑡 )
+                                                                                                                                  𝛼𝑘      + 𝛼 𝑘 + 𝛽𝑘
+for the path of the input if the input discovered new program
+                                                                                                               (𝑡 )
+behavior, otherwise 𝛽𝑘 is incremented. For example, at 𝑡 = 1, input               For 𝛼𝑘 >> 𝛽𝑘 , then 𝜙𝑘              → 𝛼1𝑘 ; i.e., a penalty is applied if the input
+covered lines 3 and 6 for the first time so 𝛼 was incremented for                                                                                           (𝑡 )
+                                                                                  is selected too frequently. Similarly, for 𝛽𝑘 >> 𝛼𝑘 , then 𝜙𝑘 → 1;
+both of these nodes, and at 𝑡 = 3, the input covered Line 6 but did
+                                                                                  i.e., the penalty is removed if the input is infrequently chosen. This
+not discover new code coverage, so 𝑏𝑒𝑡𝑎 was incremented for Line
+                                                                                  prioritizes rare features in C.
+6.
+                                                                                      The correction factor is self-balancing: if less-explored favored
+   Following these updates, Eq. (5) is sampled by drawing from a                                                                                (𝑡 )
+Beta distribution with parameters 𝛼𝑘 and 𝛽𝑘 ,                                     inputs fail to discover any new inputs then 𝛽𝑘 → ∞ and 𝜙𝑘 → 1.
+           (𝑡 )           (𝑡 ) (𝑡 +1)              (𝑡 ) (𝑡 )
+                                                                                  After each time step, 𝜙𝑘 progressively removes the penalty if the
+         𝜃ˆ𝑘 ∼ 𝑝 (𝜃 = 𝜃ˆ𝑘 |𝑟˜𝑘        = 1) = Beta(𝛼𝑘 , 𝛽𝑘 ),        (8)           fuzzer fails to discover any new interesting behavior. This allows 𝜃𝑘
+where 𝜃𝑘 —the probability of covering feature 𝑥 ∈ C(P, 𝜄)—is de-                  to dominate the seed scheduling process. Similarly, 𝜙𝑘 dominates
+pendent on the inputs seen so far.                                                if new behaviors are quickly discovered.
+   Unfortunately, using 𝜽 (at Line 13, Algorithm 1) to select the next
+input will likely result in the fuzzer repeatedly selecting the same              3.5       Input Selection
+few inputs. This is because incrementing 𝜶 in Eq. (7) rewards the                 A fuzzer must balance exploration and exploitation when selecting
+model, ultimately skewing the probability density function (PDF)                  the “best” input to fuzz. Thompson sampling draws a value from 𝐾
+towards one and making it more likely that the fuzzer will select                 Beta distributions (Eq. (8)), then selects the next input to fuzz from
+this input. Similarly, incrementing 𝜷 penalizes the model, skewing                the posterior distribution (Eq. (5)). Importantly, sampling a distri-
+the PDF towards zero and making it less likely that the fuzzer will               bution generates a new distribution, enabling both exploration and
+select this input. However, this has the side-effect of penalizing                exploitation.
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                       AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+   Here, we present two approaches for selecting the next input                          new inputs to focus on newly-discovered paths) and RARE (ig-
+to fuzz: input selection without and with rareness correction (Sec-                      nores the input’s run-time and focuses on inputs covering rarely-
+tions 3.3 and 3.4, respectively). This enables us to evaluate rareness                   discovered features). We use AFL++ to answer both RQs 1 and 2.
+correction’s impact on fuzzing outcomes (Section 4.5).                                   For RQ 1 we use LLVM’s link-time optimization and also fuzz
+   We express input selection without rareness correction by sam-                        with an additional “CmpLog”-instrumented target (for logging
+pling directly from Eq. (8); i.e.,                                                       comparison operands [4]).
+                                          (𝑡 )          (𝑡 )                           K-Scheduler [35] Schedules inputs based on Katz centrality [21]
+                     𝑎 (𝑡 +1) = arg max[𝜃ˆ1 , . . . , 𝜃ˆ𝐾 ].              (12)
+                                                                                         analysis of the CFG. Katz centrality measures the “influence”
+    After applying rareness correction, we express input selection as                    of an input. This analysis helps seed scheduling by revealing
+                                      (𝑡 ) (𝑡 )       (𝑡 ) (𝑡 )                          the potential coverage gains from mutating a particular input.
+                 𝑎 (𝑡 +1) = arg max[𝜓 1 𝜃ˆ1 , . . . ,𝜓𝐾 𝜃ˆ𝐾 ],            (13)
+                                                                                         The AFL based K-Scheduler is implemented using LLVM’s CFG
+          (𝑡 )                                                                           analysis, so we use it to answer RQ 1.
+where 𝜓𝑘 is computed by Eq. (10). The action 𝑎 (𝑡 +1) is then used
+to select the next input from the set of favored inputs (Line 15,                      TortoiseFuzz [43] Introduces three new coverage metrics for in-
+Algorithm 1). Intuitively the parameter 𝑎 (𝑡 +1) represents the index                    put scheduling operating on the function, loop, and basic block
+of an edge with the highest scheduling probability (𝜃𝑘 or 𝑝)  ¯ for each                 levels. TortoiseFuzz uses prior information on memory oper-
+time-step (e.g., for 𝑡 = 4 in Fig. 2, 𝑎 (𝑡 +1) will select an input that                 ations to gain further insights in prioritizing seeds leading to
+has covered Line 3 because 𝑝¯ = 0.31 is the highest). An alternate                       memory corruption bugs. This focus on memory corruption bugs
+                                         (𝑡 )                         (𝑡 )               and reliance on LLVM analyses means we use the AFL based
+formulation can be made by setting 𝜓𝑘 to the expected value 𝜙𝑘
+                                                                                         TortoiseFuzz to answer RQ 1.
+in Eq. (11).
+                                                                                       AFL-Hier [40] Combines a hierarchy of coverage metrics (rang-
+                                                                                         ing from coarse-grained to fine-grained) and an RL-based hierar-
+4     EVALUATION                                                                         chical seed scheduler for managing clusters of inputs (preventing
+We evaluate T-Scheduler over 35 CPU-yr of fuzzing, comparing                             fine-grained coverage metrics from flooding the queue). The AFL
+it to four fuzzers and 11 schedulers across 35 programs from the                         based AFL-Hier’s hierarchy of coverage metrics is implemented
+Magma [17] and FuzzBench [28] benchmarks. Our evaluation aims                            in QEMU, and thus we use it to answer RQ 2.
+to answer the following research questions:
+RQ 1 Does T-Scheduler improve bug discovery? (Section 4.2)                                Benchmark Selection. We evaluate these fuzzers on the Magma
+RQ 2 Does T-Scheduler improve code coverage? (Section 4.3)                             and FuzzBench benchmarks. At the time of writing, FuzzBench’s
+RQ 3 What are the run-time costs of T-Scheduler? (Section 4.4)                         libxml and libpcap failed to download. Thus, we omit these two
+RQ 4 How do T-Scheduler’s design choices impact fuzzing out-                           targets from our evaluation. K-Scheduler also failed to construct
+        comes? (Section 4.5)                                                           CFGs for (and thus fuzz) php and poppler.
+
+4.1     Methodology                                                                       Experimental Setup. Each target is fuzzed for 72 h and repeated
+                                                                                       ten times to ensure statistically-sound results. We bootstrap each
+   Fuzzer Selection. We evaluate three T-Scheduler variants:                           target with the default seeds provided by the benchmark. We con-
+Rare − No rareness correction (Eq. (12)).                                              duct all experiments on a server with a 48-core Intel® Xeon® Gold
+Rare+ Rareness correction via the expected value (i.e., with                           5118 2.30 GHz CPU, 512 GiB of RAM, and running Ubuntu 18.04.
+     (𝑡 )     (𝑡 )
+   𝜓𝑘 := 𝜙𝑘 in Eq. (13)).
+Sample Rareness correction via sampling (Eq. (13)).                                    4.2     Bug Discovery (RQ 1)
+All three variants are implemented in AFL++ (v4.01a) [15]. We build                   The ultimate goal of fuzzing is to find bugs. To this end, we evaluate
+on AFL++—rather than AFL [47]—because it incorporates state-                          the LLVM-based fuzzers presented in Section 4.1 on the Magma
+of-the-art fuzzing improvements that T-Scheduler can leverage.                        benchmark (>16 CPU-yr of fuzzing). Magma distinguishes between
+Rare+ deterministically selects the next input by computing the                       bugs reached and triggered. A bug is reached when “the faulty line of
+model’s expected value. In contrast, Sample probabilistically selects                 code is executed” (i.e., control-flow constraints are met) and triggered
+the next input by drawing samples from the model’s distribution.                      when “the fault condition is satisfied” (i.e., data-flow constraints are
+   To emphasize T-Scheduler’s generality, we evaluate it against                      met). We focus on triggering bugs (not just reaching them) and say
+four fuzzers using two instrumentation schemes: LLVM compiler                         that fuzzer/scheduler F1 outperforms F2 on a given bug if (a) F1
+and QEMU binary. While QEMU significantly reduces fuzzer itera-                       finds the bug and F2 does not, or (b) F1 finds the bug faster than F2 .
+tion rates, it is important to understand fuzzer performance when                        Table 1 shows that Sample was the best-performing scheduler
+source code is not available. Importantly, this reduction is consis-                  across four out of five (80 %) of our bug-finding metrics (“total”,
+tent across all fuzzers, so does not (dis)advantage any particular                    “unique”, “fastest”, and “missed”), while Rare − scored the highest
+fuzzer. We select fuzzers using LLVM to answer RQ 1 and fuzzers                       on the remaining metric (“best”). Of the eight AFL++ schedulers,
+using QEMU to answer RQ 2. These fuzzers are:                                         FAST found the most bugs (“total” = 472) and was the second-
+AFL++ (v4.01a) [15] The current state-of-the-art greybox fuzzer.                      best performer across the “best”, “unique”, “fastest”, and “missed”
+   We run AFL++ with eight supported power schedules [15]: the                        metrics (after MMOPT, COE, EXPLORE, and COE, respectively).
+   six AFLFast [7] schedules (EXPLORE, FAST, COE, QUAD, LIN,                          These results reinforce the AFL++ developers’ decision to make
+   and EXPLOIT), and AFL++’s MMOPT (increases the score for                           FAST the default scheduler. Notably, the EXPLOIT scheduler (the
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                                              Luo et al.
+
+
+Table 1: Summary of Magma bug-finding results (across 10 trials). Count = number of bugs found in a target. Total = number of
+bugs found across all targets. Best = number of times a fuzzer found the most bugs in a given target. Unique = number of bugs
+found in any of the ten trials. Fastest = number of times a fuzzer found a bug first (per the restricted mean survival time [3]
+and log-rank test [26]). Missed = number of times a fuzzer failed to find a bug across all ten trials. Consistency = mean number
+of unique bugs found per trial (i.e., total / unique / # trials). The best-performing fuzzer(s) for each metric is in green. Targets
+that failed to build or run with the given fuzzer are marked with ✗. Full results are presented in Appendix A.
+
+                                                                                                       Fuzzer
+                                                                            AFL++                                                                          T-Scheduler
+         Target       Driver
+                                                                                                                          K-Sched     Tortoise
+                                               EXPLORE    FAST    COE    QUAD    LIN    EXPLOIT      MMOPT       RARE                            Rare −      Rare+    Sample
+         libpng       libpng_read_fuzzer            23      29     25      24     17           30          24       23          11         11        19         18         18
+         libsndfile   sndfile_fuzzer                70      70     70      70     70           70          70       70          28         20        70         70         70
+                      tiff_read_rgba_fuzzer         36      34     35      31     32           35          37       34          20         17        37         33         35
+         libtiff
+                      tiffcp                        49      49     48      43     43           50          49       52          41         34        53         48         49
+                      xml_read_memory_fuzzer        31      34     34      30     34           30          40       31          10         10        30         34         35
+         libxml2
+                      xmllint                       27      25     28      22     25           20          27       24          13         10        27         28         31
+         lua          lua                           10      10     10      10      6            9           9       10          10          9        13         11         11
+ Count
+
+
+
+
+                      asn1                          18      20     19      18     18           20          20       19          11         10        20         20         20
+                      client                        10      10     10      10     10           10          10       10          10          3        10         10         10
+         openssl
+                      server                        10      10     10      10     10           10          10       10          20         20        18         18         16
+                      x509                           0       1      1       0      0            3           0        4           0          8         0          0          0
+         php          exif                          16      19     18      14     14           26          18       20           ✗         30        30         30         30
+                      pdf_fuzzer                    32      27     27      25     25           31          30       30           ✗         20        33         32         34
+         poppler      pdfimages                     35      42     40      29     25           32          38       32           ✗         16        34         35         38
+                      pdftoppm                      42      42     46      28     30           32          46       37           ✗         20        38         40         37
+         sqlite3      sqlite3_fuzz                  45      50     38      29     49           33          42       39           2          0        36         41         43
+ Total                                             454     472    459     393    408          441         471      445         176        238       468         468       477
+ Best                                                2       5      3       2      2            4           6        2           2          3         7           4         6
+ Unique                                             63      63     65      54     61           59          63       60          24         29        62          63        65
+ Fastest                                            11      10      4       6      8            7           9        4           1          3         7           5        11
+ Missed                                             15      15     13      24     17           19          15       18          54         49        16          15        13
+ Consistency                                       0.72    0.75   0.71    0.73   0.67         0.75       0.75      0.74        0.73       0.82      0.75       0.73       0.73
+
+
+
+original AFL’s scheduler) was one of the worst performers (e.g., it                     49] has shown that fuzzers must both “explore” interesting code
+was the third worst performer in missed bugs).                                          and “exploit” specific data-flow conditions to trigger bugs.4 Concen-
+   COE found more unique bugs (65) than Rare − (62) and Rare+                           trating on CFG expansion means that K-Scheduler does not focus
+(63). However, the higher “total” results across the T-Scheduler                        on this exploitation phase, potentially harming bug discovery.
+variants suggest that T-Scheduler produces more-consistent bug-
+                                                                                           Finding: TIF009. One exception to these results is TIF009, which
+finding results. We reinforce this result with a “consistency” metric,
+                                                                                        K-Scheduler found after 3.29 h (mean time over ten trials). In com-
+defined as the total number of bugs divided by the number of unique
+                                                                                        parison, Rare − , Rare+ , and Sample found it after 14.31, 33.37 and
+bugs averaged across all ten trials. Based on this metric, Rare −
+                                                                                        33.77 h, respectively (4–10× slower). TIF009 (CVE-2019-7663 [29])
+outperformed or performed as well as all AFL++ schedulers. That is,
+                                                                                        is a NULL pointer dereference located in TIFFWriteDirectory-
+the number of bugs discovered by T-Scheduler remains consistent
+                                                                                        TagTransferfunction. This vulnerable function is reachable via
+as the number of trials decreases.
+                                                                                        TIFFWriteDirectory when the TransferFunction field is set in a
+   All three T-Scheduler variants outperformed K-Scheduler and
+                                                                                        TIFF directory entry [1], and the bug is triggered when the transfer
+TortoiseFuzz—two state-of-the-art schedulers—across four of the
+                                                                                        function pointers are NULL.
+five (80 %) bug-finding metrics (“total”, “best”, “unique”, and “missed”).
+                                                                                           K-Scheduler and T-Scheduler trigger the bug within 3–120 s
+Sample (the best-performing T-Scheduler variant) outperformed
+                                                                                        of reaching it, suggesting the bug does not require satisfying com-
+or performed as well as K-Scheduler on 11 out of 12 drivers (we
+                                                                                        plex data-flow constraints (which pure mutational fuzzers—e.g.,
+exclude php and poppler because they failed to build). Similarly,
+                                                                                        AFL++—may have difficulty satisfying). Moreover, multiple inputs
+Sample outperformed or performed as well as TortoiseFuzz on 14
+                                                                                        from the initial seed set reach TIFFWriteDirectory without any
+out of 16 drivers. We examine these results in the following sections.
+                                                                                        mutation. Ultimately, K-Scheduler’s centrality score led it to the
+4.2.1 K-Scheduler Comparison. Of the 35 bugs found by Sam-                              vulnerable function faster because it prioritized inputs that explored
+ple or K-Scheduler, the former: (i) outperformed K-Scheduler                            TIFFWriteDirectory, which had a relatively high centrality score
+on 27 bugs; (ii) performed as well as K-Scheduler on six bugs;                          (0.288). In comparison, neighboring CFG nodes had significantly
+and (iii) was outperformed by K-Scheduler on two bugs. Notably,                         lower centrality scores (0.047; while the median centrality score
+K-Scheduler failed to discover 16 of the 27 (59 %) bugs where T-                        was 0.22). The relatively-simple data-flow constraints (a struct field
+Scheduler outperformed K-Scheduler. Moreover, K-Scheduler                               set to NULL) meant that K-Scheduler’s prioritization of exploration
+was, on average, ∼50× slower at finding the remaining ten bugs.                         over exploitation was an advantage.
+We attribute these results to K-Scheduler prioritizing “exploration”                    4 This is an unfortunate overloading of terms, and should not be confused with a MAB’s
+over “exploitation”. Prior work on directed greybox fuzzing [6, 41,                     exploration and exploitation phases.
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                       AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+4.2.2 TortoiseFuzz Comparison. 37 of the 55 (67 %) bugs discov-                        achieved the highest coverage on 13 targets (68 %) and was the next
+ered across all 13 fuzzers/schedulers were memory safety bugs (e.g.,                   best performer after COE. Rare+ and Sample performed similarly
+stack/heap buffer overflow/over-read, NULL pointer dereference).                       (equal best on five targets). Rare+ ’s smaller 95 % bootstrap CI in-
+Thus, we expected TortoiseFuzz to demonstrate superior results in                      dicates less variance (across trials); we attribute this to Rare+ ’s
+discovering these bugs (due to its design targeting memory safety                      deterministic approach for rareness correction. AFL-Hier was the
+bugs). However, TortoiseFuzz was outperformed by the other fuzzer-                     third worst performing fuzzers (only beating QUAD and LIN, and
+s/schedulers (in particular, T-Scheduler): it failed to trigger 20 of                  tying with EXPLORE). Curiously, it was the best performer on lcms,
+the 37 (54 %) memory safety bugs in any trial, and was slower at                       achieving twice as much coverage as the next best fuzzer.
+triggering another eight. TortoiseFuzz was outperformed by Rare − ,                       COE was again the (equal) best performer for AUC (Table 3).
+Rare+ , and Sample on 51, 53, and 58 bugs, respectively.                               However, this time it also tied with Rare − . Following Böhme et al.
+   Notably TortoiseFuzz and K-Scheduler use a different set of                         [8], we use Cohen’s kappa [14] to measure the agreement between
+heuristics based on the assumption that inputs reaching specific                       total coverage and AUC of the best-performing fuzzer(s). We found
+target sites are more likely to induce new program behaviors. Tor-                     the results in Tables 2 and 3 are in weak agreement (𝜅 = 0.56).
+toiseFuzz prioritizes memory-sensitive bugs allowing it to detect                      Outliers including jsoncpp, openssl, and systemd contributed to
+several memory-sensitive bugs earlier such as TIF009, SSL009, and                      this weak agreement. For example, Rare − outperformed Rare+
+PDF010. In contrast, T-Scheduler heuristics are derived from the                       and Sample on openssl in Table 2, while the opposite is true in
+assumption that (a) information derived from previous test cases                       Table 3. These results were due to inaccurate AUC measurements:
+can be used to improve input scheduling in the future, and (b) it is                   coverage measurements occur at 15 min intervals, and all fuzzers
+beneficial to spend resources on paths less explored to gain more                      had saturated within the first 15 min.
+information about the program to improve input scheduling. A po-                             Result 2
+tential improvement is to extend the model to be a directed greybox
+fuzzing where they have a different set of assumptions where the                           COE achieved the (equal) highest coverage on 16 of the 19
+scheduler should prioritize specific sites such as memory-sensitive                        targets (84 %). Rare − tied with COE when using AUC.
+functions which are more likely to induce new program behaviors.
+
+   Finding: sqlite3. TortoiseFuzz failed to find any bugs in sqlite3.                  4.4     Scheduler Overheads (RQ 3)
+In contrast, Rare − found seven bugs, while Rare+ and Sample                          Scheduler overhead impacts a fuzzer’s iteration rate. Prior work [18,
+found eight. This was due to the limited coverage expanded by                         45] has shown that increased iteration rates lead to improved
+TortoiseFuzz: it achieved only ∼7 % line coverage, while Sample                       fuzzing outcomes. Here we investigate the scheduler’s impact on
+achieved >50 % line coverage. We attribute this low coverage to Tor-                  iteration rates and fuzzing outcomes. To measure this impact, we:
+toiseFuzz’s iteration rate: only 58 input/s. In contrast, T-Scheduler                 (i) instrument the scheduler to compute run-time overhead, record-
+achieved an iteration rate >450 input/s. This reinforces the impor-                   ing the time the fuzzer spends updating the queue and selecting an
+tance of reducing run-time overheads to maximize throughput.                          input to fuzz; (ii) count the number of times the queue is updated
+      Result 1                                                                        (i.e., the number of times the fuzzer performs “filtering and favor-
+                                                                                      ing”); and (iii) examine the iteration rate reported by the fuzzer.
+   Sample was the (equal) best performer across the most (four                        We adopt the process used by She et al. [35] and run our instru-
+   out of five) bug-finding metrics: it found the most unique                         mentation across 19 FuzzBench targets for 24 h, repeating this
+   bugs, was the fastest, and missed the fewest bugs. Rare −                          experiment ten times to minimize variance.
+   outperformed in the “best” metric.                                                     Table 4 shows that, despite an orders-of-magnitude increase
+                                                                                      in overhead, T-Scheduler achieves iteration rates comparable to
+                                                                                      (and, in most cases, higher than) the eight AFL++ schedulers. Of
+4.3     Code Coverage (RQ 2)                                                          the eight AFL++ schedulers, FAST had the highest overhead (85 s),
+Bugs are sparse, making it challenging to evaluate fuzzers fairly                     which we attribute to the high number of queue updates (873 over a
+using bug-centric metrics. Fuzzer evaluations commonly use code                       single 24 h trial). However, this again did not impact iteration rates;
+coverage as a proxy for evaluating fuzzer performance (a bug cannot                   FAST’s iteration rate of 210 input/s was the highest. The libpng
+be found in code never executed). We repeat this practice here.                       and zlib targets dominated this result, achieving iteration rates
+   We compare coverage using QEMU binary instrumentation on 19                        over 500 and 700 input/s, respectively.
+FuzzBench targets (>19 CPU-yr of fuzzing). Comparisons are made                           Unlike T-Scheduler, AFL-Hier’s relatively high update time
+across two measures: final coverage and coverage area under curve                     (106 ms) and overhead (3 min) appeared to impact its iteration rate,
+(AUC). Coverage is measured using Clang’s source-based coverage                       which was the third lowest. We attribute these results to the hierar-
+instrumentation [13]. We use AUC because we found several targets                     chical tree structure AFL-Hier uses to abstract the queue.
+had maximized coverage before the end of a 72 h trial. A higher AUC
+indicates that the fuzzer uncovers behaviors at a faster rate, which is                4.4.1 Scalability. Queue update times should remain constant (per
+important if the length of a fuzzing campaign is constrained. We use                   trial) as the fuzzer expands coverage and the queue grows. This is
+the Mann-Whitney 𝑈 test to determine statistical significance [22].                    particularly important for large fuzzing campaigns (e.g., Google’s
+   Per Table 2, AFL++’s COE achieved the (equal) highest coverage                      OSS-Fuzz [34]), where the queue can grow to tens of thousands
+on 16 of the 19 targets (84 %). Of the T-Scheduler variants, Rare −                    of inputs. To this end, we investigate a scheduler’s scalability by
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                                          Luo et al.
+
+
+Table 2: FuzzBench coverage, presented as mean coverage with 95 % bootstrap CI. The best-performing fuzzer(s) for each
+target (per the Mann-Whitney 𝑈 test) is in green (larger is better). “Best” is the number of targets a fuzzer achieved the highest
+coverage.
+
+                                                                                           Fuzzer
+                                                                  AFL++                                                                            T-Scheduler
+ Target
+                                                                                                                          AFL-Hier
+                     EXPLORE          FAST         COE       QUAD            LIN    EXPLOIT     MMOPT            RARE                    Rare −       Rare+       Sample
+                       5,884.70     5,767.60    5,998.50    5,514.40    5,794.30     6,069.50    5,944.10      5,935.50     6,113.20    5,918.20     6,001.70     6,069.20
+ bloaty
+                       ± 109.18      ± 97.83     ± 74.35    ± 131.59    ± 108.91      ± 61.48    ± 141.67       ± 88.13     ± 126.46     ± 41.84      ± 47.54      ± 47.18
+                      18,968.10   16,778.90    19,375.40   18,738.90   18,660.50    18,204.40   19,164.40     18,712.20    13,370.10   16,795.20    16,776.30    16,786.00
+ curl
+                        ± 46.26      ± 35.11     ± 45.64    ± 149.82      ± 64.69    ± 148.61       ± 72.55     ± 88.77       ± 9.31    ± 124.08      ± 53.54      ± 79.30
+                      14,396.00   14,585.80    16,419.70   13,836.00   14,246.40    15,609.50   15,053.80     15,364.90    14,598.80   15,860.40    16,018.10    15,734.60
+ freetype2
+                       ± 197.46     ± 356.16    ± 181.27    ± 272.73    ± 204.66     ± 275.23    ± 399.48      ± 201.14     ± 924.03    ± 171.62     ± 219.93     ± 176.92
+                       7,642.40     7,550.50    7,777.10    7,333.60    7,222.30     7,470.00    7,640.00      7,560.30     6,616.10    7,727.60     7,577.60     7,663.00
+ harfbuzz
+                       ± 118.41     ± 104.96     ± 58.23    ± 144.77    ± 115.52      ± 71.30    ± 101.47       ± 70.59     ± 317.23     ± 31.45      ± 35.36      ± 24.29
+                         639.00      639.00      639.00      639.00       639.00      636.00        639.00      639.00       545.10      639.00        639.00      639.00
+ jsoncpp
+                         ± 0.00       ± 0.00      ± 0.00      ± 0.00       ± 0.00      ± 0.00        ± 0.00      ± 0.00      ± 56.91      ± 0.00       ± 0.00       ± 0.00
+                       1,227.20     1,223.80    1,317.10    1,235.80    1,370.10     1,262.00    1,224.70      1,235.30     2,293.22    1,254.70     1,233.40     1,251.40
+ lcms
+                         ± 0.58       ± 1.18     ± 17.45      ± 8.95    ± 136.16      ± 16.67        ± 1.83      ± 6.69     ± 135.79     ± 11.71       ± 2.09      ± 13.38
+                       3,561.10     3,656.60    3,745.90    3,451.40    3,442.40     3,140.70    3,749.80      3,057.90     2,909.60    3,764.40     3,497.00     3,517.60
+ libjpeg-turbo
+                        ± 55.74      ± 49.42     ± 41.05     ± 44.76      ± 21.84     ± 36.43       ± 31.54     ± 11.70      ± 75.03     ± 29.95      ± 47.71      ± 54.57
+                       2,089.40     2,084.10    2,084.50    2,076.10    2,082.40     2,091.40    2,097.40      2,056.20     1,619.00    2,079.20     2,074.30     2,064.10
+ libpng
+                         ± 4.80       ± 5.07      ± 7.94      ± 5.29       ± 6.32      ± 4.53        ± 5.72      ± 7.82      ± 32.11      ± 6.11       ± 6.13       ± 7.27
+                       7,698.00     7,642.30    8,147.80    7,659.90    7,701.80     7,749.20    7,652.20      7,693.10     7,467.10    8,025.70     7,652.70     7,631.20
+ mbedtls
+                        ± 10.83      ± 19.18     ± 17.13     ± 13.89      ± 13.86     ± 13.00        ± 5.68     ± 16.09     ± 100.39     ± 26.42      ± 21.38      ± 24.86
+                      13,731.20   13,745.80    13,750.80   13,720.10   13,730.30    13,754.30   13,738.80     13,728.60    13,695.30   13,738.40    13,731.80    13,735.80
+ openssl
+                         ± 3.34       ± 3.13      ± 3.72      ± 2.15       ± 4.85      ± 2.10        ± 4.11      ± 4.80       ± 4.64      ± 4.33       ± 3.71       ± 4.42
+                       5,643.20     5,764.80    5,703.10    5,364.10    5,390.20     5,706.60    5,740.70      5,750.50     5,424.22    5,802.70     5,594.80     5,617.40
+ openthread
+                        ± 38.42      ± 20.37     ± 31.87     ± 42.34      ± 59.08     ± 15.50       ± 29.01     ± 32.94     ± 157.82     ± 18.32      ± 79.15      ± 55.67
+                      42,342.10   42,459.60    42,961.10   41,627.00   41,505.80    41,907.40   42,364.50     42,344.90    41,117.30   44,736.60    42,190.00    44,198.10
+ php
+                       ± 106.95     ± 100.18     ± 61.12     ± 61.70      ± 38.58    ± 109.88    ± 136.80       ± 99.31     ± 534.67     ± 70.01     ± 143.45      ± 73.78
+                       5,610.70     5,699.10    6,579.70    5,132.90    5,112.60     5,310.30    5,807.10      5,129.00     2,320.80    6,466.50     6,092.50     6,132.00
+ proj4
+                       ± 141.28      ± 76.92     ± 91.73     ± 80.43      ± 54.38    ± 132.76    ± 121.24       ± 86.67     ± 369.80    ± 106.58     ± 205.82      ± 67.97
+                       3,506.10     3,498.50    3,518.00    3,486.00    3,504.00     3,475.70    3,502.60      3,502.70     3,055.30    3,530.10     3,486.70     3,484.50
+ re2
+                         ± 3.59       ± 4.15      ± 4.18      ± 7.05       ± 1.69      ± 4.83        ± 5.71      ± 6.87      ± 22.87      ± 5.40       ± 7.58       ± 4.90
+                      21,191.10   21,651.90    23,210.00   21,281.40   21,558.00    23,197.10   22,097.90     22,479.50    19,041.60   23,301.90    22,028.80    22,021.20
+ sqlite3
+                       ± 151.57     ± 306.67    ± 366.46    ± 113.28    ± 159.46     ± 386.04    ± 194.40      ± 127.28     ± 177.51    ± 577.27      ± 78.95     ± 143.47
+                         637.60      639.40      640.00      640.00       638.20      633.40        638.80      639.40       613.56      640.00        640.00      640.00
+ systemd
+                         ± 0.92       ± 0.56      ± 0.00      ± 0.00       ± 1.21      ± 1.57        ± 1.14      ± 0.57      ± 13.21      ± 0.00       ± 0.00       ± 0.00
+                       2,098.40     1,991.70    2,140.40    2,030.90    2,061.70     2,043.70    2,087.10      1,986.90     1,549.00    2,156.30     2,073.20     2,062.70
+ vorbis
+                        ± 16.27      ± 39.81      ± 8.86     ± 26.69      ± 32.15     ± 17.80       ± 18.38     ± 23.53       ± 0.00      ± 4.42       ± 8.68      ± 22.25
+                       1,769.80     1,694.40    1,841.30    1,773.10    1,744.60     1,731.40    1,775.10      1,678.00     1,498.56    1,860.90     1,717.60     1,699.10
+ woff2
+                        ± 14.61      ± 13.88      ± 9.47      ± 7.82      ± 14.93      ± 5.95        ± 6.69      ± 8.61      ± 49.29      ± 9.41       ± 5.69       ± 7.14
+                         945.40      942.20      953.80      932.80       932.20      940.20        947.20      948.50       920.30      960.10        954.90      959.40
+ zlib
+                         ± 4.12       ± 5.24      ± 3.91      ± 3.71       ± 3.42      ± 4.81        ± 5.06      ± 5.02       ± 3.69      ± 1.65       ± 4.67       ± 3.49
+ Best                         3            5         16           2            2           5             6           4            3          13            5            5
+
+
+
+examining how much queue update times vary (across a single 24 h                         4.5     Ablation Study (RQ 4)
+trial). Table 4 shows these results under “update variance”.                            We undertake an ablation study to understand better the impacts
+   Like queue update time, queue update time variance is negligible.                    the individual T-Scheduler components have on our results. We
+T-Scheduler has effectively no variance, making it ideal for long-                      study: (i) AFL++ FAST; (ii) Rare − , replacing the FAST scheduler
+running fuzzing campaigns. AFL-Hier and AFL++’s RARE have                               with a MAB; and (iii) Sample, adding a correction for rareness. We
+the highest variance. This is unsurprising; RARE focuses on queue                       select FAST because it is AFL++’s default scheduler, and Sample
+entries that hit rare coverage map elements, requiring additional                       because it generally outperforms Rare+ (RQs 1 and 2).
+computation to find those rare elements, while operations on AFL-                          Figure 4 visualizes the unique bug counts from Table 1. FAST
+Hier’s hierarchical tree structure have O (𝑛) complexity.                               found 63 unique bugs, of which five were only found by FAST. Re-
+       Result 3                                                                         placing FAST with Rare − decreased the number of unique bugs
+                                                                                        to 62. However, Rare − found two bugs missed by the other two
+    T-Scheduler maintains high iteration rates, despite increased                       schedulers. When adding rareness correction (via Sample) to Rare − ,
+    scheduling overheads. T-Scheduler is also scalable: queue                           the number of bugs increased to 65. Moreover, four of these 65
+    update times remain constant over fuzzing campaigns.                                bugs were only found by Sample, and were found (a) late into the
+                                                                                        fuzzing process (after ∼60 h), and (b) by only a small number of
+                                                                                        fuzzers/schedulers, suggesting they are difficult to trigger.
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                                            AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+Table 3: FuzzBench AUC, presented as mean AUC with 95 % bootstrap CI. The best-performing fuzzer(s) for each target (per
+the Mann-Whitney 𝑈 test) is in green (larger is better). “Best” is the number of times a fuzzer achieved the highest AUC for the
+evaluated targets.
+
+                                                                                                               Fuzzer
+                                                                                AFL++                                                                                           T-Scheduler
+ Target
+                                                                                                                                                    AFL-Hier
+                     EXPLORE               FAST               COE           QUAD              LIN       EXPLOIT        MMOPT              RARE                       Rare −        Rare+       Sample
+                       1,855.49          1,798.74       1,881.75       1,739.14           1,832.82       1,901.46      1,860.15         1,882.21       720.66       1,876.27      1,903.64     1,917.34
+ bloaty
+                          ± 36.81         ± 29.02        ± 21.23            ± 37.05        ± 32.55        ± 18.05       ± 39.57          ± 26.01       ± 88.80       ± 12.40       ± 12.70      ± 12.21
+                       5,935.13          5,297.44       6,128.42       5,876.09           5,845.46       5,685.59      5,981.73         5,899.21        22.31       5,270.48      5,284.60     5,278.60
+ curl
+                          ± 32.79          ± 8.34        ± 21.96            ± 49.73        ± 32.48        ± 42.23       ± 11.66          ± 16.57        ± 4.41       ± 31.77       ± 15.11      ± 23.71
+                       4,485.76          4,524.82       5,026.24       4,316.93           4,433.65       4,794.04      4,617.88         4,691.47      1,596.44      4,892.82      4,911.98     4,821.05
+ freetype2
+                          ± 63.39        ± 102.24        ± 53.00            ± 83.98        ± 52.09        ± 71.91      ± 108.91          ± 37.17      ± 349.75       ± 58.15       ± 46.05      ± 42.39
+                       2,367.14          2,326.66       2,407.32       2,270.86           2,237.21       2,292.35      2,358.83         2,340.57      1,317.19      2,425.86      2,372.57     2,396.13
+ harfbuzz
+                          ± 34.39         ± 31.08        ± 16.32            ± 41.14        ± 30.87        ± 21.88       ± 30.49          ± 21.70      ± 211.41       ± 11.06       ± 13.43       ± 7.54
+                          203.63           203.23        203.71             203.54         203.69         202.66        203.46           203.49         80.35        202.70         203.39      203.27
+ jsoncpp
+                             ± 0.07        ± 0.17         ± 0.05             ± 0.02         ± 0.01         ± 0.02        ± 0.11           ± 0.01       ± 15.07        ± 0.28        ± 0.17       ± 0.15
+                          389.70           387.03        393.74             390.46         406.59         392.60        388.93           390.42        572.34        394.88         389.15      390.45
+ lcms
+                             ± 0.33        ± 0.57         ± 0.81             ± 0.96        ± 15.81         ± 1.47        ± 0.49           ± 0.46       ± 48.40        ± 1.99        ± 0.57       ± 1.55
+                       1,085.49          1,096.15       1,160.83       1,071.70           1,072.38        973.90       1,121.60          954.81        750.88       1,173.16      1,064.67     1,067.75
+ libjpeg-turbo
+                             ± 9.90       ± 11.33        ± 11.89             ± 8.03         ± 3.32         ± 4.95       ± 12.41           ± 6.06       ± 38.03       ± 11.36       ± 15.36      ± 16.61
+                          663.27           660.20        663.96             657.04         660.73         661.04        665.76           650.26        442.56        658.86         657.18      652.64
+ libpng
+                             ± 1.60        ± 1.99         ± 2.50             ± 2.20         ± 2.07         ± 1.43        ± 1.78           ± 2.72       ± 28.84        ± 2.12        ± 1.97       ± 2.12
+                       2,436.35          2,419.82       2,541.22       2,436.52           2,446.75       2,455.33      2,420.35         2,436.75      1,941.63      2,471.21      2,428.81     2,418.06
+ mbedtls
+                             ± 2.24        ± 5.30         ± 5.61             ± 3.85         ± 3.71         ± 3.24        ± 3.02           ± 3.06      ± 231.06        ± 9.09        ± 6.12       ± 7.74
+                       4,369.59          4,370.03       4,382.95       4,372.61           4,376.14       4,378.27      4,373.62         4,374.11      2,414.84      4,355.91      4,377.09     4,368.88
+ openssl
+                             ± 3.07        ± 4.42         ± 1.09             ± 0.94         ± 1.51         ± 0.70        ± 1.99           ± 2.01      ± 513.73        ± 7.69        ± 1.14       ± 4.03
+                       1,748.75          1,762.49       1,791.13       1,668.19           1,660.39       1,746.66      1,790.89         1,784.31      1,254.70      1,825.09      1,729.62     1,713.15
+ openthread
+                          ± 17.22         ± 12.70        ± 11.93            ± 13.06        ± 19.64         ± 8.34       ± 10.25           ± 6.85      ± 180.57        ± 6.25       ± 21.97      ± 16.16
+                      13,390.60         13,388.88     13,584.21       13,194.36       13,177.75         13,183.46    13,389.12         13,337.44      1,151.67     14,016.82     13,414.13    14,016.68
+ php
+                          ± 31.39         ± 32.36        ± 23.81             ± 9.33         ± 9.90        ± 25.63       ± 36.87          ± 23.16      ± 280.18       ± 19.42       ± 38.98      ± 26.92
+                       1,647.87          1,670.72       2,020.40       1,491.32           1,467.89       1,426.01      1,671.35         1,327.46       436.16       1,977.17      1,770.04     1,785.75
+ proj4
+                          ± 43.23         ± 28.16        ± 28.88            ± 30.43        ± 23.12        ± 41.85       ± 46.43          ± 30.11       ± 76.83       ± 39.66       ± 66.98      ± 25.78
+                       1,107.15          1,102.90       1,116.69       1,097.35           1,099.13       1,082.91      1,103.85         1,097.64       719.14       1,121.36      1,100.35     1,095.72
+ re2
+                             ± 1.24        ± 1.06         ± 0.94             ± 1.67         ± 1.17         ± 2.76        ± 1.47           ± 1.79       ± 32.05        ± 1.38        ± 2.12       ± 2.18
+                       6,546.16          6,549.26       6,966.93       6,659.31           6,684.83       6,776.79      6,770.59         6,917.85      3,163.01      7,032.32      6,862.27     6,815.92
+ sqlite3
+                          ± 37.64         ± 84.99        ± 70.91            ± 23.54        ± 42.71        ± 62.16       ± 31.57          ± 23.47      ± 228.67       ± 78.15       ± 20.75      ± 31.30
+                          202.70           202.93        204.00             202.95         202.97         200.68        202.86           202.53        148.28        203.38         203.29      203.16
+ systemd
+                             ± 0.37        ± 0.20         ± 0.02             ± 0.25         ± 0.41         ± 0.33        ± 0.45           ± 0.28       ± 26.43        ± 0.28        ± 0.16       ± 0.26
+                          621.37           597.84        655.33             613.50         618.62         627.95        624.02           616.59           2.07       669.33         625.59      625.32
+ vorbis
+                             ± 4.06        ± 3.77         ± 2.96             ± 4.78         ± 4.97         ± 4.83        ± 5.24           ± 5.06        ± 0.22        ± 1.99        ± 4.40       ± 4.44
+                          540.76           528.67        564.95             549.08         543.36         540.87        541.73           526.76        197.68        580.63         538.27      533.78
+ woff2
+                             ± 1.79        ± 2.04         ± 2.12             ± 1.01         ± 3.23         ± 1.03        ± 1.71           ± 1.75       ± 73.95        ± 2.47        ± 1.04       ± 1.61
+                          299.20           298.56        301.50             296.07         295.10         291.20        300.56           299.10        273.63        302.06         301.07      302.36
+ zlib
+                             ± 1.05        ± 1.48         ± 1.22             ± 0.77         ± 0.50         ± 0.75        ± 1.34           ± 1.35       ± 10.12        ± 1.34        ± 1.26       ± 1.04
+ Best                            4              2              13                0              0              2               4              3             1            13              4           3
+
+Table 4: Scheduler overheads and iteration rates with 95 % bootstrap CI. Update count = number of times the queue is updated
+in a single trial (geometric mean). Update time = time spent (ms) on each queue update (arithmetic mean). Update variance
+= how much the queue update time varies (ms2 ) in a single trial (arith. mean). Overhead = total time (s) the fuzzer spends
+selecting an input to fuzz in a trial (arith. mean). Iteration rate = number of inputs executed per second (arith. mean).
+
+                                                                                                                    Fuzzer
+                                                                                      AFL++                                                                                     T-Scheduler
+                                                                                                                                                     AFL-Hier
+                                EXPLORE              FAST           COE         QUAD             LIN      EXPLOIT        MMOPT             RARE                       Rare −        Rare+      Sample
+                                      269.97        873.86      283.12          328.12        590.47           80.03         281.25        124.42         88.84        672.38       649.44      635.84
+ Update count (#)
+                                      ± 44.62   ± 156.92        ± 46.29         ± 57.84      ± 135.07         ± 7.91         ± 46.43      ± 17.73        ± 17.17      ± 87.68       ± 86.14     ± 81.63
+                                       14.96          9.29           9.52        15.17          16.77          29.88          15.62         39.77        106.55         41.76        42.05       79.83
+ Update time (ms)
+                                       ± 3.47        ± 1.32      ± 1.30          ± 3.26        ± 7.29         ± 7.25          ± 2.83       ± 7.99        ± 23.59       ± 0.09        ± 0.11      ± 0.23
+                                        0.40          0.01           0.00         0.09           0.12           0.11           0.04          0.52          0.75          0.00          0.00       0.00
+ Update variance (ms2 )
+                                       ± 0.37        ± 0.00      ± 0.00          ± 0.04        ± 0.10         ± 0.06          ± 0.02       ± 0.32         ± 0.51       ± 0.00        ± 0.00      ± 0.00
+                                       57.84         85.35          49.34        58.18          62.00          49.18          56.38         64.13        207.68      2,488.36      2,419.26   4,443.65
+ Overhead (s)
+                                       ± 9.32       ± 11.90      ± 7.66          ± 9.37        ± 9.23         ± 7.02          ± 8.71      ± 10.14        ± 47.91     ± 319.63      ± 317.35    ± 559.37
+                                       83.52        210.19          85.06        89.26          87.61          99.86          89.42         58.52         84.84         96.79        94.46       93.60
+ Iteration rate (inputs/s)
+                                      ± 13.33       ± 39.23     ± 12.20         ± 16.73       ± 15.89        ± 16.94         ± 13.30       ± 9.79        ± 17.28      ± 16.75       ± 16.36     ± 16.67
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                Luo et al.
+
+
+                                        FAST                             fuzzer’s iteration rate (Table 4). In most applications, the probabilis-
+                                                                         tic approach should outperform a deterministic approach. Thus, we
+                                           5                             recommend Sample for general use based on our results.
+                      Rare −                       Sample
+                                    2          3                              Result 4
+                                         53
+                                   2           4                             Accounting for rare coverage elements (with Sample) im-
+                                           5
+                                                                             proves bug-finding performance (over Rare − ). However,
+                                                                             Rare − ’s single objective of maximizing coverage leads to
+Figure 4: Venn diagram of unique bug count between                           higher coverage. Both improve upon FAST.
+AFLFast, Rare − , and Sample (74 unique bugs found across
+all drivers).
+                                                                         5    RELATED WORK
+                                                                         Woo et al. [44] were one of the first to formulate fuzzing as a MAB.
+                                                                         Their work focused on blackbox fuzzing, where there is no coverage
+   Sample’s bug-finding performance improved towards the end             feedback to guide the fuzzer. Woo et al. [44] proposed using the exp3
+of the fuzzing campaign (here, after 45 h of fuzzing), triggering        algorithm [33], with the fuzzer rewarded based on the number of
+nine bugs that were missed by FAST. Three of these bugs (XML001,         unique bugs found. However, bugs are sparse, so assigning a reward
+XML002, and PDF011) are buffer overflow bugs in functions that are       based on their discovery is impractical. In contrast, AFLFast [7]
+frequently covered by FAST. FAST assigns higher priority to an           focused on greybox fuzzing, introducing the power schedule for
+input depending on the number of times it covers an edge, while          seed scheduling (see Section 2.2). Entropic [5] expanded this with
+penalizing inputs that cover paths with high frequency [7]. This         an entropy-based power schedule for prioritizing information gain.
+is a limitation of FAST, as a high-frequency path does not neces-           Prior work has applied MAB to greybox fuzzing. Karamcheti
+sarily mean a lower chance of discovering new program behavior.          et al. [20], Koike et al. [23] use a MAB over the fuzzer’s mutation
+T-Scheduler does not apply a penalty to high-frequency paths if          operators, while EcoFuzz [46], AFL-Hier [40], and MobFuzz [48]
+previously scheduled inputs have discovered new program behav-           use a MAB for seed scheduling.
+iors.                                                                       EcoFuzz [46] eschews a traditional MAB for an adversarial bandit.
+   Code coverage increased when replacing the FAST scheduler             While an adversarial bandit removes assumptions about the bandits’
+with Rare − ’s MAB-based scheduler. Notably, Rare − achieved the         probability distributions, this generality requires more hyperpa-
+(equal) highest coverage on most FuzzBench targets (Tables 2             rameters to tune. In particular, EcoFuzz has two hyperparameters—
+and 3). In particular, harfbuzz was the only target where FAST           exploration and decay—and uses entropy to compute the probability
+achieved the most coverage and did not tie with Rare − (Table 2).        of an input’s (potential) information gain.
+This is in contrast to bug finding, where Sample outperformed               AFL-Hier [40] combines a multiplayer MAB with a hierarchical
+Rare − (except for the “best” metric in Table 1). We attribute this to   tree structure to balance exploration/exploitation across coverage
+Rare − ’s single objective (in the RL algorithm) to maximize code        metrics. Like EcoFuzz, AFL-Hier has two hyperparameters (explo-
+coverage. In contrast, Sample uses a multi-objective optimization        ration and decay). However, unlike EcoFuzz, AFL-Hier rewards
+that balances exploring rare paths and maximizing code coverage.         rare code paths, encouraging the scheduler to select inputs that
+   Iteration rates decreased by ∼50 % when replacing FAST with           cover less-explored paths.
+Rare − (Table 4). However, this decrease was also true of the other         Finally, MobFuzz [48] uses a multi-objective optimization formu-
+seven AFL++ schedulers (and was sometimes even more pronounced;          lated as a multiplayer MAB, maximizing three objectives: execution
+up to 72 %). Sample increased the scheduler overhead from 40 min         speed, memory consumption, and the length of memory compar-
+to 74 min (an 84 % increase). We attribute this increase to costs as-    isons. MobFuzz uses a weighted average of these three objectives
+sociated with sampling from the Beta distribution twice (Eq. (13)).      to compute the reward for each input.
+In contrast, Rare − only samples from it once. However, this has
+negligible impact on iteration rates: a reduction of ∼1 input/s. Simi-   6    CONCLUSIONS
+larly, the variance across queue update times remains zero when          We present T-Scheduler, an RL-based fuzzer seed scheduler. Un-
+replacing Rare − with Sample, demonstrating its scalability.             like prior RL-based schedulers, T-Scheduler does not require hy-
+                                                                         perparameter tuning. We empirically demonstrate T-Scheduler’s
+   To Sample or not to Sample? Our ablation study focused on Sam-        effectiveness over 35 CPU-yr of fuzzing. On Magma, T-Scheduler
+ple, which probabilistically samples for rareness correction. How-       found the most bugs and missed the fewest. On FuzzBench, it was
+ever, it is worth revisiting Rare+ —which deterministically com-         the fastest at expanding coverage on the most targets. T-Scheduler
+putes an expected value for rareness correction—to understand            also maintains consistently-high iteration rates (even as the queue
+what impact the probabilistic approach has on fuzzing outcomes.          grows). Given our results, we recommend the adoption of our Sam-
+Sample outperformed Rare+ across all bug-finding metrics (Ta-            ple variant. Interestingly, our results also show that AFL++’s default
+ble 1). Sample also slightly outperformed Rare+ (by a single tar-        FAST scheduler was generally outperformed by the MMOPT sched-
+get) on total coverage (Table 2) and performed the same on cov-          uler (across both bug-finding and coverage-expansion metrics). We
+erage AUC (Table 3). While probabilistically sampling resulted in        encourage others to adopt and build upon T-Scheduler, available
+higher scheduler overhead, this had a negligible impact on the           at https://github.com/asiaccs2024-t-scheduler.
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                     AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+ACKNOWLEDGMENTS                                                                                  38th Annual Computer Security Applications Conference (ACSAC). ACM, 519–533.
+                                                                                                 https://doi.org/10.1145/3564625.3564659
+This work was supported by the Defence Science and Technology                             [24]   Tor Lattimore and Csaba Szepesvári. 2020. Bandit algorithms. Cambridge Univer-
+Group Next Generation Technologies Fund (Cyber) program via                                      sity Press.
+                                                                                          [25]   Siqi Li, Xiaofei Xie, Yun Lin, Yuekang Li, Ruitao Feng, Xiaohong Li, Weimin Ge,
+the KRONOS Data61 Collaborative Research Project.                                                and Jin Song Dong. 2022. Deep Learning for Coverage-Guided Fuzzing: How
+                                                                                                 Far are We? Transactions on Dependable and Secure Computing (2022), 1–13.
+                                                                                                 https://doi.org/10.1109/TDSC.2022.3200525
+REFERENCES                                                                                [26]   Nathan Mantel. 1966. Evaluation of survival data and two new rank order
+ [1] Adobe. 1992. TIFF, Revision 6.0. https://www.loc.gov/preservation/digital/                  statistics arising in its consideration. Cancer Chemotherapy Reports 50, 3 (1966),
+     formats/fdd/fdd000022.shtml                                                                 163–170.
+ [2] Shipra Agrawal and Navin Goyal. 2017. Near-Optimal Regret Bounds for                 [27]   Valentin J.M. Manès, HyungSeok Han, Choongwoo Han, Sang Kil Cha, Manuel
+     Thompson Sampling. Jorunal of the ACM 64, 5, Article 30 (2017), 24 pages.                   Egele, Edward J. Schwartz, and Maverick Woo. 2021. The Art, Science, and
+     https://doi.org/10.1145/3088510                                                             Engineering of Fuzzing: A Survey. Transactions on Software Engineering 47, 11
+ [3] Andrea Arcuri and Lionel Briand. 2011. A Practical Guide for Using Statistical              (2021), 2312–2331. https://doi.org/10.1109/TSE.2019.2946563
+     Tests to Assess Randomized Algorithms in Software Engineering. In International      [28]   Jonathan Metzman, László Szekeres, Laurent Maurice Romain Simon, Read
+     Conference on Software Engineering (ICSE). ACM, 1–10. https://doi.org/10.1145/              Trevelin Sprabery, and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer
+     1985793.1985795                                                                             Benchmarking Platform and Service. In European Software Engineering Con-
+ [4] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and                     ference and Foundations of Software Engineering (ESEC/FSE). ACM, 1393–1403.
+     Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence.                  https://doi.org/10.1145/3468264.3473932
+     In Network and Distributed System Security (NDSS). The Internet Society, 15 pages.   [29]   NIST. 2019. CVE-2019-7663. https://nvd.nist.gov/vuln/detail/CVE-2019-7663
+     https://doi.org/10.14722/ndss.2019.23371                                             [30]   Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos, Jonathan Foote, David
+ [5] Marcel Böhme, Valentin J. M. Manès, and Sang Kil Cha. 2020. Boosting Fuzzer                 Warren, Gustavo Grieco, and David Brumley. 2014. Optimizing Seed Selection
+     Efficiency: An Information Theoretic Perspective. In European Software Engi-                for Fuzzing. In USENIX Security (SEC). USENIX, 861–875.
+     neering Conference and Foundations of Software Engineering (ESEC/FSE). ACM,          [31]   Gary J. Saavedra, Kathryn N. Rodhouse, Daniel M. Dunlavy, and W. Philip
+     678–689. https://doi.org/10.1145/3368089.3409748                                            Kegelmeyer. 2019. A Review of Machine Learning Applications in Fuzzing.
+ [6] Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen, and Abhik Roychoudhury.                     arXiv Preprint abs/1906.11133 (2019), 12 pages. https://doi.org/10.48550/arXiv.
+     2017. Directed Greybox Fuzzing. In Computer and Communications Security (CCS).              1906.11133
+     ACM, 2329–2344. https://doi.org/10.1145/3133956.3134020                              [32]   Joseph Scott, Federico Mora, and Vijay Ganesh. 2020.             BanditFuzz: A
+ [7] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2016. Coverage-                       Reinforcement-Learning Based Performance Fuzzer for SMT Solvers. In Ver-
+     Based Greybox Fuzzing as Markov Chain. In Computer and Communications                       ified Software: Theories, Tools, and Experiments (VSTTE). Springer-Verlag, 68–86.
+     Security (CCS). ACM, 1032–1043. https://doi.org/10.1145/2976749.2978428                     https://doi.org/10.1007/978-3-030-63618-0_5
+ [8] Marcel Böhme, László Szekeres, and Jonathan Metzman. 2022. On the Reliability        [33]   Yevgeny Seldin, Csaba Szepesvári, Peter Auer, and Yasin Abbasi-Yadkori. 2013.
+     of Coverage-Based Fuzzer Benchmarking. In International Conference on Software              Evaluation and Analysis of the Performance of the EXP3 Algorithm in Stochastic
+     Engineering (ICSE). ACM, 1621–1633. https://doi.org/10.1145/3510003.3510230                 Environments. In Proceedings of Machine Learning Research (PMLR, Vol. 24). PMLR,
+ [9] Konstantin Böttinger, Patrice Godefroid, and Rishabh Singh. 2018. Deep Re-                  103–116. http://proceedings.mlr.press/v24/seldin12a.html
+     inforcement Fuzzing. In Security and Privacy Workshops (SPW). IEEE, 116–122.         [34]   Kostya Serebryany. 2017. OSS-Fuzz - Google’s continuous fuzzing service for
+     https://doi.org/10.1109/SPW.2018.00026                                                      open source software. In USENIX Security (SEC). USENIX.
+[10] Oliver Chang. 2023. Taking the next step: OSS-Fuzz in 2023. https://security.        [35]   Dongdong She, Abhishek Shah, and Suman Jana. 2022. Effective Seed Scheduling
+     googleblog.com/2023/02/taking-next-step-oss-fuzz-in-2023.html                               for Fuzzing with Graph Centrality Analysis. In Security and Privacy (S&P). IEEE,
+[11] Yaohui Chen, Mansour Ahmadi, Reza Mirzazade farkhani, Boyu Wang, and Long                   2194–2211. https://doi.org/10.1109/SP46214.2022.9833761
+     Lu. 2020. MEUZZ: Smart Seed Scheduling for Hybrid Fuzzing. In Research in            [36]   Richard S Sutton and Andrew G Barto. 2018. Reinforcement learning: An intro-
+     Attacks, Intrusions and Defenses (RAID). USENIX, 77–92.                                     duction. MIT press.
+[12] Liang Cheng, Yang Zhang, Yi Zhang, Chen Wu, Zhangtan Li, Yu Fu, and Haisheng         [37]   William R Thompson. 1933. On the likelihood that one unknown probability
+     Li. 2019. Optimizing Seed Inputs in Fuzzing with Machine Learning. In Inter-                exceeds another in view of the evidence of two samples. Biometrika 25, 3-4 (1933),
+     national Conference on Software Engineering: Companion (ICSE). IEEE, 244–245.               285–294.
+     https://doi.org/10.1109/ICSE-Companion.2019.00096                                    [38]   Jonas Benedict Wagner. 2017. Elastic Program Transformations: Automatically
+[13] Clang Team. 2022. Source-based Code Coverage. https://clang.llvm.org/docs/                  Optimizing the Reliability/Performance Trade-off in Systems Software. Ph. D. Dis-
+     SourceBasedCodeCoverage.html                                                                sertation. EPFL. https://doi.org/10.5075/epfl-thesis-7745
+[14] Jacob Cohen. 1960. A Coefficient of Agreement for Nominal Scales. Educational        [39]   Daimeng Wang, Zheng Zhang, Hang Zhang, Zhiyun Qian, Srikanth V. Krishna-
+     and Psychological Measurement 20, 1 (1960), 37–46. https://doi.org/10.1177/                 murthy, and Nael Abu-Ghazaleh. 2021. SyzVegas: Beating Kernel Fuzzing Odds
+     001316446002000104                                                                          with Reinforcement Learning. In USENIX Security (SEC). USENIX, 2741–2758.
+[15] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++:         [40]   Jinghan Wang, Chengyu Song, and Heng Yin. 2021. Reinforcement Learning-
+     Combining Incremental Steps of Fuzzing Research. In Workshop on Offensive                   based Hierarchical Seed Scheduling for Greybox Fuzzing. In Network and Dis-
+     Technologies (WOOT). USENIX, 12 pages.                                                      tributed System Security Symposium (NDSS). The Internet Society, 17 pages.
+[16] Patrice Godefroid, Hila Peleg, and Rishabh Singh. 2017. Learn&Fuzz: Machine                 https://doi.org/10.14722/ndss.2021.24486
+     Learning for Input Fuzzing. In Automated Software Engineering (ASE). IEEE,           [41]   Pengfei Wang and Xu Zhou. 2020. SoK: The Progress, Challenges, and Perspec-
+     50–59.                                                                                      tives of Directed Greybox Fuzzing. CoRR abs/2005.11907 (2020).
+[17] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-             [42]   Yan Wang, Peng Jia, Luping Liu, Cheng Huang, and Zhonglin Liu. 2020. A
+     Truth Fuzzing Benchmark. Measurement and Analysis of Computing Systems 4, 3,                systematic review of fuzzing based on machine learning techniques. PLOS ONE
+     Article 49 (2020), 29 pages. https://doi.org/10.1145/3428334                                15, 8 (2020), 1–37. https://doi.org/10.1371/journal.pone.0237749
+[18] Adrian Herrera, Hendra Gunadi, Shane Magrath, Michael Norrish, Mathias Payer,        [43]   Yanhao Wang, Xiangkun Jia, Yuwei Liu, Kyle Zeng, Tiffany Bao, Dinghao Wu, and
+     and Antony L. Hosking. 2021. Seed Selection for Successful Fuzzing. In Inter-               Purui Su. 2020. Not All Coverage Measurements Are Equal: Fuzzing by Coverage
+     national Symposium on Software Testing and Analysis (ISSTA). ACM, 230–243.                  Accounting for Input Prioritization. In Network and Distributed Systems Security
+     https://doi.org/10.1145/3460319.3464795                                                     (NDSS). The Internet Society, 17 pages. https://doi.org/10.14722/ndss.2020.24422
+[19] Adrian Herrera, Mathias Payer, and Antony L. Hosking. 2022. Registered Report:       [44]   Maverick Woo, Sang Kil Cha, Samantha Gottlieb, and David Brumley. 2013.
+     datAFLow Towards a Data-Flow-Guided Fuzzer. In Fuzzing Workshop (FUZZING).                  Scheduling Black-Box Mutational Fuzzing. In Computer and Communications
+     The Internet Society, 11 pages. https://doi.org/10.14722/fuzzing.2022.23001                 Security (CCS). ACM, 511–522. https://doi.org/10.1145/2508859.2516736
+[20] Siddharth Karamcheti, Gideon Mann, and David Rosenberg. 2018. Adaptive               [45]   Wen Xu, Sanidhya Kashyap, Changwoo Min, and Taesoo Kim. 2017. Design-
+     Grey-Box Fuzz-Testing with Thompson Sampling. In Artificial Intelligence and                ing New Operating Primitives to Improve Fuzzing Performance. In Computer
+     Security (AISec). ACM, 37–47. https://doi.org/10.1145/3270101.3270108                       and Communications Security (CCS). ACM, 2313–2328. https://doi.org/10.1145/
+[21] Leo Katz. 1953. A new status index derived from sociometric analysis. Psychome-             3133956.3134046
+     trika (1953), 39–43. https://doi.org/10.1007/BF02289026                              [46]   Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu, Kai Lu, and Xu Zhou.
+[22] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.                2020. EcoFuzz: Adaptive Energy-Saving Greybox Fuzzing as a Variant of the
+     Evaluating Fuzz Testing. In Computer and Communications Security (CCS). ACM,                Adversarial Multi-Armed Bandit. In USENIX Security (SEC). USENIX, 2307–2324.
+     2123–2138. https://doi.org/10.1145/3243734.3243804                                   [47]   Michał Zalewski. 2015. American Fuzzy Lop (AFL). http://lcamtuf.coredump.cx/
+[23] Yuki Koike, Hiroyuki Katsura, Hiromu Yakura, and Yuma Kurogome. 2022. SLOPT:                afl/
+     Bandit Optimization Framework for Mutation-Based Fuzzing. In Proceedings of the
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                               Luo et al.
+
+
+[48] Gen Zhang, Pengfei Wang, Tai Yue, Xiangdong Kong, Shan Huang, Xu Zhou,               i.e., the case where a fuzzer does not find a bug. Table 5 presents
+     and Kai Lu. 2022. MobFuzz: Adaptive Multi-objective Optimization in Gray-box         the restricted mean survival time (RMST) of a given bug; i.e., the
+     Fuzzing. In Network and Distributed Systems Security (NDSS). The Internet Society,
+     18 pages. https://doi.org/10.14722/ndss.2022.24314                                   mean time the bug “survives” being discovered by a fuzzer across
+[49] Han Zheng, Jiayuan Zhang, Yuhang Huang, Zezhong Ren, He Wang, Chunjie Cao,           ten repeated 72 h campaigns. Lower RMSTs imply a fuzzer finds
+     Yuqing Zhang, Flavio Toffalini, and Mathias Payer. 2022. FishFuzz: Throwing
+     Larger Nets to Catch Deeper Bugs. CoRR abs/2207.13393 (2022). https://doi.org/
+                                                                                          a bug “faster”, while a smaller confidence interval (CI) means the
+     10.48550/arXiv.2207.13393                                                            bug is found more consistently. Applying the log-rank test [26]
+[50] Peiyuan Zong, Tao Lv, Dawei Wang, Zizhuang Deng, Ruigang Liang, and Kai              under the null hypothesis that two fuzzers share the same survival
+     Chen. 2020. FuzzGuard: Filtering out Unreachable Inputs in Directed Grey-box
+     Fuzzing through Deep Learning. In USENIX Security (SEC). USENIX, 2255–2269.          function allows us to statistically compare survival times. Thus, two
+                                                                                          fuzzers have statistically equivalent bug survival times if the log-
+A     MAGMA SURVIVAL ANALYSIS                                                             rank test’s 𝑝-value > 0.05. The survival analysis results in Table 5
+                                                                                          augment those presented in the main paper.
+Following prior work [3, 17–19, 38], we model bug finding using
+survival analysis. This allows us to reason about censored data;
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                          AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+Table 5: Magma bugs triggered, presented as the restricted mean survival time (RMST; in hours) with 95 % bootstrap CI. Bugs
+never found by a particular fuzzer have an RMST of ⊤ (to distinguish bugs with a 72 h RMST). Targets that fail to build with a
+given fuzzer are marked with ✗. The best-performing fuzzer (fuzzers if the bug survival times are statistically equivalent per
+the log-rank test) for each bug is highlighted in green (smaller is better).
+
+                                                                                                               Fuzzer
+                                                                                    AFL++                                                                             T-Scheduler
+ Target       Driver                  Bug
+                                                                                                                                      K-Sched    Tortoise
+                                               EXPLORE      FAST       COE     QUAD         LIN    EXPLOIT     MMOPT        RARE                            Rare −      Rare+       Sample
+                                                  71.51         ⊤         ⊤         ⊤         ⊤       70.53             ⊤        ⊤          ⊤          ⊤         ⊤           ⊤           ⊤
+                                      PNG001
+                                                  ± 1.67                                              ± 5.00
+                                                  14.40      0.01      0.01      7.21     28.80        0.01        7.21       7.21       0.01        0.01     0.01         0.01       0.01
+                                      PNG003
+                                                 ± 25.24    ± 0.00    ± 0.01   ± 14.11   ± 30.92      ± 0.01    ± 18.93     ± 17.28     ± 0.01     ± 0.01    ± 0.01      ± 0.01      ± 0.01
+ libpng       libpng_read_fuzzer
+                                                  14.45      0.08      0.04      7.24     28.83        0.05        7.25       7.26          ⊤          ⊤         ⊤           ⊤           ⊤
+                                      PNG006
+                                                 ± 17.84    ± 0.05    ± 0.02   ± 12.76   ± 24.43      ± 0.03    ± 12.75     ± 12.75
+                                                  39.28     35.25     51.15     38.13     47.51       26.85       42.04      52.84      68.36       70.22    28.31        30.63      28.02
+                                      PNG007
+                                                 ± 19.37   ± 13.41   ± 19.63   ± 21.00   ± 20.87     ± 14.18    ± 19.27     ± 18.18    ± 12.35     ± 6.03   ± 15.21     ± 14.04     ± 16.30
+                                                   0.64      0.41      0.46      1.29       1.43       2.46        0.56       0.45      34.02          ⊤      0.24         0.21       0.32
+                                      SND001
+                                                  ± 0.24    ± 0.11    ± 0.21    ± 0.52    ± 0.31      ± 1.64     ± 0.36      ± 0.17     ± 0.53               ± 0.08      ± 0.11      ± 0.08
+                                                   0.97      0.78      1.09      3.92       2.88       6.57        1.51       1.02          ⊤        2.82     0.41         0.55       0.48
+                                      SND005
+                                                  ± 0.27    ± 0.32    ± 0.42    ± 1.48    ± 1.07      ± 3.59     ± 0.68      ± 0.43                ± 1.20    ± 0.10      ± 0.24      ± 0.13
+                                                   1.11      1.10      0.85      0.98       5.69       6.36        1.00       0.34      68.24          ⊤      0.40         0.45       0.36
+                                      SND006
+                                                  ± 0.86    ± 1.23    ± 0.51    ± 0.46    ± 7.29      ± 2.68     ± 0.44      ± 0.14    ± 12.76               ± 0.14      ± 0.19      ± 0.08
+                                                   0.70      0.85      0.46      1.27       1.57       2.86        1.27       0.66      56.23          ⊤      0.60         0.80       0.79
+ libsndfile   sndfile_fuzzer          SND007
+                                                  ± 0.32    ± 0.30    ± 0.27    ± 0.53    ± 0.61      ± 1.42     ± 0.56      ± 0.27    ± 15.46               ± 0.26      ± 0.18      ± 0.31
+                                                   0.34      0.47      0.57      0.89       1.67       0.59        0.57       0.74       1.94        0.67     1.35         0.36       0.34
+                                      SND017
+                                                  ± 0.19    ± 0.31    ± 0.23    ± 0.69    ± 1.19      ± 0.15     ± 0.20      ± 0.41     ± 0.12     ± 0.13    ± 0.90      ± 0.31      ± 0.22
+                                                   0.75      0.80      1.06      1.40       2.18       2.03        1.12       1.14          ⊤          ⊤      2.96         3.36       2.63
+                                      SND020
+                                                  ± 0.30    ± 0.29    ± 0.21    ± 0.49    ± 0.83      ± 0.74     ± 0.25      ± 0.27                          ± 0.93      ± 1.52      ± 0.96
+                                                   0.59      0.38      0.30      0.98       0.93       2.62        0.97       0.34      60.41          ⊤      0.38         0.45       0.35
+                                      SND024
+                                                  ± 0.27    ± 0.27    ± 0.14    ± 0.46    ± 0.37      ± 1.27     ± 0.43      ± 0.14    ± 15.52               ± 0.15      ± 0.19      ± 0.08
+                                                  60.02     60.46     60.19     65.84     66.72       62.47       56.93      58.95          ⊤          ⊤     58.99        66.96      64.17
+                                      TIF002
+                                                 ± 15.10   ± 18.66   ± 10.33   ± 20.91   ± 11.50     ± 14.48    ± 15.73     ± 17.79                         ± 13.38      ± 8.80     ± 12.92
+                                                   0.07      0.08      0.04      0.12       0.06       0.05        0.03       0.04       1.66        4.45     0.03         0.04       0.02
+                                      TIF007
+                                                  ± 0.04    ± 0.03    ± 0.02    ± 0.14    ± 0.03      ± 0.02     ± 0.02      ± 0.03     ± 0.40     ± 1.58    ± 0.02      ± 0.03      ± 0.01
+                                                  67.16     64.98         ⊤         ⊤         ⊤       66.81       63.17      67.89          ⊤          ⊤     66.63           ⊤       64.90
+              tiff_read_rgba_fuzzer   TIF008
+                                                  ± 9.80   ± 23.84                                   ± 11.22    ± 17.41     ± 13.95                         ± 14.58                 ± 14.50
+                                                   1.52      1.92      1.25      3.05       1.75       1.44        1.35       1.84       2.42       51.10     1.37         0.97       0.90
+                                      TIF012
+                                                  ± 0.56    ± 1.01    ± 0.34    ± 1.04    ± 0.35      ± 0.72     ± 0.36      ± 0.49     ± 0.54    ± 18.80    ± 0.66      ± 0.34      ± 0.39
+                                                   5.63      2.72      4.17      4.12       3.11       2.49        3.68       1.59          ⊤       64.30     2.15         3.85       2.04
+                                      TIF014
+                                                  ± 2.44    ± 1.17    ± 1.69    ± 2.89    ± 2.39      ± 1.27     ± 2.52      ± 0.65               ± 19.23    ± 1.41      ± 2.27      ± 0.98
+ libtiff
+                                                      ⊤     68.29         ⊤         ⊤         ⊤       69.71       70.72      66.34          ⊤          ⊤     65.47           ⊤       66.71
+                                      TIF002
+                                                           ± 12.58                                    ± 7.78     ± 4.35     ± 10.97                         ± 15.84                 ± 10.45
+                                                  69.44     65.94     65.84         ⊤     61.04       66.74             ⊤        ⊤          ⊤          ⊤     68.74           ⊤           ⊤
+                                      TIF005
+                                                  ± 8.68   ± 20.57   ± 20.90             ± 22.01     ± 10.31                                                ± 11.05
+                                                  22.19     22.62     13.46     51.00     46.21       31.89       16.42      12.05      64.89       41.90    14.92        20.82      20.53
+                                      TIF006
+                                                  ± 8.76   ± 13.97    ± 5.32   ± 17.15   ± 22.09     ± 14.87    ± 13.61      ± 4.82    ± 24.15    ± 17.22    ± 7.82     ± 12.40      ± 9.97
+                                                   0.05      0.06      0.17      0.14       0.05       0.07        0.05       0.05       0.23        9.52     0.04         0.04       0.03
+                                      TIF007
+                                                  ± 0.03    ± 0.03    ± 0.16    ± 0.09    ± 0.03      ± 0.04     ± 0.03      ± 0.03     ± 0.11     ± 2.80    ± 0.02      ± 0.03      ± 0.02
+              tiffcp                              65.04         ⊤         ⊤         ⊤         ⊤           ⊤             ⊤        ⊤          ⊤          ⊤         ⊤           ⊤           ⊤
+                                      TIF008
+                                                 ± 23.61
+                                                  28.49     30.93     25.45     37.69     33.09       23.03       18.79      19.39       3.29       10.62    14.31        33.37      33.77
+                                      TIF009
+                                                 ± 19.49   ± 20.82   ± 19.99   ± 17.37   ± 22.14     ± 18.04    ± 11.26     ± 14.14     ± 2.11     ± 1.53    ± 3.47     ± 15.03     ± 17.58
+                                                   1.26      0.86      1.33      7.77       2.41       1.36        0.89       1.37       7.30       54.88     2.43         1.53       1.15
+                                      TIF012
+                                                  ± 0.30    ± 0.31    ± 0.51    ± 5.61    ± 1.05      ± 0.45     ± 0.22      ± 0.57     ± 5.82    ± 15.72    ± 0.99      ± 0.79      ± 0.39
+                                                   4.06      3.18      1.80      9.53       3.93       2.48        1.32       1.05       5.68       61.01     1.29         0.93       0.87
+                                      TIF014
+                                                  ± 1.99    ± 1.49    ± 0.60    ± 7.82    ± 2.29      ± 1.06     ± 0.43      ± 0.33     ± 2.66    ± 15.90    ± 0.61      ± 0.44      ± 0.39
+AsiaCCS ’24, July 01–05, 2024, Singapore                                                                                                                                          Luo et al.
+
+
+                                                                    Table 5: Magma bugs (cont.).
+
+                                                                                                               Fuzzer
+                                                                                    AFL++                                                                             T-Scheduler
+ Target    Driver                    Bug
+                                                                                                                                      K-Sched    Tortoise
+                                              EXPLORE      FAST        COE     QUAD         LIN    EXPLOIT     MMOPT        RARE                            Rare −      Rare+       Sample
+                                                     ⊤         ⊤      67.43         ⊤         ⊤           ⊤       43.49          ⊤          ⊤          ⊤         ⊤        65.80      65.02
+                                     XML001
+                                                                      ± 8.15                                    ± 14.41                                                  ± 8.42     ± 13.91
+                                                     ⊤         ⊤          ⊤         ⊤     71.33           ⊤       65.73      67.52          ⊤          ⊤         ⊤        68.72      61.70
+                                     XML002
+                                                                                          ± 2.27                ± 21.28     ± 15.20                                     ± 11.15     ± 20.67
+                                                  5.49      2.78       2.59      1.94       2.63       8.58        9.29       3.58          ⊤          ⊤      4.93         1.69       2.84
+                                     XML003
+                                                 ± 2.49    ± 2.09     ± 0.92    ± 1.16    ± 0.80      ± 5.46    ± 12.41      ± 1.82                          ± 2.74      ± 0.83      ± 1.21
+           xml_read_memory_fuzzer
+                                                  1.11      1.52       1.43      2.45       5.16       4.83        8.16       1.82          ⊤          ⊤      1.55         1.64       1.20
+                                     XML009
+                                                 ± 0.23    ± 0.48     ± 0.46    ± 0.92    ± 2.16      ± 1.73    ± 12.59      ± 0.88                          ± 0.90      ± 0.91      ± 0.46
+                                                 69.16     60.42      70.18         ⊤     63.83           ⊤       48.18          ⊤          ⊤          ⊤         ⊤           ⊤       71.61
+                                     XML012
+                                                 ± 9.65   ± 11.63     ± 6.19             ± 12.93                ± 18.08                                                              ± 1.33
+                                                  0.02      0.02       0.02      0.04       0.06       0.02        7.21       0.03       0.02        0.03     0.02         0.02       0.03
+                                     XML017
+                                                 ± 0.02    ± 0.02     ± 0.02    ± 0.06    ± 0.04      ± 0.02    ± 16.00      ± 0.02     ± 0.02     ± 0.03    ± 0.02      ± 0.01      ± 0.02
+ libxml2
+                                                 58.72     62.41      63.36     68.58     60.06           ⊤       54.85      65.02          ⊤          ⊤     62.34        52.02      57.17
+                                     XML001
+                                                ± 11.70    ± 9.50     ± 7.42   ± 11.62   ± 16.06                ± 11.93     ± 10.46                          ± 8.09     ± 11.68      ± 8.30
+                                                 65.11     71.07      68.13         ⊤     66.00           ⊤             ⊤    66.75          ⊤          ⊤     69.56        66.25      65.02
+                                     XML002
+                                                ± 14.82    ± 3.16    ± 13.14             ± 20.38                            ± 17.82                          ± 8.29     ± 11.28     ± 23.70
+
+           xmllint                                1.47      2.03       2.01      5.89       6.37       6.17        2.30       2.70      66.68          ⊤      1.11         0.93       0.64
+                                     XML009
+                                                 ± 0.72    ± 0.92     ± 0.80    ± 2.55    ± 2.64      ± 2.18     ± 1.27      ± 1.53     ± 9.16               ± 0.40      ± 0.46      ± 0.21
+                                                     ⊤         ⊤      65.92     65.67     66.99           ⊤       65.99          ⊤          ⊤          ⊤         ⊤           ⊤       67.14
+                                     XML012
+                                                                     ± 12.90   ± 21.48   ± 17.02                ± 20.39                                                             ± 14.06
+                                                  0.03      0.05       0.04      0.07       0.06       0.02        0.03       0.02       0.01        0.13     0.04         0.03       0.03
+                                     XML017
+                                                 ± 0.02    ± 0.05     ± 0.03    ± 0.07    ± 0.04      ± 0.02     ± 0.02      ± 0.02     ± 0.02     ± 0.09    ± 0.03      ± 0.02      ± 0.02
+                                                     ⊤         ⊤          ⊤         ⊤         ⊤           ⊤             ⊤        ⊤          ⊤          ⊤     67.10        69.76      71.10
+                                     LUA002
+                                                                                                                                                             ± 6.58      ± 7.61      ± 3.04
+ lua       lua
+                                                  5.68      8.15       5.75     14.95     36.47       35.36        5.89      10.19       9.93        7.21     9.69         6.24      10.03
+                                     LUA004
+                                                 ± 2.17    ± 2.27     ± 2.87    ± 5.97   ± 20.63      ± 9.31     ± 3.57      ± 4.25     ± 4.11    ± 17.28    ± 2.90      ± 2.08      ± 2.58
+                                                 35.11     25.39      28.46     44.71     47.63        8.58       19.74      38.69      66.85          ⊤      5.72         5.45       6.53
+                                     SSL001
+                                                ± 12.55    ± 7.22     ± 9.54   ± 11.97   ± 13.78      ± 3.50     ± 6.45      ± 9.26    ± 17.47               ± 2.27      ± 2.84      ± 3.68
+           asn1
+                                                  0.06      0.06       0.06      0.06       0.06       0.06        0.06       0.06       0.16        0.26     0.06         0.07       0.07
+                                     SSL003
+                                                 ± 0.07    ± 0.06     ± 0.06    ± 0.06    ± 0.06      ± 0.05     ± 0.05      ± 0.05     ± 0.00     ± 0.00    ± 0.04      ± 0.08      ± 0.07
+                                                  0.08      0.17       0.07      0.08       0.08       0.08        0.07       0.08       0.17       50.42     0.09         0.08       0.09
+           client                    SSL002
+                                                 ± 0.06    ± 0.20     ± 0.05    ± 0.06    ± 0.06      ± 0.05     ± 0.05      ± 0.05     ± 0.00    ± 37.31    ± 0.08      ± 0.06      ± 0.06
+ openssl
+                                                  0.11      0.11       0.12      0.16       0.11       0.12        0.16       0.11       0.22        0.35     0.11         0.11       0.12
+                                     SSL002
+                                                 ± 0.08    ± 0.08     ± 0.08    ± 0.09    ± 0.08      ± 0.08     ± 0.09      ± 0.08     ± 0.00     ± 0.00    ± 0.08      ± 0.08      ± 0.09
+           server
+                                                     ⊤         ⊤          ⊤         ⊤         ⊤           ⊤             ⊤        ⊤      18.62       16.42    29.93        37.10      46.80
+                                     SSL020
+                                                                                                                                        ± 4.02     ± 3.27   ± 16.92     ± 14.20     ± 16.06
+                                                     ⊤     71.49      66.82         ⊤         ⊤       64.89             ⊤    54.42          ⊤       27.31        ⊤           ⊤           ⊤
+           x509                      SSL009
+                                                           ± 1.74    ± 17.60                         ± 12.55                ± 19.80               ± 17.28
+                                                 57.62     70.00      49.60     57.61         ⊤       48.32       65.14      51.48          ✗        2.77     5.61         5.48       2.88
+                                     PHP004
+                                                ± 28.19    ± 6.80    ± 23.07   ± 28.20               ± 16.34    ± 23.29     ± 27.52                ± 0.06    ± 3.11      ± 5.15      ± 2.54
+                                                 56.61     30.29      49.65     68.83     61.50       15.25       27.63      33.01          ✗        3.51     1.22         0.64       0.98
+ php       exif                      PHP009
+                                                ± 17.72   ± 17.40    ± 24.01    ± 8.99   ± 14.04      ± 7.36    ± 19.74     ± 20.78                ± 0.22    ± 0.76      ± 0.28      ± 0.57
+                                                  2.55      1.67       3.16      1.54       3.80       0.70        1.42       1.11          ✗        2.23     0.13         0.21       0.22
+                                     PHP011
+                                                 ± 1.37    ± 1.89     ± 2.88    ± 1.14    ± 3.16      ± 0.41     ± 1.03      ± 0.94                ± 0.03    ± 0.06      ± 0.07      ± 0.09
+                                                  1.28      2.28       2.62      9.57       3.56       3.70        1.31       1.21      62.10          ⊤      2.83         5.19       2.77
+                                     SQL002
+                                                 ± 0.50    ± 0.88     ± 1.98    ± 2.10    ± 0.99      ± 1.32     ± 0.63      ± 0.41    ± 19.45               ± 1.26      ± 1.63      ± 1.09
+                                                     ⊤     68.65          ⊤     68.44     66.47           ⊤             ⊤        ⊤          ⊤          ⊤         ⊤        69.81      71.67
+                                     SQL003
+                                                          ± 11.38              ± 12.09   ± 18.78                                                                         ± 7.45      ± 1.13
+                                                     ⊤         ⊤          ⊤         ⊤     68.12           ⊤       70.78          ⊤          ⊤          ⊤     66.87           ⊤           ⊤
+                                     SQL010
+                                                                                         ± 13.19                 ± 4.15                                     ± 17.42
+                                                 48.45     56.60      63.50         ⊤     54.90           ⊤       61.02      60.32          ⊤          ⊤     67.25        63.18      54.53
+                                     SQL012
+                                                ± 14.52   ± 10.60    ± 13.57             ± 20.57                 ± 9.13     ± 13.18                          ± 9.35     ± 15.02     ± 23.44
+                                                     ⊤     67.15      69.68         ⊤     69.31           ⊤             ⊤        ⊤          ⊤          ⊤     71.16        67.38      62.88
+ sqlite3   sqlite3_fuzz              SQL013
+                                                           ± 8.35     ± 7.89              ± 7.06                                                             ± 2.86      ± 9.07     ± 13.30
+                                                  8.63      8.64      17.78     44.40     18.42       17.90       19.91      30.75          ⊤          ⊤     13.94        29.72      15.60
+                                     SQL014
+                                                 ± 4.36    ± 2.56     ± 6.82   ± 13.27    ± 9.06      ± 9.91    ± 11.24     ± 10.16                          ± 4.39     ± 10.17      ± 7.58
+                                                 70.67     64.43      67.36         ⊤     57.17           ⊤       66.12      64.72          ⊤          ⊤         ⊤        69.17      66.67
+                                     SQL015
+                                                 ± 4.50   ± 14.97    ± 15.75             ± 22.20                ± 12.17     ± 14.34                                      ± 9.61     ± 14.13
+                                                  4.60      3.98       8.58     19.84       4.72      12.69        3.40       3.90          ⊤          ⊤      5.64         5.41       6.21
+                                     SQL018
+                                                 ± 1.56    ± 1.64     ± 4.84   ± 10.26    ± 1.11      ± 4.12     ± 1.66      ± 1.99                          ± 2.30      ± 1.50      ± 1.59
+                                                 42.36     46.39      60.29     69.81     40.07       55.64       55.97      67.64          ⊤          ⊤     61.24        59.17      64.01
+                                     SQL020
+                                                ± 12.23   ± 14.82    ± 15.71    ± 7.45   ± 14.72     ± 21.97    ± 18.59      ± 7.93                         ± 21.57     ± 15.05     ± 11.64
+Make out like a (Multi-Armed) Bandit: Improving the Odds of Fuzzer Seed Scheduling with T-Scheduler                                   AsiaCCS ’24, July 01–05, 2024, Singapore
+
+
+                                                                    Table 5: Magma bugs (cont.).
+
+                                                                                                     Fuzzer
+                                                                          AFL++                                                                             T-Scheduler
+ Target    Driver        Bug
+                                                                                                                            K-Sched   Tortoise
+                                   EXPLORE       FAST       COE      QUAD         LIN    EXPLOIT     MMOPT        RARE                            Rare −      Rare+       Sample
+                                           ⊤     65.08         ⊤          ⊤         ⊤           ⊤             ⊤        ⊤         ✗           ⊤         ⊤           ⊤           ⊤
+                         PDF001
+                                                ± 23.48
+                                        1.15      1.82      1.89        5.25      5.63       2.07        1.96       1.61         ✗        0.10      0.99         1.23       1.24
+                         PDF010
+                                       ± 0.53    ± 0.50    ± 1.34     ± 2.81    ± 2.40      ± 2.03     ± 1.22      ± 0.56                ± 0.10    ± 0.47      ± 0.52      ± 0.69
+                                       65.59         ⊤     66.53       60.79        ⊤       65.88             ⊤        ⊤         ✗           ⊤     67.01        65.70      55.79
+                         PDF011
+                                      ± 21.76             ± 18.57    ± 21.97               ± 20.79                                                ± 12.96     ± 21.39     ± 21.95
+                                        0.04      0.05      0.06        0.07      0.03       0.04        0.04       0.07         ✗        0.25      0.04         0.04       0.05
+           pdf_fuzzer    PDF016
+                                       ± 0.02    ± 0.03    ± 0.04     ± 0.09    ± 0.02      ± 0.02     ± 0.02      ± 0.04                ± 0.00    ± 0.02      ± 0.02      ± 0.03
+                                       37.84     40.38     38.25          ⊤         ⊤       33.83       29.91      20.92         ✗           ⊤     12.75         9.40      10.99
+                         PDF018
+                                      ± 22.46   ± 20.71   ± 19.84                          ± 13.80    ± 16.76     ± 12.37                          ± 6.18      ± 4.68      ± 5.44
+                                           ⊤         ⊤         ⊤          ⊤     69.39       62.62             ⊤        ⊤         ✗           ⊤         ⊤           ⊤           ⊤
+                         PDF019
+                                                                                ± 8.85     ± 21.37
+                                       52.56         ⊤         ⊤       62.32    55.67           ⊤       60.34      65.11         ✗           ⊤     70.08        68.57      68.76
+                         PDF021
+                                      ± 19.39                        ± 13.10   ± 18.47                ± 23.04     ± 23.38                          ± 6.50     ± 11.63     ± 10.99
+                                           ⊤         ⊤     65.84          ⊤         ⊤           ⊤             ⊤        ⊤         ✗           ⊤         ⊤        65.56      65.57
+                         PDF002
+                                                          ± 20.92                                                                                             ± 21.87     ± 21.84
+                                       10.42     11.24      7.80       13.40      9.72      32.29       31.47      31.91         ✗           ⊤     23.56         5.98       9.75
+                         PDF003
+                                       ± 5.69    ± 4.53    ± 2.47     ± 5.75    ± 3.65     ± 18.22    ± 16.99     ± 18.48                         ± 11.40      ± 2.64      ± 4.05
+                                       67.30     47.78     50.65       64.93        ⊤       70.10       59.23      56.30         ✗       48.95     55.77        65.02      35.84
+                         PDF011
+                                      ± 15.96   ± 23.75   ± 21.96    ± 24.01                ± 6.46    ± 18.00     ± 22.15               ± 13.93   ± 22.48     ± 15.35     ± 17.81
+                                        0.03      0.01      0.03        0.02      0.03       0.02        0.03       0.02         ✗        0.09      0.04         0.03       0.02
+           pdfimages     PDF016
+                                       ± 0.02    ± 0.01    ± 0.02     ± 0.01    ± 0.02      ± 0.01     ± 0.02      ± 0.01                ± 0.06    ± 0.03      ± 0.02      ± 0.02
+                                       15.29     10.03     12.76       62.63    68.55       17.24        5.49       7.89         ✗           ⊤      4.86         5.23       3.85
+                         PDF018
+                                       ± 9.90    ± 5.12    ± 3.98    ± 14.63    ± 9.41      ± 8.60     ± 3.25      ± 8.87                          ± 1.36      ± 1.38      ± 1.57
+                                       59.02     46.57     59.70       64.94        ⊤       65.11       65.89      67.23         ✗           ⊤     59.00        59.37          ⊤
+                         PDF019
+                                      ± 25.54   ± 21.60   ± 24.13    ± 23.96               ± 23.39     ± 9.77     ± 10.93                         ± 25.48     ± 24.76
+                                       68.11     56.31     57.63       53.10    64.80       60.48       60.53          ⊤         ✗           ⊤         ⊤           ⊤           ⊤
+                         PDF021
+                                       ± 7.83   ± 22.81   ± 20.14    ± 19.80   ± 11.22     ± 17.74    ± 16.80
+ poppler
+                                           ⊤     69.18         ⊤          ⊤         ⊤       66.84       70.95          ⊤         ✗           ⊤         ⊤           ⊤           ⊤
+                         PDF002
+                                                 ± 9.57                                    ± 17.53     ± 3.55
+                                           ⊤         ⊤     66.15          ⊤         ⊤           ⊤             ⊤        ⊤         ✗           ⊤         ⊤           ⊤           ⊤
+                         PDF004
+                                                          ± 12.04
+                                       37.74     47.02     39.42          ⊤     67.36       62.16       43.73      57.99         ✗           ⊤     65.15        68.07      69.96
+                         PDF006
+                                      ± 16.73   ± 17.98   ± 19.31              ± 15.77     ± 19.31    ± 15.04     ± 27.47                         ± 13.44      ± 7.54      ± 6.93
+                                        3.21      2.98      2.51        3.79      4.14       2.79        3.01       2.08         ✗        0.11      0.87         0.81       1.15
+                         PDF010
+                                       ± 1.70    ± 1.53    ± 0.90     ± 1.56    ± 2.63      ± 1.96     ± 1.40      ± 0.82                ± 0.08    ± 0.82      ± 0.41      ± 0.48
+                                       61.79         ⊤     51.66       68.18    54.37       64.07       59.46      62.30         ✗           ⊤     66.46        61.80      55.98
+           pdftoppm      PDF011
+                                      ± 20.01             ± 27.29    ± 12.97   ± 24.48     ± 16.67    ± 19.30     ± 19.04                         ± 18.79     ± 20.31     ± 22.97
+                                        0.07      0.03      0.03        0.02      0.03       0.04        0.03       0.03         ✗        0.19      0.04         0.07       0.04
+                         PDF016
+                                       ± 0.04    ± 0.02    ± 0.02     ± 0.02    ± 0.02      ± 0.02     ± 0.02      ± 0.02                ± 0.00    ± 0.04      ± 0.07      ± 0.03
+                                       29.16     22.78     21.64       65.46    65.66       61.72       24.27      22.05         ✗           ⊤      8.02         7.30       8.73
+                         PDF018
+                                      ± 14.25   ± 16.31    ± 6.97    ± 22.20   ± 21.51     ± 17.43    ± 12.33      ± 8.44                          ± 5.23      ± 2.37      ± 2.30
+                                       66.98         ⊤     69.24          ⊤     65.84           ⊤             ⊤    64.85         ✗           ⊤     66.97        69.87          ⊤
+                         PDF019
+                                      ± 17.05              ± 9.37              ± 12.95                            ± 24.28                         ± 17.06      ± 7.24
+                                       49.11     48.91     56.02       47.02    64.56       54.78       42.11      66.85         ✗           ⊤     52.93        63.05      56.91
+                         PDF021
+                                      ± 22.90   ± 12.70   ± 16.93    ± 16.10   ± 11.22     ± 20.24    ± 18.53     ± 11.22                         ± 18.80     ± 13.16     ± 21.43
+

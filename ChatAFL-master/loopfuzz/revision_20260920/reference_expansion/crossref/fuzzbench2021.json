@@ -1,0 +1,1279 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=FuzzBench+an+open+fuzzer+benchmarking+platform+and+service&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 1219254,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                29
+              ]
+            ],
+            "date-time": "2026-09-29T14:55:29Z",
+            "timestamp": 1790693729597,
+            "version": "4.1.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 48,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2021,
+                    8,
+                    18
+                  ]
+                ],
+                "date-time": "2021-08-18T00:00:00Z",
+                "timestamp": 1629244800000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by-nd/4.0/"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2021,
+                8,
+                20
+              ]
+            ]
+          },
+          "DOI": "10.1145/3468264.3473932",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2021,
+                8,
+                18
+              ]
+            ],
+            "date-time": "2021-08-18T21:40:20Z",
+            "timestamp": 1629322820000
+          },
+          "page": "1393-1403",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 179,
+          "title": [
+            "FuzzBench: an open fuzzer benchmarking platform and service"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-7042-0444",
+              "authenticated-orcid": false,
+              "given": "Jonathan",
+              "family": "Metzman",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Google, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-9808-6484",
+              "authenticated-orcid": false,
+              "given": "László",
+              "family": "Szekeres",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Google, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Laurent",
+              "family": "Simon",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Google, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Read",
+              "family": "Sprabery",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Google, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Abhishek",
+              "family": "Arya",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Google, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2021,
+                8,
+                18
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2021. OSS-Fuzz Bugs. https://bugs.chromium.org/p/oss-fuzz/issues/list?q=-status  2021. OSS-Fuzz Bugs. https://bugs.chromium.org/p/oss-fuzz/issues/list?q=-status"
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "ACM SIGPLAN. 2018. Empirical Evaluation Guidelines. http://www.sigplan.org/Resources/EmpiricalEvaluation/  ACM SIGPLAN. 2018. Empirical Evaluation Guidelines. http://www.sigplan.org/Resources/EmpiricalEvaluation/"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "Announcing OSS-Fuzz: Continuous Fuzzing for Open Source Software. Google Testing Blog. (Dec",
+              "author": "Aizatsky Mike",
+              "year": "2016",
+              "unstructured": "Mike Aizatsky , Kostya Serebryany , Oliver Chang , Abhishek Arya , and Meredith Whittaker . 2016. Announcing OSS-Fuzz: Continuous Fuzzing for Open Source Software. Google Testing Blog. (Dec . 2016 ). https://testing.googleblog.com/2016/12/announcing-oss-fuzz-continuous-fuzzing.html Mike Aizatsky, Kostya Serebryany, Oliver Chang, Abhishek Arya, and Meredith Whittaker. 2016. Announcing OSS-Fuzz: Continuous Fuzzing for Open Source Software. Google Testing Blog. (Dec. 2016). https://testing.googleblog.com/2016/12/announcing-oss-fuzz-continuous-fuzzing.html"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2011.121"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "unstructured": "Abhishek Arya and Chang Oliver. 2019. ClusterFuzz: ClusterFuzz. https://www.blackhat.com/eu-19/briefings/schedule/index.html#clusterfuzz-fuzzing-at-google-scale-17505 Black Hat Europe.  Abhishek Arya and Chang Oliver. 2019. ClusterFuzz: ClusterFuzz. https://www.blackhat.com/eu-19/briefings/schedule/index.html#clusterfuzz-fuzzing-at-google-scale-17505 Black Hat Europe."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "first-page": "1",
+              "article-title": "REDQUEEN: Fuzzing with Input-to-State Correspondence",
+              "volume": "19",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann , Sergej Schumilo , Tim Blazytko , Robert Gawlik , and Thorsten Holz . 2019 . REDQUEEN: Fuzzing with Input-to-State Correspondence .. In NDSS , Vol. 19. 1 – 15 . Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS, Vol. 19. 1–15.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "FuzzBench Authors. 2021. FuzzBench. https://github.com/google/fuzzbench/tree/d51da57c211af226dd7854085d9fc80070205738/fuzzers/symcc_afl.  FuzzBench Authors. 2021. FuzzBench. https://github.com/google/fuzzbench/tree/d51da57c211af226dd7854085d9fc80070205738/fuzzers/symcc_afl."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Dirk Beyer. 2020. Competition on Software Testing. https://test-comp.sosy-lab.org/2020/  Dirk Beyer. 2020. Competition on Software Testing. https://test-comp.sosy-lab.org/2020/",
+              "DOI": "10.1007/978-3-030-45234-6_25"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409748"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2017.2785841"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "volume-title": "Evaluating Synthetic Bugs. Hong Kong",
+              "author": "Bundt Joshua",
+              "year": "2021",
+              "unstructured": "Joshua Bundt , Andrew Fasano , Brendan Dolan-Gavitt , William Robertson , and Tim Leek . 2021. Evaluating Synthetic Bugs. Hong Kong ( 2021 ), 14. Joshua Bundt, Andrew Fasano, Brendan Dolan-Gavitt, William Robertson, and Tim Leek. 2021. Evaluating Synthetic Bugs. Hong Kong (2021), 14."
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00082"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "unstructured": "DARPA. 2016. DARPA Cyber Grand Challenge Final Event Archive. http://www.lungetech.com/cgc-corpus/  DARPA. 2016. DARPA Cyber Grand Challenge Final Event Archive. http://www.lungetech.com/cgc-corpus/"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/1248547.1248548"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "unstructured": "Song Dokyung. 2020. Add an option to keep initial seed inputs around. https://reviews.llvm.org/D86577  Song Dokyung. 2020. Add an option to keep initial seed inputs around. https://reviews.llvm.org/D86577"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "unstructured": "Song Dokyung. 2020. Enable entropic by default. https://reviews.llvm.org/D87476  Song Dokyung. 2020. Enable entropic by default. https://reviews.llvm.org/D87476"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "unstructured": "Song Dokyung. 2020. Fix arguments of InsertPartOf/CopyPartOf calls in CrossOver mutator. https://github.com/llvm/llvm-project/commit/c10e63677f5d20f18010f8f68c631ddc97546f7d  Song Dokyung. 2020. Fix arguments of InsertPartOf/CopyPartOf calls in CrossOver mutator. https://github.com/llvm/llvm-project/commit/c10e63677f5d20f18010f8f68c631ddc97546f7d"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "unstructured": "Song Dokyung. 2020. Link libFuzzer’s own interceptors when other compiler runtimes are not linked. https://reviews.llvm.org/D83494  Song Dokyung. 2020. Link libFuzzer’s own interceptors when other compiler runtimes are not linked. https://reviews.llvm.org/D83494"
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "unstructured": "Song Dokyung. 2020. Scale energy assigned to each input based on input execution time. https://github.com/llvm/llvm-project/commit/5cda4dc7b4d28fcd11307d4234c513ff779a1c6f  Song Dokyung. 2020. Scale energy assigned to each input based on input execution time. https://github.com/llvm/llvm-project/commit/5cda4dc7b4d28fcd11307d4234c513ff779a1c6f"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2016.15"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "unstructured": "Andrew Fasano. 2019. Rode0day: A Year of Bug-Finding Evaluations.  Andrew Fasano. 2019. Rode0day: A Year of Bug-Finding Evaluations."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "volume-title": "14th \\\\USENIX\\ Workshop on Offensive Technologies (\\\\WOOT\\ 20). https://www.usenix.org/conference/woot20/presentation/fioraldi",
+              "author": "Fioraldi Andrea",
+              "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eißfeldt , and Marc Heuse . 2020. AFL++ : Combining Incremental Steps of Fuzzing Research . In 14th \\\\USENIX\\ Workshop on Offensive Technologies (\\\\WOOT\\ 20). https://www.usenix.org/conference/woot20/presentation/fioraldi Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++ : Combining Incremental Steps of Fuzzing Research. In 14th \\\\USENIX\\ Workshop on Offensive Technologies (\\\\WOOT\\ 20). https://www.usenix.org/conference/woot20/presentation/fioraldi"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "unstructured": "FuzzBench. 2021. The report – FuzzBench. https://google.github.io/fuzzbench/reference/report/  FuzzBench. 2021. The report – FuzzBench. https://google.github.io/fuzzbench/reference/report/"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. (March",
+              "author": "Geng Sijia",
+              "year": "2020",
+              "unstructured": "Sijia Geng , Yuekang Li , Yunlan Du , Jun Xu , Yang Liu , and Bing Mao . 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. (March 2020 ). https://arxiv.org/abs/2003.09561v1 Sijia Geng, Yuekang Li, Yunlan Du, Jun Xu, Yang Liu, and Bing Mao. 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. (March 2020). https://arxiv.org/abs/2003.09561v1"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "unstructured": "Google. 2017. Fuzzer Test Suite. Google. https://github.com/google/fuzzer-test-suite  Google. 2017. Fuzzer Test Suite. Google. https://github.com/google/fuzzer-test-suite"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "unstructured": "Google. 2021. Automate your workflow from idea to production. https://github.com/google/fuzzing/actions  Google. 2021. Automate your workflow from idea to production. https://github.com/google/fuzzing/actions"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "unstructured": "Google. 2021. Coverage Guided Fuzz Testing. https://docs.gitlab.com/ee/user/application_security/coverage_fuzzing/  Google. 2021. Coverage Guided Fuzz Testing. https://docs.gitlab.com/ee/user/application_security/coverage_fuzzing/"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "unstructured": "Google. 2021. fuzzing - Google Scholar. https://scholar.google.com/scholar?q=fuzzing&hl=en&as_sdt=0  Google. 2021. fuzzing - Google Scholar. https://scholar.google.com/scholar?q=fuzzing&hl=en&as_sdt=0"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3427228.3427266"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. arXiv:2010.01785 [cs] (Oct.",
+              "author": "Li Yuwei",
+              "year": "2020",
+              "unstructured": "Yuwei Li , Shouling Ji , Yuan Chen , Sizhuang Liang , Wei-Han Lee , Yueyao Chen , Chenyang Lyu , Chunming Wu , Raheem Beyah , Peng Cheng , Kangjie Lu , and Ting Wang . 2020 . UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. arXiv:2010.01785 [cs] (Oct. 2020). arxiv:2010.01785 [cs] http://arxiv.org/abs/2010.01785 Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen, Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, Kangjie Lu, and Ting Wang. 2020. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. arXiv:2010.01785 [cs] (Oct. 2020). arxiv:2010.01785 [cs] http://arxiv.org/abs/2010.01785"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "volume-title": "28th $USENIX$ Security Symposium ($USENIX$ Security 19). 1949–1966.",
+              "author": "Lyu Chenyang",
+              "unstructured": "Chenyang Lyu , Shouling Ji , Chao Zhang , Yuwei Li , Wei-Han Lee , Yu Song , and Raheem Beyah . 2019. $MOPT$ : Optimized mutation scheduling for fuzzers . In 28th $USENIX$ Security Symposium ($USENIX$ Security 19). 1949–1966. Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and Raheem Beyah. 2019. $MOPT$: Optimized mutation scheduling for fuzzers. In 28th $USENIX$ Security Symposium ($USENIX$ Security 19). 1949–1966."
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "unstructured": "Jonathan Metzman and Asra Ali. 2021. Developers are Buzzing on Fuzzing. https://thenewstack.io/developers-are-buzzing-on-fuzzing/  Jonathan Metzman and Asra Ali. 2021. Developers are Buzzing on Fuzzing. https://thenewstack.io/developers-are-buzzing-on-fuzzing/"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jonathan Metzman Abhishek Arya and László Szekeres. 2020. FuzzBench: Fuzzer Benchmarking as a Service. https://security.googleblog.com/2020/03/fuzzbench-fuzzer-benchmarking-as-service.html  Jonathan Metzman Abhishek Arya and László Szekeres. 2020. FuzzBench: Fuzzer Benchmarking as a Service. https://security.googleblog.com/2020/03/fuzzbench-fuzzer-benchmarking-as-service.html",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2021.24118"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "unstructured": "Kostya Serebryany. 2015. libFuzzer a Library for Coverage-Guided Fuzz Testing. https://llvm.org/docs/LibFuzzer.html  Kostya Serebryany. 2015. libFuzzer a Library for Coverage-Guided Fuzz Testing. https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "unstructured": "Kostya Serebryany. 2021. Fuzzer Test Suite. https://github.com/google/fuzzer-test-suite.  Kostya Serebryany. 2021. Fuzzer Test Suite. https://github.com/google/fuzzer-test-suite."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "Proceedings of the 2012 USENIX Conference on Annual Technical Conference (USENIX ATC’12)",
+              "author": "Serebryany Konstantin",
+              "year": "2012",
+              "unstructured": "Konstantin Serebryany , Derek Bruening , Alexander Potapenko , and Dmitry Vyukov . 2012 . AddressSanitizer: A Fast Address Sanity Checker . In Proceedings of the 2012 USENIX Conference on Annual Technical Conference (USENIX ATC’12) . USENIX Association, USA, 28. Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In Proceedings of the 2012 USENIX Conference on Annual Technical Conference (USENIX ATC’12). USENIX Association, USA, 28."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "unstructured": "Paras Shah. 2021. Continuous Fuzzing with Go at Dgraph. https://dgraph.io/blog/post/continuous-fuzzing-with-go/  Paras Shah. 2021. Continuous Fuzzing with Go at Dgraph. https://dgraph.io/blog/post/continuous-fuzzing-with-go/"
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSP48549.2020.00011"
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "unstructured": "Adith Sudhakar Mohit Arora and Souheil Moghnie. 2021. Focus on Fuzzing: Fuzzing Within the SDLC. https://safecode.org/focus-on-fuzzing-fuzzing-within-the-sdlc/  Adith Sudhakar Mohit Arora and Souheil Moghnie. 2021. Focus on Fuzzing: Fuzzing Within the SDLC. https://safecode.org/focus-on-fuzzing-fuzzing-within-the-sdlc/"
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "unstructured": "Robert Swiecki. 2015. Honggfuzz. https://honggfuzz.dev/  Robert Swiecki. 2015. Honggfuzz. https://honggfuzz.dev/"
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "unstructured": "Robert Swiecki. 2020. Improving honggfuzz for fuzzbench part 3. https://groups.google.com/g/fuzzing-discuss/c/rv59P0svXjI  Robert Swiecki. 2020. Improving honggfuzz for fuzzbench part 3. https://groups.google.com/g/fuzzing-discuss/c/rv59P0svXjI"
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "unstructured": "Michał Zalewski. 2014. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/  Michał Zalewski. 2014. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/"
+            },
+            {
+              "key": "e_1_3_2_1_46_1",
+              "unstructured": "Michał Zalewski. 2014. Fuzzing with Afl-Fuzz AFL 2.53b Documentation. https://afl-1.readthedocs.io/en/latest/fuzzing.html  Michał Zalewski. 2014. Fuzzing with Afl-Fuzz AFL 2.53b Documentation. https://afl-1.readthedocs.io/en/latest/fuzzing.html"
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "unstructured": "Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That Matters: Consequences. https://andreas-zeller.blogspot.com/2019/10/when-results-are-all-that-matters.html  Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That Matters: Consequences. https://andreas-zeller.blogspot.com/2019/10/when-results-are-all-that-matters.html"
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "unstructured": "Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That Matters: The Case of the Angora Fuzzer. https://andreas-zeller.blogspot.com/2019/10/when-results-are-all-that-matters-case.html  Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That Matters: The Case of the Angora Fuzzer. https://andreas-zeller.blogspot.com/2019/10/when-results-are-all-that-matters-case.html"
+            }
+          ],
+          "event": {
+            "name": "ESEC/FSE '21: 29th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering",
+            "location": "Athens Greece",
+            "acronym": "ESEC/FSE '21",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3468264.3473932",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3468264.3473932",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T16:17:23Z",
+            "timestamp": 1750177043000
+          },
+          "score": 62.34975,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3468264.3473932"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2021,
+                8,
+                18
+              ]
+            ]
+          },
+          "references-count": 48,
+          "alternative-id": [
+            "10.1145/3468264.3473932",
+            "10.1145/3468264"
+          ],
+          "URL": "https://doi.org/10.1145/3468264.3473932",
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                8,
+                18
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2021-08-18",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                24
+              ]
+            ],
+            "date-time": "2026-08-24T00:26:24Z",
+            "timestamp": 1787531184293,
+            "version": "build-2736575974"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 29,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2023,
+                    7,
+                    12
+                  ]
+                ],
+                "date-time": "2023-07-12T00:00:00Z",
+                "timestamp": 1689120000000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "DOI": "10.1145/3597926.3598144",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                13
+              ]
+            ],
+            "date-time": "2023-07-13T20:12:53Z",
+            "timestamp": 1689279173000
+          },
+          "page": "1396-1406",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 7,
+          "title": [
+            "Green Fuzzer Benchmarking"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Jiradet",
+              "family": "Ounjai",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "MPI-SWS, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Valentin",
+              "family": "Wüstholz",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "ConsenSys, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Maria",
+              "family": "Christakis",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "TU Wien, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                13
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "[n. d.]. Empirical Evaluation Guidelines (ACM SIGPLAN).  http://www.sigplan.org/Resources/EmpiricalEvaluation \t\t\t\t  [n. d.]. Empirical Evaluation Guidelines (ACM SIGPLAN).  http://www.sigplan.org/Resources/EmpiricalEvaluation"
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "[n. d.]. FuzzBench: Fuzzer Benchmarking as a Service.  https://google.github.io/fuzzbench \t\t\t\t  [n. d.]. FuzzBench: Fuzzer Benchmarking as a Service.  https://google.github.io/fuzzbench"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "[n. d.]. Honggfuzz: A Security-Oriented Feedback-Driven Evolutionary Easy-to-Use Fuzzer.  https://github.com/google/honggfuzz \t\t\t\t  [n. d.]. Honggfuzz: A Security-Oriented Feedback-Driven Evolutionary Easy-to-Use Fuzzer.  https://github.com/google/honggfuzz"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "[n. d.]. LibFuzzer—A Library for Coverage-Guided Fuzz Testing.  https://llvm.org/docs/LibFuzzer.html \t\t\t\t  [n. d.]. LibFuzzer—A Library for Coverage-Guided Fuzz Testing.  https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "unstructured": "[n. d.]. OSS-Fuzz: Continuous Fuzzing for Open Source Software.  https://google.github.io/oss-fuzz \t\t\t\t  [n. d.]. OSS-Fuzz: Continuous Fuzzing for Open Source Software.  https://google.github.io/oss-fuzz"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "“Whitepaper",
+              "author": "Technical",
+              "unstructured": "[n. d.]. Technical “Whitepaper ” for AFL. http://lcamtuf.coredump.cx/afl/technical_details.txt [n. d.]. Technical “Whitepaper” for AFL. http://lcamtuf.coredump.cx/afl/technical_details.txt"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "Briand",
+              "author": "Arcuri Andrea",
+              "year": "2011",
+              "unstructured": "Andrea Arcuri and Lionel C . Briand . 2011 . A Practical Guide for Using Statistical Tests to Assess Randomized Algorithms in Software Engineering. In ICSE. ACM , 1–10. Andrea Arcuri and Lionel C. Briand. 2011. A Practical Guide for Using Statistical Tests to Assess Randomized Algorithms in Software Engineering. In ICSE. ACM, 1–10."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/stvr.1486"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Dirk Beyer. 2012. Competition on Software Verification (SV-COMP).  https://sv-comp.sosy-lab.org \t\t\t\t  Dirk Beyer. 2012. Competition on Software Verification (SV-COMP).  https://sv-comp.sosy-lab.org",
+              "DOI": "10.1007/978-3-642-36742-7_43"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Dirk Beyer. 2019. Competition on Software Testing (Test-COMP).  https://test-comp.sosy-lab.org \t\t\t\t  Dirk Beyer. 2019. Competition on Software Testing (Test-COMP).  https://test-comp.sosy-lab.org",
+              "DOI": "10.1007/978-3-030-17502-3_11"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Marcel Böhme Valentin J. M. Manès and Sang Kil Cha. 2020. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In ESEC/FSE. ACM 678–689. \t\t\t\t  Marcel Böhme Valentin J. M. Manès and Sang Kil Cha. 2020. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In ESEC/FSE. ACM 678–689.",
+              "DOI": "10.1145/3368089.3409748"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Marcel Böhme László Szekeres and Jonathan Metzman. 2022. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ICSE. ACM 1621–1633. \t\t\t\t  Marcel Böhme László Szekeres and Jonathan Metzman. 2022. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ICSE. ACM 1621–1633.",
+              "DOI": "10.1145/3510003.3510230"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Joshua Bundt Andrew Fasano Brendan Dolan-Gavitt William Robertson and Tim Leek. 2021. Evaluating Synthetic Bugs. In AsiaCCS. ACM 716–730. \t\t\t\t  Joshua Bundt Andrew Fasano Brendan Dolan-Gavitt William Robertson and Tim Leek. 2021. Evaluating Synthetic Bugs. In AsiaCCS. ACM 716–730.",
+              "DOI": "10.1145/3433210.3453096"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "volume-title": "Grey-Box Concolic Testing on Binary Code",
+              "author": "Choi Jaeseung",
+              "unstructured": "Jaeseung Choi , Joonun Jang , Choongwoo Han , and Sang Kil Cha . 2019. Grey-Box Concolic Testing on Binary Code . In ICSE. IEEE Computer Society/ACM , 736–747. Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. 2019. Grey-Box Concolic Testing on Binary Code. In ICSE. IEEE Computer Society/ACM, 736–747."
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "LAVA: Large-Scale Automated Vulnerability Addition. In S&P",
+              "author": "Dolan-Gavitt Brendan",
+              "year": "2016",
+              "unstructured": "Brendan Dolan-Gavitt , Patrick Hulin , Engin Kirda , Tim Leek , Andrea Mambretti , William K. Robertson , Frederick Ulrich , and Ryan Whelan . 2016 . LAVA: Large-Scale Automated Vulnerability Addition. In S&P . IEEE Computer Society , 110–121. Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti, William K. Robertson, Frederick Ulrich, and Ryan Whelan. 2016. LAVA: Large-Scale Automated Vulnerability Addition. In S&P. IEEE Computer Society, 110–121."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "Heiko Eiß feldt, and Marc Heuse",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eiß feldt, and Marc Heuse . 2020 . AFL++: Combining Incremental Steps of Fuzzing Research. In WOOT. USENIX. Andrea Fioraldi, Dominik Maier, Heiko Eiß feldt, and Marc Heuse. 2020. AFL++: Combining Incremental Steps of Fuzzing Research. In WOOT. USENIX."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561",
+              "author": "Geng Sijia",
+              "year": "2020",
+              "unstructured": "Sijia Geng , Yuekang Li , Yunlan Du , Jun Xu , Yang Liu , and Bing Mao . 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561 ( 2020 ). Sijia Geng, Yuekang Li, Yunlan Du, Jun Xu, Yang Liu, and Bing Mao. 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561 (2020)."
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3363824"
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "volume-title": "Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4",
+              "author": "Hazimeh Ahmad",
+              "year": "2020",
+              "unstructured": "Ahmad Hazimeh , Adrian Herrera , and Mathias Payer . 2020 . Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4 (2020), 49:1–49:29. Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4 (2020), 49:1–49:29."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "volume-title": "Hosking",
+              "author": "Herrera Adrian",
+              "year": "2021",
+              "unstructured": "Adrian Herrera , Hendra Gunadi , Shane Magrath , Michael Norrish , Mathias Payer , and Antony L . Hosking . 2021 . Seed Selection for Successful Fuzzing. In ISSTA. ACM , 230–243. Adrian Herrera, Hendra Gunadi, Shane Magrath, Michael Norrish, Mathias Payer, and Antony L. Hosking. 2021. Seed Selection for Successful Fuzzing. In ISSTA. ACM, 230–243."
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "George Klees Andrew Ruef Benji Cooper Shiyi Wei and Michael Hicks. 2018. Evaluating Fuzz Testing. In CCS. ACM 2123–2138. \t\t\t\t  George Klees Andrew Ruef Benji Cooper Shiyi Wei and Michael Hicks. 2018. Evaluating Fuzz Testing. In CCS. ACM 2123–2138.",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "first-page": "1",
+              "article-title": "Fuzzle: Making a Puzzle for Fuzzers",
+              "volume": "45",
+              "author": "Lee Haeun",
+              "year": "2022",
+              "unstructured": "Haeun Lee , Soomin Kim , and Sang Kil Cha . 2022 . Fuzzle: Making a Puzzle for Fuzzers . In ASE. ACM , 45 : 1 – 45 :12. Haeun Lee, Soomin Kim, and Sang Kil Cha. 2022. Fuzzle: Making a Puzzle for Fuzzers. In ASE. ACM, 45:1–45:12.",
+              "journal-title": "ASE. ACM"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794.",
+              "author": "Li Yuwei",
+              "year": "2021",
+              "unstructured": "Yuwei Li , Shouling Ji , Yuan Chen , Sizhuang Liang , Wei-Han Lee , Yueyao Chen , Chenyang Lyu , Chunming Wu , Raheem Beyah , Peng Cheng , Kangjie Lu , and Ting Wang . 2021 . UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794. Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen, Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, Kangjie Lu, and Ting Wang. 2021. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2946563"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "volume-title": "Handbook of Model Checking",
+              "author": "McMillan Kenneth L.",
+              "unstructured": "Kenneth L. McMillan . 2018. Interpolation and Model Checking . In Handbook of Model Checking . Springer , 421–446. Kenneth L. McMillan. 2018. Interpolation and Model Checking. In Handbook of Model Checking. Springer, 421–446."
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jonathan Metzman László Szekeres Laurent Simon Read Sprabery and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ESEC/FSE. ACM 1393–1403. \t\t\t\t  Jonathan Metzman László Szekeres Laurent Simon Read Sprabery and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ESEC/FSE. ACM 1393–1403.",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/96267.96279"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "Explainable Fuzzer Evaluation. CoRR, abs/2212.09519",
+              "author": "Wolff Dylan",
+              "year": "2022",
+              "unstructured": "Dylan Wolff , Marcel Böhme , and Abhik Roychoudhury . 2022. Explainable Fuzzer Evaluation. CoRR, abs/2212.09519 ( 2022 ). Dylan Wolff, Marcel Böhme, and Abhik Roychoudhury. 2022. Explainable Fuzzer Evaluation. CoRR, abs/2212.09519 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "Xiangyu Zhang, and Bin Liang.",
+              "author": "You Wei",
+              "year": "2019",
+              "unstructured": "Wei You , Xuwei Liu , Shiqing Ma , David Mitchel Perry , Xiangyu Zhang, and Bin Liang. 2019 . SLF : Fuzzing Without Valid Seed Inputs. In ICSE. IEEE Computer Society/ACM , 712–723. Wei You, Xuwei Liu, Shiqing Ma, David Mitchel Perry, Xiangyu Zhang, and Bin Liang. 2019. SLF: Fuzzing Without Valid Seed Inputs. In ICSE. IEEE Computer Society/ACM, 712–723."
+            }
+          ],
+          "event": {
+            "name": "ISSTA '23: 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+            "location": "Seattle WA USA",
+            "acronym": "ISSTA '23",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering",
+              "AITO"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3597926.3598144",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3597926.3598144",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T16:37:59Z",
+            "timestamp": 1750178279000
+          },
+          "score": 32.121593,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3597926.3598144"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "references-count": 29,
+          "alternative-id": [
+            "10.1145/3597926.3598144",
+            "10.1145/3597926"
+          ],
+          "URL": "https://doi.org/10.1145/3597926.3598144",
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2023-07-13",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                8
+              ]
+            ],
+            "date-time": "2026-07-08T23:43:44Z",
+            "timestamp": 1783554224320,
+            "version": "3.55.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 23,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    10,
+                    27
+                  ]
+                ],
+                "date-time": "2024-10-27T00:00:00Z",
+                "timestamp": 1729987200000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by-sa/4.0/"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/501100001821",
+              "name": "Vienna Science and Technology Fund",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "10.47379/ICT22007"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "10.47379/ICT22007"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100001821",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                27
+              ]
+            ]
+          },
+          "DOI": "10.1145/3691620.3695352",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                18
+              ]
+            ],
+            "date-time": "2024-10-18T15:39:19Z",
+            "timestamp": 1729265959000
+          },
+          "page": "2362-2365",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 1,
+          "title": [
+            "Olympia: Fuzzer Benchmarking for Solidity"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0003-2049-604X",
+              "authenticated-orcid": false,
+              "given": "Jana",
+              "family": "Chadt",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "TU Wien, Vienna, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0009-4253-4821",
+              "authenticated-orcid": false,
+              "given": "Christoph",
+              "family": "Hochrainer",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "TU Wien, Vienna, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1496-1104",
+              "authenticated-orcid": false,
+              "given": "Valentin",
+              "family": "Wüstholz",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "ConsenSys, Vienna, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-2649-1958",
+              "authenticated-orcid": false,
+              "given": "Maria",
+              "family": "Christakis",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "TU Wien, Vienna, Austria"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                27
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "[n. d.]. Echidna. https://github.com/trailofbits/echidna."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "[n. d.]. Foundry. https://github.com/foundry-rs/foundry."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "[n. d.]. Medusa. https://github.com/crytic/medusa."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "[n. d.]. Solidity. https://github.com/ethereum/solidity."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "volume-title": "Funds Stolen from Crypto Platforms Fall More Than 50%",
+              "year": "2023",
+              "unstructured": "2024. Funds Stolen from Crypto Platforms Fall More Than 50% in 2023, but Hacking Remains a Significant Threat as Number of Incidents Rises. https://www.chainalysis.com/blog/crypto-hacking-stolen-funds-2024."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Dirk Beyer. 2019. Competition on Software Testing (Test-COMP). https://test-comp.sosy-lab.org.",
+              "DOI": "10.1007/978-3-030-17502-3_11"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "Engler",
+              "author": "Cadar Cristian",
+              "year": "2008",
+              "unstructured": "Cristian Cadar, Daniel Dunbar, and Dawson R. Engler. 2008. KLEE: Unassisted and Automatic Generation of High-Coverage Tests for Complex Systems Programs. In OSDI. USENIX, 209--224."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "LAVA: Large-Scale Automated Vulnerability Addition. In S&P",
+              "author": "Dolan-Gavitt Brendan",
+              "year": "2016",
+              "unstructured": "Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti, William K. Robertson, Frederick Ulrich, and Ryan Whelan. 2016. LAVA: Large-Scale Automated Vulnerability Addition. In S&P. IEEE Computer Society, 110--121."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Hasan Ferit Eniser Timo P. Gros Valentin Wüstholz Jörg Hoffmann and Maria Christakis. 2022. Metamorphic Relations via Relaxations: An Approach to Obtain Oracles for Action-Policy Testing. In ISSTA. ACM 52--63.",
+              "DOI": "10.1145/3533767.3534392"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "Echidna: Effective, Usable, and Fast Fuzzing for Smart Contracts. In ISSTA. ACM, 557--560.",
+              "author": "Grieco Gustavo",
+              "year": "2020",
+              "unstructured": "Gustavo Grieco, Will Song, Artur Cygan, Josselin Feist, and Alex Groce. 2020. Echidna: Effective, Usable, and Fast Fuzzing for Smart Contracts. In ISSTA. ACM, 557--560."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "first-page": "1",
+              "article-title": "Fuzzle: Making a Puzzle for Fuzzers",
+              "volume": "45",
+              "author": "Lee Haeun",
+              "year": "2022",
+              "unstructured": "Haeun Lee, Soomin Kim, and Sang Kil Cha. 2022. Fuzzle: Making a Puzzle for Fuzzers. In ASE. ACM, 45:1--45:12.",
+              "journal-title": "ASE. ACM"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "volume-title": "UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777--2794.",
+              "author": "Li Yuwei",
+              "year": "2021",
+              "unstructured": "Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen, Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, Kangjie Lu, and Ting Wang. 2021. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777--2794."
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2946563"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jonathan Metzman László Szekeres Laurent Simon Read Sprabery and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ESEC/FSE. ACM 1393--1403.",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/96267.96279"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jiradet Ounjai Valentin Wüstholz and Maria Christakis. 2023. Green Fuzzer Benchmarking. In ISSTA. ACM 1396--1406.",
+              "DOI": "10.1145/3597926.3598144"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "AFLNET: A Greybox Fuzzer for Network Protocols",
+              "author": "Pham Van-Thuan",
+              "year": "2020",
+              "unstructured": "Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. 2020. AFLNET: A Greybox Fuzzer for Network Protocols. In ICST. IEEE Computer Society, 460--465."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Chaofan Shou Shangyin Tan and Koushik Sen. 2023. ItyFuzz: Snapshot-Based Fuzzer for Smart Contract. In ISSTA. ACM 322--333.",
+              "DOI": "10.1145/3597926.3598059"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "unstructured": "Valentin Wüstholz. [n. d.]. Daedaluzz. https://github.com/Consensys/daedaluzz."
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "volume-title": "Harvey: A Greybox Fuzzer for Smart Contracts. In ESEC/FSE. ACM, 1398--1409.",
+              "author": "Wüstholz Valentin",
+              "year": "2020",
+              "unstructured": "Valentin Wüstholz and Maria Christakis. 2020. Harvey: A Greybox Fuzzer for Smart Contracts. In ESEC/FSE. ACM, 1398--1409."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Valentin Wüstholz and Maria Christakis. 2020. Targeted Greybox Fuzzing with Static Lookahead Analysis. In ICSE. ACM 789--800.",
+              "DOI": "10.1145/3377811.3380388"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "The Fuzzing Book",
+              "author": "Zeller Andreas",
+              "unstructured": "Andreas Zeller, Rahul Gopinath, Marcel Böhme, Gordon Fraser, and Christian Holler. 2021. The Fuzzing Book. CISPA Helmholtz Center for Information Security. https://www.fuzzingbook.org."
+            }
+          ],
+          "event": {
+            "name": "ASE '24: 39th IEEE/ACM International Conference on Automated Software Engineering",
+            "location": "Sacramento CA USA",
+            "acronym": "ASE '24",
+            "sponsor": [
+              "SIGAI ACM Special Interest Group on Artificial Intelligence",
+              "SIGSOFT ACM Special Interest Group on Software Engineering",
+              "IEEE CS"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3691620.3695352",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3691620.3695352",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                19
+              ]
+            ],
+            "date-time": "2025-06-19T00:06:19Z",
+            "timestamp": 1750291579000
+          },
+          "score": 28.63516,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3691620.3695352"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                27
+              ]
+            ]
+          },
+          "references-count": 23,
+          "alternative-id": [
+            "10.1145/3691620.3695352",
+            "10.1145/3691620"
+          ],
+          "URL": "https://doi.org/10.1145/3691620.3695352",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                27
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-10-27",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

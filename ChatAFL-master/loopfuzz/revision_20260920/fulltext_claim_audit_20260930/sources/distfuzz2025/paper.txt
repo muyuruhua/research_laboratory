@@ -1,0 +1,1190 @@
+     Blackbox Fuzzing of Distributed Systems
+with Multi-Dimensional Inputs and Symmetry-Based
+                Feedback Pruning
+
+     Yonghao Zou                    Jia-Ju Bai∗           Zu-Ming Jiang               Ming Zhao                    Diyu Zhou
+  Beihang University Beihang University        ETH Zurich          Arizona State University    Peking University
+   Peking University baijiaju@buaa.edu.cn zuming.jiang@inf.ethz.ch   mingzhao@asu.edu       diyu.zhou@pku.edu.cn
+  zouyonghao@live.cn
+
+
+    Abstract—This paper presents DistFuzz, which, to our knowl-       popular metric for single-node systems [2], [14]. The feedback
+edge, is the first feedback-guided blackbox fuzzing framework         in Mallory requires the user to annotate code blocks that
+for distributed systems. The novelty of DistFuzz comes from two       are considered to be important. Afterwards, during fuzzing,
+conceptual contributions on key aspects of distributed system         Mallory collects two types of events: 1) the invocation of user-
+fuzzing: the input space and feedback metrics. Specifically,          annotated code blocks, and 2) network messages among nodes.
+unlike prior work that focuses on systematically mutating faults,
+                                                                      The sequence of these events is used as feedback, and Mallory
+exploiting the request-driven and timing-dependence nature of
+distributed systems, DistFuzz proposes a multi-dimensional input      considers an event sequence is uninteresting, if it is too similar
+space by incorporating regular events and relative timing among       to a previous one.
+events as the other two dimensions. Furthermore, observing that
+important state changes in distributed systems can be indicated by       However, the above prior work still suffers from important
+network messages among nodes, DistFuzz utilizes the sequences         limitations on two key aspects of fuzzing effectiveness: 1)
+of network messages with symmetry-based pruning as program            fuzzing input, and 2) feedback metric. Regarding fuzzing input,
+feedback, which departs from the conventional wisdom that             given the huge search space, the random generation approach
+effective feedback requires code instrumentation/analysis and/or      used by Jepsen is highly ineffective. Furthermore, only mutat-
+user inputs. DistFuzz finds 52 real bugs in ten popular distributed   ing and injecting faults based on feedback, as CrashFuzz and
+systems in C/C++, Go, and Java. Among these bugs, 28 have been        Mallory do, can miss many bugs, as we elaborate subsequently
+confirmed by the developers, 20 were unknown before, and 4 have       and showcase in Figure 6 and Figure 7.
+been assigned with CVEs.
+                                                                          Regarding fuzzing feedback, the edge coverage used by
+                         I.   I NTRODUCTION                           CrashFuzz is ineffective for distributed systems. This is be-
+                                                                      cause, unlike single-node systems, distributed systems often
+    Various kinds of critical distributed systems, such as dis-       execute almost the same code for requests, making edge
+tributed databases (e.g., ClickHouse [7] and RethinkDB [47])          coverage saturates after exploring only a few states [37], and
+and distributed coordination systems (e.g., ZooKeeper [20]            thus, ineffective for distributed systems. Mallory’s feedback
+and etcd [13]), provide fundamental support for analytical and        requires laborious and error-prone user annotations and more
+computational tasks, and form the backbone of modern data             importantly, as we elaborate subsequently, misses interesting
+center infrastructures [10], [16], [61]. However, they are prone      states as well as explores redundant states.
+to have subtle bugs, causing large economic losses [3], [4].
+                                                                          This paper presents DistFuzz, which, to the best of our
+    Prior work has applied fuzzing, a promising testing tech-         knowledge, is the first feedback-guided blackbox fuzzing
+nique [2], [14], [19], [22], [70], to distributed systems. A pio-     framework for distributed systems. Table I compares DistFuzz
+neer work is Jepsen [21], a blackbox fuzzer that is well-known        with other fuzzers. The novelty of DistFuzz comes from
+for its effectiveness in finding consistency violations. Based on     the two conceptual contributions on testing input space and
+user-provided schedule generators, Jepsen randomly generates:         feedback metric, which depart from the conventional wisdom
+1) workloads to drive the system, and 2) faults injected into the     in prior distributed system fuzzers.
+systems. CrashFuzz [15] and Mallory [37] are greybox fuzzers
+that advance Jepsen by using different feedback to guide the          Conceptual contribution #1: extending input space with
+mutation of injected faults. CrashFuzz uses edge coverage, a          regular events and timing intervals. For the input space
+                                                                      of distributed systems, our new insight is that, faults are just
+  Jia-Ju Bai is the corresponding author.
+                                                                      one dimension of it. In essence, faults are rare internal events
+                                                                      to trigger state changes in distributed systems. We identify
+                                                                      another two important input dimensions: 1) client requests and
+Network and Distributed System Security (NDSS) Symposium 2025         control commands, which, in contrast to faults, are external
+24-28 February 2025, San Diego, CA, USA
+ISBN 979-8-9894372-8-3                                                events to trigger state changes; and 2) relative timing among
+https://dx.doi.org/10.14722/ndss.2025.241912                          different events, since, for a distributed system, same events
+www.ndss-symposium.org                                                with different timing are likely to result in different states (ex-
+                         TABLE I: Conceptual comparison of testing frameworks of distributed systems.
+      Feature                     DistFuzz                                       Jepsen         Mallory                                CrashFuzz
+      Fuzzer Type                 Blackbox                                       Blackbox       Greybox                                Greybox
+      Systematic Mutated Events   Regular, fault events and time intervals       Fault events   Fault events                           Fault events
+      Feedback                    Message sequences                              None           User annotations + message sequences   Code coverage
+      Pruning Method              Symmetry based                                 None           Similarity based                       None
+      Bug Reproducibility         Support                                        Not support    Not support                            Not support
+      Overhead                    Low                                            Low            Intermediate                           High
+
+
+
+plained in §II). To thoroughly test distributed systems, fuzzing                  receives does not matter). Similarly, role symmetry describes
+requires systematically co-mutating all three dimensions.                         that, two states only differ in the roles of the nodes (e.g., A is
+                                                                                  a leader and B is follower vs. A is a follower and B is a leader)
+    With the above observation, DistFuzz uses a sequence of
+                                                                                  should be considered as redundant. In addition, to prevent
+events as input, where each event can be either a fault or a
+                                                                                  the feedback from being too sensitive to trivial states (e.g.,
+regular event. In addition, DistFuzz associates each event with
+                                                                                  timestamp) in network messages, observing that messages of
+a timing interval, denoting how long DistFuzz should wait
+                                                                                  different types are likely to have different lengths, DistFuzz
+to apply this event after the previous one. As a result, the
+                                                                                  abstract the content of the messages with the message length.
+generated input is inherently fine-grained, potentially covering
+all possible combinations of the three dimensions. While the                          We built a prototype of DistFuzz with around 7300 lines
+high-level idea of fuzzing regular events and/or timing interval                  of C++ code. We used checkpointing and restoring to maxi-
+has been proposed by fuzzers targeting other domains (e.g.,                       mize fuzzing throughput while leveraging offline deterministic
+OS [50], [56], [58], library [2], [6], [19], and networking [33],                 record and replay [42] to reliably reproduce founded bugs
+[45], [51], [55], [70]), together with the novel feedback ap-                     to eliminate false positives. We evaluated DistFuzz with 10
+proach presented below, DistFuzz validates its effectiveness                      mature and widely-used distributed systems. Our evaluation
+for fuzzing distributed systems.                                                  demonstrates that the above fuzzing designs collectively make
+                                                                                  DistFuzz effective, finding 52 real bugs, with 28 confirmed
+Conceptual contribution #2: proposing network message                             by the developers, and 20 previously unknown. Among the
+sequences with symmetry-based pruning as fuzzing feed-                            confirmed bugs, 4 have been assigned with CVEs. By incorpo-
+back. DistFuzz uses a novel and effective feedback approach                       rating regular events and timing intervals into the input space,
+based on the following observations. First, user-annotated code                   DistFuzz can find 11% more bugs. The feedback mechanism
+blocks, as required by Mallory, do not improve the quality                        in DistFuzz does not require human annotations, reduces the
+of the feedback over network messages, since almost all                           total bug-finding time by 249.67 hours in average and finds 2
+important state changes in a distributed system are reflected by                  more bugs (§V-D).
+network messages. As an intuitive explanation, state changes
+in consensus algorithms either 1) are triggered by receiving                          In summary, we make the following contributions:
+certain messages or 2) result in sending out messages. As a
+result, they are all captured by changes in network message                          • New approaches: We make two conceptual contributions
+sequences. In fact, we surveyed all the code blocks annotated                          on fuzzing input space and feedback methods.
+by Mallory’s authors and found that as high as 91% is covered                        • Practical realization: We develop DistFuzz, a novel and
+by network messages.                                                                   effective feedback-driven black-box fuzzing framework
+                                                                                       based on the above ideas.
+    Second, pruning feedback based on similarity, as seen in                         • Promising results: DistFuzz in total finds 52 real bugs,
+Mallory, is ad-hoc and ill-suited for distributed systems. Such                        28 of which have been confirmed by the developers, 20
+an approach can mistakenly prune interesting states, since,                            were unknown before, and 4 have been assigned CVEs.
+as we explain in §III-C, two drastically different states in
+a distributed system often output similar message sequences,                          We have released DistFuzz and evaluation results at https:
+which will be pruned by Mallory. Such an approach will also                       //github.com/zouyonghao/DistFuzz.
+explore redundant states, due to the widely-existed symmetry
+in distributed systems. As an example, one state where A is
+a leader and B is a follower is symmetric to (and essentially                                   II.   BACKGROUND AND M OTIVATION
+the same as) another state where A is a follower and B is a
+                                                                                      A distributed system is a large and complex system whose
+leader. Without considering symmetry, one would view such
+                                                                                  components run as different processes located on different
+states as different states, resulting in redundant exploration and
+                                                                                  computers (or nodes) [62]. These processes execute almost
+downgrading the performance of the fuzzer.
+                                                                                  the same code, communicate and coordinate each other with
+    Leveraging the first observation, DistFuzz transparently                      network messages, and may have different runtime states.
+captures network messages as feedback. With the second                            Despite the great diversity of distributed systems (e.g., different
+observation, DistFuzz departs from prior approaches by sys-                       functionalities, runtime libraries, or programming languages),
+tematically pruning feedback leveraging two common types                          techniques used in DistFuzz are based on a few common
+of symmetry in distributed systems: order symmetry and role                       natures of distributed systems. Subsection II-A presents these
+symmetry. Order symmetry represents the cases where the                           common natures. Subsection II-B motivates why we design
+order of messages for different nodes is not important (e.g.,                     DistFuzz as a blackbox fuzzer and Subsection II-C presents
+when a node starts an election process, the order of votes it                     prior work on fuzzing distributed systems.
+
+                                                                             2
+                   Client            Control tool                       votes, it becomes the new leader; otherwise, it remains a
+                                                                        candidate and starts a new election round. Thus, the timing
+                        Init, Put, Get...                               of vote messages relative to the election timeout also impacts
+                                                                        the system state.
+                       Distributed system
+           Node1      Node2    Node3        ......   Noden              B. Blackbox Fuzzing for Distributed Systems
+                NetFail, FileFail, NodeCrash...                            Blackbox fuzzing is widely used and has shown great
+               Network                 Filesystem                       success in detecting bugs in non-distributed systems [11], [30],
+                                                                        [38], [59], [68]. A key advantage of blackbox fuzzing is the
+Fig. 1: Multi-dimensional input space of a distributed system.          minimal manual effort for deployment since it requires no user
+                                                                        annotations nor code analysis and instrumentation.
+                                                                            Furthermore, compared to single-node systems, a blackbox
+A. Common Natures in Distributed Systems                                fuzzer is more critical for distributed systems because of
+                                                                        the following three reasons. First, distributed systems often
+Input events. As demonstrated by prior work, testing inputs             involve complex logic, which may even overwhelm their
+to distributed system are various kinds of input events, as             developers. Thus, manual code annotations are likely to be
+shown in Figure 1. Input events consist of two types. The               error-prone and may lead to false positives. Second, distributed
+first type is regular events. Examples of them include client           systems are highly non-deterministic [17], [44], and techniques
+requests (e.g., read and write requests in a distributed file           like code instrumentation, which can cause high overhead
+system), and management commands from the user (e.g.,                   (e.g., 307% [15]) for distributed systems, inevitably perturb
+adding or removing nodes in a distributed system). In addition,         their execution, potentially masking bugs that would occur
+since a common design goal of distributed systems is to                 in production environments where such instrumentation is
+tolerate various kinds of faults [31] (through techniques such          absent [23]. Third, there are several popular programming
+as replication and consensus algorithms [27], [43]), another            languages used for developing distributed systems, such as
+type of input to the distributed system is various fault events,        C/C++, Java, Go, and Rust. Testing frameworks that depend on
+such as node crash and network partitioning.                            source code analysis or code instrumentation incur significant
+                                                                        manual effort in porting their functionality across these diverse
+Network messages capture important state changes. In
+                                                                        systems, limiting their deployment in industrial settings.
+distributed systems, the history of network messages can
+effectively capture the overall system state changes. This is
+because each node’s execution state is often affected and/or            C. Prior Work on Fuzzing Distributed System
+reflected by the network messages. As a motivating example,                 This subsection discusses prior work on fuzzing distributed
+consider the protocol of consensus algorithms (e.g., Paxos [27]         systems (i.e., Jepsen [21], Mallory [37], and CrashFuzz [15])
+and Raft [43]), that are widely used in modern distributed              focusing on two fundamental aspects: 1) generating input
+systems. All state changes specified in the protocol are either         events; and 2) fuzzing feedback.
+triggered by 1) receiving certain network messages (e.g., in
+Raft, a node in the candidate state turns into the follower state       Generating input events. In summary, prior work generates
+when the node receives a message from the current leader                input events by using novel approaches to effectively mutate
+with a higher term); or 2) timeout, which in turn makes nodes           fault events (§II-A). In terms of regular events (§II-A), prior
+send out network messages (e.g., if a leader node elapses the           fuzzers either make them fixed (as in CrashFuzz) or randomly
+heartbeat timeout, it sends network messages to maintain its            generated (as in Jepsen and Mallory) them. These approaches
+authority and prevent others starting new elections). In both           follow the conventional wisdom that fault events, by their
+cases, the important state changes can be captured by the               natures, are rare and thus are more likely to trigger bugs [65].
+network messages among nodes.                                           Below we detail how the prior fuzzers generate testing input.
+                                                                            Before the fuzzing campaign starts, CrashFuzz takes a
+Timing-dependence. Distributed systems are highly timing-               sequence of concrete regular events as input, and they are used
+dependent where two sequences of input events with the same             to drive the SUT during the whole fuzzing process. Jepsen and
+events, but different relative timing are likely to result in           Mallory takes as input a set of regular event types. Afterward,
+different execution states. A key reason behind this is that            during fuzzing, concurrent with the fault injection process
+distributed systems heavily use the timeout mechanism, where            discussed below, Jepsen and Mallory randomly choose certain
+the system waits for certain events within the time window.             events from this set, and concretize them to drive the SUT.
+The occurrence or non-occurrence of these events within the
+time window drives the system into different states.                        In each iteration of the fuzzing, the fuzzer decides 1) which
+                                                                        fault event to inject and 2) where (i.e., after which event)
+    Taking Raft as an example, where the two key timeouts are           should the fault event be injected. CrashFuzz and Mallory
+the heartbeat timeout and the election timeout. If a follower           make these decisions based on their fuzzing feedback, while
+node does not receive a heartbeat message from the leader               Jepsen makes random decisions. The fuzzer stops injecting
+within the heartbeat timeout, it becomes a candidate and                fault events until a pre-defined condition (e.g., the number of
+initiates a new election. Otherwise, it remains a follower.             fault events reaches a threshold) is met.
+Therefore, the timing of the heartbeat message arrival relative
+to the timeout affects the system state. Similarly, during the          Fuzzing feedback. CrashFuzz [15] uses the popular edge
+election timeout, if a candidate node receives a majority of            coverage as its feedback metric. Despite its great success
+
+                                                                    3
+ Record/replay       Event sequence                                                      To improve fuzzing throughput, DistFuzz uses check-
+                                Checkpoint         2 Checkpoint                      pointing and restore to skip the initialization process of the
+           9 Reproduce
+                                 manager                                             SUT (§III-D). 2 Therefore, before the fuzzing campaign
+                                                   3 Restore
+           1 Input for                                                               starts, DistFuzz first brings up the SUT and waits for the
+            init/events                            5 Execute    Distributed          initialization process (i.e., gossip) to complete. Afterwards,
+                                   Event handler                  system
+                    C++ code/                                   under test           the checkpoint manager takes a checkpoint of each node of
+                   shell scripts           4 Event sequences                         the SUT. 3 When the actual fuzzing campaign starts, at the
+   Bug reports
+                                    Test case                                        beginning of each fuzzing iteration, the checkpoint manager
+                                    generator                                        restores the state of each node from its checkpoint, and pauses
+         8 Bug detect                      6 Message sequence                        the SUT. 4 Next, the test case generator produces a sequence
+                 7 Runtime           Runtime                                         of events, along with the timing interval between each event,
+  Bug checkers
+                      info           monitor
+                                                                                     and sends each event to the event handler in the corresponding
+Fig. 2: The workflow and architecture of DistFuzz. User inputs                       node, based on where the event should occur. 5 DistFuzz then
+are marked in green, DistFuzz’s components are marked in                             starts the execution of the SUT and the event handler in each
+black, and the fuzzing loop steps are marked in red.                                 node applies events one by one, applying an event only when
+                                                                                     the time since the last one was applied exceeds the specified
+                                                                                     timing interval (§III-B). 6 During execution, the runtime
+in fuzzing single-node systems [2], [14], [19], Mallory [37]                         monitor collects the network messages among nodes. DistFuzz
+reported that code coverage is unsuitable for distributed system                     uses the collected network messages as fuzzing feedback to
+fuzzing. This is because distributed systems are request-driven                      guide the mutation of events and their timing intervals (§III-C).
+and execute almost the exact code for every request. As a                             7 The runtime monitor also collects other runtime information
+result, code coverage saturates very quickly, limiting the fuzzer                    and sends it to the checkers to detect bugs (§IV). 8 If a bug is
+to explore only a small number of different states.                                  detected, DistFuzz generates a bug report that users can utilize
+                                                                                     to confirm the bug. 9 Finally, users can use a deterministic
+     Mallory proposes a feedback metric based on two types                           recorder and replayer provided by DistFuzz to effectively
+of events: (1) invocation of user-annotated interesting code                         reproduce and validate the bug DistFuzz detects (§IV).
+blocks; and (2) network messages among nodes. The default
+mechanism 1 in Mallory is to collect these events with relevant
+information (e.g., the ID of the node that invokes the code                          B. Mutating Regular Events and Timing Interval
+blocks; the sender, receiver, and the content of the network
+messages.) from each node, sort them by their occurrence                                 Input events are an effective form of testing inputs for
+time, and use the sorted events as fuzzing feedback. To avoid                        distributed systems (§II). Thus, distributed systems fuzzing
+exploring redundant states, Mallory prunes an event sequence                         should focus on generating rare and interesting sequences of
+if it is too similar to a previous one (e.g., an event sequence                      input events. Unfortunately, we found that existing fuzzers are
+only differs from the previous one in the receiver of one                            prone to miss many bugs, due to the two factors below.
+message). Mallory measures similarities using a hash function
+that maps similar input values to similar hash values.                               Finding #1. Effective distributed system fuzzing requires
+                                                                                     frequent and guided mutations on regular events.
+         III.    T HE D IST F UZZ F UZZING F RAMEWORK                                    First, due to the focus on injecting fault events (§II-C),
+                                                                                     existing fuzzers do not systematically mutate regular events,
+    This section presents DistFuzz, a novel and effective                            thereby missing bugs caused by changes in regular events.
+blackbox fuzzing framework for distributed systems. This
+section with an overview of DistFuzz (§III-A), followed by                               As a motivating example, Figure 3 shows a bug that
+the contributions DistFuzz makes to advance state of the art.                        is founded by DistFuzz but is missed by existing fuzzers.
+We present the remaining parts of DistFuzz in Section IV.                            This bug corrupts the internal data structures of RethinkDB,
+                                                                                     rendering a newly created database unusable. Triggering this
+A. DistFuzz Overview                                                                 bug does not require even a single fault event, motivating the
+                                                                                     need to generate interesting regular events to expose bugs.
+    Figure 2 shows the workflow and architecture of DistFuzz.
+ 1 To use DistFuzz, a user provides certain application-specific                         Furthermore, we note that the search spaces for regular
+information including (i) commands to initialize the system                          events are huge, making it nearly impossible for user- or
+under test (SUT), which also specify the heartbeat timeout                           randomly-generated testing workloads to effectively expose
+and the election timeout (§II-A) of the SUT; (ii) a status check                     certain bugs. As an example, RethinkDB supports tens of
+command with the expected return value, which DistFuzz uses                          user commands and even if we limit the commands to a
+to detect if the SUT has been successfully initialized; (iii) the                    few common ones (e.g., creating/dropping tables, and read-
+formats for regular events (§IV-B) for the SUT; and (iv) three                       ing/writing entries), the problem still exists. This is because,
+tunable parameters, namely, the maximal length of the event                          each command, other than its type, also involves several other
+sequence, the maximum value of the timing intervals and the                          parameters (e.g., at which node to execute the command,
+fuzzing granularity of the timing intervals (§III-B).                                which table should be the target of the command). All these
+                                                                                     parameters must be correct to trigger a deep bug.
+  1 Mallory also allows users to specify custom mechanisms for the feedback.
+We do not discuss this aspect in this paper because (1) Mallory does not              Finding #2. Due to the timing-dependent nature of dis-
+present nor evaluate any custom policy, and (2) DistFuzz is a blackbox fuzzer.       tributed systems, timing among events should be mutated.
+
+                                                                                 4
+ # Test case 133                                      Node A                   Node B             FILE: RethinkDB/src/.../real_reql_cluster_interface.cc
+                                      Client                                                      bool real_reql_cluster_interface_t::db_create(...) {
+                                                      Leader                  Follower              ......
+ +0ms    SysInit (A, B, ...)                                                                        /* Make sure there isn't an existing database
+ …                                  Start nodes                                                      * with the same name. */
+                                                                                                    for (const auto &pair : metadata.databases.databases) {
+                                                                                                      if (!pair.second.is_deleted() &&
+ +100ms CreateDB (A, "db1")         CreateDB      #db_create ("db1")                                       pair.second.get_ref().name.get_ref() == name) {
+                                                                                                        *error_out = admin_err_t{
+                                                                                                         strprintf("Database `%s` already exists.",
+ +20ms CreateDB (B, "db1")                                                                                      name.c_str()), query_state_t::FAILED};
+                                    CreateDB                           #db_create ("db1")                return false;
+ +50ms Get (B, "db1", k)                                                                              }
+                                                    #broadcast                                      }
+ ...                                                                                                ......               Failed uniqness check
+                                       Put                                   #db_check            }
+
+
+Fig. 3: A bug in RethinkDB [47] that makes a newly created databases unusable. This bug is triggered by the following sequences
+of regular events. First, the client sends CreateDB("db1") requests to Node A and B at almost the same time. Node A creates the
+database with the name "db1" and sends Node B a message to announce the creation. However, before receiving the message,
+Node B has already created the database with the name "db1". As a result, any request involving access "db1" will fail, since the
+servers found that there are two databases with the same name "db1". So, the Put request to "db1" will fail and causes DistFuzz
+detecting the bug. The fix is to synchronize the database creation among nodes with consensus protocols.
+
+
+ # Test case 47                                       Node A                   Node B              void followLeader() throws InterruptedException {
+                                      Client
+                                                      Leader                  Follower             ...
+ +0ms     SysInit (A, B, C, ...)                                                                       try { ... }
+                                    Start nodes                                                        catch (Exception e) {
+ …                                                                                                       closeSocket(); // set sock to null
+ +200ms NetFail (B)                                                        #followLeader               }
+                                                                                                   ...}
+ +30ms    Put (B, “key”, “value”)       Put                                #processRequest
+                                                                                                   void processRequest(Request r) {
+ +30ms    NetFail (B)                                                       #writePacket           ... try { writePacket(...); }
+                                                                                                      catch (Exception e) {
+ ...                                                                                                     learner.sock.close();   Access null pointer
+                                                                              #recover
+                                                                                                      }...}
+
+Fig. 4: A bug that crashes a node in ZooKeeper [69]. This bug can only be triggered with specific relative timing among
+events. After a leader election, when Node B calls the followLeader method, DistFuzz injects a network access fault (NetFail)
+on Node B. This fault causes Node B to throw an exception, sets the sock variable to null, cleans up stale states, and then
+initiates the recovery process. However, before the recovery starts, Node B receives a Put request and processes it by invoking
+the processRequest method. During the execution of processRequest, DistFuzz injects another NetFail to cause writePacket to
+fail. This failure makes Node B access sock, a null pointer, and crashes.
+
+
+
+    Second, all prior fuzzers do not consider the timing-                        Test-case file                           Event sequence
+dependent nature of distributed systems (§II); they feed each
+input event to SUT either immediately after the previous one or                 50       0   123            +50ms       Client write    Write value 123
+with a fixed/random timing interval. Such an ad-hoc approach
+is likely to miss many subtle bugs that require distributed
+                                                                                100      1    0             +100ms       Node kill         Node id 0
+systems to execute timing-dependent logic.
+
+    To motivate the above statement, Figure 4 shows another                     30       5    5             +30ms Delay message           Delay 50ms
+bug that DistFuzz found but others miss. This bug causes
+ZooKeeper, a popular centralized co-ordination service for                            Fig. 5: Process of generating event sequence.
+distributed systems, to crash, and thus brings down the whole
+distributed system. This bug can only be triggered with very
+specific timing. Specifically, the Put request must be sent                   To co-mutate all three dimensions, DistFuzz equally en-
+to Node B before it starts the recovery process, and the                   codes regular and fault events in input event sequences as
+two network failures must be precisely injected during the                 a 3-tuple <timing_interval, event_type, parameters>. The
+execution of followLeader and processRequest, respectively.                event_type tuple denotes the type of the event. For example,
+                                                                           an event can be a Nodekill event that shuts down a computing
+DistFuzz’s approach. Based on the above two findings,                      node in the system by force. The specific meaning of the
+DistFuzz must systematically (1) mutate both the regular events            parameters tuple depends on the type of the events (e.g., for
+and the fault events, and (2) mutate and enforce the relative              SysInit, it has one parameter that specifies how many nodes
+timing between events.                                                     need to be initialized before testing). Finally, to enable timing
+
+                                                                       5
+             TABLE II: Events supported by DistFuzz.                                 TABLE III: Mutation options of an event sequence.
+ Event          Description                               Regular   Fault             Mutation type      Description
+ SysInit        Initialize the whole system                 ✓                         Deletion           Delete this event.
+                Send a "get" request to read a value                                  Addition           Add a new event.
+ Get                                                        ✓
+                given a specified key                                                 Replacement        Replace this event with a new event.
+                Send a "put" request to write to the                                  Parameter change   Change the parameters of this event.
+ Put                                                        ✓                         Interval change    Change the timing interval between events.
+                specified key with the specified value
+                Send a "cas" request to compare and
+ Cas                                                        ✓
+                swap the value of the specified key
+ CreateDB       Create a database, namespace or file        ✓                   of distributed systems bugs are caused by timeouts. DistFuzz
+ DeleteDB       Delete a database, namespace or file        ✓
+ StatCheck      Check the status of the system              ✓
+                                                                                triggers timeouts indirectly by injecting fault events (e.g., by
+                Send a request specified by the user to                         injecting NetPart).
+ CustomREQ                                                  ✓
+                the system under test
+ NetDup         Duplicate a message                                  ✓
+                                                                                    For mutation, DistFuzz follows the popular fuzzers [2],
+ NetFail        Fail a send/receive of a message                     ✓          [19], [22], [45], [70] to use a test-case file to generate the
+ NetDelay       Delay a message                                      ✓          input event sequence. Figure 5 shows how a test-case file is
+ NetPart
+                Start a network partition by dropping
+                                                                     ✓
+                                                                                translated to DistFuzz’s input sequences. Mutation on the test-
+                all messages to/from certain nodes                              case file leads to the mutation of event sequences. Table III
+ NetHeal        Stop the network partition                           ✓          shows the corresponding mutation options.
+ FileFail       Fail a read/write on a regular file                  ✓
+ FileDelay      Delay a read/write on a regular file                 ✓              The input space of DistFuzz is larger than prior fuzzers,
+ NodeStart      Bring up a node                             ✓                   due to the additional mutation on regular events and timing
+ NodeStop       Stop a node gracefully                      ✓
+ NodeKill       Kill a node by force                                 ✓          intervals. This is not an issue for DistFuzz, since as we discuss
+ NodeRestart    Kill a node by force and restart it                  ✓          in the next subsection, the effective feedback it uses prunes the
+ NodeChange     Add/remove a node to/from the system        ✓                   non-important mutations.
+ Total                                                      11       9
+
+                                                                                C. Network Messages with Symmetry-Based Pruning
+mutation, the timing_interval represents the time difference                        Another conceptual contribution DistFuzz makes is a novel
+(in milliseconds) between applying the previous event and the                   fuzzing feedback approach for distributed systems. Unlike
+current event.                                                                  prior approaches, DistFuzz’s feedback is highly effective,
+    As discussed in Section III-A, the maximum value and the                    while does not require source code access nor user inputs,
+fuzzing granularity of timing_interval are user configurable pa-                thereby aligning with DistFuzz’s blackbox approach (§II-B).
+rameters. These two values affect the effectiveness of fuzzing                      As discussed in Subsection II-C, Mallory is the state-of-
+and should be set according to the characteristics of SUT. First,               art approach to generate fuzzing feedback. However, Mallory
+the maximum value cannot be too large. Otherwise, the SUT                       suffers from two limitations: (i) requiring users to annotate
+will always complete the leader re-election or failure recovery                 interesting code blocks, which is laborious and error-prone;
+before DistFuzz applies the next event, thereby preventing                      and (ii) the similarity-based pruning is ad-hoc and ill-suited
+DistFuzz from exposing bugs during the re-election or recovery                  for distributed systems, resulting in both missing possible in-
+process. Thus, we set maximum value to be 200ms, since                          teresting states and exploring redundant states, as we elaborate
+we set the election timeouts of the SUT to 150ms and the                        next in our findings.
+network latency in our experimental environment is around
+50ms. Second, the fuzzing granularity cannot be too short. A                    Finding #1. Information solely in network messages is
+short granularity not only makes DistFuzz prone to explore                      sufficient as an effective fuzzing feedback.
+redundant states but also makes DistFuzz inject many faults in
+                                                                                    Our first finding is that user annotation on interesting code
+a short time, thereby often overwhelming the fault tolerance
+                                                                                blocks, as required by Mallory, may not effectively improve
+mechanisms in SUT, causing the whole system to fail, and
+                                                                                fuzzing performance in distributed systems. Specifically, the
+thus, prevents DistFuzz from exposing bugs. As a result, we
+                                                                                observation that network messages capture important state
+set the default value to be 10ms. We further evaluate the impact
+                                                                                changes (§II) can also be generalized to interesting events in
+of these values in §V-E.
+                                                                                the code. In other words, we found that network messages also
+    Table II shows all the events DistFuzz support, which are                   cover most of the interesting code blocks, since these code
+generic enough for a wide range of distributed systems; all the                 blocks either 1) are invoked due to receiving certain network
+systems we evaluate (§V-A) support these events.                                messages, or, 2) will, in turn, send out network messages.
+    To enforce relative timing, DistFuzz only applies an event                      As a motivating example, Mallory reports a bug (detailed
+when the time since it applies the previous one is larger                       in [36] and shown in Figure 1 in [37]), that is triggered, in part,
+than the timing_interval. DistFuzz applies these events trans-                  by the snapshot operation. Mallory believes that the bug can
+parently, by either intercepting system calls (e.g., send and                   only be efficiently detected if the user annotates the snapshot
+receive) or invoking the interfaces exposed by the system under                 operation. However, we found that the snapshot operation will
+test (e.g., Put for writing values into the SUT). For example,                  result in sending a network message, which informs other
+DistFuzz injects a network partitioning fault (NetPart) by                      nodes that this node has taken a snapshot. Thus, DistFuzz can
+dropping all messages to/from certain nodes. We discuss how                     also find this bug by just using network messages as feedback.
+DistFuzz applies other events in §IV-B. A non-trivial portion                   In fact, we survey all the annotations made by Mallory’s
+
+                                                                            6
+                                    N1                                    DistFuzz’s approach. For illustration purposes, we first
+                               1                               N1
+      AppendEntries
+                       entry                     entry   2                present the initial design of DistFuzz’s feedback, followed by
+                                                                          our optimizations for effectiveness.
+      RequestVote     N2           3 4 5         N2           3 4 5
+      VoteGranted                                                             Based on Observation #1, DistFuzz only uses sequences
+                               2    N3                   1     N3         of network messages (or message sequences) as the feedback.
+                                                                          Specifically, DistFuzz encodes message sequences as a 5-tuple,
+  Fig. 6: Different states output similar network messages.               where each item represents a network message, consisting of
+                                                                          1) a global sequence number recording the order of the events;
+                                                                          2) the type of the event (i.e., send or receive); 3) the sender 4)
+               0      N2                         1       N2               and the receiver ID of the message; and 5) the message content.
+          N1                                N1                            Note that to capture the state difference caused by unreliable
+               1      N3                         0       N3               networking (e.g., delays, message reordering), DistFuzz uses
+                                                                          two message events (a send event and a receive event) to
+      (a) N1 starts election             (b) N1 starts election
+                                                                          describe a message. The tables in Figure 8 show how DistFuzz
+                                                                          encodes the message sequence for Figure 7.
+                0     N1                          1      N1
+                           Symmetry         N3                                Based on Observations #2 and #3, DistFuzz proposes a sys-
+          N2
+                1     N3                          0      N2               tematic symmetry-based pruning technique. DistFuzz departs
+                                                                          from the ad-hoc approach that prunes network messages based
+       (c) N2 starts election      (d) N3 starts election
+                                                                          on their similarities, and thus will not miss interesting states
+    Fig. 7: Symmetry of the states in a distributed system                (e.g., the one in Figure 6).
+                                                                              Motivated by the example in Figure 7, the insight behind
+                                                                          our pruning technique is that the symmetry in the system
+authors for their fuzzing campaigns, and confirms that 91%                state is reflected by the symmetry in the network messages.
+of them are covered by network messages.                                  Furthermore, we leverage two kinds of symmetry in network
+                                                                          messages: (1) order symmetry, where, as shown in parts (a) and
+Finding #2. Similarity-based feedback pruning misses in-
+                                                                          (b), the difference in the order in which N2 or N3 receives the
+teresting states in distributed systems.
+                                                                          message does not lead to new states. and (2) role symmetry,
+    Our second finding is that pruning similar network message            where, as shown in parts (a), (c), (d), whether node N1, N2,
+sequences, as in Mallory, is prone to miss interesting states,            or N3, starts the election does not lead to new states.
+since, for a distributed system, significantly different states               To prune order symmetry, as shown in the middle part of
+may output similar network message sequences.                             Figure 8, DistFuzz replaces the global sequence number with
+    Figure 6 shows a motivating example with Raft. The                    a local sequence number plus node ID. Thus, for two different
+current leader N1 sends an AppendEntries message to follower              nodes, the order they send or receive messages does not result
+N2. Concurrently, due to a network partition, N3 starts the elec-         in different encodings. Lastly, to prune role symmetry, as
+tion and sends a RequestVote message to N2. Subsequently, N3              shown in the right part of the figure, DistFuzz removes all
+sends multiple messages to N2. If N2 receives AppendEntries               the node IDs in its encoding. As a result, the encoding stays
+before RequestVote (as shown in the left part of the figure),             the same regardless of which node starts the election.
+N2 will append the entry. Otherwise, it won’t (as shown in                    A potential drawback of discarding similarity-based prun-
+the right part of the figure). Since the only difference in these         ing is that the feedback is sensitive to an unimportant state in
+two long sequences of network messages is the order between               the network message content (e.g., timestamps). We find that,
+the first two messages, Mallory considers the two sequences               essentially, the key information in the message content is the
+similar, and thus may only explore one of these different states.         type of the message (e.g., if a message is an "elect" or "vote"
+Finding #3. Similarity-based feedback pruning explores                    message). Thus, to avoid being too sensitive, DistFuzz should
+redundant states due to symmetry.                                         only encode the message type in the feedback.
+                                                                              To achieve this, a possible approach is to ask the user
+    Our third finding is that Mallory’s similarity-based pruning          to provide a function that classifies a message based on
+might lead to exploring redundant states. Figure 7 illustrates a          its content, but this is laborious and error-prone. DistFuzz
+motivating example using the election process of the consensus            works around this problem by using the length of messages
+algorithm. To start an election, node N 1 sends a message                 to approximate the message type (as shown in the right part
+to nodes N 2 and N 3. In this example, the overall system                 of Figure 8). The intuition behind this is that different types
+state in all four parts of the figure is essentially the same as          of messages often have different lengths, especially when the
+(or symmetric to) each other. However, in modulo symmetry,                length of various names in the system is fixed. Specifically,
+the sequences of network messages are quite different. As an              DistFuzz sets the name of databases, file, and the keys to a
+example, in the (a) and (c) parts of the figure, all corresponding        fixed length (1 and 3 in our evaluated systems) and does not
+messages have different senders and receivers. Furthermore,               fuzz these names.
+two out of three nodes (i.e., N1 and N2) have different numbers
+of sending and receiving messages. Thus, the similarity-based                 To evaluate the accuracy of the approximation, we analyzed
+pruning approach in Mallory will consider these symmetric                 all the evaluated systems (§V-B) and found that, for each
+states differently.                                                       system, on average, 81% of message types (ranging from
+
+                                                                      7
+                             Global   Type   SID   RID Content             NID Local Type SID RID Content                Local   Type Length
+             0   N2
+        N1                     0      Send    1     2 Elect                 1    0 Send 1      2 Elect                     0     Send 10
+             1   N3            1      Send    1     3 Elect                 1    1 Send 1      3 Elect                     1     Send 10
+                               2      Recv    1     2 Elect                 1    2 Recv 2      1 Vote     Optimize:        2     Recv   4
+       N1 starts election                                      Optimize:
+                               3      Recv    1     3 Elect Global to       1    3 Recv 3      1 Vote Remove ID,           3     Recv   4
+                               4      Send    2     1   Vote                                              Content to
+             4   N2                                              Local      2     0    Recv 1 2 Elect                      0     Recv   10
+                                                                                                            Length
+        N1                     5      Send    3     1   Vote                2     1    Send 2 1 Vote                       1     Send   4
+             5   N3            6      Recv    2     1   Vote                3     0    Recv 1    3   Elect                 0     Recv   10
+       N2 and N3 vote          7      Recv    3     1   Vote                3     1    Send 3    1   Vote                  1     Send    4
+                            Fig. 8: Examples of DistFuzz’s basic feedback encoding and various optimizations.
+
+
+63% to 100%) are of different lengths, and messages with                        to apply input events and logs the relevant information for
+different lengths are of different types. In addition, for the                  feedback and bug detection. Note that the reported evaluation
+message types of the same length, we found that most are                        time in §V (i.e., 48 hours) includes the time of the two
+used to confirm that a node (Node A) receives a request from                    operations DistFuzz moves out of the actual testing.
+another node (Node B). However, the request messages from
+Node B are of different lengths, and thus, the accuracy of our                  E. Discussion
+approximation is not compromised. In summary, our analysis
+shows that the approximation is accurate enough. Section V-D                         This subsection discusses a few more characteristics of
+further evaluates the effectiveness of the feedback mechanism.                  DistFuzz. First, DistFuzz scales to large distributed systems
+                                                                                with many nodes. This is because generating input sequences
+D. Minimizing Testing Overhead                                                  is fast as it is simply mutating and distributing a small seed
+                                                                                file, and the event handler and runtime monitor is per-node,
+    A fuzzer must minimize the runtime testing overhead it                      thereby avoiding a central bottleneck. Second, unlike prior
+incurs since this can significantly improve fuzzing effective-                  distributed system fuzzers, DistFuzz does not need to directly
+ness, as reported by prior work [49], [51]. Unfortunately, prior                deal with asynchronous behaviors and race conditions since it
+distributed system fuzzers suffer from high runtime testing                     does not control the execution or scheduling of each node; it
+overhead. For example, CrashFuzz reports that their techniques                  applies events by intercepting system calls (§IV-B) and uses
+on average increase the execution time of a test case by 307%.                  the record/replay technique (RR) to reproduce bugs offline
+                                                                                (§IV-C). Finally, DistFuzz does not suffer from false positives,
+Fuzzing acceleration with checkpointing. To speed up                            thanks to its use of RR to deterministically reproduce the found
+fuzzing, DistFuzz employs checkpointing and restore tech-                       bugs (§IV-C).
+niques to minimize the initialization time. Specifically, before
+the fuzzing starts, DistFuzz brings up the SUT and takes a
+checkpoint of it by checkpointing the states of each node.                                           IV.     I MPLEMENTATION
+Subsequently, during fuzzing, in each iteration of the fuzzing                      We implemented DistFuzz in C++ with a total of about
+loop, DistFuzz restores from the checkpoint the state of the                    7300 lines of code. DistFuzz leverages strace [57] to intercept
+SUT. The checkpoint of DistFuzz consists of two kinds of                        system calls, CRIU [9] for checkpointing and restoring, and
+state: (1) the state of processes in each node, including their                 RR [42] for deterministic record and replay.
+registers and memory states, as well as in-kernel state (e.g.,
+file descriptors, sockets); (2) the file system state of the                        To simplify deployment for other users, for all the systems
+node, such as configuration files and files that store data                     that we have already deployed DistFuzz on, we provide a
+of a distributed database. To further minimize the overhead,                    docker image. The users can thus easily bootstrap their testing
+DistFuzz stores the checkpoint in memory. This approach                         process. DistFuzz also provides a template generator that
+incurs modest overhead (at a maximum of 700MB of memory                         automatically generates the docker image on the system it
+space in our evaluation).                                                       deploys, to ease testing in practice.
+
+    The initialization process of a distributed system may have                 A. Checkers
+bugs, and thus should be fuzzed. Hence, DistFuzz allows
+a user to provide the probability for DistFuzz to bring up                            DistFuzz uses five types of checkers at present:
+the system under test directly without using the checkpoint,
+thereby fuzzing the initialization process.                                     Memory bug checkers for low-level languages. A memory
+                                                                                bug is caused by programming mistakes involving pointer
+Moving operations outside of the testing. The other mech-                       operations and/or dynamic memory management which lead
+anisms DistFuzz uses to minimize the testing overhead are                       to out-of-bounds memory access and dangling pointer deref-
+based on the general idea of moving as many operations as                       erence. Only distributed systems written in legacy languages
+possible from the performance-critical testing stage, which is                  like C/C++, require memory bug checkers; DistFuzz uses
+already reflected in Figure 2. Specifically, DistFuzz 1) decides                ASan [53] in our evaluation due to its high performance. We
+the input events before the actual testing ( 4 in the figure) and               note that this does not break DistFuzz’s design goal of being
+2) invokes the checker for bug detection after the testing ( 7 ).               black-box. Memory checker is not a part of DistFuzz’s design
+Therefore, during testing, ( 5 in Figure 2), DistFuzz only needs                and DistFuzz can use Valgrind [60] for this purpose as well.
+
+                                                                            8
+Linearizability violation checker for distributed DB. Dis-              TABLE IV: Information about the tested distributed systems.
+tributed databases support linearizability as one option for a           System            Description                       Lang   Version
+consistency model. To detect bugs that violate linearizability           Braft [5]         Raft implementation by Baidu      C++    commit 0c5a59
+guarantees in distributed databases, DistFuzz uses an existing           NuRaft [41]       Raft implementation by eBay       C++    commit 5a7a40
+linearizability checker Knossos [26]. Knossos checks whether             Dqlite [12]       Embeddable distributed DBMS       C      commit 37af7c
+this sequence of requests and responses is possible under                Redis [46]        Distributed key-value Store       C      commit e18c38
+                                                                         RethinkDB [47]    Distributed NoSQL DBMS            C++    v2.4.1
+the linearizability consistency model. DistFuzz generates the
+                                                                         AerospikeDB [1]   Distributed NoSQL DBMS            C      v5.6.0.4
+sequence automatically based on the functions the user imple-            ClickHouse [7]    Distributed DBMS                  C++    v21.9.2.17
+ments or Get, Put and Cas (§III-B).                                      etcd [13]         Distributed key-value store       Go     v2.2.0
+                                                                         ZooKeeper [20]    Distributed coordination system   Java   v3.5.1
+Node crash checker. The node crash checker, by its name,                 HDFS [54]         Distributed file system           Java   v3.2.4
+detects whether a node has crashed. DistFuzz implements a
+simple one by checking whether the corresponding process of
+the distributed system still exists. DistFuzz runs the node crash
+checker after each event in the sequence.                               nisms for users to reproduce the reported bugs. As a result,
+                                                                        several bugs reported by prior work turned out to be false
+Whole system availability checker. The availability checker             positives [34], [35], caused by bugs in the fuzzer. DistFuzz
+validates whether the distributed system is still functional and        enables low-overhead reliable bug reproduction through an
+can respond to client requests. DistFuzz invokes the checker at         existing record and replay tool: RR [42]. To minimize testing
+the end of the testing process, where all the events in an event        overhead, DistFuzz reproduces bugs offline (i.e., only after
+sequence have been applied. The availability checker works              fuzzing campaigns finish). To reproduce a bug, DistFuzz
+by sending a status check command (§III-A) and checks if it             repetitively feeds the SUT with the same bug-triggering input
+returns the expected value within a timeout (2 seconds).                events and timing intervals. If one execution triggers the bug,
+Log checker. Distributed systems often log runtime errors in            all the non-deterministic events are recorded by RR, thereby
+specific files [66], [67]. To detect such errors, we implement          bugs can be reproduced reliably. We have reliably reproduced
+a simple log checker that searches for keywords like “FATAL             all the bugs founded by DistFuzz.
+ERROR” and “BUG” in log files.
+                                                                                                 V.    E VALUATION
+B. Events
+                                                                        A. Experimental Setup
+    As discussed in §III-A, DistFuzz uses events to interact
+with the distributed system. DistFuzz implements an event                   As shown in Table IV, we evaluate DistFuzz with 10
+registry to help users add new events. DistFuzz automatically           open-source and popular distributed systems, written in three
+generates event sequences by mutating events in the registry.           languages: C/C++, Go and Java. Two of them are two industrial
+                                                                        Raft implementations (Braft, NuRaft) and the other eight
+Regular events. Regular events, as described in §III-A,                 are production-level distributed systems. We chose the same
+need user inputs. DistFuzz allows users to define regular               evaluated systems as prior work (i.e., Mallory and CrashFuzz)
+events by implementing C++ classes or shell scripts. SysInit is         to enable a direction comparison. The design of DistFuzz is
+usually a shell script that initializes required environments and       based on the common characteristics of distributed systems
+services like making directories, setting environments variables        (§II-A) and we believe DistFuzz applies to other distributed
+and starting services. Users need to write them according to            systems (such as machine learning systems and network pro-
+target system’s official documents. Get, Put, Cas, CreateDB,            tocol/systems) as well.
+DeleteDB, StatCheck events are similar. They are just simply
+                                                                            Our evaluation machines are equipped with 18-core Intel
+calling the corresponding APIs or client binaries with the given
+                                                                        i9-10980XE processors and 60GB memory. We disable hyper-
+parameters. DistFuzz also provides a template to help users
+                                                                        threading and turboboost in BIOS and use cpupower to set the
+implement them. NodeStart, NodeStop and NodeChange need
+                                                                        CPU frequency to the base one (i.e., 3.00GHz). We follow the
+user to specify how to start, stop and change a node given the
+                                                                        official documents of the evaluated systems for initialization
+index of the node.
+                                                                        and configure the length of the event sequence to 10. We only
+Fault events. NetDup, NetFail, NetDelay, FileFail and FileDe-           enable memory checkers for C/C++ systems and enable other
+lay are implemented by modifying strace to intercept the                checkers for all systems. Following [21], [37], [43], we test
+system calls. NetDup is calling the same system call with               each distributed system on five nodes. Following [25], we
+same parameters twice. NetPart and NetFail are forcing the              repeat each fuzzing experiments for five times with a time
+system call to return error codes. NetDelay is waiting a while          limit of 48 hours for each fuzzing.
+before the network system call. FileFail and FileDelay are
+implemented similarly for file system calls. NetHeal stops              B. Runtime Testing
+NetPart. NodeKill is implemented by killing the corresponding
+process. NodeRestart is implemented by killing the process and              Table V shows the fuzzing experiment results about
+starting a new one.                                                     message sequences and bug detection for the ten tested dis-
+                                                                        tributed systems.
+C. Bug Reproduction
+                                                                        Testing coverage. DistFuzz exploits message sequences as
+   Prior work on distributed system fuzzing (i.e., Jepsen [21],         fuzzing feedback to guide the fuzzing process. To understand
+CrashFuzz [15] and Mallory [37]) do not provide mecha-                  the feedback improvement of DistFuzz, we also run each
+
+                                                                    9
+      TABLE V: Results of fuzzing distributed systems.                                   TABLE VII: Bugs characteristics.
+                          Message Sequences           Bug detection                                 Events      Minimal events
+    System                                                                           System
+                      Fuzzing     Non-fuzzing       Found Confirmed                             Regular Fault 1    2     3    >3
+    Braft              12.1K    1.1K (rand data)      10        5                   Braft          7       9  1    6     2     1
+    NuRaft             11.5K    1.5K (rand data)       2        1                   NuRaft         2       1  0    2     0     0
+    Dqlite             5.3K     1.7K (test suite)      9        5                   Dqlite         9       9  0    2     4     3
+    Redis              13.1K    2.1K (test suite)      4        2                   Redis          4       3  0    2     2     0
+    RethinkDB          11.3K    4.5K (test suite)      9        4                   RethinkDB      8       8  1    7     1     0
+    AerospikeDB        98.5K 55.3K (rand data)         3        3                   AerospikeDB    1       3  0    3     0     0
+    ClickHouse         3.6K     1.5K (test suite)      2        1                   ClickHouse     1       1  0    1     1     0
+    etcd               14.4K    2.2K (test suite)      2        1                   etcd           2       2  0    1     0     1
+    ZooKeeper          17.6K    7.2K (test suite)      8        5                   ZooKeeper      5       8  0    0     3     5
+    HDFS               1.5K     1.3K (rand data)       3        1                   HDFS           3       3  0    0     1     2
+    Total             188.9K         78.4K            52       28                   %            81%     88% 4% 46% 27% 23%
+                                                                                    Total         42       47 2   24    14    12
+
+              TABLE VI: Bugs found by checkers.
+             System
+                                   Checkers                                Root causes of the found bugs. We check the reports and
+                         ASan Linear Crash Avail Log                       source code of the 44 found bugs to analyze their root causes:
+             Braft         2    0       2   3     3
+             NuRaft        0    0       1   1     0                            Memory bugs. Among the 12 memory bugs found by ASan,
+             Dqlite        4    0       5   0     0                        3 are memory leaks, 6 are buffer-overflow issues (one example
+             Redis         1    0       3   0     0
+             RethinkDB     4    0       2   1     2
+                                                                           shown in Figure 9(a)), 1 is a null-pointer dereferences, 1 is a
+             AerospikeDB   1    1       1   0     0                        use-after-free, and 1 is a bad-free issue.
+             ClickHouse    0    0       2   0     0
+             etcd          -    0       1   1     0
+                                                                               Linearizability violation. This violation is caused by a stale
+             ZooKeeper     -    0       5   3     0                        read [8] in AerospikeDB. The developers admitted that this
+             HDFS          -    0       2   0     1                        violation is real in the community version that we tested, and
+             Total        12    1      24   9     6                        it can be eliminated in the enterprise version.
+                                                                               Node-crash bugs. Among the 24 node-crash bugs, 13 are
+                                                                           caused by assertion failures. As for these failed assertions, the
+distributed system for 48 hours by executing its official test             developers mistakenly assume the related failures never hap-
+suites; if it has no test suite, we generate random client requests        pen. However, the assumptions about the 13 bugs are wrong.
+for 48 hours without feedback. Compared to non-fuzzing                     10 node-crash bugs are caused by unhandled exceptions, which
+testing, DistFuzz in total finds 2.11x more message sequences              are neglected by the developers. 1 node-crash bug is caused by
+in the SUTs, due to the novel techniques used by DistFuzz.                 the wrong calculation of the snapshot index when a snapshot
+                                                                           is loaded at the initialization phase in Dqlite (as shown in
+Bug detection. DistFuzz in total finds 52 real bugs in the                 Figure 9(b)).
+10 distributed systems. We have reported these bugs to the
+related developers, and 28 of them have been confirmed.                        Availability bugs. Among the 9 availability bugs, 6 are
+We are still waiting for responses for the remaining bugs.                 caused by incorrect or missing recovery processes of node ex-
+According to the developers’ feedback, 20 of the 28 confirmed              ceptions. For example, an availability bug found in ZooKeeper
+bugs are previously unknown. Among the 28 confirmed bugs,                  is incorrect handling of network failures (as shown in Fig-
+13 have been fixed by related developers, and 4 new CVEs                   ure 9(c)). 3 are caused by incorrect handling of special client
+have been assigned. The remaining 15 bugs are not fixed,                   requests, causing the distributed system to malfunction after a
+as the developers have not found proper ways to fix them                   test of providing these client requests.
+correctly in a short time, indicating the difficulty of bug fixing             Error-log bugs. The 6 error-log bugs are caused by missing
+in distributed systems.                                                    exception handling. Indeed, the developers know that related
+                                                                           exceptions can occur but do not know how to handle them
+Bug-finding process. We analyze how DistFuzz finds these                   correctly, so only error logs are printed when these exceptions
+52 bugs, and show the results in Table VI. 12 memory bugs are              occur. Although these error-log bugs do not cause obvious
+found by ASan, and 40 semantic bugs are found by our non-                  problems in our tests, we believe that they may cause practical
+memory checkers. Specifically, only 1 linearizability violation            issues when the distributed system runs for a longer time.
+is found by our linearizability checker, indicating distributed
+systems pay significant attention to data consistency; 24 node-            Event types of bugs . To understand the event types responsi-
+crash bugs are found by our crash checker, and these bugs                  ble for bugs, we analyzed events needed for triggering each bug
+can cause partial failures in distributed systems; 9 availability          as shown in the columns “Regular” and “Fault” in Table VII.
+bugs and 6 error-log bugs are found by our availability checker            SysInit is removed during analysis as it is needed for all bugs.
+and log checker, respectively. These 52 bugs are found, as                 Many bugs need multiple events, so the total number is larger
+DistFuzz can cover many infrequent message sequences using                 than the number of found bugs. The result shows that most of
+our techniques. To clearly understand this reason, we run each             the bugs are triggered by both regular and fault events. In the
+distributed system for 48 hours by running its test suites or              table, 81% of the bugs need regular events, and 88% need fault
+providing random client requests without fuzzing, and the five             events. The result indicates that both regular and fault events
+kinds of checkers do not find any bugs during testing.                     are important for triggering bugs in distributed systems.
+
+                                                                      10
+Minimal event sequence for triggering bugs We manually                     C. Comparison to Existing Frameworks
+analyzed the event sequences of triggering the bugs, referring
+to [52]. The results are shown in the column “Minimal events”                  We experimentally compare DistFuzz to four state-of-the-
+in Table VII. 34 of the 42 bugs can be triggered by two or three           art distributed-system testing frameworks Jepsen [21], Mal-
+events, and most of these need to be triggered by both regular             lory [37], CrashFuzz [15] and Namazu [40].
+and fault events. This finding coheres with bug studies [65]                   We evaluate each framework on all the target systems
+that find most of the reported distributed-system bugs can be              it can support. We ran DistFuzz and Jepsen on all target
+triggered by two or three events.                                          systems. Mallory only supports C/C++ and Rust program, so
+                                                                           we evaluate it with Braft, NuRaft, Dqlite, Redis, RethinkDB,
+Security impact of the found bugs Certain memory bugs
+                                                                           AerospikeDB ClickHouse. The annotations of Braft, Dqlite,
+DistFuzz finds may cause data leakage and code execution
+                                                                           and Redis are from the authors of Mallory; we annotate other
+that can be exploited by attackers. Linearizability violations
+                                                                           target systems with our best efforts following the style of the
+can lead to data inconsistency and data loss. Node-crash bugs
+                                                                           Mallory author. CrashFuzz only supports Java program and we
+cause partial failures which, although tolerable by distributed
+                                                                           evaluate it on ZooKeeper and HDFS. While Namazu supports
+systems, degrade overall system performance. Finally, avail-
+                                                                           Go and Java program, it has not been kept up-to-date; its last
+ability bugs, once being exploited, renders the system unable
+                                                                           commit is six years ago, and as a result, despite our best efforts,
+to respond to client requests for certain amount of time (2
+                                                                           we can only evaluate it on etcd and Zookeeper. We repeat each
+seconds). Therefore, both node-crash bugs and availability
+                                                                           fuzzing experiment for five times.
+bugs are vulnerable to DoS attacks.
+   The found bugs currently get assigned 4 CVEs (CVE-2023-                 Message sequences. Figure 10 plots communication se-
+50575 and CVE-2023-50576 for Braft, CVE-2023-50577 for                     quences covered by DistFuzz and the 4 frameworks. In the
+AerospikeDB and CVE-2024-22937 for RethinkDB) that may                     figure, DistFuzz covers more message sequences than all other
+have catastrophic security impacts. These 4 CVEs are caused                frameworks. Jepsen and Namazu only generate inputs ran-
+by memory bugs, and they can be triggered easily by attackers.             domly. Mallory generates random regular events and injects
+These CVEs are applied and assigned via MITRE [39] and                     fault events based on its feedback. In contrast, DistFuzz
+have been reported to the developers.                                      generates test cases from multiple dimensions with more
+                                                                           effective program feedback of message sequence, so DistFuzz
+   In the following, we provide three case studies to illustrate           can generate more effective test cases to improve message
+bugs that were exposed by DistFuzz. Figure 9 shows these                   sequence coverage.
+bugs, and they have been confirmed by related developers.
+The figure also shows the event sequences for the bugs.                    Found bugs. Figure 11 shows the numbers of bugs found by
+                                                                           DistFuzz and the four frameworks. Jepsen, Mallory, CrashFuzz
+Case study: Memory bug in Redis. In Figure 9(a), when                      and Namazu find 12, 16, 2 and 2 bugs, respectively. Specifi-
+the function parseMovedReply parses a client request that                  cally, Jepsen and Mallory, Jepsen and Namazu find common
+contains an empty space, the pointer variable p points to the              bugs. Thus, these testing frameworks in total found 19 unique
+location of this space, but the function passes the pointer                bugs. Among these 19 bugs, there are two Dqlite bugs found by
+p+1 with the length of p to the function NodeAddrParse,                    Mallory that are missed by our framework. However, after our
+which causes a buffer-overflow issue. To fix this bug, we have             investigation, we found that these two bugs are false positives,
+submitted a patch to move the pointer past the space, which                as they are caused by the bugs in the testing framework
+matches the pointer and its length.                                        itself [34], [35]. All remaining bugs are found by DistFuzz,
+                                                                           and it also finds 35 bugs missed by the four frameworks, due
+Case study: Node-crash bug in Dqlite. In Figure 9(b), during
+                                                                           to covering more message sequences.
+the start process of a node, it attempts to load an existing
+snapshot and also restores the variable start_index in
+the function uvLoadSnapshotAndEntries. When it is                          D. The Effectiveness of Two Conceptual Contributions
+started for the first time and there is no snapshot, the node start
+                                                                               To understand the benefits of the two conceptual contri-
+is still successful. However, after a client request is provided
+                                                                           butions, we run DistFuzz without 1) mutating regular events
+and a snapshot is created, if the node is stopped forcibly, it
+                                                                           and timing interval (DistFuzz-T), and 2) pruning message
+cannot be restarted. Indeed, at that time, the start_index is
+                                                                           sequences (DistFuzz-S), to understand the benefits of these
+mistakenly assigned to 1, which makes the following variable
+                                                                           techniques. We also run DistFuzz without both techniques
+last_index less than (*snapshot)->index, causing
+                                                                           (DistFuzz-WF) as a baseline.
+the snapshot loading to fail. To fix this bug, the developers
+have submitted a patch to correctly calculate start_index.                     We ran a 48-hour experiment, and repeat each experiment
+                                                                           for five times. We analyzed the time of finding bugs in the
+Case study: Availability bug in Zookeeper. As shown in                     2 distributed systems as listed in Table VIII. We find that
+Figure 9(c), when two NetFails happened on a node, the                     the overall bug-finding time is increased for DistFuzz-T and
+zkServer variable is set to a non-running state in the func-               DistFuzz-S by 338.39 and 249.67 hours, and the average bug-
+tion receiveMessage, that will cause the zk.isRunning                      finding time is increased by 18.25 and 13.87 hours, respec-
+to return false. In such a case, the node cannot process the               tively. 2 and 3 bugs are missed by DistFuzz-T and DistFuzz-S,
+client request Stats check that should be processed successfully           indicating the importance of these techniques in bug detection.
+to report the node status. To fix this bug, the developers have
+submitted a patch to add a specific check for the non-running                 Compared to the baseline, we found that by using our two
+state of zkServer variable before processing Stats check.                  conceptual contributions, the bug-finding time is reduced by
+
+                                                                      11
+ FILE: Redis/src/common.c                                         FILE: C-Raft/src/uv.c                                                                                 FILE: Zookeeper/src/.../NettyServerCnxn.java
+  bool parseMovedReply(...) {                                       static int uvLoadSnapshotAndEntries(...) {                                                            private void receiveMessage(...) {
+    ......                                                            ......                                                                                               ......
+    /* -MOVED 0 1.1.1.1:1 or -MOVED 1.1.1.1:1 */                      if (segments[0].is_open) {                                                                           Zookeeper zks = this.zkServer;
+    if (strlen(str) < 15 || strncmp(str, ...) != 0)               -      *start_index = 1;
+        return false;                                             +      *start_index = (*snapshot)->index + 1;                                                         -   if (zks == null || !zk.isRunning()) {
+                                                                      }                                                                                                 -      throw new IOException("ZK down");
+    /* Handle current or cluster-style                                ......                                                                                            -   }
+     * -MOVED replies. */                                             last_index = *start_index + *n - 1;                                                               + if (zks == null) {
+    const char *p = strrchr(str, ' ');                                if (*snapshot != NULL && last_index < (*snapshot)->index) {                                       +        throw new IOException("ZK down");
+ - return NodeAddrParse(p + 1, strlen(p), addr);                          rv = RAFT_CORRUPT;                                                                            + } else if (!zks.isRunning()) {
+ + /* Move the pointer past the space. */                                 goto err;                                                                                     +        LOG.debug("Zks not running but keep processing");
+ + p++;                                                               }                                                                                                 + }
+ + return NodeAddrParse(p, strlen(p), addr);                          ......                                                                                                ......
+  }                                                                 }                                                                                                     }
+                                                 Buffer                                                                                                Node             Node       NetFail on     NetFail on    Stats         No
+     NodeStart              Put                 overflow!          NodeStart             Put                   NodeKill                             restart fail!       Start       Node 0         Node 0       check      response!
+
+             (a) Memory bug in Redis                                              (b) Node-crash bug in Dqlite                                                                    (c) Availability bug in Zookeeper
+                                               Fig. 9: Example bugs found by DistFuzz in Redis, Dqlite and Zookeeper.
+                        Braft                                     NuRaft                                       Dqlite                                                           Redis                             RethinkDB
+                                                                                         6K                                                  0.4K                                         0.03K
+ 10K                               0.5K        10K                               0.5K                                                                                                                100K                          2.2K
+                                                                                         4K                                                  1.4K           10K
+                                                                                                                                                                                                                                   0.9K
+                                                                                 0.1K                                                        0.4K                                                     50K
+     5K                            0.2K         5K                                       2K                                                                   5K                          0.9K
+                                                                                 0.6K                                                                                                                                              1.9K
+                                                                                                                                                                                          0.01K
+       0                           0.2K              0                                    0                                                                         0                                      0
+            0 12 24 36 48                                0 12 24 36 48                             0 12 24 36 48                                                        0 12 24 36 48                          0 12 24 36 48
+                AerospikeDB                                  ClickHouse                                          etcd                                                       ZooKeeper                                  HDFS
+ 90K                                                                                                                                                                                      1.2K       1.5K
+                                   5.6K        4K                            0.6K        12K                                                  0.4K                                                                                 0.1K
+                                               3K                                                                                                           15K                                        1K
+ 60K                               9.3K                                                   8K                                                                10K                            0.1K
+                                               2K                            0.2K                                                             0.7K                                                                                 0.1K
+ 30K                               14K                                                    4K                                                                 5K                            2.2K      0.5K
+                                               1K                            0.1K
+                                                                                                                                              0.1K                                        0.01K                                    0.1K
+   0                                            0                                          0                                                                  0                                           0
+            0 12 24 36 48                            0 12 24 36 48                                 0 12 24 36 48      0 12 24 36 48                                                                            0 12 24 36 48
+                                                       DistFuzz   Jepsen                             Mallory  CrashFuzz   Namazu
+Fig. 10: Comparison of the covered message sequences. The line represents the median value, while the shaded area shows the
+minimum and maximum ranges observed across five experiments. The number at the end of each line is the margin of error at
+the 95% confidence level.
+
+      10
+                                                 9                                        9                                                                                                                                15
+10
+                                                                                                                      Throughput (tests/h)
+
+
+
+
+                                                                                                                                             600
+5                                                             4        4                                   4
+                   3                                                                               3
+
+
+
+
+                                                                                                                                                                                                                                Found bugs
+            2              2                             2                   2     2                                                                                                                                       10
+                                   1       1
+                                                                                                                                             400
+0
+           Braft            NuRaft                Dqlite                   Redis         RethinkDB
+                                                                                                                                                                                                                           5
+                                                                                                                                             200
+10                                                                     8
+
+5      3                                                                                       3                                                0                                                                          0
+                               2                 2                                                                                                        0/0       100/10 200/10 200/30 200/50 300/10 500/10
+            1      1                   1                 1    1              1     1                   1
+0
+ AerospikeDB ClickHouse                              etcd            ZooKeeepr             HDFS                     Fig. 12: Fuzzing throughput (line) and the number of founded
+                                                                                                                    bugs (bar) in Braft with different maximum timing intervals
+           DistFuzz         Jepsen             Mallory            CrashFuzz             Namazu                      and granularity. The shaded area shows the minimum and
+                       Fig. 11: Comparison of the found bugs.                                                       maximum ranges across five experiments.
+
+
+                                                                                                                    E. Impact of Timing Intervals
+                                                                                                                        Figure 12 shows the impact of different timing values with
+299.64 hours in total and 16.6 hours on average than running                                                        Braft. We find that the throughput only decreases from 502 to
+without them (DistFuzz-WF). 5 bugs are missed by DistFuzz-                                                          486 (tests per hour) when the maximum timing interval is less
+WF, indicating the importance of these techniques in bug                                                            than 200ms, but decrease from 486 to 386 when the timing
+detection. The min time for bug Zookeeper-3 is a bit longer                                                         interval is larger. The granularity does not affect the throughput
+with DistFuzz as it is a concurrent bug that has much non-                                                          significantly, but it affects the found bugs. We find that 200/10
+determinism to trigger during early testing.                                                                        is the best choice, as it can find more bugs than others.
+
+                                                                                                               12
+TABLE VIII: The median bug finding time in hours for Braft                                   Model checking. Compared to DistFuzz, distributed systems
+and Zookeeper. TO means the bug is not detected in 48 hours.                                 model checkers [29], [32], [64] are for different purposes
+The minimum, maximum and margin of error of bug-finding                                      and thus are orthogonal to DistFuzz. Fundamentally, model
+time across five runs are shown in parentheses. Total is the                                 checkers aim to validate that, given a set of fixed testing
+total of average bug-finding time for all bugs.                                              workloads, all the states that the SUT can reach are valid. As a
+Bug     DistFuzz            DistFuzz-T          DistFuzz-S          DistFuzz-WF              result, model checkers exhaustively enumerate all the reachable
+B-1     0.16(.16,.16,0)     0.16(.15,.18,.02)   0.18(.17,.18,.01)   0.16(.16,.16,0)          states with the given testing workloads. In contrast, DistFuzz
+B-2     8(5.8,13,4.5)       28(27,TO,13)        TO(TO,TO,0)         TO(TO,TO,0)              aims to explore different workloads and faults to expose hidden
+B-3     1.1(.5,1.5,.6)      TO(23,TO,16)        9(4.5,12,4.7)       TO(TO,TO,0)              bugs. DistFuzz does not aim to systematically explore all
+B-4     1.7(1.7,2,.21)      29(12,TO,21)        32(16,TO,18)        32(4.3,TO,25)
+B-5     2.1(2,4.1,1.4)      TO(TO,TO,0)         TO(TO,TO,0)         TO(TO,TO,0)
+                                                                                             possible states but instead relies on feedback mechanisms to
+B-6     3.3(2.5,4.1,.95)    4.3(3.1,4.6,.94)    22(17,26,4.7)       25(3.3,27,15)            prioritize exploring interesting states.
+B-7     1(.8,1.3,.3)        1.4(.8,2.1,.77)     23(16,TO,19)        3.6(2,5.5,2.1)
+B-8     2.7(2.1,29,18)      TO(TO,TO,0)         TO(TO,TO,0)         TO(TO,TO,0)                  In addition, due to the need to (i) exhaustively enumerate all
+B-9     0.06(.06,.06,0)     0.06(.06,.08,.01)   0.11(.1,.14,.02)    3.1(.4,4.1,2.2)          reachable states, model checkers further differ from DistFuzz
+B-10    0.02(.02,.02,0)     0.02(.02,.03,.01)   0.02(.02,.02,0)     0.02(.02,.05,.02)        in the following aspects. First, model checkers require access
+ZK-1    0.52(.42,.83,.25)   2.6(2.1,3.5,.83)    1.1(.9,2.3,.9)      0.7(.53,1.1,.35)         to source code [64] and/or user inputs [32] while DistFuzz
+ZK-2    0.53(.44,.6,.1)     0.9(.86,1.4,.38)    1.3(.9,6.1,3.4)     11(2.7,28,15)            does not. This is because, for exhaustive exploration, model
+ZK-3    8.8(7.4,8.9,.98)    8.8(8.3,1.1,1.2)    9.3(4.5,31,17)      25(6.7,26,13)
+                                                                                             checkers need extra insights on the SUT such as the code
+ZK-4    0.5(.43,1.2,.5)     TO(42,TO,3.9)       13.1(3.5,14,6.9)    TO(TO,TO,0)
+ZK-5    0.02(.02,.02,0)     0.02(.02,.02,0)     0.07(.03,.1,.04)    0.02(.02,.02,0)          semantics and/or users’ domain knowledge. For example,
+ZK-6    0.02(.02,.03,.01)   0.02(.02,.02,0)     0.03(.03,.03,0)     0.09(.02,.13,.07)        to ensure that the timeout event leads to different states,
+ZK-7    0.22(.22,.47,.17)   TO(37,TO,7.5)       22(1.2,41,24)       4.1(.33,7.3,4.2)         Modist [64] employs specific code static analysis to identify
+ZK-8    4.3(4.1,5.77,1.1)   TO(31,TO,12)        6.8(5.7,31,17)      14(5.1,42,23)            the timeout handlers. Second, model checkers have a much
+Total   35.05               363.44              284.72              359.69                   higher testing overhead compared to DistFuzz. This is because,
+Bugs    18                  16                  15                  13                       for exhaustive exploration, model checkers need to ensure
+                                                                                             the SUT executes deterministically, by, e.g., controlling the
+                                                                                             thread scheduling to explore all possible interleavings [64]
+                            VI.     L IMITATIONS                                             caused by multithreading. Such mechanisms often significantly
+                                                                                             increase the testing overhead. DistFuzz is free of this kind of
+    Compared to other distributed system fuzzers, DistFuzz has                               overhead and still maintains the advantages of deterministically
+increased the testing input space by including regular events                                reproducing reported bugs (§IV-C).
+and timing intervals among events. Our evaluation shows that,
+for all systems we evaluate, the increase in the testing input                                   DistFuzz’s approach on leveraging symmetry to prune the
+space significantly improves rather than reduces DistFuzz’s                                  essentially same message (§III-C) is related to FlyMC [32]
+effectiveness (§V-B). This is largely due to DistFuzz’s effective                            model checker. Both of them perform reduction based on
+feedback approach. However, if certain bugs can be triggered                                 partial orders. The difference is that FlyMC applies symmetry
+by simple regular events and/or are not timing-dependent, it                                 to prune redundant states and FlyMC relies on user inputs
+may take DistFuzz a longer time to expose them.                                              to define and identify which part of the states are significant.
+                                                                                             DistFuzz applies symmetry to prune redundant message se-
+    As demonstrated in §V-D, our feedback approach signifi-                                  quences without requiring user inputs.
+cantly improves the fuzzing performance in general. However,
+we note that, in some rare cases, our feedback approach may                                  Fuzzing. Fuzzing is a promising testing technique and has
+identify two potentially different message sequences as the                                  been widely used in testing system software. Prior works
+same. Specifically, suppose a distributed system’s message                                   apply fuzzing to complex system software, including operating
+lengths are always the same, then discarding the message                                     systems [50], [56], [58], fundamental libraries [2], [6], [19],
+contents will negatively affect fuzzing performance. Similarly,                              hypervisors [18], [48], filesystems [24], [63] and network
+if all nodes in a system have different roles, the node IDs                                  programs [33], [45], [51], [55], [70]. These approaches have
+are thus important information and should not be discarded.                                  produced good results in bug detection. Some of them also
+However, we believe that few real-world distributed systems                                  use techniques like multi-dimension inputs [6], [58], [70] and
+confirm the above two characteristics.                                                       checkpointing [51], [56] to improve the fuzzing efficiency.
+                                                                                             DistFuzz, referring to existing model checking and testing
+    We note that the limitations in DistFuzz are fundamentally                               methods [21], [28], [37], [52], apply fuzzing to distributed
+due to the constraints in blackbox fuzzing. Due to this con-                                 systems and overcome the shortcomings of existing fuzzing
+straint, to increase effectiveness, DistFuzz makes assumptions                               and testing tools for distributed systems by mutating regular
+that apply to most distributed systems. Considering the huge                                 events and timing interval, and leveraging symmetry to prune
+improvement in general efficiency, such limitations do not                                   redundant message sequences.
+undermine the value of techniques.
+                                                                                                                  VIII.   C ONCLUSION
+                        VII.       R ELATED W ORK
+                                                                                                 This paper presents DistFuzz, the first feedback-driven
+   The most relevant state-of-the-art work (i.e., Jepsen [21],                               black-box fuzzing framework for distributed systems based on
+Mallory [37], and CrashFuzz [15]) has been qualitatively (§I                                 our findings on the nature of real-world distributed systems
+and §III) and quantitatively compared (§V-C) across the paper.                               and defects of prior fuzzers. DistFuzz proposes a multi-
+This section discusses other related work.                                                   dimensional input space by incorporating regular events and
+
+                                                                                        13
+relative timing among events, and utilizes sequences of net-                 --security-opt \
+work messages with symmetry-based pruning as feedback.                       seccomp=unconfined \
+We deploy DistFuzz to test 10 popular distributed systems.                   zouyonghao/distfuzz:artifact
+DistFuzz finds 52 real bugs, and 28 have been confirmed by
+the developers. 20 of the 28 confirmed bugs are previously                 Alternatively, you can build the Docker image from the
+unknown, and 4 have been assigned with CVEs.                           source code. This method requires first cloning the repository
+                                                                       via git clone and then building the Docker image via
+                   IX.    ACKNOWLEDGEMENT                              docker build in the cloned directory. Running without
+                                                                       Docker is also possible, but it requires installing all the de-
+   We want to thank the anonymous reviewers for their sug-             pendencies manually which is described in the INSTALL.md
+gestions to improve the final version of this paper. This work         file in the repository.
+was supported by the Fundamental Research Funds for the
+Central Universities. Jia-Ju Bai is the corresponding author.
+                                                                       C. Experiment Workflow
+                           A PPENDIX A                                     The artifacts contain three experiments. The first is using
+                       A RTIFACT A PPENDIX                             DistFuzz to fuzz the evaluated systems described in the paper.
+                                                                       The second is reproducing the bugs found by DistFuzz for
+    This Appendix contains a complete description on the
+                                                                       etcd and ZooKeeper. The third is testing the checkpoint time
+artifacts presented in our paper, and detailed instructions on
+                                                                       of different systems. The proposed workflow runs the three
+how to access, install, and evaluate them.
+                                                                       experiments sequentially. The repository contains scripts that
+                                                                       can be used to automate all experiments. This Appendix only
+A. Description & Requirements                                          illustrates the commands to run at each step, while extensive
+    This section provides all the information necessary to             documentation is provided in the repository.
+recreate the experimental setup to run our artifacts. A recent
+X86 desktop or server machine should be sufficient to run the          D. Major Claims
+experiments.
+                                                                         • (C1): DistFuzz can fuzz and find bugs in distributed
+   1) How to access: The artifact is available on                          systems with multi-dimensional inputs and symmetry-
+Github 2 . We recommend using the latest Docker image                      based feedback prune.
+zouyonghao/distfuzz:artifact as described in the                         • (C2): DistFuzz’s rr can reproduce bugs in distributed
+README.md file. A Docker image for offline use is also                     systems.
+available on Zenodo 3 .                                                  • (C3): DistFuzz’s checkpointing mechanism can reduce the
+                                                                           boot time of distributed systems.
+    2) Hardware dependencies: We have tested DistFuzz on
+Intel i9-10980XE and Intel(R) Xeon(R) Gold 6248R with
+60GB memory. No special settings are needed. A recent                  E. Evaluation
+commodity PC build should be able to run DistFuzz and its                  1) Experiment (E1): [Fuzzing distributed systems] [30
+reproduction feature. We recommend using a similar Intel CPU           human-minutes + 24 compute-hour]: fuzzing the systems eval-
+series with our tested CPUs. DistFuzz does not require too             uated in the paper using DistFuzz. For each system, there is
+much memory, but to ensure a good performance, a machine               a folder called ${SYSTEM}_test, e.g., braft_test. The
+with more than 16GB of memory is recommended.                          experiment should run in the folder.
+   3) Software dependencies: A recent Linux operating sys-                 [Preparation] In a new Docker container started with
+tem is required. Our artifacts have been tested on Ubuntu              the provided command, go to the ${SYSTEM}_test/bin
+20.04 LTS (Focal). Docker is required to run the artifact. We          folder.
+recommend using the latest Docker version (27.0.3).
+                                                                          [Execution] Execute the script fuzz.sh in the folder.
+   4) Benchmarks: None.
+                                                                           [Results] The script will start the fuzzing process. The out-
+B. Artifact Installation & Configuration                               put will show that DistFuzz is starting the target system nodes
+                                                                       and sending events to them. After fuzzing for a while, you can
+   We suggest to run the experiments using the Docker image            check test cases that have errors under test_cases. Fuzzing
+we provide. Many capabilities are required to run the artifact,        status is in the file output/fuzzer1/plot-curve and
+so we suggest running the Docker image with the following              the column starting with bc is the coverage.
+command.
+                                                                          2) Experiment (E2): [Reproducing bugs using DistFuzz’s
+docker run -it --network none \                                        rr] [30 human-minutes + 2 compute-hour]: reproducing the
+    --cap-add=NET_ADMIN \                                              bugs found by DistFuzz in etcd and ZooKeeper using Dis-
+    --device=/dev/net/tun \                                            tFuzz’s rr. We provide example bug reproduction Docker
+    --cap-add=SYS_PTRACE \                                             images we used during our communication with developers.
+    --cap-add=SYS_NICE \                                               Please note that rr has requirements for CPU, so it is better to
+    --cap-add=IPC_LOCK \                                               use a machine described in the hardware dependencies section.
+ 2 https://github.com/zouyonghao/DistFuzz                                  [Preparation] Pull all three Docker images for the bug
+ 3 https://doi.org/10.5281/zenodo.14098389                             reproduction. The images are zouyonghao/etcd-13493
+
+                                                                  14
+and zouyonghao/etcd-10166 for 2 etcd bugs in the                                       [2]   “AFL: American Fuzzy Lop,” 2020, https://github.com/google/AFL.
+paper, and zouyonghao/distfuzz:zookeeper-rr for                                        [3]   “Amazon Web Services outage causes issues at Disney, Netflix, and
+8 ZooKeeper bugs. rr requires hardware and software settings                                 Coinbase,” 2021, https://www.cnbc.com/2021/12/07/amazon-web-servi
+to run, including precise hardware performance counters and                                  ces-outage-causes-issues-at-disney-netflix-coinbase.html.
+kernel setting perf_event_paranoid = 1. Please check                                   [4]   “Summary of the AWS service event in the US East Region,” 2024,
+                                                                                             https://aws.amazon.com/message/67457/.
+these settings before running the experiments.
+                                                                                       [5]   “An industrial-grade C++ implementation of Raft consensus algorithm,”
+   [Execution] Run the following commands to reproduce the                                   2021, https://github.com/baidu/braft.
+bugs.                                                                                  [6]   P. Chen, Y. Xie, Y. Lyu, Y. Wang, and H. Chen, “Hopper: Interpre-
+                                                                                             tative fuzzing for libraries,” in Proceedings of the 30th International
+       # For the first etcd bug                                                              Conference on Computer and Communications Security (CCS), 2023,
+       docker run -it --rm \                                                                 pp. 1600–1614.
+           --cap-add=SYS_PTRACE \                                                      [7]   “ClickHouse: an open-source, high performance columnar OLAP
+           --security-opt \                                                                  database management system for real-time analytics using SQL.” 2022,
+                                                                                             https://clickhouse.com/.
+           seccomp=unconfined \
+                                                                                       [8]   “Consistency model used in distributed systems,” 2024, https://en.wik
+           zouyonghao/etcd-13493 \                                                           ipedia.org/wiki/Consistency_model.
+           rr replay -a \
+                                                                                       [9]   “CRIU, a project of checkpoint/restore functionality for Linux,” 2022,
+           /root/test_cases/3169/rr_rec_1_0                                                  https://criu.org.
+                                                                                      [10]   G. DeCandia, D. Hastorun, M. Jampani, G. Kakulapati, A. Lakshman,
+       # For the second etcd bug                                                             A. Pilchin, S. Sivasubramanian, P. Vosshall, and W. Vogels, “Dynamo:
+       docker run -it --rm \                                                                 Amazon’s highly available key-value store,” ACM SIGOPS Operating
+           --cap-add=SYS_PTRACE \                                                            Systems Review, vol. 41, no. 6, pp. 205–220, 2007.
+           --security-opt \                                                           [11]   Z. Y. Ding and C. Le Goues, “An empirical study of OSS-Fuzz bugs,” in
+           seccomp=unconfined \                                                              Proceedings of the 18th International Conference on Mining Software
+                                                                                             Repositories (MSR), 2021, pp. 131–142.
+           zouyonghao/etcd-10166 \
+                                                                                      [12]   “Dqlite: an embeddable, replicated and fault-tolerant sql engine.” dqli
+           rr replay -a \                                                                    te.io.
+           /root/10166/rr_rec_2_0
+                                                                                      [13]   “etcd: a distributed, reliable key-value store for the most critical data
+                                                                                             of a distributed system,” 2022, https://etcd.io/.
+       # For ZooKeeper bugs (8 bugs)                                                  [14]   A. Fioraldi, D. Maier, H. Eißfeldt, and M. Heuse, “AFL++: combining
+       docker run -it --rm \                                                                 incremental steps of fuzzing research,” in Proceedings of the 14th
+           --cap-add=SYS_PTRACE \                                                            USENIX Workshop on Offensive Technologies (WOOT), 2020.
+           --security-opt \                                                           [15]   Y. Gao, W. Dou, D. Wang, W. Feng, J. Wei, H. Zhong, and T. Huang,
+           seccomp=unconfined \                                                              “Coverage guided fault injection for cloud systems,” in Proceedings
+           zouyonghao/distfuzz:zookeeper-rr \                                                of the 45th International Conference on Software Engineering (ICSE),
+                                                                                             2023, pp. 2211–2223.
+           rr replay -a \
+                                                                                      [16]   S. Ghemawat, H. Gobioff, and S.-T. Leung, “The Google file system,”
+           /home/zyh/zookeeper-[1-8]                                                         in Proceedings of the 9th ACM Symposium on Operating Systems
+                                                                                             Principles (SOSP 03), 2003, pp. 29–43.
+    [Results] The commands will start a process running a                             [17]   C. Guo, L. Yuan, D. Xiang, Y. Dang, R. Huang, D. A. Maltz, Z. Liu,
+system’s node. The output will show that the system is starting                              V. Wang, B. Pang, H. Chen, Z. Lin, and V. Kurien, “Pingmesh: A large-
+and replaying the recorded events. After replaying, the system                               scale system for data center network latency measurement and analysis,”
+                                                                                             in Proceedings of the 2015 International Conference on Special Interest
+will crash or output error logs. The bug is the same as the one                              Group on Data Communication (SIGCOMM), 2015, pp. 139–152.
+found by DistFuzz.                                                                    [18]   A. Henderson, H. Yin, G. Jin, H. Han, and H. Deng, “VDF: targeted
+    3) Experiment (E3): [Checkpointing] [30 human-minutes                                    evolutionary fuzz testing of virtual devices,” in Proceedings of the 20th
+                                                                                             International Symposium on Recent Advances in Intrusion Detection
++ 2 compute-hour]: comparing the boot time of systems with                                   (RAID), 2017, p. 23.
+no checkpointing, checkpointing and checkpointing + tmpfs.                            [19]   “Honggfuzz: a security oriented, feedback-driven, evolutionary, easy-
+For each system’s ${SYSTEM}_test/bin, there is a folder                                      to-use fuzzer with interesting analysis options.” 2023, https://github.c
+called experiments/boot_time_test. The experiment                                            om/google/honggfuzz.
+should run in the folder.                                                             [20]   P. Hunt, M. Konar, F. P. Junqueira, and B. Reed, “ZooKeeper: wait-free
+                                                                                             coordination for Internet-scale systems,” in Proceedings of the 2010
+    [Preparation] In a new Docker container started with                                     USENIX Annual Technical Conference, 2010, p. 14.
+the provided command, go to the ${SYSTEM}_test/bin/                                   [21]   “Jepsen: a framework for distributed systems verification, with fault
+experiments/boot_time_test folder.                                                           injection.” 2024, https://github.com/jepsen-io/jepsen.
+                                                                                      [22]   Z.-M. Jiang, J.-J. Bai, and Z. Su, “Dynsql: stateful fuzzing for database
+    [Execution] Execute the script test_boot_time.sh in                                      management systems with complex and valid sql query generation,”
+the folder.                                                                                  in Proceedings of the 32nd USENIX Security Symposium, 2023, pp.
+                                                                                             4949–4965.
+    [Results] The script will start booting the system with dif-
+                                                                                      [23]   M. E. Joorabchi, M. MirzaAghaei, and A. Mesbah, “Works for me!
+ferent configurations. The boot time for each configuration will                             characterizing non-reproducible bug reports,” in Proceedings of the
+be recorded to a file called test_boot_time_result.                                          2014 International Conference on Mining Software Repositories (MSR),
+                                                                                             P. T. Devanbu, S. Kim, and M. Pinzger, Eds., 2014, pp. 62–71.
+                              R EFERENCES                                             [24]   S. Kim, M. Xu, S. Kashyap, J. Yoon, W. Xu, and T. Kim, “Finding
+                                                                                             semantic bugs in file systems with an extensible fuzzing framework,” in
+ [1]   “Aerospike database server: flash-optimized, in-memory,           nosql               Proceedings of the 27th International Symposium on Operating Systems
+       database.” 2022, https://github.com/aerospike/aerospike-server.                       Principles (SOSP), 2019, pp. 147–161.
+
+
+                                                                                 15
+[25]   G. Klees, A. Ruef, B. Cooper, S. Wei, and M. Hicks, “Evaluating                         of 27th Annual Network and Distributed System Security Symposium
+       fuzz testing,” in Proceedings of the 25th International Conference on                   (NDSS), 2020.
+       Computer and Communications Security (CCS), 2018, pp. 2123–2138.                 [49]   S. Schumilo, C. Aschermann, A. Abbasi, S. Wörner, and T. Holz, “Nyx:
+[26]   “Knossos: verifies the linearizability of experimentally accessible his-                greybox hypervisor fuzzing using fast snapshots and affine types,” in
+       tories.” 2021, https://github.com/jepsen-io/knossos.                                    Proceeding of the 30th USENIX Security Symposium, 2021, pp. 2597–
+[27]   L. Lamport, “The part-time parliament,” ACM Transactions on Com-                        2614.
+       puter Systems (TOCS), vol. 16, no. 2, pp. 133–169, 1998.                         [50]   S. Schumilo, C. Aschermann, R. Gawlik, S. Schinzel, and T. Holz,
+[28]   H. Lee, J. Seibert, E. Hoque, C. Killian, and C. Nita-Rotaru, “Turret:                  “kAFL: hardware-assisted feedback fuzzing for OS kernels,” in Pro-
+       A platform for automated attack finding in unmodified distributed sys-                  ceedings of the 26th USENIX Security Symposium, 2017, pp. 167–182.
+       tem implementations,” in Proceedings of the 2014 IEEE International              [51]   S. Schumilo, C. Aschermann, A. Jemmett, A. Abbasi, and T. Holz,
+       Conference on Distributed Computing Systems, 2014, pp. 660–669.                         “Nyx-net: network fuzzing with incremental snapshots,” in Proceedings
+[29]   T. Leesatapornwongsa, J. F. Lukman, S. Lu, and H. S. Gunawi, “TaxDC:                    of the 17th European Conference on Computer Systems (EuroSys), 2022,
+       a taxonomy of non-deterministic concurrency bugs in datacenter dis-                     pp. 166–180.
+       tributed systems,” in Proceedings of the 21st International Conference           [52]   C. Scott, A. Panda, V. Brajkovic, G. Necula, A. Krishnamurthy, and
+       on Architectural Support for Programming Languages and Operating                        S. Shenker, “Minimizing faulty executions of distributed systems,” in
+       Systems (ASPLOS), 2016, pp. 517–530.                                                    Proceedings of the 13th USENIX Symposium on Networked Systems
+[30]   J. Li, B. Zhao, and C. Zhang, “Fuzzing: a survey,” Cybersecurity, vol. 1,               Design and Implementation (NSDI), 2016, pp. 291–309.
+       no. 1, p. 6, Jun. 2018.                                                          [53]   K. Serebryany, D. Bruening, A. Potapenko, and D. Vyukov, “Address-
+[31]   J. Lu, L. Chen, L. Li, and X. Feng, “Understanding node change bugs                     Sanitizer: A fast address sanity checker,” in Proceedings of the 2012
+       for distributed systems,” in Proceedings of the 26th IEEE Interna-                      USENIX Annual Technical Conference, Boston, MA, Jun. 2012, pp.
+       tional Conference on Software Analysis, Evolution and Reengineering                     309–318.
+       (SANER), 2019, pp. 399–410.                                                      [54]   K. Shvachko, H. Kuang, S. Radia, and R. Chansler, “The hadoop
+[32]   J. F. Lukman, H. Ke, C. A. Stuardo, R. O. Suminto, D. H. Kurni-                         distributed file system,” in Proceedings of the 2010 IEEE Symposium
+       awan, D. Simon, S. Priambada, C. Tian, F. Ye, T. Leesatapornwongsa,                     on Mass Storage Systems and Technologies (MSST), 2010, pp. 1–10.
+       A. Gupta, S. Lu, and H. S. Gunawi, “FlyMC: highly scalable testing               [55]   J. Somorovsky, “Systematic fuzzing and testing of TLS libraries,” in
+       of complex interleavings in distributed systems,” in Proceedings of the                 Proceedings of the 23rd International Conference on Computer and
+       14th European Conference on Computer Systems (EuroSys), 2019, pp.                       Communications Security (CCS), 2016, pp. 1492–1504.
+       1–16.
+                                                                                        [56]   D. Song, F. Hetzelt, J. Kim, B. B. Kang, J.-P. Seifert, and M. Franz,
+[33]   Z. Luo, F. Zuo, Y. Jiang, J. Gao, X. Jiao, and J. Sun, “Polar: function                 “Agamotto: Accelerating kernel driver fuzzing with lightweight virtual
+       code aware fuzz testing of ICS protocol,” ACM Transactions on                           machine checkpoints,” in Proceedings of the 29th USENIX Security
+       Embedded Computing Systems, vol. 18, no. 5s, pp. 93:1–93:22, 2019.                      Symposium. USENIX Association, Aug. 2020, pp. 2541–2557.
+[34]   “Addresssanitizer: stack-buffer-overflow in server.c,” 2023, https://gith        [57]   “Linux strace is a diagnostic, debugging and instructional userspace
+       ub.com/redis/redis/issues/12005.                                                        utility for Linux.” 2023, https://strace.io/.
+[35]   “For jepsen: extra online spare,” https://github.com/canonical/dqlite/is         [58]   “Syzkaller: an unsupervised coverage-guided kernel fuzzer,” 2021, http
+       sues/585.                                                                               s://github.com/google/syzkaller.
+[36]   “Raft: membership rollback issue,” https://github.com/canonical/raft/is
+                                                                                        [59]   “Trinity: a linux system call fuzz tester,” 2019, https://github.com/ker
+       sues/250.
+                                                                                               nelslacker/trinity.
+[37]   R. Meng, G. Pîrlea, A. Roychoudhury, and I. Sergey, “Greybox fuzzing
+                                                                                        [60]   “Valgrind: an instrumentation framework for building dynamic analysis
+       of distributed systems,” in Proceedings of the 30th International Con-
+                                                                                               tools,” 2023, https://valgrind.org/.
+       ference on Computer and Communications Security (CCS), 2023, pp.
+       1615–1629.                                                                       [61]   V. K. Vavilapalli, A. C. Murthy, C. Douglas, S. Agarwal, M. Konar,
+[38]   B. P. Miller, L. Fredriksen, and B. So, “An empirical study of the                      R. Evans, T. Graves, J. Lowe, H. Shah, S. Seth, B. Saha, C. Curino,
+       reliability of UNIX utilities,” Communications of the ACM, vol. 33,                     O. O’Malley, S. Radia, B. Reed, and E. Baldeschwieler, “Apache
+       no. 12, pp. 32–44, Dec. 1990.                                                           Hadoop YARN: yet another resource negotiator,” in Proceedings of the
+                                                                                               4th ACM Symposium on Cloud Computing (SoCC), 2013, pp. 1–16.
+[39]   “CVE - MITRE,” 2024, https://cve.mitre.org/.
+                                                                                        [62]   “Distributed computing,” https://en.wikipedia.org/wiki/Distributed_co
+[40]   “Namazu: programmable fuzzy scheduler for testing distributed sys-                      mputing.
+       tems,” 2016, https://github.com/osrg/namazu.
+                                                                                        [63]   W. Xu, H. Moon, S. Kashyap, P.-N. Tseng, and T. Kim, “Fuzzing file
+[41]   “NuRaft: C++ implementation of Raft core logic as a replication                         systems via two-dimensional input space exploration,” in Proceedings
+       library.” 2022, https://github.com/eBay/NuRaft.                                         of the 40th IEEE Symposium on Security and Privacy, 2019, pp. 818–
+[42]   R. O’Callahan, C. Jones, N. Froyd, K. Huey, A. Noll, and N. Partush,                    834.
+       “Engineering record and replay for deployability,” in Proceedings of the         [64]   J. Yang, T. Chen, M. Wu, Z. Xu, X. Liu, H. Lin, M. Yang, F. Long,
+       2017 USENIX Annual Technical Conference, 2017, pp. 377–389.                             L. Zhang, and L. Zhou, “MODIST: transparent model checking of
+[43]   D. Ongaro and J. Ousterhout, “In search of an understandable consensus                  unmodified distributed systems,” in Proceedings of the 6th USENIX
+       algorithm,” in Proceedings of the 2014 USENIX Annual Technical                          Symposium on Networked Systems Design and Implementation (NSDI),
+       Conference, 2014, pp. 305–320.                                                          2009, p. 16.
+[44]   K. Ousterhout, P. Wendell, M. Zaharia, and I. Stoica, “Sparrow:                  [65]   D. Yuan, Y. Luo, X. Zhuang, G. R. Rodrigues, X. Zhao, Y. Zhang, P. U.
+       distributed, low latency scheduling,” in Proceedings of the 2017 Sym-                   Jain, and M. Stumm, “Simple testing can prevent most critical failures:
+       posium on Operating Systems Principles (SOSP), 2013, pp. 69–84.                         an analysis of production failures in distributed data-intensive systems,”
+[45]   V. Pham, M. Böhme, and A. Roychoudhury, “AFLNet: a greybox                              in Proceedings of the 11th International Symposium on Operating
+       fuzzer for network protocols,” in Proceedings of the 13th International                 Systems Design and Implementation (OSDI), 2014, pp. 249–265.
+       Conference on Software Testing, Validation and Verification (ICST),              [66]   W. Yuan, S. Lu, H. Sun, and X. Liu, “How are distributed bugs
+       2020, pp. 460–465.                                                                      diagnosed and fixed through system logs?” Information and Software
+[46]   “RedisRaft: a Redis module that make it possible to create a consistent                 Technology (IST), vol. 119, pp. 1–18, 2020.
+       Raft cluster from multiple Redis instances.” 2022, https://github.com/R          [67]   X. Zhao, Y. Zhang, D. Lion, M. FaizanUllah, Y. Luo, D. Yuan, and
+       edisLabs/redisraft.                                                                     M. Stumm, “lprof: a non-intrusive request flow profiler for distributed
+[47]   “RethinkDB: the open-source database for the realtime web,” 2022,                       systems,” in Proceedings of the 11th International Symposium on
+       https://github.com/rethinkdb/rethinkdb.                                                 Operating Systems Design and Implementation (OSDI), 2014, p. 16.
+[48]   S. Schumilo, C. Aschermann, A. Abbasi, S. Worner, and T. Holz,                   [68]   X. Zhu, S. Wen, S. Camtepe, and Y. Xiang, “Fuzzing: a survey for
+       “HYPER-CUBE: high-dimensional hypervisor fuzzing,” in Proceedings                       roadmap,” ACM Computing Surveys, Jan. 2022.
+
+
+                                                                                   16
+[69] “Zookeeper-4409 nullpointerexception in sendackrequestprocessor,” ht
+     tps://github.com/apache/zookeeper/pull/1774.
+[70] Y.-H. Zou, J.-J. Bai, J. Zhou, J. Tan, C. Qin, and S.-M. Hu, “TCP-Fuzz:
+     detecting memory and semantic bugs in TCP stacks with fuzzing,” in
+     Proceedings of the 2021 USENIX Annual Technical Conference, 2021,
+     pp. 489–502.
+
+
+
+
+                                                                               17
+

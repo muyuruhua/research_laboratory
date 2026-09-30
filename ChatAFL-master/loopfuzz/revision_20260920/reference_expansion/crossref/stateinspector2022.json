@@ -1,0 +1,802 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=The+Closer+You+Look+The+More+You+Learn+A+Grey-box+Approach+to+Protocol+State+Machine+Learning&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 6120805,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                28
+              ]
+            ],
+            "date-time": "2026-09-28T17:13:41Z",
+            "timestamp": 1790615621819,
+            "version": "4.1.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 43,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2022,
+                    11,
+                    7
+                  ]
+                ],
+                "date-time": "2022-11-07T00:00:00Z",
+                "timestamp": 1667779200000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "name": "Research Fund KU Leuven"
+            },
+            {
+              "DOI": "10.13039/501100000266",
+              "name": "Engineering and Physical Sciences Research Council",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "EP/R012598/1, EP/R008000/1, EP/V000454/1"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "EP/R012598/1, EP/R008000/1, EP/V000454/1"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100000266",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "name": "Flemish Research Programme Cybersecurity"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022,
+                11,
+                7
+              ]
+            ]
+          },
+          "DOI": "10.1145/3548606.3559365",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2022,
+                11,
+                7
+              ]
+            ],
+            "date-time": "2022-11-07T06:41:28Z",
+            "timestamp": 1667803288000
+          },
+          "page": "2265-2278",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 13,
+          "title": [
+            "The Closer You Look, The More You Learn"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Chris",
+              "family": "McMahon Stone",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "University of Birmingham, Birmingham, United Kingdom"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Sam L.",
+              "family": "Thomas",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "BINARLY, Pasadena, CA, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Mathy",
+              "family": "Vanhoef",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "KU Leuven, Leuven, Belgium"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "James",
+              "family": "Henderson",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Birmingham, Birmingham, United Kingdom"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Nicolas",
+              "family": "Bailluet",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "École Normale Supérieure, Rennes, France"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Tom",
+              "family": "Chothia",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Birmingham, Birmingham, United Kingdom"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2022,
+                11,
+                7
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "[n. d.]. EAP Protocol wpa_supplicant source code. https://w1.fi/cgit.  [n. d.]. EAP Protocol wpa_supplicant source code. https://w1.fi/cgit."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "[n. d.]. EAP Protocols FreeRadius source code. https://github.com/FreeRADIUS/ freeradius-server.  [n. d.]. EAP Protocols FreeRadius source code. https://github.com/FreeRADIUS/ freeradius-server."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "[n. d.]. OpenSSH source code. https://github.com/openssh/.  [n. d.]. OpenSSH source code. https://github.com/openssh/."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "[n. d.]. OpenVPN source code. https://github.com/OpenVPN/openvpn.  [n. d.]. OpenVPN source code. https://github.com/OpenVPN/openvpn."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "volume-title": "Verification and Validation Workshops (ICSTW), 2013 IEEE Sixth International Conference on. IEEE, 461--468",
+              "author": "Aarts Fides",
+              "year": "2013",
+              "unstructured": "Fides Aarts , Joeri De Ruiter , and Erik Poll . 2013 . Formal models of bank cards for free. In Software Testing , Verification and Validation Workshops (ICSTW), 2013 IEEE Sixth International Conference on. IEEE, 461--468 . Fides Aarts, Joeri De Ruiter, and Erik Poll. 2013. Formal models of bank cards for free. In Software Testing, Verification and Validation Workshops (ICSTW), 2013 IEEE Sixth International Conference on. IEEE, 461--468."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-642-16558-0_54"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "Learning regular sets from queries and counterexamples. Information and computation 75, 2",
+              "author": "Angluin Dana",
+              "year": "1987",
+              "unstructured": "Dana Angluin . 1987. Learning regular sets from queries and counterexamples. Information and computation 75, 2 ( 1987 ), 87--106. Dana Angluin. 1987. Learning regular sets from queries and counterexamples. Information and computation 75, 2 (1987), 87--106."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "ptrace-burrito. Retrieved",
+              "author": "Bosman Erik",
+              "year": "2020",
+              "unstructured": "Erik Bosman . 2020. ptrace-burrito. Retrieved 3 September 2020 from https: //github.com/brainsmoke/ptrace-burrito. Erik Bosman. 2020. ptrace-burrito. Retrieved 3 September 2020 from https: //github.com/brainsmoke/ptrace-burrito."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "Retrieved",
+              "author": "Buildroot Association",
+              "year": "2020",
+              "unstructured": "Buildroot Association . 2020. Buildroot. Retrieved 3 September 2020 from https: //buildroot.org/. Buildroot Association. 2020. Buildroot. Retrieved 3 September 2020 from https: //buildroot.org/."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "USENIX Security Symposium",
+              "volume": "139",
+              "author": "Cho Chia Yuan",
+              "year": "2011",
+              "unstructured": "Chia Yuan Cho , Domagoj Babic , Pongsin Poosankam , Kevin Zhijie Chen , Edward XueJun Wu , and Dawn Song . 2011 . MACE: Model-inference-Assisted Concolic Exploration for Protocol and Vulnerability Discovery .. In USENIX Security Symposium , Vol. 139 . Chia Yuan Cho, Domagoj Babic, Pongsin Poosankam, Kevin Zhijie Chen, Edward XueJun Wu, and Dawn Song. 2011. MACE: Model-inference-Assisted Concolic Exploration for Protocol and Vulnerability Discovery.. In USENIX Security Symposium, Vol. 139."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.1978.231496"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "volume-title": "Hostapd porting and use. Retrieved",
+              "year": "2021",
+              "unstructured": "CodeApe123. 2020. Hostapd porting and use. Retrieved 9 January 2021 from https://blog.csdn.net/sean_8180/article/details/86496922. CodeApe123. 2020. Hostapd porting and use. Retrieved 9 January 2021 from https://blog.csdn.net/sean_8180/article/details/86496922."
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2009.14"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSPW.2018.00009"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-319-47560-8_11"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "first-page": "193",
+              "article-title": "Protocol State Fuzzing of TLS Implementa- tions",
+              "volume": "15",
+              "author": "Ruiter Joeri De",
+              "year": "2015",
+              "unstructured": "Joeri De Ruiter and Erik Poll . 2015 . Protocol State Fuzzing of TLS Implementa- tions .. In USENIX Security , Vol. 15. 193 -- 206 . Joeri De Ruiter and Erik Poll. 2015. Protocol State Fuzzing of TLS Implementa- tions.. In USENIX Security, Vol. 15. 193--206.",
+              "journal-title": "USENIX Security"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "International Conference on Computer Aided Verification. Springer, 454--471",
+              "author": "Fiterău-Broştean Paul",
+              "year": "2016",
+              "unstructured": "Paul Fiterău-Broştean , Ramon Janssen , and Frits Vaandrager . 2016 . Combin- ing model learning and model checking to analyze TCP implementations . In International Conference on Computer Aided Verification. Springer, 454--471 . Paul Fiterău-Broştean, Ramon Janssen, and Frits Vaandrager. 2016. Combin- ing model learning and model checking to analyze TCP implementations. In International Conference on Computer Aided Verification. Springer, 454--471."
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Analysis of DTLS Implementations Using Protocol State Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Fiterău-Broştean Paul",
+              "year": "2020",
+              "unstructured": "Paul Fiterău-Broştean , Bengt Jonsson , Robert Merget , Joeri de Ruiter , Konstantinos Sagonas , and Juraj Somorovsky . 2020 . Analysis of DTLS Implementations Using Protocol State Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20) . USENIX Association, 2523--2540. Paul Fiterău-Broştean, Bengt Jonsson, Robert Merget, Joeri de Ruiter, Konstantinos Sagonas, and Juraj Somorovsky. 2020. Analysis of DTLS Implementations Using Protocol State Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 2523--2540."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3092282.3092289"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-319-28865-9_18"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/0022-2836(82)90398-9"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "volume-title": "Retrieved",
+              "author": "Pro IDA",
+              "year": "2020",
+              "unstructured": "Hex-Rays. 2020. IDA Pro . Retrieved 3 September 2020 from https://www.hex- rays.com/products/ida/. Hex-Rays. 2020. IDA Pro. Retrieved 3 September 2020 from https://www.hex- rays.com/products/ida/."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "Analyzing Operational Behavior of Stateful Protocol Implementations for Detecting Semantic Bugs. In 47th Annual IEEE/IFIP International Conference on Dependable Systems and Networks, DSN 2017",
+              "author": "Endadul Hoque Md.",
+              "year": "2017",
+              "unstructured": "Md. Endadul Hoque , Omar Chowdhury , Sze Yiu Chau , Cristina Nita-Rotaru , and Ninghui Li . 2017 . Analyzing Operational Behavior of Stateful Protocol Implementations for Detecting Semantic Bugs. In 47th Annual IEEE/IFIP International Conference on Dependable Systems and Networks, DSN 2017 , Denver, CO, USA , June 26-29, 2017. IEEE Computer Society, 627--638. Md. Endadul Hoque, Omar Chowdhury, Sze Yiu Chau, Cristina Nita-Rotaru, and Ninghui Li. 2017. Analyzing Operational Behavior of Stateful Protocol Implementations for Detecting Semantic Bugs. In 47th Annual IEEE/IFIP International Conference on Dependable Systems and Networks, DSN 2017, Denver, CO, USA, June 26-29, 2017. IEEE Computer Society, 627--638."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "Computing and Software Science",
+              "author": "Howar Falk",
+              "unstructured": "Falk Howar , Bengt Jonsson , and Frits Vaandrager . 2019. Combining black-box and white-box techniques for learning register automata . In Computing and Software Science . Springer , 563--588. Falk Howar, Bengt Jonsson, and Frits Vaandrager. 2019. Combining black-box and white-box techniques for learning register automata. In Computing and Software Science. Springer, 563--588."
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-319-11164-3_26"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EDCC-7.2008.22"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "unstructured": "Oliver Niese. 2003. An integrated approach to testing complex systems. Ph. D. Dissertation. Universität Dortmund.  Oliver Niese. 2003. An integrated approach to testing complex systems. Ph. D. Dissertation. Universität Dortmund."
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46214.2022.9833673"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-030-90870-6_28"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST46399.2020.00062"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "volume-title": "Retrieved",
+              "author": "Triton QUARKSLAB.",
+              "year": "2020",
+              "unstructured": "QUARKSLAB. 2020. Triton . Retrieved 3 September 2020 from https://triton. quarkslab.com/. QUARKSLAB. 2020. Triton. Retrieved 3 September 2020 from https://triton. quarkslab.com/."
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "Learning register automata using Taint Analysis. Bachelors Thesis",
+              "author": "Schrijvers Timo",
+              "year": "2018",
+              "unstructured": "Timo Schrijvers , FW Vaandrager , and NH Jansen . 2018. Learning register automata using Taint Analysis. Bachelors Thesis ( 2018 ). Timo Schrijvers, FW Vaandrager, and NH Jansen. 2018. Learning register automata using Taint Analysis. Bachelors Thesis (2018)."
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "first-page": "207",
+              "article-title": "Inferring Mealy Machines",
+              "volume": "9",
+              "author": "Shahbaz Muzammil",
+              "year": "2009",
+              "unstructured": "Muzammil Shahbaz and Roland Groz . 2009 . Inferring Mealy Machines . FM 9 (2009), 207 -- 222 . Muzammil Shahbaz and Roland Groz. 2009. Inferring Mealy Machines. FM 9 (2009), 207--222.",
+              "journal-title": "FM"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978411"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-319-99073-6_16"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "volume-title": "IWD: CVE-2020--17497.",
+              "author": "McMahon Stone Chris",
+              "year": "2020",
+              "unstructured": "Chris McMahon Stone , Sam L. Thomas , Mathy Vanhoef , James Henderson , Nicolas Bailluet , and Tom Chothia . 2020 . IWD: CVE-2020--17497. Chris McMahon Stone, Sam L. Thomas, Mathy Vanhoef, James Henderson, Nicolas Bailluet, and Tom Chothia. 2020. IWD: CVE-2020--17497."
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Chris McMahon Stone Sam L. Thomas Mathy Vanhoef James Henderson Nicolas Bailluet and Tom Chothia. 2022. Full Length - The Closer You Look The More You Learn: A Grey-box Approach to Protocol State Machine Learning. https://chrismcmstone.github.io/state-inspector/paper.pdf.  Chris McMahon Stone Sam L. Thomas Mathy Vanhoef James Henderson Nicolas Bailluet and Tom Chothia. 2022. Full Length - The Closer You Look The More You Learn: A Grey-box Approach to Protocol State Machine Learning. https://chrismcmstone.github.io/state-inspector/paper.pdf.",
+              "DOI": "10.1145/3548606.3559365"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "unstructured": "Chris McMahon Stone Sam L. Thomas Mathy Vanhoef James Henderson Nicolas Bailluet and Tom Chothia. 2022. StateInspector. https://github.com/ ChrisMcMStone/state-inspector.  Chris McMahon Stone Sam L. Thomas Mathy Vanhoef James Henderson Nicolas Bailluet and Tom Chothia. 2022. StateInspector. https://github.com/ ChrisMcMStone/state-inspector."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST.2017.32"
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Gerco van Heerdt Clemens Kupke Jurriaan Rot and Alexandra Silva. 2020. Learning Weighted Automata over Principal Ideal Domains. In Foundations of Software Science and Computation Structures Jean Goubault-Larrecq and Barbara König (Eds.). 602--621.  Gerco van Heerdt Clemens Kupke Jurriaan Rot and Alexandra Silva. 2020. Learning Weighted Automata over Principal Ideal Domains. In Foundations of Software Science and Computation Structures Jean Goubault-Larrecq and Barbara König (Eds.). 602--621.",
+              "DOI": "10.1007/978-3-030-45231-5_31"
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Gerco van Heerdt Matteo Sammartino and Alexandra Silva. 2020. Learning Automata with Side-Effects. In Coalgebraic Methods in Computer Science Daniela Petrişan and Jurriaan Rot (Eds.). 68--89.  Gerco van Heerdt Matteo Sammartino and Alexandra Silva. 2020. Learning Automata with Side-Effects. In Coalgebraic Methods in Computer Science Daniela Petrişan and Jurriaan Rot (Eds.). 68--89.",
+              "DOI": "10.1007/978-3-030-57201-3_5"
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "volume-title": "KRACK Attack Scripts. Retrieved",
+              "author": "Vanhoef Mathy",
+              "year": "2020",
+              "unstructured": "Mathy Vanhoef . 2021. KRACK Attack Scripts. Retrieved 30 January 2020 from https://github.com/vanhoefm/krackattacks-scripts. Mathy Vanhoef. 2021. KRACK Attack Scripts. Retrieved 30 January 2020 from https://github.com/vanhoefm/krackattacks-scripts."
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134027"
+            }
+          ],
+          "event": {
+            "name": "CCS '22: 2022 ACM SIGSAC Conference on Computer and Communications Security",
+            "location": "Los Angeles CA USA",
+            "acronym": "CCS '22",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3548606.3559365",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3548606.3559365",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T13:50:57Z",
+            "timestamp": 1750168257000
+          },
+          "score": 56.68434,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3548606.3559365"
+            }
+          },
+          "subtitle": [
+            "A Grey-box Approach to Protocol State Machine Learning"
+          ],
+          "issued": {
+            "date-parts": [
+              [
+                2022,
+                11,
+                7
+              ]
+            ]
+          },
+          "references-count": 43,
+          "alternative-id": [
+            "10.1145/3548606.3559365",
+            "10.1145/3548606"
+          ],
+          "URL": "https://doi.org/10.1145/3548606.3559365",
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                11,
+                7
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2022-11-07",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                12,
+                10
+              ]
+            ],
+            "date-time": "2025-12-10T03:14:29Z",
+            "timestamp": 1765336469778,
+            "version": "3.46.0"
+          },
+          "reference-count": 0,
+          "publisher": "University of Massachusetts Press",
+          "isbn-type": [
+            {
+              "type": "electronic",
+              "value": "9781613769577"
+            },
+            {
+              "type": "print",
+              "value": "9781625346780"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2023,
+                1,
+                27
+              ]
+            ]
+          },
+          "DOI": "10.2307/jj.890698.15",
+          "type": "book-chapter",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                3,
+                9
+              ]
+            ],
+            "date-time": "2023-03-09T15:26:12Z",
+            "timestamp": 1678375572000
+          },
+          "page": "124-137",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "The Closer You Look"
+          ],
+          "prefix": "10.65516",
+          "member": "55024",
+          "container-title": [
+            "Rescuing Ellisville Marsh"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                12,
+                10
+              ]
+            ],
+            "date-time": "2025-12-10T03:09:36Z",
+            "timestamp": 1765336176000
+          },
+          "score": 41.904625,
+          "resource": {
+            "primary": {
+              "URL": "http://www.jstor.org/stable/10.2307/jj.890698.15"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2023,
+                1,
+                27
+              ]
+            ]
+          },
+          "ISBN": [
+            "9781613769577",
+            "9781625346780"
+          ],
+          "references-count": 0,
+          "URL": "https://doi.org/10.2307/jj.890698.15",
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                1,
+                27
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                10
+              ]
+            ],
+            "date-time": "2026-01-10T04:41:07Z",
+            "timestamp": 1768020067071,
+            "version": "3.49.0"
+          },
+          "edition-number": "1",
+          "reference-count": 0,
+          "publisher": "Pluto Press",
+          "isbn-type": [
+            {
+              "value": "9781786807359",
+              "type": "electronic"
+            },
+            {
+              "value": "1786807351",
+              "type": "electronic"
+            },
+            {
+              "value": "9780745341675",
+              "type": "print"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2021,
+                3,
+                20
+              ]
+            ]
+          },
+          "DOI": "10.2307/j.ctv1h0nv1c.33",
+          "type": "book-chapter",
+          "created": {
+            "date-parts": [
+              [
+                2021,
+                2,
+                27
+              ]
+            ],
+            "date-time": "2021-02-27T15:41:32Z",
+            "timestamp": 1614440492000
+          },
+          "page": "227-232",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "If You Look Closer, You Will See"
+          ],
+          "prefix": "10.2307",
+          "author": [
+            {
+              "given": "Brad",
+              "family": "Evans",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Isaac",
+              "family": "Cordal",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "1121",
+          "container-title": [
+            "Conversations on Violence"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                9
+              ]
+            ],
+            "date-time": "2026-01-09T21:55:03Z",
+            "timestamp": 1767995703000
+          },
+          "score": 41.769226,
+          "resource": {
+            "primary": {
+              "URL": "http://www.jstor.org/stable/10.2307/j.ctv1h0nv1c.33"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2021,
+                3,
+                20
+              ]
+            ]
+          },
+          "ISBN": [
+            "9781786807359",
+            "1786807351",
+            "9780745341675"
+          ],
+          "references-count": 0,
+          "URL": "https://doi.org/10.2307/j.ctv1h0nv1c.33",
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                3,
+                20
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

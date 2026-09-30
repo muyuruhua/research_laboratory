@@ -1,0 +1,38 @@
+{
+  "scope": "Figure 2 only; orthogonal shared rejection path and independent expiry path",
+  "box_names": [
+    "llm",
+    "p",
+    "trial",
+    "gain",
+    "rej",
+    "prov",
+    "validation",
+    "dur"
+  ],
+  "label_names": [
+    "p_ok",
+    "ur_ok",
+    "code_gate",
+    "state_gate",
+    "promotion",
+    "p_fail",
+    "ur_fail",
+    "no_gain",
+    "expiry"
+  ],
+  "expected_arrowheads": 9,
+  "main_font_pt": 9,
+  "condition_font_pt": 8.5,
+  "new_node_basis": "The existing bounded descendant-validation stage required for provisional-to-durable promotion.",
+  "requirements_sha256": "ca3d8b7ce23bcf2462fc9c85e40352b671eafa8986e0053edbc1e21deab4063b",
+  "failure_gray_percent": 35,
+  "main_gray_percent": 15,
+  "main_row_y_cm": 2.8,
+  "lower_row_y_cm": 0,
+  "failure_rail_y_cm": 4.2,
+  "failure_rail_left_x_cm": -2.1,
+  "state_route_y_cm": 1.4,
+  "expiry_route_y_cm": -1.35,
+  "no_diagonal_edges": true
+}

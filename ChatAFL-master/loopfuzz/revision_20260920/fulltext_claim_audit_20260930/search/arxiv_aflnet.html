@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<!-- new favicon config and versions by realfavicongenerator.net -->
+<link rel="apple-touch-icon" sizes="180x180" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/favicon-16x16.png">
+<link rel="manifest" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/site.webmanifest">
+<link rel="mask-icon" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/safari-pinned-tab.svg" color="#b31b1b">
+<link rel="shortcut icon" href="https://static.arxiv.org/static/base/1.0.0a5/images/icons/favicon.ico">
+<meta name="msapplication-TileColor" content="#b31b1b">
+<meta name="msapplication-config" content="images/icons/browserconfig.xml">
+<meta name="theme-color" content="#b31b1b">
+<!-- end favicon config -->
+<title>Search | arXiv e-print repository</title>
+<script defer src="https://static.arxiv.org/static/base/1.0.0a5/fontawesome-free-5.11.2-web/js/all.js"></script>
+<link rel="stylesheet" href="https://static.arxiv.org/static/base/1.0.0a5/css/arxivstyle.css" />
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    messageStyle: "none",
+    extensions: ["tex2jax.js"],
+    jax: ["input/TeX", "output/HTML-CSS"],
+    tex2jax: {
+      inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+      displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+      processEscapes: true,
+      ignoreClass: '.*',
+      processClass: 'mathjax.*'
+    },
+    TeX: {
+        extensions: ["AMSmath.js", "AMSsymbols.js", "noErrors.js"],
+        noErrors: {
+          inlineDelimiters: ["$","$"],
+          multiLine: false,
+          style: {
+            "font-size": "normal",
+            "border": ""
+          }
+        }
+    },
+    "HTML-CSS": { availableFonts: ["TeX"] }
+  });
+</script>
+<script src='//static.arxiv.org/MathJax-2.7.3/MathJax.js'></script>
+<script src="https://static.arxiv.org/static/base/1.0.0a5/js/notification.js"></script>
+
+    
+  <script>document.documentElement.classList.add('js');</script>
+  <link rel="stylesheet" type="text/css" media="screen" href="https://static.arxiv.org/static/base/1.0.1/css/arxiv-header-footer.css?v=20260626" />
+  <script defer src="https://static.arxiv.org/static/base/1.0.1/js/arxiv-header.js?v=20260626"></script>
+  <link rel="stylesheet" href="https://static.arxiv.org/static/search/0.5.6/css/bulma-tooltip.min.css" />
+  <link rel="stylesheet" href="https://static.arxiv.org/static/search/0.5.6/css/search.css" />
+  <script
+    src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+    integrity="sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+    crossorigin="anonymous"></script>
+
+  <script src="https://static.arxiv.org/static/search/0.5.6/js/fieldset.js"></script>
+  <style>
+  radio#cf-customfield_11400 {
+    display: none;
+  }
+  /* Render the spinout .ds-site-footer standalone / full-bleed. search extends the
+     legacy base, whose bare wrapping <footer> (in base/base.html, outside any
+     overridable block — so it can't be removed from here) is styled by
+     arxivstyle.css with a grey background (hsl(0,0%,95%)) + 1em 2em padding,
+     boxing our warm-wash footer inside a second grey band. display:contents drops
+     the wrapper's box entirely (cleaner than zeroing individual properties) so
+     .ds-site-footer renders in its place; it inherits flex-shrink:0 from the same
+     legacy `footer` rule, so the sticky footer still works. Search-specific
+     legacy-base integration; the shared chrome CSS stays byte-identical to the SSOT. */
+  body > footer {
+    display: contents;
+  }
+  </style>
+
+  </head>
+  <body>
+  
+  
+  <header><a href="#main-container" class="is-sr-only">Skip to main content</a>
+    <div class="ds-announcement" id="announcement-banner" role="region" aria-label="Announcement" data-banner-name="spinout-nonprofit">
+  <img class="ds-announcement-glyph" src="https://static.arxiv.org/static/base/1.0.1/images/icons/smileybones-small.svg" alt="" aria-hidden="true">
+  <span class="ds-announcement-text">arXiv is now an independent nonprofit!</span>
+  <a class="ds-announcement-link" href="https://info.arxiv.org/about">Learn more</a>
+  <button type="button" class="ds-announcement-close" aria-label="Dismiss announcement">&times;</button>
+</div>
+<header class="ds-site-header">
+  <a href="https://arxiv.org/" class="ds-site-header-logo" aria-label="archive home">
+    <img src="https://static.arxiv.org/static/base/1.0.1/images/arxiv-logo-primary-light.svg" alt="archive">
+  </a>
+  <button type="button" id="ds-nav-toggle" class="ds-site-header-nav-toggle"
+    aria-label="Open menu" aria-controls="ds-site-header-nav" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  </button>
+  <nav class="ds-site-header-nav" id="ds-site-header-nav" aria-label="Main navigation">
+    <a id="arxiv-search-toggle" href="/search" aria-controls="arxiv-search-overlay" aria-expanded="false">
+      <svg class="ds-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Search
+    </a>
+    <a href="https://arxiv.org/user/create">Submit</a>
+    <a href="https://info.arxiv.org/about/donate.html">Donate</a>
+    <span class="ds-site-header-divider" aria-hidden="true"></span>
+    <a href="https://arxiv.org/login" class="ds-site-header-login">Log in</a>
+  </nav>
+</header>
+
+<div class="arxiv-search-overlay" id="arxiv-search-overlay" hidden>
+  <div class="arxiv-search-panel" role="search">
+    <form method="GET" action="/search">
+      <label for="arxiv-search-input" class="is-sr-only">Search arXiv</label>
+      <input type="text" name="query" id="arxiv-search-input" autocomplete="off"
+        placeholder="Search papers by title, author, abstract, or ID...">
+      <input type="hidden" name="searchtype" value="all">
+      <input type="hidden" name="source" value="header">
+    </form>
+    <div class="arxiv-search-hint">
+      Press Enter to search &middot; <a href="/search/advanced">Advanced search</a>
+    </div>
+  </div>
+</div>
+
+  </header>
+  <main class="container" id="main-container">
+    
+
+
+    
+  <div class="level is-marginless">
+    <div class="level-left">
+      <h1 class="title is-clearfix">
+    
+        Showing 1&ndash;8 of 8 results for all: <span class="mathjax">AFLNet</span>
+    
+</h1>
+    </div>
+    <div class="level-right is-hidden-mobile">
+      <!-- feedback for mobile is moved to footer -->
+      <span class="help" style="display: inline-block;"><a href="https://github.com/arXiv/arxiv-search/releases">Search v0.5.6 released 2020-02-24</a>&nbsp;&nbsp;</span>
+    </div>
+  </div>
+    <div class="content">
+      
+  <form method="GET" action="/search/"  aria-role="search">
+    
+
+    
+    <div class="field has-addons-tablet">
+      <div class="control is-expanded">
+        <label for="query" class="hidden-label">Search term or terms</label>
+        
+          <input class="input is-medium" id="query" name="query" placeholder="Search term..." type="text" value="AFLNet">
+        
+        
+      </div>
+      <div class="select control is-medium">
+        <label class="is-hidden" for="searchtype">Field</label>
+        <select class="is-medium" id="searchtype" name="searchtype"><option selected value="all">All fields</option><option value="title">Title</option><option value="author">Author(s)</option><option value="abstract">Abstract</option><option value="comments">Comments</option><option value="journal_ref">Journal reference</option><option value="acm_class">ACM classification</option><option value="msc_class">MSC classification</option><option value="report_num">Report number</option><option value="paper_id">arXiv identifier</option><option value="doi">DOI</option><option value="orcid">ORCID</option><option value="license">License (URI)</option><option value="author_id">arXiv author ID</option><option value="help">Help pages</option><option value="full_text">Full text</option></select>
+      </div>
+      <div class="control">
+          <button class="button is-link is-medium">Search</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="control is-size-7">
+        
+        <label class="radio">
+          <input checked id="abstracts-0" name="abstracts" type="radio" value="show"> Show abstracts
+        </label>
+        
+        <label class="radio">
+          <input id="abstracts-1" name="abstracts" type="radio" value="hide"> Hide abstracts
+        </label>
+        
+      </div>
+    </div>
+    <div class="is-clearfix" style="height: 2.5em"> 
+      <div class="is-pulled-right">
+        
+        <a href="/search/advanced?terms-0-term=AFLNet&amp;terms-0-field=all&amp;size=50&amp;order=-announced_date_first">Advanced Search</a>
+        
+      </div>
+    </div>
+    <input type="hidden" name="order" value="-announced_date_first">
+    <input type="hidden" name="size" value="50">
+  </form>
+
+  
+
+  
+      
+<div class="level breathe-horizontal">
+  <div class="level-left">
+    <form method="GET" action="/search/">
+      <div style="display: none;">
+        
+          
+            <select id="searchtype" name="searchtype"><option selected value="all">All fields</option><option value="title">Title</option><option value="author">Author(s)</option><option value="abstract">Abstract</option><option value="comments">Comments</option><option value="journal_ref">Journal reference</option><option value="acm_class">ACM classification</option><option value="msc_class">MSC classification</option><option value="report_num">Report number</option><option value="paper_id">arXiv identifier</option><option value="doi">DOI</option><option value="orcid">ORCID</option><option value="license">License (URI)</option><option value="author_id">arXiv author ID</option><option value="help">Help pages</option><option value="full_text">Full text</option></select>
+          
+        
+          
+            <input id="query" name="query" type="text" value="AFLNet">
+          
+        
+          
+        
+          
+        
+          
+            <ul id="abstracts"><li><input checked id="abstracts-0" name="abstracts" type="radio" value="show"> <label for="abstracts-0">Show abstracts</label></li><li><input id="abstracts-1" name="abstracts" type="radio" value="hide"> <label for="abstracts-1">Hide abstracts</label></li></ul>
+          
+        
+      </div>
+      <div class="box field is-grouped is-grouped-multiline level-item">
+        <div class="control">
+          <span class="select is-small">
+            <select id="size" name="size"><option value="25">25</option><option selected value="50">50</option><option value="100">100</option><option value="200">200</option></select>
+          </span>
+          <label for="size">results per page</label>.
+        </div>
+        <div class="control">
+          <label for="order">Sort results by</label>
+          <span class="select is-small">
+            <select id="order" name="order"><option selected value="-announced_date_first">Announcement date (newest first)</option><option value="announced_date_first">Announcement date (oldest first)</option><option value="-submitted_date">Submission date (newest first)</option><option value="submitted_date">Submission date (oldest first)</option><option value="">Relevance</option></select>
+          </span>
+        </div>
+        <div class="control">
+          <button class="button is-small is-link">Go</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+      
+
+
+
+
+<ol class="breathe-horizontal" start="1"> 
+
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2602.21892">arXiv:2602.21892</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2602.21892">pdf</a>, <a href="https://arxiv.org/ps/2602.21892">ps</a>, <a href="https://arxiv.org/format/2602.21892">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        APFuzz: Towards Automatic Greybox Protocol Fuzzing
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Wang%2C+Y">Yu Wang</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Xiang%2C+Y">Yang Xiang</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Thapa%2C+C">Chandra Thapa</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Suzuki%2C+H">Hajime Suzuki</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2602.21892v1-abstract-short" style="display: inline;">
+        &hellip;message structure awareness enabled by Large Language Models. We conduct extensive experiments on a public protocol fuzzing benchmark, comparing APFuzz with the baseline fuzzer <span class="search-hit mathjax">AFLNET</span> as well as several state-of-the-art greybox protocol fuzzers.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2602.21892v1-abstract-full').style.display = 'inline'; document.getElementById('2602.21892v1-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2602.21892v1-abstract-full" style="display: none;">
+        Greybox protocol fuzzing is a random testing approach for stateful protocol implementations, where the input is protocol messages generated from mutations of seeds, and the search in the input space is driven by the feedback on coverage of both code and state. State model and message model are the core components of communication protocols, which also have significant impacts on protocol fuzzing. In this work, we propose APFuzz (Automatic greybox Protocol Fuzzer) with novel designs to increase the smartness of greybox protocol fuzzers from the perspectives of both the state model and the message model. On the one hand, APFuzz employs a two-stage process of static and dynamic analysis to automatically identify state variables, which are then used to infer an accurate state model during fuzzing. On the other hand, APFuzz introduces field-level mutation operations for binary protocols, leveraging message structure awareness enabled by Large Language Models. We conduct extensive experiments on a public protocol fuzzing benchmark, comparing APFuzz with the baseline fuzzer <span class="search-hit mathjax">AFLNET</span> as well as several state-of-the-art greybox protocol fuzzers.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2602.21892v1-abstract-full').style.display = 'none'; document.getElementById('2602.21892v1-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 25 February, 2026; 
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> February 2026.
+      
+    </p>
+    
+    <p class="comments is-size-7">
+      <span class="has-text-black-bis has-text-weight-semibold">Comments:</span>
+      <span class="has-text-grey-dark mathjax">12 pages, 4 figures, 9 tables</span>
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2508.14300">arXiv:2508.14300</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2508.14300">pdf</a>, <a href="https://arxiv.org/ps/2508.14300">ps</a>, <a href="https://arxiv.org/format/2508.14300">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+        
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Computation and Language">cs.CL</span>
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Multiagent Systems">cs.MA</span>
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Networking and Internet Architecture">cs.NI</span>
+          
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        MultiFuzz: A Dense Retrieval-based Multi-Agent System for Network Protocol Fuzzing
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Maklad%2C+Y">Youssef Maklad</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Wael%2C+F">Fares Wael</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Hamdi%2C+A">Ali Hamdi</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Elsersy%2C+W">Wael Elsersy</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Shaban%2C+K">Khaled Shaban</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2508.14300v1-abstract-short" style="display: inline;">
+        &hellip;demonstrate that MultiFuzz significantly improves branch coverage and explores deeper protocol states and transitions over state-of-the-art (SOTA) fuzzers such as NSFuzz, <span class="search-hit mathjax">AFLNet</span>, and ChatAFL. By combining dense retrieval, agentic coordination, and language model reasoning, MultiFuzz establishes a new paradigm in autonomous protocol fuzzing, offering a scalab&hellip;
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2508.14300v1-abstract-full').style.display = 'inline'; document.getElementById('2508.14300v1-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2508.14300v1-abstract-full" style="display: none;">
+        Traditional protocol fuzzing techniques, such as those employed by AFL-based systems, often lack effectiveness due to a limited semantic understanding of complex protocol grammars and rigid seed mutation strategies. Recent works, such as ChatAFL, have integrated Large Language Models (LLMs) to guide protocol fuzzing and address these limitations, pushing protocol fuzzers to wider exploration of the protocol state space. But ChatAFL still faces issues like unreliable output, LLM hallucinations, and assumptions of LLM knowledge about protocol specifications. This paper introduces MultiFuzz, a novel dense retrieval-based multi-agent system designed to overcome these limitations by integrating semantic-aware context retrieval, specialized agents, and structured tool-assisted reasoning. MultiFuzz utilizes agentic chunks of protocol documentation (RFC Documents) to build embeddings in a vector database for a retrieval-augmented generation (RAG) pipeline, enabling agents to generate more reliable and structured outputs, enhancing the fuzzer in mutating protocol messages with enhanced state coverage and adherence to syntactic constraints. The framework decomposes the fuzzing process into modular groups of agents that collaborate through chain-of-thought reasoning to dynamically adapt fuzzing strategies based on the retrieved contextual knowledge. Experimental evaluations on the Real-Time Streaming Protocol (RTSP) demonstrate that MultiFuzz significantly improves branch coverage and explores deeper protocol states and transitions over state-of-the-art (SOTA) fuzzers such as NSFuzz, <span class="search-hit mathjax">AFLNet</span>, and ChatAFL. By combining dense retrieval, agentic coordination, and language model reasoning, MultiFuzz establishes a new paradigm in autonomous protocol fuzzing, offering a scalable and extensible foundation for future research in intelligent agentic-based fuzzing systems.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2508.14300v1-abstract-full').style.display = 'none'; document.getElementById('2508.14300v1-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 19 August, 2025; 
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> August 2025.
+      
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2507.16362">arXiv:2507.16362</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2507.16362">pdf</a>, <a href="https://arxiv.org/ps/2507.16362">ps</a>, <a href="https://arxiv.org/format/2507.16362">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Computer Vision and Pattern Recognition">cs.CV</span>
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        LPTR-<span class="search-hit mathjax">AFLNet</span>: Lightweight Integrated Chinese License Plate Rectification and Recognition Network
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Xu%2C+G">Guangzhu Xu</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Zuo%2C+P">Pengcheng Zuo</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Ke%2C+Z">Zhi Ke</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Lei%2C+B">Bangjun Lei</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2507.16362v3-abstract-short" style="display: inline;">
+        &hellip;network for both correction and recognition is essential for achieving real-time and efficient deployment. In this work, we propose a lightweight, unified network named LPTR-<span class="search-hit mathjax">AFLNet</span> for correcting and recognizing Chinese license plates, which combines a perspective transformation correction module (PTR) with an optimized license plate recognition network,&hellip;
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2507.16362v3-abstract-full').style.display = 'inline'; document.getElementById('2507.16362v3-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2507.16362v3-abstract-full" style="display: none;">
+        Chinese License Plate Recognition (CLPR) faces numerous challenges in unconstrained and complex environments, particularly due to perspective distortions caused by various shooting angles and the correction of single-line and double-line license plates. Considering the limited computational resources of edge devices, developing a low-complexity, end-to-end integrated network for both correction and recognition is essential for achieving real-time and efficient deployment. In this work, we propose a lightweight, unified network named LPTR-<span class="search-hit mathjax">AFLNet</span> for correcting and recognizing Chinese license plates, which combines a perspective transformation correction module (PTR) with an optimized license plate recognition network, <span class="search-hit mathjax">AFLNet</span>. The network leverages the recognition output as a weak supervisory signal to effectively guide the correction process, ensuring accurate perspective distortion correction. To enhance recognition accuracy, we introduce several improvements to LPRNet, including an improved attention module to reduce confusion among similar characters and the use of Focal Loss to address class imbalance during training. Experimental results demonstrate the exceptional performance of LPTR-<span class="search-hit mathjax">AFLNet</span> in rectifying perspective distortion and recognizing double-line license plate images, maintaining high recognition accuracy across various challenging scenarios. Moreover, on lower-mid-range GPUs platform, the method runs in less than 10 milliseconds, indicating its practical efficiency and broad applicability.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2507.16362v3-abstract-full').style.display = 'none'; document.getElementById('2507.16362v3-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 29 May, 2026; <span class="has-text-black-bis has-text-weight-semibold">v1</span> submitted 22 July, 2025;
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> July 2025.
+      
+    </p>
+    
+    <p class="comments is-size-7">
+      <span class="has-text-black-bis has-text-weight-semibold">Comments:</span>
+      <span class="has-text-grey-dark mathjax">28 pages, 33 figures</span>
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2412.20324">arXiv:2412.20324</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2412.20324">pdf</a>, <a href="https://arxiv.org/format/2412.20324">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Software Engineering">cs.SE</span>
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        <span class="search-hit mathjax">AFLNet</span> Five Years Later: On Coverage-Guided Protocol Fuzzing
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Meng%2C+R">Ruijie Meng</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Pham%2C+V">Van-Thuan Pham</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=B%C3%B6hme%2C+M">Marcel Böhme</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Roychoudhury%2C+A">Abhik Roychoudhury</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2412.20324v3-abstract-short" style="display: inline;">
+        &hellip;with the corresponding protocol state, and to maximize the coverage of both the state space and the code was first published in 2020 in a short tool demonstration paper. <span class="search-hit mathjax">AFLNet</span> was the first code- and state-coverage-guided protocol fuzzer; it used the response code as an indicator of the current protocol state. Over the past five years, the tool paper has ga&hellip;
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2412.20324v3-abstract-full').style.display = 'inline'; document.getElementById('2412.20324v3-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2412.20324v3-abstract-full" style="display: none;">
+        Protocol implementations are stateful which makes them difficult to test: Sending the same test input message twice might yield a different response every time. Our proposal to consider a sequence of messages as a seed for coverage-directed greybox fuzzing, to associate each message with the corresponding protocol state, and to maximize the coverage of both the state space and the code was first published in 2020 in a short tool demonstration paper. <span class="search-hit mathjax">AFLNet</span> was the first code- and state-coverage-guided protocol fuzzer; it used the response code as an indicator of the current protocol state. Over the past five years, the tool paper has gathered hundreds of citations, the code repository was forked almost 200 times and has seen over thirty pull requests from practitioners and researchers, and our initial proposal has been improved upon in many significant ways. In this paper, we first provide an extended discussion and a full empirical evaluation of the technical contributions of <span class="search-hit mathjax">AFLNet</span> and then reflect on the impact that our approach and our tool had in the past five years, on both the research and the practice of protocol fuzzing.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2412.20324v3-abstract-full').style.display = 'none'; document.getElementById('2412.20324v3-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 29 April, 2025; <span class="has-text-black-bis has-text-weight-semibold">v1</span> submitted 28 December, 2024;
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> December 2024.
+      
+    </p>
+    
+    <p class="comments is-size-7">
+      <span class="has-text-black-bis has-text-weight-semibold">Comments:</span>
+      <span class="has-text-grey-dark mathjax">14 pages, 3 tables, 7 figures</span>
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2408.06844">arXiv:2408.06844</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2408.06844">pdf</a>, <a href="https://arxiv.org/format/2408.06844">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        Stateful protocol fuzzing with statemap-based reverse state selection
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Yu%2C+L">Liu Yu</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Yanlong%2C+S">Shen Yanlong</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Ying%2C+Z">Zhou Ying</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2408.06844v1-abstract-short" style="display: inline;">
+        &hellip;the SCGF, we developed SMGFuzz and conducted experiments utilising Profuzzbench in order to assess the testing efficiency of SMGFuzz.The results indicate that compared to <span class="search-hit mathjax">AFLNet</span>, SMGFuzz achieved an average increase of 12.48% in edges coverage, a 50.1% increase in unique crashes and a 40.2% increase in test case execution speed over a period of 24 hours.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2408.06844v1-abstract-full').style.display = 'inline'; document.getElementById('2408.06844v1-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2408.06844v1-abstract-full" style="display: none;">
+        Stateful Coverage-Based Greybox Fuzzing (SCGF) is considered the state-of-the-art method for network protocol greybox fuzzing. During the protocol fuzzing process, SCGF constructs the state machine of the target protocol by identifying protocol states. Optimal states are selected for fuzzing using heuristic methods, along with corresponding seeds and mutation regions, to effectively conduct fuzz testing. Nevertheless, existing SCGF methodologies prioritise the selection of protocol states without considering the correspondence between program basic block coverage information and protocol states. To address this gap, this paper proposes a statemap-based reverse state selection method for SCGF. This approach prioritises the coverage information of fuzzy test seeds, and delves deeper into the correspondence between the basic block coverage information of the programme and the protocol state, with the objective of improving the bitmap coverage. The state map is employed to simplify the state machine representation method. Furthermore, the design of different types of states has enabled the optimisation of the method of constructing message sequences, the reduction in the length of message sequences further improve the efficiency of test case execution. By optimising the SCGF, we developed SMGFuzz and conducted experiments utilising Profuzzbench in order to assess the testing efficiency of SMGFuzz.The results indicate that compared to <span class="search-hit mathjax">AFLNet</span>, SMGFuzz achieved an average increase of 12.48% in edges coverage, a 50.1% increase in unique crashes and a 40.2% increase in test case execution speed over a period of 24 hours.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2408.06844v1-abstract-full').style.display = 'none'; document.getElementById('2408.06844v1-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 13 August, 2024; 
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> August 2024.
+      
+    </p>
+    
+    <p class="comments is-size-7">
+      <span class="has-text-black-bis has-text-weight-semibold">Comments:</span>
+      <span class="has-text-grey-dark mathjax">14 pages,9 figures</span>
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2202.03643">arXiv:2202.03643</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2202.03643">pdf</a>, <a href="https://arxiv.org/format/2202.03643">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+        
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Computers and Society">cs.CY</span>
+          
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        SNPSFuzzer: A Fast Greybox Fuzzer for Stateful Network Protocols using Snapshots
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Li%2C+J">Junqiang Li</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Li%2C+S">Senyi Li</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Sun%2C+G">Gang Sun</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Chen%2C+T">Ting Chen</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Yu%2C+H">Hongfang Yu</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2202.03643v2-abstract-short" style="display: inline;">
+        &hellip;chain analysis algorithm to explore more and deeper network protocol states. Our evaluation shows that, compared with the state-of-the-art network protocol greybox fuzzer <span class="search-hit mathjax">AFLNET</span>, SNPSFuzzer increases the speed of network protocol fuzzing by 112.0%-168.9% and improves path coverage by 21.4%-27.5% within 24 hours. Moreover, SNPSFuzzer exposes a previously unre&hellip;
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2202.03643v2-abstract-full').style.display = 'inline'; document.getElementById('2202.03643v2-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2202.03643v2-abstract-full" style="display: none;">
+        Greybox fuzzing has been widely used in stateless programs and has achieved great success. However, most state-of-the-art greybox fuzzers generally have the problems of slow speed and shallow state depth coverage in the process of fuzzing stateful network protocol programs which are able to remember and store details of the interactions. The existing greybox fuzzers for network protocol programs send a series of well-defined prefix sequences of input messages first and then send mutated messages to test the target state of a stateful network protocol. The process mentioned above causes a high time cost. In this paper, we propose SNPSFuzzer, a fast greybox fuzzer for stateful network protocol using snapshots. SNPSFuzzer dumps the context information when the network protocol program is under a specific state and restores it when the state needs to be fuzzed. Furthermore, we design a message chain analysis algorithm to explore more and deeper network protocol states. Our evaluation shows that, compared with the state-of-the-art network protocol greybox fuzzer <span class="search-hit mathjax">AFLNET</span>, SNPSFuzzer increases the speed of network protocol fuzzing by 112.0%-168.9% and improves path coverage by 21.4%-27.5% within 24 hours. Moreover, SNPSFuzzer exposes a previously unreported vulnerability in program Tinydtls.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2202.03643v2-abstract-full').style.display = 'none'; document.getElementById('2202.03643v2-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 16 February, 2022; <span class="has-text-black-bis has-text-weight-semibold">v1</span> submitted 7 February, 2022;
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> February 2022.
+      
+    </p>
+    
+
+    
+
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2201.04048">arXiv:2201.04048</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2201.04048">pdf</a>, <a href="https://arxiv.org/format/2201.04048">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+        
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Software Engineering">cs.SE</span>
+          
+        </div>
+      
+        
+          <div class="is-inline-block" style="margin-left: 0.5rem">
+            <div class="tags has-addons">
+              <span class="tag is-dark is-size-7">doi</span>
+              <span class="tag is-light is-size-7"><a class="" href="https://doi.org/10.1145/3533767.3534376">10.1145/3533767.3534376 <i class="fa fa-external-link" aria-hidden="true"></i></a></span>
+            </div>
+          </div>
+        
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        SnapFuzz: An Efficient Fuzzing Framework for Network Applications
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Andronidis%2C+A">Anastasios Andronidis</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Cadar%2C+C">Cristian Cadar</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2201.04048v2-abstract-short" style="display: inline;">
+        &hellip;6x, and 8.4x, respectively, with significantly simpler fuzzing harnesses in all cases. Through its performance advantage, SnapFuzz has also found 12 extra crashes compared to <span class="search-hit mathjax">AFLNet</span> in these applications.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2201.04048v2-abstract-full').style.display = 'inline'; document.getElementById('2201.04048v2-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2201.04048v2-abstract-full" style="display: none;">
+        In recent years, fuzz testing has benefited from increased computational power and important algorithmic advances, leading to systems that have discovered many critical bugs and vulnerabilities in production software. Despite these successes, not all applications can be fuzzed efficiently. In particular, stateful applications such as network protocol implementations are constrained by their low fuzzing throughput and the need to develop fuzzing harnesses that reset their state and isolate their side effects. In this paper, we present SnapFuzz, a novel fuzzing framework for network applications. SnapFuzz offers a robust architecture that transforms slow asynchronous network communication into fast synchronous communication, snapshots the target at the latest point at which it is safe to do so, speeds up all file operations by redirecting them to a custom in-memory filesystem, and removes the need for many fragile modifications, such as configuring time delays or writing clean-up scripts, together with several other improvements. Using SnapFuzz, we fuzzed five popular networking applications: LightFTP, TinyDTLS, Dnsmasq, LIVE555 and Dcmqrscp. We report impressive performance speedups of 62.8x, 41.2x, 30.6x, 24.6x, and 8.4x, respectively, with significantly simpler fuzzing harnesses in all cases. Through its performance advantage, SnapFuzz has also found 12 extra crashes compared to <span class="search-hit mathjax">AFLNet</span> in these applications.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2201.04048v2-abstract-full').style.display = 'none'; document.getElementById('2201.04048v2-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 19 April, 2022; <span class="has-text-black-bis has-text-weight-semibold">v1</span> submitted 11 January, 2022;
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> January 2022.
+      
+    </p>
+    
+
+    
+
+    
+      <p class="comments is-size-7">
+        <span class="has-text-black-bis has-text-weight-semibold">Journal ref:</span>
+        ISSTA 22, July 18 22, 2022, Virtual, South Korea
+      </p>
+    
+  </li>
+
+  <li class="arxiv-result">
+    <div class="is-marginless">
+      <p class="list-title is-inline-block"><a href="https://arxiv.org/abs/2112.15498">arXiv:2112.15498</a>
+        <span>&nbsp;[<a href="https://arxiv.org/pdf/2112.15498">pdf</a>, <a href="https://arxiv.org/format/2112.15498">other</a>]&nbsp;</span>
+      </p>
+      <div class="tags is-inline-block">
+        <span class="tag is-small is-link tooltip is-tooltip-top" data-tooltip="Software Engineering">cs.SE</span>
+        
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Cryptography and Security">cs.CR</span>
+          
+            <span class="tag is-small is-grey tooltip is-tooltip-top" data-tooltip="Machine Learning">cs.LG</span>
+          
+        </div>
+      
+    </div>
+    
+    <p class="title is-5 mathjax">
+      
+        State Selection Algorithms and Their Impact on The Performance of Stateful Network Protocol Fuzzing
+      
+    </p>
+    <p class="authors">
+      <span class="has-text-black-bis has-text-weight-semibold">Authors:</span>
+      
+      <a href="/search/?searchtype=author&amp;query=Liu%2C+D">Dongge Liu</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Pham%2C+V">Van-Thuan Pham</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Ernst%2C+G">Gidon Ernst</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Murray%2C+T">Toby Murray</a>, 
+      
+      <a href="/search/?searchtype=author&amp;query=Rubinstein%2C+B+I+P">Benjamin I. P. Rubinstein</a>
+      
+    </p>
+    
+    <p class="abstract mathjax">
+      <span class="search-hit">Abstract</span>:
+      <span class="abstract-short has-text-grey-dark mathjax" id="2112.15498v2-abstract-short" style="display: inline;">
+        &hellip;platforms, making it hard to achieve conclusive findings. In this work, we evaluate an extensive set of state selection algorithms on the same fuzzing platform that is <span class="search-hit mathjax">AFLNet</span>, a state-of-the-art fuzzer for network servers. The algorithm set includes existing ones supported by&hellip;
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2112.15498v2-abstract-full').style.display = 'inline'; document.getElementById('2112.15498v2-abstract-short').style.display = 'none';">&#9661; More</a>
+      </span>
+      <span class="abstract-full has-text-grey-dark mathjax" id="2112.15498v2-abstract-full" style="display: none;">
+        The statefulness property of network protocol implementations poses a unique challenge for testing and verification techniques, including Fuzzing. Stateful fuzzers tackle this challenge by leveraging state models to partition the state space and assist the test generation process. Since not all states are equally important and fuzzing campaigns have time limits, fuzzers need effective state selection algorithms to prioritize progressive states over others. Several state selection algorithms have been proposed but they were implemented and evaluated separately on different platforms, making it hard to achieve conclusive findings. In this work, we evaluate an extensive set of state selection algorithms on the same fuzzing platform that is <span class="search-hit mathjax">AFLNet</span>, a state-of-the-art fuzzer for network servers. The algorithm set includes existing ones supported by <span class="search-hit mathjax">AFLNet</span> and our novel and principled algorithm called AFLNetLegion. The experimental results on the ProFuzzBench benchmark show that (i) the existing state selection algorithms of <span class="search-hit mathjax">AFLNet</span> achieve very similar code coverage, (ii) AFLNetLegion clearly outperforms these algorithms in selected case studies, but (iii) the overall improvement appears insignificant. These are unexpected yet interesting findings. We identify problems and share insights that could open opportunities for future research on this topic.
+        <a class="is-size-7" style="white-space: nowrap;" onclick="document.getElementById('2112.15498v2-abstract-full').style.display = 'none'; document.getElementById('2112.15498v2-abstract-short').style.display = 'inline';">&#9651; Less</a>
+      </span>
+    </p>
+    
+
+    <p class="is-size-7"><span class="has-text-black-bis has-text-weight-semibold">Submitted</span> 7 January, 2022; <span class="has-text-black-bis has-text-weight-semibold">v1</span> submitted 24 December, 2021;
+      <span class="has-text-black-bis has-text-weight-semibold">originally announced</span> December 2021.
+      
+    </p>
+    
+    <p class="comments is-size-7">
+      <span class="has-text-black-bis has-text-weight-semibold">Comments:</span>
+      <span class="has-text-grey-dark mathjax">10 pages, 8 figures, coloured, conference</span>
+    </p>
+    
+
+    
+
+    
+  </li>
+
+</ol>
+
+
+  
+
+
+      <div class="is-hidden-tablet">
+        <!-- feedback for mobile only -->
+        <span class="help" style="display: inline-block;"><a href="https://github.com/arXiv/arxiv-search/releases">Search v0.5.6 released 2020-02-24</a>&nbsp;&nbsp;</span>
+      </div>
+    </div>
+
+  </main>
+  <footer>
+    
+<footer class="ds-site-footer">
+  <div class="ds-site-footer-grid">
+    <div class="ds-site-footer-main">
+      <div class="ds-site-footer-ack">
+        We gratefully acknowledge support from
+        our <strong>major funders</strong>,
+        <a href="https://info.arxiv.org/about/ourmembers.html"><strong>member institutions</strong></a><span class="ack-member-inline" hidden>, <strong></strong></span>,
+        and all contributors.
+      </div>
+      <nav class="ds-site-footer-links" aria-label="Site navigation">
+        <a href="https://info.arxiv.org/about">About</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help">Help</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help/contact.html">Contact</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help/subscribe">Subscribe</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help/license/index.html">Copyright</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help/policies/privacy_policy.html">Privacy</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://info.arxiv.org/help/web_accessibility.html">Accessibility</a>
+        <span class="ds-site-footer-sep" aria-hidden="true">&middot;</span>
+        <a href="https://status.arxiv.org" target="_blank" rel="noopener noreferrer">Operational Status<span class="is-sr-only"> (opens in new tab)</span></a>
+      </nav>
+    </div>
+    <div class="ds-site-footer-funders" aria-label="Major funders">
+      <div class="ds-site-footer-funders-label">Major funding support from</div>
+      <div class="ds-site-footer-funders-logos">
+        <a class="ds-funder-link" href="https://www.simonsfoundation.org/" target="_blank" rel="noopener noreferrer">
+          <img class="ds-funder-logo" src="https://static.arxiv.org/static/base/1.0.1/images/funders/simons-foundation.png" alt="Simons Foundation"></a>
+        <a class="ds-funder-link" href="https://www.sfi.org.bm/" target="_blank" rel="noopener noreferrer">
+          <img class="ds-funder-logo" src="https://static.arxiv.org/static/base/1.0.1/images/funders/simons-foundation-international.png" alt="Simons Foundation International"></a>
+        <a class="ds-funder-link" href="https://www.schmidtsciences.org/" target="_blank" rel="noopener noreferrer">
+          <img class="ds-funder-logo" src="https://static.arxiv.org/static/base/1.0.1/images/funders/schmidt-sciences.png" alt="Schmidt Sciences"></a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+  </footer>
+  <script src="https://static.arxiv.org/static/base/1.0.0a5/js/member_acknowledgement.js"></script>
+  </body>
+</html>

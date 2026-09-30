@@ -147,7 +147,7 @@ def reliability(runs, fields):
     outer = fig.add_gridspec(3, 3, left=.08, right=.985, top=.895, bottom=.085,
                              wspace=.31, hspace=.40)
     bins_rows, metrics, audits = [], [], []
-    fig.text(.52, .989, 'E archives: pre-update probability versus logged reward', ha='center', fontsize=9)
+    fig.text(.52, .989, 'Pre-update probability and observed proxy reward', ha='center', fontsize=9)
     for ti, target in enumerate(TARGETS):
         gs = outer[ti//3, ti%3].subgridspec(2, 1, height_ratios=[4, 1.4], hspace=.08)
         ax = fig.add_subplot(gs[0]); hist = fig.add_subplot(gs[1], sharex=ax)
@@ -155,7 +155,7 @@ def reliability(runs, fields):
         group = [r for r in runs if r['arm'] == 'E' and r['target'] == target]
         if not group:
             ax.axis('off'); hist.axis('off')
-            ax.text(.5, .45, 'No E archive\nMetrics unavailable', ha='center', va='center', transform=ax.transAxes, color='#666666')
+            ax.text(.5, .45, 'No E observations\nMetrics unavailable', ha='center', va='center', transform=ax.transAxes, color='#666666')
             continue
         probs, rewards, baseline, cluster = [], [], [], []
         diag = Counter(); run_counts = []
@@ -251,16 +251,16 @@ def reliability(runs, fields):
                 'observed_reward_rate': float(freq[j]) if valid[j] else '',
                 'ci_low': float(bounds[0,j]) if math.isfinite(bounds[0,j]) else '',
                 'ci_high': float(bounds[1,j]) if math.isfinite(bounds[1,j]) else ''})
-    fig.supylabel('Observed logged-reward frequency', x=.009, fontsize=9)
+    fig.supylabel('Observed proxy-reward frequency', x=.009, fontsize=9)
     fig.supxlabel('Pre-update probability (lower strips: episode counts by bin)', y=.017, fontsize=8.5)
     csvout('reliability_bins.csv', bins_rows); csvout('reliability_metrics.csv', metrics)
     dump('episode_audit.json', audits)
     save(fig, 'logged_reward_reliability')
     table = [r'% Generated logged-reward diagnostics, not fixed-energy source-branch outcomes.',
         r'\begin{table*}[t]', r'\centering\footnotesize',
-        r'\caption{E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\% intervals from 2,000 bootstrap resamples of whole runs within each target. Brier and ECE are lower-is-better; AUPRC uses non-interpolated average precision (AP). The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\ref{tab:mechanisms}.}',
+        r'\caption{E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\ref{tab:mechanisms}.}',
         r'\label{tab:logged_calibration}', r'\begin{tabularx}{\textwidth}{l r r *{4}{>{\centering\arraybackslash}X}}',
-        r'\toprule', r'Target & $n$ & Episodes & Brier & Reference Brier & ECE (10 bins) & AUPRC (AP) \\', r'\midrule']
+        r'\toprule', r'Target & $n$ & Episodes & BS & Reference BS & ECE (10 bins) & AUPRC (AP) \\', r'\midrule']
     for target in TARGETS:
         matches = [m for m in metrics if m['target'] == target]
         if not matches:
@@ -320,9 +320,9 @@ def dispositions(runs):
         ax.set_xlim(0,100); ax.set_ylim(2.6,-.75)
         ax.set_yticks(range(3),list('CDE')); ax.set_xticks([0,25,50,75,100])
         ax.grid(axis='x',alpha=.15,linewidth=.5)
-    axes[0].set_title('(a) Logged candidate disposition',loc='left',pad=27)
+    axes[0].set_title('(a) Reported candidate dispositions',loc='left',pad=27)
     axes[0].set_xlabel('Share of candidate records (%)')
-    axes[1].set_title('(b) First failed trial flag (P → U → R)',loc='left',pad=27)
+    axes[1].set_title('(b) First failed predicate (P → U → R)',loc='left',pad=27)
     axes[1].set_xlabel('Share of matched trials (%)')
     axes[0].legend([Patch(facecolor=c,edgecolor='white') for _,c,h in cats],
                ['Durable','Reject','Unmatched'],loc='lower center',ncol=3,frameon=False,
@@ -364,7 +364,7 @@ def costs(runs, key, name, xlabel):
         ax.grid(alpha=.18,linewidth=.5)
         ax.xaxis.set_major_locator(plt.MaxNLocator(4))
         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
-    fig.supylabel('Native terminal code branches',x=.009,fontsize=9)
+    fig.supylabel('Terminal code branches',x=.009,fontsize=9)
     fig.supxlabel(xlabel,y=.018,fontsize=9)
     csvout(name+'_values.csv',vals)
     save(fig,name)
@@ -377,7 +377,7 @@ def posterior_cases(runs, fields):
     targets=['forked-daapd','lighttpd1','lightftp']
     fig,axes=plt.subplots(2,3,figsize=(7.2,3.6),sharex='col')
     fig.subplots_adjust(left=.085,right=.99,top=.84,bottom=.12,wspace=.29,hspace=.42)
-    fig.text(.52,.976,'Recorded posterior and scheduling multiplier: three E-archive cases',ha='center',fontsize=9)
+    fig.text(.52,.976,'Productivity estimates and scheduling multipliers: three E cases',ha='center',fontsize=9)
     fig.text(.52,.942,'Selection: lower-median terminal coverage run, then two most observed states',ha='center',fontsize=7.5)
     selected=[]; rows=[]
     for col,target in enumerate(targets):
@@ -429,10 +429,14 @@ def main():
     report['coverage']=coverage(runs);print('Coverage trajectories saved.',flush=True)
     report['reliability']=reliability(runs,data['episode_fields']);print('Reliability diagnostics saved.',flush=True)
     report['dispositions']=dispositions(runs);print('Candidate disposition saved.',flush=True)
-    report['token_cost']=costs(runs,'tokens','token_cost_coverage','Saved prompt + completion tokens (thousands)')
-    report['call_cost']=costs(runs,'calls','call_cost_coverage','Saved model calls')
+    report['token_cost']=costs(runs,'tokens','token_cost_coverage','Reported prompt + completion tokens (thousands)')
+    report['call_cost']=costs(runs,'calls','call_cost_coverage','Reported model calls')
     report['posterior_cases']=posterior_cases(runs,data['episode_fields'])
     dump('figure_analysis_report.json',report)
     print('All six figures saved as vector PDF/SVG plus PNG previews.',flush=True)
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()
+    # Keep reviewed caption/cell wording after regenerating this snapshot.
+    from refine_float_text import apply_edits as apply_float_copy_edits
+    apply_float_copy_edits()

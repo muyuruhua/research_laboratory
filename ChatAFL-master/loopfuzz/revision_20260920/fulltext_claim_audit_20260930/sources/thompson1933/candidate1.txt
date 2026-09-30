@@ -1,0 +1,3438 @@
+A Tutorial on Thompson Sampling
+Daniel J. Russo1 , Benjamin Van Roy2 , Abbas Kazerouni2 , Ian
+Osband3 and Zheng Wen4
+1 Columbia University
+2 StanfordUniversity
+3 Google DeepMind
+4 Adobe Research
+
+
+
+
+      ABSTRACT
+      Thompson sampling is an algorithm for online decision prob-
+      lems where actions are taken sequentially in a manner that
+      must balance between exploiting what is known to maxi-
+      mize immediate performance and investing to accumulate
+      new information that may improve future performance. The
+      algorithm addresses a broad range of problems in a compu-
+      tationally efficient manner and is therefore enjoying wide
+      use. This tutorial covers the algorithm and its application,
+      illustrating concepts through a range of examples, including
+      Bernoulli bandit problems, shortest path problems, product
+      recommendation, assortment, active learning with neural
+      networks, and reinforcement learning in Markov decision
+      processes. Most of these problems involve complex informa-
+      tion structures, where information revealed by taking an
+      action informs beliefs about other actions. We will also dis-
+      cuss when and why Thompson sampling is or is not effective
+      and relations to alternative algorithms.
+In memory of Arthur F. Veinott, Jr.
+                                  1
+                           Introduction
+
+
+
+
+The multi-armed bandit problem has been the subject of decades of
+intense study in statistics, operations research, electrical engineering,
+computer science, and economics. A “one-armed bandit” is a somewhat
+antiquated term for a slot machine, which tends to “rob” players of their
+money. The colorful name for our problem comes from a motivating
+story in which a gambler enters a casino and sits down at a slot machine
+with multiple levers, or arms, that can be pulled. When pulled, an arm
+produces a random payout drawn independently of the past. Because
+the distribution of payouts corresponding to each arm is not listed, the
+player can learn it only by experimenting. As the gambler learns about
+the arms’ payouts, she faces a dilemma: in the immediate future she
+expects to earn more by exploiting arms that yielded high payouts in
+the past, but by continuing to explore alternative arms she may learn
+how to earn higher payouts in the future. Can she develop a sequential
+strategy for pulling arms that balances this tradeoff and maximizes the
+cumulative payout earned? The following Bernoulli bandit problem is a
+canonical example.
+
+Example 1.1. (Bernoulli Bandit) Suppose there are K actions, and
+when played, any action yields either a success or a failure. Action
+
+                                   3
+4                                                              Introduction
+
+
+k ∈ {1, ..., K} produces a success with probability θk ∈ [0, 1]. The
+success probabilities (θ1 , .., θK ) are unknown to the agent, but are
+fixed over time, and therefore can be learned by experimentation. The
+objective, roughly speaking, is to maximize the cumulative number of
+successes over T periods, where T is relatively large compared to the
+number of arms K.
+    The “arms” in this problem might represent different banner ads
+that can be displayed on a website. Users arriving at the site are shown
+versions of the website with different banner ads. A success is associated
+either with a click on the ad, or with a conversion (a sale of the item
+being advertised). The parameters θk represent either the click-through-
+rate or conversion-rate among the population of users who frequent the
+site. The website hopes to balance exploration and exploitation in order
+to maximize the total number of successes.
+    A naive approach to this problem involves allocating some fixed
+fraction of time periods to exploration and in each such period sampling
+an arm uniformly at random, while aiming to select successful actions
+in other time periods. We will observe that such an approach can be
+quite wasteful even for the simple Bernoulli bandit problem described
+above and can fail completely for more complicated problems.
+
+    Problems like the Bernoulli bandit described above have been studied
+in the decision sciences since the second world war, as they crystallize the
+fundamental trade-off between exploration and exploitation in sequential
+decision making. But the information revolution has created significant
+new opportunities and challenges, which have spurred a particularly
+intense interest in this problem in recent years. To understand this,
+let us contrast the Internet advertising example given above with the
+problem of choosing a banner ad to display on a highway. A physical
+banner ad might be changed only once every few months, and once
+posted will be seen by every individual who drives on the road. There is
+value to experimentation, but data is limited, and the cost of of trying
+a potentially ineffective ad is enormous. Online, a different banner ad
+can be shown to each individual out of a large pool of users, and data
+from each such interaction is stored. Small-scale experiments are now a
+core tool at most leading Internet companies.
+                                                                        5
+
+
+    Our interest in this problem is motivated by this broad phenomenon.
+Machine learning is increasingly used to make rapid data-driven deci-
+sions. While standard algorithms in supervised machine learning learn
+passively from historical data, these systems often drive the generation
+of their own training data through interacting with users. An online
+recommendation system, for example, uses historical data to optimize
+current recommendations, but the outcomes of these recommendations
+are then fed back into the system and used to improve future recom-
+mendations. As a result, there is enormous potential benefit in the
+design of algorithms that not only learn from past data, but also explore
+systemically to generate useful data that improves future performance.
+There are significant challenges in extending algorithms designed to
+address Example 1.1 to treat more realistic and complicated decision
+problems. To understand some of these challenges, consider the problem
+of learning by experimentation to solve a shortest path problem.
+
+Example 1.2. (Online Shortest Path) An agent commutes from home
+to work every morning. She would like to commute along the path that
+requires the least average travel time, but she is uncertain of the travel
+time along different routes. How can she learn efficiently and minimize
+the total travel time over a large number of trips?
+
+
+
+
+                    Figure 1.1: Shortest path problem.
+6                                                             Introduction
+
+
+     We can formalize this as a shortest path problem on a graph
+G = (V, E) with vertices V = {1, ..., N } and edges E. An example
+is illustrated in Figure 1.1. Vertex 1 is the source (home) and vertex N
+is the destination (work). Each vertex can be thought of as an intersec-
+tion, and for two vertices i, j ∈ V , an edge (i, j) ∈ E is present if there
+is a direct road connecting the two intersections. Suppose that traveling
+along an edge e ∈ E requires time θe on average. If these parameters
+were known, the agent would select a path (e1 , .., en ), consisting of a
+sequence of adjacent edges connecting vertices 1 and N , such that the
+expected total time θe1 +...+θen is minimized. Instead, she chooses paths
+in a sequence of periods. In period t, the realized time yt,e to traverse
+edge e is drawn independently from a distribution with mean θe . The
+agent sequentially chooses a path xt , observes the realized travel time
+                                                                  P
+(yt,e )e∈xt along each edge in the path, and incurs cost ct = e∈xt yt,e
+equal to the total travel time. By exploring intelligently, she hopes to
+minimize cumulative travel time Tt=1 ct over a large number of periods
+                                    P
+
+T.
+     This problem is conceptually similar to the Bernoulli bandit in
+Example 1.1, but here the number of actions is the number of paths
+in the graph, which generally scales exponentially in the number of
+edges. This raises substantial challenges. For moderate sized graphs,
+trying each possible path would require a prohibitive number of samples,
+and algorithms that require enumerating and searching through the
+set of all paths to reach a decision will be computationally intractable.
+An efficient approach therefore needs to leverage the statistical and
+computational structure of problem.
+     In this model, the agent observes the travel time along each edge
+traversed in a given period. Other feedback models are also natural: the
+agent might start a timer as she leaves home and checks it once she
+arrives, effectively only tracking the total travel time of the chosen path.
+This is closer to the Bernoulli bandit model, where only the realized
+reward (or cost) of the chosen arm was observed. We have also taken the
+random edge-delays yt,e to be independent, conditioned on θe . A more
+realistic model might treat these as correlated random variables, reflect-
+ing that neighboring roads are likely to be congested at the same time.
+Rather than design a specialized algorithm for each possible statistical
+                                                                       7
+
+
+model, we seek a general approach to exploration that accommodates
+flexible modeling and works for a broad array of problems. We will see
+that Thompson sampling accommodates such flexible modeling, and
+offers an elegant and efficient approach to exploration in a wide range
+of structured decision problems, including the shortest path problem
+described here.
+
+    Thompson sampling – also known as posterior sampling and probabil-
+ity matching – was first proposed in 1933 (Thompson, 1933; Thompson,
+1935) for allocating experimental effort in two-armed bandit problems
+arising in clinical trials. The algorithm was largely ignored in the
+academic literature until recently, although it was independently re-
+discovered several times in the interim (Wyatt, 1997; Strens, 2000) as
+an effective heuristic. Now, more than eight decades after it was intro-
+duced, Thompson sampling has seen a surge of interest among industry
+practitioners and academics. This was spurred partly by two influential
+articles that displayed the algorithm’s strong empirical performance
+(Chapelle and Li, 2011; Scott, 2010). In the subsequent five years, the
+literature on Thompson sampling has grown rapidly. Adaptations of
+Thompson sampling have now been successfully applied in a wide vari-
+ety of domains, including revenue management (Ferreira et al., 2015),
+marketing (Schwartz et al., 2017), web site optimization (Hill et al.,
+2017), Monte Carlo tree search (Bai et al., 2013), A/B testing (Graepel
+et al., 2010), Internet advertising (Graepel et al., 2010; Agarwal, 2013;
+Agarwal et al., 2014), recommendation systems (Kawale et al., 2015),
+hyperparameter tuning (Kandasamy et al., 2018), and arcade games
+(Osband et al., 2016a); and have been used at several companies, includ-
+ing Adobe, Amazon (Hill et al., 2017), Facebook, Google (Scott, 2010;
+Scott, 2015), LinkedIn (Agarwal, 2013; Agarwal et al., 2014), Microsoft
+(Graepel et al., 2010), Netflix, and Twitter.
+    The objective of this tutorial is to explain when, why, and how to
+apply Thompson sampling. A range of examples are used to demon-
+strate how the algorithm can be used to solve a variety of problems and
+provide clear insight into why it works and when it offers substantial
+benefit over naive alternatives. The tutorial also provides guidance on
+approximations to Thompson sampling that can simplify computation
+8                                                              Introduction
+
+
+as well as practical considerations like prior distribution specification,
+safety constraints and nonstationarity. Accompanying this tutorial we
+also release a Python package1 that reproduces all experiments and
+figures presented. This resource is valuable not only for reproducible
+research, but also as a reference implementation that may help prac-
+tioners build intuition for how to practically implement some of the
+ideas and algorithms we discuss in this tutorial. A concluding section
+discusses theoretical results that aim to develop an understanding of
+why Thompson sampling works, highlights settings where Thompson
+sampling performs poorly, and discusses alternative approaches studied
+in recent literature. As a baseline and backdrop for our discussion of
+Thompson sampling, we begin with an alternative approach that does
+not actively explore.
+
+
+
+
+    1
+    Python code and documentation is available at https://github.com/iosband/
+ts_tutorial.
+                                       2
+                          Greedy Decisions
+
+
+
+
+Greedy algorithms serve as perhaps the simplest and most common
+approach to online decision problems. The following two steps are taken
+to generate each action: (1) estimate a model from historical data and
+(2) select the action that is optimal for the estimated model, breaking
+ties in an arbitrary manner. Such an algorithm is greedy in the sense
+that an action is chosen solely to maximize immediate reward. Figure 2.1
+illustrates such a scheme. At each time t, a supervised learning algorithm
+fits a model to historical data pairs Ht−1 = ((x1 , y1 ), . . . , (xt−1 , yt−1 )),
+generating an estimate θ̂ of model parameters. The resulting model
+can then be used to predict the reward rt = r(yt ) from applying action
+xt . Here, yt is an observed outcome, while r is a known function that
+represents the agent’s preferences. Given estimated model parameters
+θ̂, an optimization algorithm selects the action xt that maximizes ex-
+pected reward, assuming that θ = θ̂. This action is then applied to the
+exogenous system and an outcome yt is observed.
+     A shortcoming of the greedy approach, which can severely curtail
+performance, is that it does not actively explore. To understand this
+issue, it is helpful to focus on the Bernoulli bandit setting of Example
+1.1. In that context, the observations are rewards, so rt = r(yt ) = yt .
+
+
+                                        9
+10                                                          Greedy Decisions
+
+
+
+
+                   Figure 2.1: Online decision algorithm.
+
+
+At each time t, a greedy algorithm would generate an estimate θ̂k of
+the mean reward for each kth action, and select the action that attains
+the maximum among these estimates.
+    Suppose there are three actions with mean rewards θ ∈ R3 . In
+particular, each time an action k is selected, a reward of 1 is generated
+with probability θk . Otherwise, a reward of 0 is generated. The mean
+rewards are not known to the agent. Instead, the agent’s beliefs in
+any given time period about these mean rewards can be expressed
+in terms of posterior distributions. Suppose that, conditioned on the
+observed history Ht−1 , posterior distributions are represented by the
+probability density functions plotted in Figure 2.2. These distributions
+represent beliefs after the agent tries actions 1 and 2 one thousand times
+each, action 3 three times, receives cumulative rewards of 600, 400, and
+1, respectively, and synthesizes these observations with uniform prior
+distributions over mean rewards of each action. They indicate that the
+agent is confident that mean rewards for actions 1 and 2 are close to
+their expectations of approximately 0.6 and 0.4. On the other hand, the
+agent is highly uncertain about the mean reward of action 3, though he
+expects 0.4.
+    The greedy algorithm would select action 1, since that offers the
+maximal expected mean reward. Since the uncertainty around this
+expected mean reward is small, observations are unlikely to change the
+expectation substantially, and therefore, action 1 is likely to be selected
+                                                                        11
+
+
+
+
+         Figure 2.2: Probability density functions over mean rewards.
+
+
+ad infinitum. It seems reasonable to avoid action 2, since it is extremely
+unlikely that θ2 > θ1 . On the other hand, if the agent plans to operate
+over many time periods, it should try action 3. This is because there is
+some chance that θ3 > θ1 , and if this turns out to be the case, the agent
+will benefit from learning that and applying action 3. To learn whether
+θ3 > θ1 , the agent needs to try action 3, but the greedy algorithm will
+unlikely ever do that. The algorithm fails to account for uncertainty in
+the mean reward of action 3, which should entice the agent to explore
+and learn about that action.
+     Dithering is a common approach to exploration that operates through
+randomly perturbing actions that would be selected by a greedy algo-
+rithm. One version of dithering, called -greedy exploration, applies the
+greedy action with probability 1 −  and otherwise selects an action
+uniformly at random. Though this form of exploration can improve
+behavior relative to a purely greedy approach, it wastes resources by
+failing to “write off” actions regardless of how unlikely they are to be
+optimal. To understand why, consider again the posterior distributions
+of Figure 2.2. Action 2 has almost no chance of being optimal, and
+therefore, does not deserve experimental trials, while the uncertainty
+surrounding action 3 warrants exploration. However, -greedy explo-
+12                                                   Greedy Decisions
+
+
+ration would allocate an equal number of experimental trials to each
+action. Though only half of the exploratory actions are wasted in this
+example, the issue is exacerbated as the number of possible actions
+increases. Thompson sampling, introduced more than eight decades
+ago (Thompson, 1933), provides an alternative to dithering that more
+intelligently allocates exploration effort.
+                                        3
+   Thompson Sampling for the Bernoulli Bandit
+
+
+
+
+To digest how Thompson sampling (TS) works, it is helpful to begin
+with a simple context that builds on the Bernoulli bandit of Example
+1.1 and incorporates a Bayesian model to represent uncertainty.
+
+Example 3.1. (Beta-Bernoulli Bandit) Recall the Bernoulli bandit of
+Example 1.1. There are K actions. When played, an action k produces a
+reward of one with probability θk and a reward of zero with probability
+1 − θk . Each θk can be interpreted as an action’s success probability
+or mean reward. The mean rewards θ = (θ1 , ..., θK ) are unknown, but
+fixed over time. In the first period, an action x1 is applied, and a reward
+r1 ∈ {0, 1} is generated with success probability P(r1 = 1|x1 , θ) = θx1 .
+After observing r1 , the agent applies another action x2 , observes a
+reward r2 , and this process continues.
+     Let the agent begin with an independent prior belief over each
+θk . Take these priors to be beta-distributed with parameters α =
+(α1 , . . . , αK ) and β ∈ (β1 , . . . , βK ). In particular, for each action k, the
+prior probability density function of θk is
+                              Γ(αk + βk ) αk −1
+                   p(θk ) =               θ     (1 − θk )βk −1 ,
+                              Γ(αk )Γ(βk ) k
+
+
+                                        13
+14                            Thompson Sampling for the Bernoulli Bandit
+
+
+where Γ denotes the gamma function. As observations are gathered,
+the distribution is updated according to Bayes’ rule. It is particularly
+convenient to work with beta distributions because of their conjugacy
+properties. In particular, each action’s posterior distribution is also beta
+with parameters that can be updated according to a simple rule:
+                          
+                          (α , β )
+                             k k                         if xt 6= k
+             (αk , βk ) ←
+                          (αk , βk ) + (rt , 1 − rt )   if xt = k.
+
+    Note that for the special case of αk = βk = 1, the prior p(θk ) is
+uniform over [0, 1]. Note that only the parameters of a selected action
+are updated. The parameters (αk , βk ) are sometimes called pseudo-
+counts, since αk or βk increases by one with each observed success or
+failure, respectively. A beta distribution with parameters (αk , βk ) has
+mean αk /(αk + βk ), and the distribution becomes more concentrated
+as αk + βk grows. Figure 2.2 plots probability density functions of
+beta distributions with parameters (α1 , β1 ) = (601, 401), (α2 , β2 ) =
+(401, 601), and (α3 , β3 ) = (2, 3).
+    Algorithm 1 presents a greedy algorithm for the beta-Bernoulli
+bandit. In each time period t, the algorithm generates an estimate
+θ̂k = αk /(αk + βk ), equal to its current expectation of the success
+probability θk . The action xt with the largest estimate θ̂k is then applied,
+after which a reward rt is observed and the distribution parameters αxt
+and βxt are updated.
+    TS, specialized to the case of a beta-Bernoulli bandit, proceeds
+similarly, as presented in Algorithm 2. The only difference is that the
+success probability estimate θ̂k is randomly sampled from the posterior
+distribution, which is a beta distribution with parameters αk and βk ,
+rather than taken to be the expectation αk /(αk +βk ). To avoid a common
+misconception, it is worth emphasizing TS does not sample θ̂k from the
+posterior distribution of the binary value yt that would be observed if
+action k is selected. In particular, θ̂k represents a statistically plausible
+success probability rather than a statistically plausible observation.
+                                                                                                   15
+
+
+
+
+Algorithm 1 BernGreedy(K, α, β)                       Algorithm 2 BernTS(K, α, β)
+ 1: for t = 1, 2, . . . do                             1: for t = 1, 2, . . . do
+ 2:    #estimate model:                                2:    #sample model:
+ 3:    for k = 1, . . . , K do                         3:    for k = 1, . . . , K do
+ 4:        θ̂k ← αk /(αk + βk )                        4:        Sample θ̂k ∼ beta(αk , βk )
+ 5:    end for                                         5:    end for
+ 6:                                                    6:
+ 7:    #select and apply action:                       7:    #select and apply action:
+ 8:    xt ← argmaxk θ̂k                                8:    xt ← argmaxk θ̂k
+ 9:    Apply xt and observe rt                         9:    Apply xt and observe rt
+10:                                                   10:
+11:     #update distribution:                         11:     #update distribution:
+12:     (αxt , βxt ) ← (αxt + rt , βxt   + 1 − rt )   12:     (αxt , βxt ) ← (αxt + rt , βxt + 1 − rt )
+13: end for                                           13: end for
+
+
+
+    To understand how TS improves on greedy actions with or without
+dithering, recall the three armed Bernoulli bandit with posterior distri-
+butions illustrated in Figure 2.2. In this context, a greedy action would
+forgo the potentially valuable opportunity to learn about action 3. With
+dithering, equal chances would be assigned to probing actions 2 and 3,
+though probing action 2 is virtually futile since it is extremely unlikely
+to be optimal. TS, on the other hand would sample actions 1, 2, or 3,
+with probabilities approximately equal to 0.82, 0, and 0.18, respectively.
+In each case, this is the probability that the random estimate drawn for
+the action exceeds those drawn for other actions. Since these estimates
+are drawn from posterior distributions, each of these probabilities is
+also equal to the probability that the corresponding action is optimal,
+conditioned on observed history. As such, TS explores to resolve un-
+certainty where there is a chance that resolution will help the agent
+identify the optimal action, but avoids probing where feedback would
+not be helpful.
+    It is illuminating to compare simulated behavior of TS to that
+of a greedy algorithm. Consider a three-armed beta-Bernoulli bandit
+with mean rewards θ1 = 0.9, θ2 = 0.8, and θ3 = 0.7. Let the prior
+distribution over each mean reward be uniform. Figure 3.1 plots results
+based on ten thousand independent simulations of each algorithm. Each
+simulation is over one thousand time periods. In each simulation, actions
+are randomly rank-ordered for the purpose of tie-breaking so that the
+16                             Thompson Sampling for the Bernoulli Bandit
+
+
+greedy algorithm is not biased toward selecting any particular action.
+Each data point represents the fraction of simulations for which a
+particular action is selected at a particular time.
+
+
+
+
+        (a) greedy algorithm                  (b) Thompson sampling
+
+Figure 3.1: Probability that the greedy algorithm and Thompson sampling selects
+an action.
+
+
+    From the plots, we see that the greedy algorithm does not always
+converge on action 1, which is the optimal action. This is because the
+algorithm can get stuck, repeatedly applying a poor action. For example,
+suppose the algorithm applies action 3 over the first couple time periods
+and receives a reward of 1 on both occasions. The algorithm would
+then continue to select action 3, since the expected mean reward of
+either alternative remains at 0.5. With repeated selection of action 3,
+the expected mean reward converges to the true value of 0.7, which
+reinforces the agent’s commitment to action 3. TS, on the other hand,
+learns to select action 1 within the thousand periods. This is evident
+from the fact that, in an overwhelmingly large fraction of simulations,
+TS selects action 1 in the final period.
+    The performance of online decision algorithms is often studied and
+compared through plots of regret. The per-period regret of an algorithm
+over a time period t is the difference between the mean reward of
+an optimal action and the action selected by the algorithm. For the
+Bernoulli bandit problem, we can write this as regrett (θ) = maxk θk −θxt .
+Figure 3.2a plots per-period regret realized by the greedy algorithm
+and TS, again averaged over ten thousand simulations. The average
+                                                                         17
+
+
+per-period regret of TS vanishes as time progresses. That is not the
+case for the greedy algorithm.
+    Comparing algorithms with fixed mean rewards raises questions
+about the extent to which the results depend on the particular choice
+of θ. As such, it is often useful to also examine regret averaged over
+plausible values of θ. A natural approach to this involves sampling many
+instances of θ from the prior distributions and generating an independent
+simulation for each. Figure 3.2b plots averages over ten thousand such
+simulations, with each action reward sampled independently from a
+uniform prior for each simulation. Qualitative features of these plots are
+similar to those we inferred from Figure 3.2a, though regret in Figure
+3.2a is generally smaller over early time periods and larger over later
+time periods, relative to Figure 3.2b. The smaller regret in early time
+periods is due to the fact that with θ = (0.9, 0.8, 0.7), mean rewards are
+closer than for a typical randomly sampled θ, and therefore the regret
+of randomly selected actions is smaller. The fact that per-period regret
+of TS is larger in Figure 3.2a than Figure 3.2b over later time periods,
+like period 1000, is also a consequence of proximity among rewards with
+θ = (0.9, 0.8, 0.7). In this case, the difference is due to the fact that it
+takes longer to differentiate actions than it would for a typical randomly
+sampled θ.
+
+
+
+
+        (a) θ = (0.9, 0.8, 0.7)            (b) average over random θ
+
+Figure 3.2: Regret from applying greedy and Thompson sampling algorithms to
+the three-armed Bernoulli bandit.
+                                      4
+                General Thompson Sampling
+
+
+
+
+TS can be applied fruitfully to a broad array of online decision problems
+beyond the Bernoulli bandit, and we now consider a more general
+setting. Suppose the agent applies a sequence of actions x1 , x2 , x3 , . . . to
+a system, selecting each from a set X . This action set could be finite, as
+in the case of the Bernoulli bandit, or infinite. After applying action xt ,
+the agent observes an outcome yt , which the system randomly generates
+according to a conditional probability measure qθ (·|xt ). The agent enjoys
+a reward rt = r(yt ), where r is a known function. The agent is initially
+uncertain about the value of θ and represents his uncertainty using a
+prior distribution p.
+     Algorithms 3 and 4 present greedy and TS approaches in an abstract
+form that accommodates this very general problem. The two differ in
+the way they generate model parameters θ̂. The greedy algorithm takes
+θ̂ to be the expectation of θ with respect to the distribution p, while
+TS draws a random sample from p. Both algorithms then apply actions
+that maximize expected reward for their respective models. Note that,
+if there are a finite set of possible observations yt , this expectation is
+given by
+                                             X
+(4.1)               Eqθ̂ [r(yt )|xt = x] =       qθ̂ (o|x)r(o).
+                                             o
+
+
+                                      18
+                                                                                      19
+
+
+The distribution p is updated by conditioning on the realized obser-
+vation ŷt . If θ is restricted to values from a finite set, this conditional
+distribution can be written by Bayes rule as
+                                              p(u)qu (yt |xt )
+(4.2)                Pp,q (θ = u|xt , yt ) = P                   .
+                                              v p(v)qv (yt |xt )
+
+
+
+Algorithm 3 Greedy(X , p, q, r)              Algorithm 4 Thompson(X , p, q, r)
+ 1: for t = 1, 2, . . . do                    1: for t = 1, 2, . . . do
+ 2:    #estimate model:                       2:    #sample model:
+ 3:    θ̂ ← Ep [θ]                            3:    Sample θ̂ ∼ p
+ 4:                                           4:
+ 5:    #select and apply action:              5:    #select and apply action:
+ 6:    xt ← argmaxx∈X Eq [r(yt )|xt
+                              θ̂
+                                      = x]    6:    xt ← argmaxx∈X Eq [r(yt )|xt
+                                                                           θ̂
+                                                                                   = x]
+ 7:    Apply xt and observe yt                7:    Apply xt and observe yt
+ 8:                                           8:
+ 9:    #update distribution:                  9:    #update distribution:
+10:     p ← Pp,q (θ ∈ ·|xt , yt )            10:     p ← Pp,q (θ ∈ ·|xt , yt )
+11: end for                                  11: end for
+
+
+     The Bernoulli bandit with a beta prior serves as a special case of
+this more general formulation. In this special case, the set of actions is
+X = {1, . . . , K} and only rewards are observed, so yt = rt . Observations
+and rewards are modeled by conditional probabilities qθ (1|k) = θk and
+qθ (0|k) = 1 − θk . The prior distribution is encoded by vectors α and β,
+with probability density function given by:
+                            K
+                                Γ(α + β) αk −1
+                                                (1 − θk )βk −1 ,
+                            Y
+                  p(θ) =                     θk
+                           k=1
+                               Γ(α k )Γ(βk )
+
+where Γ denotes the gamma function. In other words, under the prior
+distribution, components of θ are independent and beta-distributed,
+with parameters α and β.
+    For this problem, the greedy algorithm (Algorithm 3) and TS (Al-
+gorithm 4) begin each tth iteration with posterior parameters (αk , βk )
+for k ∈ {1, . . . , K}. The greedy algorithm sets θ̂k to the expected value
+Ep [θk ] = αk /(αk + βk ), whereas TS randomly draws θ̂k from a beta
+distribution with parameters (αk , βk ). Each algorithm then selects the
+action x that maximizes Eqθ̂ [r(yt )|xt = x] = θ̂x . After applying the
+selected action, a reward rt = yt is observed, and belief distribution
+20                                                          General Thompson Sampling
+
+
+parameters are updated according to
+
+                  (α, β) ← (α + rt 1xt , β + (1 − rt )1xt ),
+
+where 1xt is a vector with component xt equal to 1 and all other
+components equal to 0.
+   Algorithms 3 and 4 can also be applied to much more complex
+problems. As an example, let us consider a version of the shortest path
+problem presented in Example 1.2.
+
+Example 4.1. (Independent Travel Times) Recall the shortest path
+problem of Example 1.2. The model is defined with respect to a directed
+graph G = (V, E), with vertices V = {1, . . . , N }, edges E, and mean
+travel times θ ∈ RN . Vertex 1 is the source and vertex N is the
+destination. An action is a sequence of distinct edges leading from
+source to destination. After applying action xt , for each traversed edge
+e ∈ xt , the agent observes a travel time yt,e that is independently
+sampled from a distribution with mean θe . Further, the agent incurs a
+cost of e∈xt yt,e , which can be thought of as a reward rt = − e∈xt yt,e .
+       P                                                             P
+
+    Consider a prior for which each θe is independent and log-Gaussian-
+distributed with parameters µe and σe2 . That is, ln(θe ) ∼ N (µe , σe2 ) is
+                                                2
+Gaussian-distributed. Hence, E[θe ] = eµe +σe /2 . Further, take yt,e |θ to
+be independent across edges e ∈ E and log-Gaussian-distributed with
+parameters ln(θe ) − σ̃ 2 /2 and σ̃ 2 , so that E[yt,e |θe ] = θe . Conjugacy
+properties accommodate a simple rule for updating the distribution of
+θe upon observation of yt,e :
+                                                                     
+                                                               σ̃ 2
+                                                                                              
+                             1           1
+                               µ
+                            σe2 e
+                                    +   σ̃ 2
+                                                 ln(yt,e ) +    2                   1
+(4.3)     (µe , σe2 ) ←                    1         1                   ,    1         1
+                                                                                               .
+                                           σe2
+                                                 +   σ̃ 2                     σe2
+                                                                                    +   σ̃ 2
+
+    To motivate this formulation, consider an agent who commutes from
+home to work every morning. Suppose possible paths are represented
+by a graph G = (V, E). Suppose the agent knows the travel distance
+de associated with each edge e ∈ E but is uncertain about average
+travel times. It would be natural for her to construct a prior for which
+expectations are equal to travel distances. With the log-Gaussian prior,
+this can be accomplished by setting µe = ln(de ) − σe2 /2. Note that the
+                                                                       21
+
+
+parameters µe and σe2 also express a degree of uncertainty; in particular,
+                                                               2
+the prior variance of mean travel time along an edge is (eσe − 1)d2e .
+    The greedy algorithm (Algorithm 3) and TS (Algorithm 4) can be
+applied to Example 4.1 in a computationally efficient manner. Each
+algorithm begins each tth iteration with posterior parameters (µe , σe )
+for each e ∈ E. The greedy algorithm sets θ̂e to the expected value
+                 2
+Ep [θe ] = eµe +σe /2 , whereas TS randomly draws θ̂e from a log-Gaussian
+distribution with parameters µe and σe2 . Each algorithm then selects its
+action x to maximize Eqθ̂ [r(yt )|xt = x] = − e∈xt θ̂e . This can be cast
+                                               P
+
+as a deterministic shortest path problem, which can be solved efficiently,
+for example, via Dijkstra’s algorithm. After applying the selected action,
+an outcome yt is observed, and belief distribution parameters (µe , σe2 ),
+for each e ∈ E, are updated according to (4.3).
+    Figure 4.1 presents results from applying greedy and TS algorithms
+to Example 4.1, with the graph taking the form of a binomial bridge, as
+shown in Figure 4.2, except with twenty rather than six stages, so there
+are 184,756 paths from source to destination. Prior parameters are set
+to µe = − 12 and σe2 = 1 so that E[θe ] = 1, for each e ∈ E, and the
+conditional distribution parameter is σ̃ 2 = 1. Each data point represents
+an average over ten thousand independent simulations.
+    The plots of regret demonstrate that the performance of TS con-
+verges quickly to optimal, while that is far from true for the greedy
+algorithm. We also plot results generated by -greedy exploration, vary-
+ing . For each trip, with probability 1 − , this algorithm traverses a
+path produced by a greedy algorithm. Otherwise, the algorithm samples
+a path randomly. Though this form of exploration can be helpful, the
+plots demonstrate that learning progresses at a far slower pace than
+with TS. This is because -greedy exploration is not judicious in how
+it selects paths to explore. TS, on the other hand, orients exploration
+effort towards informative rather than entirely random paths.
+    Plots of cumulative travel time relative to optimal offer a sense for
+the fraction of driving time wasted due to lack of information. Each
+point plots an average of the ratio between the time incurred over some
+number of days and the minimal expected travel time given θ. With
+TS, this converges to one at a respectable rate. The same can not be
+said for -greedy approaches.
+22                                                  General Thompson Sampling
+
+
+
+
+             (a) regret                  (b) cumulative travel time vs. optimal
+
+Figure 4.1: Performance of Thompson sampling and -greedy algorithms in the
+shortest path problem.
+
+
+
+
+                Figure 4.2: A binomial bridge with six stages.
+
+
+    Algorithm 4 can be applied to problems with complex information
+structures, and there is often substantial value to careful modeling of
+such structures. As an example, we consider a more complex variation
+of the binomial bridge example.
+
+Example 4.2. (Correlated Travel Times) As with Example 4.1, let each
+θe be independent and log-Gaussian-distributed with parameters µe
+and σe2 . Let the observation distribution be characterized by
+
+                            yt,e = ζt,e ηt νt,`(e) θe ,
+                                                                               23
+
+
+where each ζt,e represents an idiosyncratic factor associated with edge
+e, ηt represents a factor that is common to all edges, `(e) indicates
+whether edge e resides in the lower half of the binomial bridge, and νt,0
+and νt,1 represent factors that bear a common influence on edges in the
+upper and lower halves, respectively. We take each ζt,e , ηt , νt,0 , and νt,1
+to be independent log-Gaussian-distributed with parameters −σ̃ 2 /6 and
+σ̃ 2 /3. The distributions of the shocks ζt,e , ηt , νt,0 and νt,1 are known,
+and only the parameters θe corresponding to each individual edge must
+be learned through experimentation. Note that, given these parameters,
+the marginal distribution of yt,e |θ is identical to that of Example 4.1,
+though the joint distribution over yt |θ differs.
+      The common factors induce correlations among travel times in the
+binomial bridge: ηt models the impact of random events that influence
+traffic conditions everywhere, like the day’s weather, while νt,0 and
+νt,1 each reflect events that bear influence only on traffic conditions
+along edges in half of the binomial bridge. Though mean edge travel
+times are independent under the prior, correlated observations induce
+dependencies in posterior distributions.
+      Conjugacy properties again facilitate efficient updating of posterior
+parameters. Let φ, zt ∈ RN be defined by
+                                                    (
+                                                        ln(yt,e ) if e ∈ xt
+         φe = ln(θe )         and          zt,e =
+                                                        0         otherwise.
+Note that it is with some abuse of notation that we index vectors and
+matrices using edge indices. Define a |xt | × |xt | covariance matrix Σ̃
+with elements
+                                      for e = e0
+                           
+                                2
+                            σ̃
+                           
+                Σ̃e,e0   =   2σ̃ 2 /3 for e 6= e0 , `(e) = `(e0 )
+                            2
+                           
+                             σ̃ /3 otherwise,
+
+for e, e0 ∈ xt , and a N × N concentration matrix
+                                         Σ̃−1
+                                     (
+                                           e,e0   if e, e0 ∈ xt
+                          C̃e,e0 =
+                                         0        otherwise,
+
+for e, e0 ∈ E. Then, the posterior distribution of φ is Gaussian with a
+mean vector µ and covariance matrix Σ that can be updated according
+24                                                         General Thompson Sampling
+
+
+to
+                                     −1                                      −1 
+                           −1                      −1                  −1
+(4.4)     (µ, Σ) ←        Σ     + C̃           Σ        µ + C̃zt , Σ        + C̃           .
+
+    TS (Algorithm 4) can again be applied in a computationally efficient
+manner. Each tth iteration begins with posterior parameters µ ∈ RN
+and Σ ∈ RN ×N . The sample θ̂ can be drawn by first sampling a
+vector φ̂ from a Gaussian distribution with mean µ and covariance
+matrix Σ, and then setting θ̂e = φ̂e for each e ∈ E. An action x is
+selected to maximize Eqθ̂ [r(yt )|xt = x] = − e∈xt θ̂e , using Djikstra’s
+                                             P
+
+algorithm or an alternative. After applying the selected action, an
+outcome yt is observed, and belief distribution parameters (µ, Σ) are
+updated according to (4.4).
+
+
+
+
+              (a) regret                   (b) cumulative travel time vs. optimal
+
+Figure 4.3: Performance of two versions of Thompson sampling in the shortest
+path problem with correlated travel times.
+
+     Figure 4.3 plots results from applying TS to Example 4.2, again
+with the binomial bridge, µe = − 12 , σe2 = 1, and σ̃ 2 = 1. Each data
+point represents an average over ten thousand independent simulations.
+Despite model differences, an agent can pretend that observations made
+in this new context are generated by the model described in Example
+4.1. In particular, the agent could maintain an independent log-Gaussian
+posterior for each θe , updating parameters (µe , σe2 ) as though each yt,e |θ
+is independently drawn from a log-Gaussian distribution. As a baseline
+for comparison, Figure 4.3 additionally plots results from application
+of this approach, which we will refer to here as misspecified TS. The
+comparison demonstrates substantial improvement that results from
+                                                                       25
+
+
+accounting for interdependencies among edge travel times, as is done
+by what we refer to here as coherent TS. Note that we have assumed
+here that the agent must select a path before initiating each trip. In
+particular, while the agent may be able to reduce travel times in contexts
+with correlated delays by adjusting the path during the trip based on
+delays experienced so far, our model does not allow this behavior.
+                                  5
+                        Approximations
+
+
+
+
+Conjugacy properties in the Bernoulli bandit and shortest path examples
+that we have considered so far facilitated simple and computationally
+efficient Bayesian inference. Indeed, computational efficiency can be
+an important consideration when formulating a model. However, many
+practical contexts call for more complex models for which exact Bayesian
+inference is computationally intractable. Fortunately, there are reason-
+ably efficient and accurate methods that can be used to approximately
+sample from posterior distributions.
+     In this section we discuss four approaches to approximate posterior
+sampling: Gibbs sampling, Langevin Monte Carlo, sampling from a
+Laplace approximation, and the bootstrap. Such methods are called for
+when dealing with problems that are not amenable to efficient Bayesian
+inference. As an example, we consider a variation of the online shortest
+path problem.
+
+Example 5.1. (Binary Feedback) Consider Example 4.2, except with
+deterministic travel times and noisy binary observations. Let the graph
+represent a binomial bridge with M stages. Let each θe be independent
+and gamma-distributed with E[θe ] = 1, E[θe2 ] = 1.5, and observations
+
+
+
+                                  26
+                                                                           27
+
+
+be generated according to
+                     
+                      1 with probability
+                                                   P 1             
+           yt |θ ∼                          1+exp     e∈xt
+                                                             θe −M
+                      0 otherwise.
+                     
+
+We take the reward to be the rating rt = yt . This information structure
+could be used to model, for example, an Internet route recommendation
+service. Each day, the system recommends a route xt and receives
+feedback yt from the driver, expressing whether the route was desirable.
+                              P
+When the realized travel time e∈xt θe falls short of the prior expectation
+M , the feedback tends to be positive, and vice versa.
+
+     This new model does not enjoy conjugacy properties leveraged
+in Section 4 and is not amenable to efficient exact Bayesian inference.
+However, the problem may be addressed via approximation methods. To
+illustrate, Figure 5.1 plots results from application of three approximate
+versions of TS to an online shortest path problem on a twenty-stage
+binomial bridge with binary feedback. The algorithms leverage Langevin
+Monte Carlo, the Laplace approximation, and the bootstrap, three
+approaches we will discuss, and the results demonstrate effective learning,
+in the sense that regret vanishes over time. Also plotted as a baseline
+for comparison are results from application of the greedy algorithm.
+     In the remainder of this section, we will describe several approaches
+to approximate TS. It is worth mentioning that we do not cover an
+exhaustive list, and further, our descriptions do not serve as compre-
+hensive or definitive treatments of each approach. Rather, our intent is
+to offer simple descriptions that convey key ideas that may be extended
+or combined to serve needs arising in any specific application.
+     Throughout this section, let ft−1 denote the posterior density of
+θ conditioned on the history Ht−1 = ((x1 , y1 ), . . . , (xt−1 , yt−1 )) of ob-
+servations. TS generates an action xt by sampling a parameter vector
+θ̂ from ft−1 and solving for the optimal path under θ̂. The methods
+we describe generate a sample θ̂ whose distribution approximates the
+posterior fˆt−1 , which enables approximate implementations of TS when
+exact posterior sampling is infeasible.
+28                                                                           Approximations
+
+
+
+
+Figure 5.1: Regret experienced by approximation methods applied to the path
+recommendation problem with binary feedback.
+
+
+5.1   Gibbs Sampling
+
+Gibbs sampling is a general Markov chain Monte Carlo (MCMC) al-
+gorithm for drawing approximate samples from multivariate proba-
+bility distributions. It produces a sequence of sampled parameters
+(θ̂n : n = 0, 1, 2, . . .) forming a Markov chain with stationary distribution
+ft−1 . Under reasonable technical conditions, the limiting distribution of
+this Markov chain is its stationary distribution, and the distribution of
+θ̂n converges to ft−1 .
+     Gibbs sampling starts with an initial guess θ̂0 . Iterating over sweeps
+n = 1, . . . , N , for each nth sweep, the algorithm iterates over the
+components k = 1, . . . , K, for each k generating a one-dimensional
+marginal distribution
+            n,k                                              n−1             n−1
+           ft−1 (θk ) ∝ ft−1 ((θ̂1n , . . . , θ̂k−1
+                                                n
+                                                    , θk , θ̂k+1 , . . . , θ̂K   )),
+                                                          n,k
+and sampling the kth component according to θ̂kn ∼ ft−1       . After N of
+                                N
+sweeps, the prevailing vector θ̂ is taken to be the approximate posterior
+sample. We refer to (Casella and George, 1992) for a more thorough
+introduction to the algorithm.
+    Gibbs sampling applies to a broad range of problems, and is often
+computationally viable even when sampling from ft−1 is not. This is
+because sampling from a one-dimensional distribution is simpler. That
+5.2. Laplace Approximation                                           29
+
+
+said, for complex problems, Gibbs sampling can still be computationally
+demanding. This is the case, for example, with our path recommendation
+problem with binary feedback. In this context, it is easy to implement
+a version of Gibbs sampling that generates a close approximation to a
+posterior sample within well under a minute. However, running thou-
+sands of simulations each over hundreds of time periods can be quite
+time-consuming. As such, we turn to more efficient approximation
+methods.
+
+5.2   Laplace Approximation
+
+We now discuss an approach that approximates a potentially complicated
+posterior distribution by a Gaussian distribution. Samples from this
+simpler Gaussian distribution can then serve as approximate samples
+from the posterior distribution of interest. Chapelle and Li (Chapelle
+and Li, 2011) proposed this method to approximate TS in a display
+advertising problem with a logistic regression model of ad-click-through
+rates.
+    Let g denote a probability density function over RK from which
+we wish to sample. If g is unimodal, and its log density ln(g(φ)) is
+strictly concave around its mode φ, then g(φ) = eln(g(φ)) is sharply
+peaked around φ. It is therefore natural to consider approximating g
+locally around its mode. A second-order Taylor approximation to the
+log-density gives
+                                   1
+              ln(g(φ)) ≈ ln(g(φ)) − (φ − φ)> C(φ − φ),
+                                   2
+where
+                             C = −∇2 ln(g(φ)).
+As an approximation to the density g, we can then use
+                                      1       > C(φ−φ)
+                       g̃(φ) ∝ e− 2 (φ−φ)                .
+
+This is proportional to the density of a Gaussian distribution with mean
+φ and covariance C −1 , and hence
+                             q            1         > C(φ−φ)
+                   g̃(φ) =       |C/2π|e− 2 (φ−φ)              .
+30                                                                               Approximations
+
+
+We refer to this as the Laplace approximation of g. Since there are
+efficient algorithms for generating Gaussian-distributed samples, this
+offers a viable means to approximately sampling from g.
+     As an example, let us consider application of the Laplace approxi-
+mation to Example 5.1. Bayes rule implies that the posterior density
+ft−1 of θ satisfies
+                                                            yτ           P          1−yτ
+                     Qt−1                                             exp        θ −M
+                                                                             e∈xτ e
+ ft−1 (θ) ∝ f0 (θ)    τ =1
+                                         P1                                 P               .
+                                 1+exp    e∈xτ
+                                                 θe −M               1+exp     e∈xτ
+                                                                                      θe −M
+
+
+The mode θ can be efficiently computed via maximizing ft−1 , which
+is log-concave. An approximate posterior sample θ̂ is then drawn
+from a Gaussian distribution with mean θ and covariance matrix
+(−∇2 ln(ft−1 (θ)))−1 .
+     Laplace approximations are well suited for Example 5.1 because the
+log-posterior density is strictly concave and its gradient and Hessian can
+be computed efficiently. Indeed, more broadly, Laplace approximations
+tend to be effective for posterior distributions with smooth densities that
+are sharply peaked around their mode. They tend to be computationally
+efficient when one can efficiently compute the posterior mode, and can
+efficiently form the Hessian of the log-posterior density.
+     The behavior of the Laplace approximation is not invariant to a
+substitution of variables, and it can sometimes be helpful to apply such
+a substitution. To illustrate this point, let us revisit the online shortest
+path problem of Example 4.2. For this problem, posterior distributions
+components of θ are log-Gaussian. However, the distribution of φ, where
+φe = ln(θe ) for each edge e ∈ E, is Gaussian. As such, if the Laplace
+approximation approach is applied to generate a sample φ̂ from the
+posterior distribution of φ, the Gaussian approximation is no longer
+an approximation, and, letting θ̂e = exp(φ̂e ) for each e ∈ E, we obtain
+a sample θ̂ exactly from the posterior distribution of θ. In this case,
+through a variable substitution, we can sample in a manner that makes
+the Laplace approximation exact. More broadly, for any given problem,
+it may be possible to introduce variable substitutions that enhance the
+efficacy of the Laplace approximation.
+     To produce the computational results reported in Figure 5.1, we
+applied Newton’s method with a backtracking line search to maximize
+5.3. Langevin Monte Carlo                                             31
+
+
+ln(ft−1 ). Though regret decays and should eventually vanish, it is easy
+to see from the figure that, for our example, the performance of the
+Laplace approximation falls short of Langevin Monte Carlo, which
+we will discuss in the next section. This is likely due to the fact that
+the posterior distribution is not sufficiently close to Gaussian. It is
+interesting that, despite serving as a popular approach in practical
+applications of TS (Chapelle and Li, 2011; Gómez-Uribe, 2016), the
+Laplace approximation can leave substantial value on the table.
+
+5.3   Langevin Monte Carlo
+
+We now describe an alternative Markov chain Monte Carlo method that
+uses gradient information about the target distribution. Let g(φ) denote
+a log-concave probability density function over RK from which we wish
+to sample. Suppose that ln(g(φ)) is differentiable and its gradients are
+efficiently computable. Arising first in physics, Langevin dynamics refer
+to the diffusion process
+                                              √
+(5.1)                dφt = ∇ ln(g(φt ))dt + 2dBt
+
+where Bt is a standard Brownian motion process. This process has g
+as its unique stationary distribution, and under reasonable technical
+conditions, the distribution of φt converges rapidly to this stationary
+distribution (Roberts and Tweedie, 1996; Mattingly et al., 2002). There-
+fore simulating the process (5.1) provides a means of approximately
+sampling from g.
+    Typically, one instead implements a Euler discretization of this
+stochastic differential equation
+                                        √
+(5.2)       φn+1 = φn + ∇ ln(g(φn )) + 2Wn        n ∈ N,
+
+where W1 , W2 , . . . are i.i.d. standard Gaussian random variables and
+ > 0 is a small step size. Like a gradient ascent method, under this
+method φn tends to drift in directions of increasing density g(φn ).
+However, random Gaussian noise Wn is injected at each step so that,
+for large n, the position of φn is random and captures the uncertainty
+in the distribution g. A number of papers establish rigorous guarantees
+for the rate at which this Markov chain converges to its stationary
+32                                                        Approximations
+
+
+distribution (Roberts and Rosenthal, 1998; Bubeck et al., 2018; Durmus
+and Moulines, 2016; Cheng and Bartlett, 2018). These papers typically
+require  is sufficiently small, or that a decaying sequence of step sizes
+(1 , 2 , . . .) is used.
+      We make two standard modifications to this method to improve
+computational efficiency. First, following recent work (Welling and Teh,
+2011), we implement stochastic gradient Langevin Monte Carlo, which
+uses sampled minibatches of data to compute approximate rather than
+exact gradients. Our implementation uses a mini-batch size of 100;
+this choice seems to be effective but has not been carefully optimized.
+When fewer than 100 observations are available, we follow the Markov
+chain (5.2) with exact gradient computation. When more than 100
+observations have been gathered, we follow (5.2) but use an estimated
+gradient ∇ ln(ĝn (φn )) at each step based on a random subsample of
+100 data points. Some work provides rigorous guarantees for stochastic
+gradient Langevin Monte Carlo by arguing the cumulative impact of
+the noise in gradient estimation is second order relative to the additive
+Gaussian noise (Teh et al., 2016).
+      Our second modification involves the use of a preconditioning matrix
+to improve the mixing rate of the Markov chain (5.2). For the path
+recommendation problem in Example 5.1, we have found that the log
+posterior density becomes ill-conditioned in later time periods. For this
+reason, gradient ascent converges very slowly to the posterior mode.
+Effective optimization methods should leverage second order information.
+Similarly, due to poor conditioning, we may need to choose an extremely
+small step size , causing the Markov chain in 5.2 to mix slowly. We
+have found that preconditioning substantially improves performance.
+Langevin MCMC can be implemented with a symmetric positive definite
+preconditioning matrix A by simulating the Markov chain
+                                           √
+               φn+1 = φn + A∇ ln(g(φn )) + 2A1/2 Wn      n ∈ N,
+where A1/2 denotes the matrix square root of A. In our implemen-
+tation, we take φ0 = argmaxφ ln(g(φ)), so the chain is initialized at
+the posterior mode, computed via means discussed in Section 5.2, and
+take the preconditioning matrix A = −(∇2 ln(g(φ))|φ=φ0 )−1 to be the
+negative inverse Hessian at that point. It may be possible to improve
+5.4. Bootstrapping                                                                            33
+
+
+computational efficiency by constructing an incremental approximation
+to the Hessian, as we will discuss in Subsection 5.6, but we do not
+explore that improvement here.
+
+5.4    Bootstrapping
+
+As an alternative, we discuss an approach based on the statistical
+bootstrap, which accommodates even very complex densities. Use of
+the bootstrap for TS was first considered in (Eckles and Kaptein,
+2014), though the version studied there applies to Bernoulli bandits
+and does not naturally generalize to more complex problems. There
+are many other versions of the bootstrap approach that can be used to
+approximately sample from a posterior distribution. For concreteness,
+we introduce a specific one that is suitable for examples we cover in
+this tutorial.
+    Like the Laplace approximation approach, our bootstrap method
+assumes that θ is drawn from a Euclidean space RK . Consider first a
+standard bootstrap method for evaluating the sampling distribution
+of the maximum likelihood estimate of θ. The method generates a
+hypothetical history Ĥt−1 = ((x̂1 , ŷ1 ), . . . , (x̂t−1 , ŷt−1 )), which is made
+up of t − 1 action-observation pairs, each sampled uniformly with
+replacement from Ht−1 . We then maximize the likelihood of θ under
+the hypothetical history, which for our shortest path recommendation
+problem is given by
+                                                        ŷτ           P            1−ŷτ
+               Qt−1                                                exp          θ −M
+                                                                           e∈x̂τ e
+ L̂t−1 (θ) =     τ =1
+                                    P1                                   P                  .
+                            1+exp    e∈x̂τ
+                                             θe −M                1+exp     e∈x̂τ
+                                                                                    θe −M
+
+
+The randomness in the maximizer of L̂t−1 reflects the randomness in
+the sampling distribution of the maximum likelihood estimate. Unfor-
+tunately, this method does not take the agent’s prior into account. A
+more severe issue is that it grossly underestimates the agent’s real un-
+certainty in initial periods. The modification described here is intended
+to overcome these shortcomings in a simple way.
+    The method proceeds as follows. First, as before, we draw a hypo-
+thetical history Ĥt−1 = ((x̂1 , ŷ1 ), . . . , (x̂t−1 , ŷt−1 )), which is made up of
+t − 1 action-observation pairs, each sampled uniformly with replacement
+34                                                                 Approximations
+
+
+from Ht−1 . Next, we draw a sample θ0 from the prior distribution f0 .
+Let Σ denote the covariance matrix of the prior f0 . Finally, we solve
+the maximization problem
+                                      0 )> Σ(θ−θ 0 )
+                 θ̂ = argmax e−(θ−θ                    L̂t−1 (θ)
+                       θ∈Rk
+
+and treat θ̂ as an approximate posterior sample. This can be viewed as
+maximizing a randomized approximation fˆt−1 to the posterior density,
+                          0 >     0
+where fˆt−1 (θ) ∝ e−(θ−θ ) Σ(θ−θ ) L̂t−1 (θ) is what the posterior density
+would be if the prior were Gaussian with mean θ0 and covariance matrix
+Σ, and the history of observations were Ĥt−1 . When very little data has
+been gathered, the randomness in the samples mostly stems from the
+randomness in the prior sample θ0 . This random prior sample encourages
+the agent to explore in early periods. When t is large, so a lot of a data
+has been gathered, the likelihood typically overwhelms the prior sample
+and randomness in the samples mostly stems from the random selection
+of the history Ĥt−1 .
+    In the context of the shortest path recommendation problem, fˆt−1 (θ)
+is log-concave and can therefore be efficiently maximized. Again, to
+produce our computational results reported in Figure 5.1, we applied
+Newton’s method with a backtracking line search to maximize ln(fˆt−1 ).
+Even when it is not possible to efficiently maximize fˆt−1 , however, the
+bootstrap approach can be applied with heuristic optimization methods
+that identify local or approximate maxima.
+    As can be seen from Figure 5.1, for our example, bootstrapping
+performs about as well as the Laplace approximation. One advantage
+of the bootstrap is that it is nonparametric, and may work reasonably
+regardless of the functional form of the posterior distribution, whereas
+the Laplace approximation relies on a Gaussian approximation and
+Langevin Monte Carlo relies on log-concavity and other regularity
+assumptions. That said, it is worth mentioning that there is a lack of
+theoretical justification for bootstrap approaches or even understanding
+of whether there are nontrivial problem classes for which they are
+guaranteed to perform well.
+5.5. Sanity Checks                                                    35
+
+
+5.5   Sanity Checks
+
+Figure 5.1 demonstrates that Laplace approximation, Langevin Monte
+Carlo, and bootstrap approaches, when applied to the path recommen-
+dation problem, learn from binary feedback to improve performance
+over time. This may leave one wondering, however, whether exact TS
+would offer substantially better performance. Since we do not have
+a tractable means of carrying out exact TS for this problem, in this
+section, we apply our approximation methods to problems for which
+exact TS is tractable. This enables comparisons between performance
+of exact and approximate methods.
+    Recall the three-armed beta-Bernoulli bandit problem for which
+results from application of greedy and TS algorithms were reported
+in Figure 3.2(b). For this problem, components of θ are independent
+under posterior distributions, and as such, Gibbs sampling yields exact
+posterior samples. Hence, the performance of an approximate version
+that uses Gibbs sampling would be identical to that of exact TS. Figure
+5.2a plots results from applying Laplace approximation, Langevin Monte
+Carlo, and bootstrap approaches. For this problem, our approximation
+methods offer performance that is qualitatively similar to exact TS,
+though the Laplace approximation performs marginally worse than
+alternatives in this setting.
+    Next, consider the online shortest path problem with correlated edge
+delays. Regret experienced by TS applied to such a problem were re-
+ported in Figure 4.3a. As discussed in Section 5.2, applying the Laplace
+approximation approach with an appropriate variable substitution leads
+to the same results as exact TS. Figure 5.2b compares those results to
+what is generated by Gibbs sampling, Langevin Monte Carlo, and boot-
+strap approaches. Again, the approximation methods yield competitive
+results, although bootstrapping is marginally less effective than others.
+    It is easy to verify that for the online shortest path problem and
+specific choices of step size  = 1/2 and conditioning matrix A = Σt , a
+single Langevin Monte Carlo iteration offers an exact posterior sample.
+However, our simulations do not use this step size and carry out multiple
+iterations. The point here is not to optimize results for our specific
+problem but rather to offer a sanity check for the approach.
+36                                                               Approximations
+
+
+
+
+         (a) Bernoulli bandit                     (b) online shortest path
+
+Figure 5.2: Regret of approximation methods versus exact Thompson sampling.
+
+
+5.6   Incremental Implementation
+
+For each of the three approximation methods we have discussed, the
+computation time required per time period grows as time progresses.
+This is because each past observation must be accessed to generate the
+next action. This differs from exact TS algorithms we discussed earlier,
+which maintain parameters that encode a posterior distribution, and
+update these parameters over each time period based only on the most
+recent observation.
+    In order to keep the computational burden manageable, it can
+be important to consider incremental variants of our approximation
+methods. We refer to an algorithm as incremental if it operates with
+fixed rather than growing per-period compute time. There are many
+ways to design incremental variants of approximate posterior sampling
+algorithms we have presented. As concrete examples, we consider here
+particular incremental versions of Laplace approximation and bootstrap
+approaches.
+    For each time t, let `t (θ) denote the likelihood of yt conditioned on
+xt and θ. Hence, conditioned on Ht−1 , the posterior density satisfies
+                                            t−1
+                                            Y
+                        ft−1 (θ) ∝ f0 (θ)          `τ (θ).
+                                            τ =1
+
+Let g0 (θ) = ln(f0 (θ)) and gt (θ) = ln(`t (θ)) for t > 0. To identify the
+mode of ft−1 , it suffices to maximize τt−1
+                                       P
+                                            =0 gτ (θ).
+5.6. Incremental Implementation                                             37
+
+
+   Consider an incremental version of the Laplace approximation.
+The algorithm maintains statistics Ht , and θt , initialized with θ0 =
+argmaxθ g0 (θ), and H0 = ∇2 g0 (θ0 ), and updating according to
+
+                         Ht = Ht−1 + ∇2 gt (θt−1 ),
+
+                        θt = θt−1 − Ht−1 ∇gt (θt−1 ).
+This algorithm is a type of online newton method for computing the
+posterior mode θt−1 that maximizes t−1
+                                          P
+                                            τ =0 gτ (θ). Note that if each func-
+tion gt−1 is strictly concave and quadratic, as would be the case if
+the prior is Gaussian and observations are linear in θ and perturbed
+                                                      −1
+only by Gaussian noise, each pair θt−1 and Ht−1           represents the mean
+and covariance matrix of ft−1 . More broadly, these iterates can be
+viewed as the mean and covariance matrix of a Gaussian approxima-
+tion to the posterior, and used to generate an approximate posterior
+                          −1
+sample θ̂ ∼ N (θt−1 , Ht−1   ). It is worth noting that for linear and gener-
+alized linear models, the matrix ∇2 gt (θt−1 ) has rank one, and therefore
+Ht−1 = (Ht−1 + ∇2 gt (θt−1 ))−1 can be updated incrementally using the
+Sherman-Woodbury-Morrison formula. This incremental version of the
+Laplace approximation is closely related to the notion of an extended
+Kalman filter, which has been explored in greater depth by Gómez-Uribe
+(Gómez-Uribe, 2016) as a means for incremental approximate TS with
+exponential families of distributions.
+    Another approach involves incrementally updating each of an ensem-
+ble of models to behave like a sample from the posterior distribution.
+The posterior can be interpreted as a distribution of “statistically plau-
+sible” models, by which we mean models that are sufficiently consistent
+with prior beliefs and the history of observations. With this interpreta-
+tion in mind, TS can be thought of as randomly drawing from the range
+of statistically plausible models. Ensemble sampling aims to maintain,
+incrementally update, and sample from a finite set of such models. In the
+spirit of particle filtering, this set of models approximates the posterior
+distribution. The workings of ensemble sampling are in some ways more
+intricate than conventional uses of particle filtering, however, because
+interactions between the ensemble of models and selected actions can
+skew the distribution. Ensemble sampling is presented in more depth
+38                                                              Approximations
+
+
+in (Lu and Van Roy, 2017), which draws inspiration from work on
+exploration in deep reinforcement learning (Osband et al., 2016a).
+    There are multiple ways of generating suitable model ensembles. One
+builds on the aforementioned bootstrap method and involves fitting
+each model to a different bootstrap sample. To elaborate, consider
+                                               n
+maintaining N models with parameters (θt , Htn : n = 1, . . . , N ). Each
+                         n                        n
+set is initialized with θ0 ∼ g0 , H0n = ∇g0 (θ0 ), dn0 = 0, and updated
+according to
+                                                 n
+                       Htn = Ht−1
+                               n
+                                   + ztn ∇2 gt (θt−1 ),
+                       n     n                        n
+                      θt = θt−1 − ztn (Htn )−1 ∇gt (θt−1 ),
+where each ztn is an independent Poisson-distributed sample with mean
+             n
+one. Each θt can be viewed as a random statistically plausible model,
+                                                             n
+with randomness stemming from the initialization of θ0 and the random
+weight ztn placed on each observation. The variable, zτn can loosely be
+interpreted as a number of replicas of the data sample (xτ , yτ ) placed in
+a hypothetical history Ĥnt . Indeed, in a data set of size t, the number of
+replicas of a particular bootstrap data sample follows a Binomial(t, 1/t)
+distribution, which is approximately Poisson(1) when t is large. With
+                 n
+this view, each θt is effectively fit to a different data set Ĥnt , distinguished
+by the random number of replicas assigned to each data sample. To
+generate an action xt , n is sampled uniformly from {1, . . . , N }, and the
+                                                n             n
+action is chosen to maximize E[rt |θ = θt−1 ]. Here, θt−1 serves as the
+approximate posterior sample. Note that the per-period compute time
+grows with N , which is an algorithm tuning parameter.
+    This bootstrap approach offers one mechanism for incrementally
+updating an ensemble of models. In Section 7.4, we will discuss another,
+which we apply to active learning with neural networks.
+                                   6
+           Practical Modeling Considerations
+
+
+
+
+Our narrative over previous sections has centered around a somewhat
+idealized view of TS, which ignored the process of prior specification
+and assumed a simple model in which the system and set of feasible
+actions is constant over time and there is no side information on decision
+context. In this section, we provide greater perspective on the process
+of prior specification and on extensions of TS that serve practical needs
+arising in some applications.
+
+6.1   Prior Distribution Specification
+
+The algorithms we have presented require as input a prior distribution
+over model parameters. The choice of prior can be important, so let
+us now discuss its role and how it might be selected. In designing an
+algorithm for an online decision problem, unless the value of θ were
+known with certainty, it would not make sense to optimize performance
+for a single value, because that could lead to poor performance for other
+plausible values. Instead, one might design the algorithm to perform
+well on average across a collection of possibilities. The prior can be
+thought of as a distribution over plausible values, and its choice directs
+
+
+                                   39
+40                                        Practical Modeling Considerations
+
+
+the algorithm to perform well on average over random samples from
+the prior.
+      For a practical example of prior selection, let us revisit the banner
+ad placement problem introduced in Example 1.1. There are K banner
+ads for a single product, with unknown click-through probabilities
+(θ1 , . . . , θK ). Given a prior, TS can learn to select the most successful
+ad. We could use a uniform or, equivalently, a beta(1, 1) distribution over
+each θk . However, if some values of θk are more likely than others, using a
+uniform prior sacrifices performance. In particular, this prior represents
+no understanding of the context, ignoring any useful knowledge from
+past experience. Taking knowledge into account reduces what must be
+learned and therefore reduces the time it takes for TS to identify the
+most effective ads.
+      Suppose we have a data set collected from experience with previous
+products and their ads, each distinguished by stylistic features such as
+language, font, and background, together with accurate estimates of
+click-through probabilities. Let us consider an empirical approach to
+prior selection that leverages this data. First, partition past ads into K
+sets, with each kth partition consisting of those with stylistic features
+most similar to the kth ad under current consideration. Figure 6.1
+plots a hypothetical empirical cumulative distribution of click-through
+probabilities for ads in the kth set. It is then natural to consider as a prior
+a smoothed approximation of this distribution, such as the beta(1, 100)
+distribution also plotted in Figure 6.1. Intuitively, this process assumes
+that click-through probabilities of past ads in set k represent plausible
+values of θk . The resulting prior is informative; among other things, it
+virtually rules out click-through probabilities greater than 0.05.
+      A careful choice of prior can improve learning performance. Figure
+6.2 presents results from simulations of a three-armed Bernoulli ban-
+dit. Mean rewards of the three actions are sampled from beta(1, 50),
+beta(1, 100), and beta(1, 200) distributions, respectively. TS is applied
+with these as prior distributions and with a uniform prior distribution.
+We refer to the latter as a misspecified prior because it is not consistent
+with our understanding of the problem. A prior that is consistent in
+this sense is termed coherent. Each plot represents an average over ten
+thousand independent simulations, each with independently sampled
+6.1. Prior Distribution Specification                                   41
+
+
+
+
+Figure 6.1: An empirical cumulative distribution and an approximating beta
+distribution.
+
+
+mean rewards. Figure 6.2a plots expected regret, demonstrating that
+the misspecified prior increases regret. Figure 6.2a plots the evolution of
+the agent’s mean reward conditional expectations. For each algorithm,
+there are three curves corresponding to the best, second-best, and worst
+actions, and they illustrate how starting with a misspecified prior delays
+learning.
+
+
+
+
+             (a) regret                   (b) expected mean rewards
+
+Figure 6.2: Comparison of TS for the Bernoulli bandit problem with coherent
+versus misspecified priors.
+42                                       Practical Modeling Considerations
+
+
+6.2   Constraints, Context, and Caution
+
+Though Algorithm 4, as we have presented it, treats a very general
+model, straightforward extensions accommodate even broader scope.
+One involves imposing time-varying constraints on the actions. In
+particular, there could be a sequence of admissible action sets Xt that
+constrain actions xt . To motivate such an extension, consider our shortest
+path example. Here, on any given day, the drive to work may be
+constrained by announced road closures. If Xt does not depend on θ
+except through possible dependence on the history of observations, TS
+(Algorithm 4) remains an effective approach, with the only required
+modification being to constrain the maximization problem in Line 6.
+    Another extension of practical import addresses contextual online
+decision problems. In such problems, the response yt to action xt
+also depends on an independent random variable zt that the agent
+observes prior to making her decision. In such a setting, the conditional
+distribution of yt takes the form pθ (·|xt , zt ). To motivate this, consider
+again the shortest path example, but with the agent observing a weather
+report zt from a news channel before selecting a path xt . Weather may
+affect delays along different edges differently, and the agent can take this
+into account before initiating her trip. Contextual problems of this flavor
+can be addressed through augmenting the action space and introducing
+time-varying constraint sets. In particular, if we view x̃t = (xt , zt ) as
+the action and constrain its choice to Xt = {(x, zt ) : x ∈ X }, where X
+is the set from which xt must be chosen, then it is straightforward to
+apply TS to select actions x̃1 , x̃2 , . . .. For the shortest path problem,
+this can be interpreted as allowing the agent to dictate both the weather
+report and the path to traverse, but constraining the agent to provide a
+weather report identical to the one observed through the news channel.
+    In some applications, it may be important to ensure that expected
+performance exceeds some prescribed baseline. This can be viewed as
+a level of caution against poor performance. For example, we might
+want each action applied to offer expected reward of at least some level
+r. This can again be accomplished through constraining actions: in each
+tth time period, let the action set be Xt = {x ∈ X : E[rt |xt = x] ≥ r}.
+Using such an action set ensures that expected average reward exceeds
+6.3. Nonstationary Systems                                                43
+
+
+r. When actions are related, an actions that is initially omitted from
+the set can later be included if what is learned through experiments
+with similar actions increases the agent’s expectation of reward from
+the initially omitted action.
+
+6.3   Nonstationary Systems
+
+Problems we have considered involve model parameters θ that are
+constant over time. As TS hones in on an optimal action, the frequency
+of exploratory actions converges to zero. In many practical applications,
+the agent faces a nonstationary system, which is more appropriately
+modeled by time-varying parameters θ1 , θ2 , . . ., such that the response
+yt to action xt is generated according to pθt (·|xt ). In such contexts, the
+agent should never stop exploring, since it needs to track changes as
+the system drifts. With minor modification, TS remains an effective
+approach so long as model parameters change little over durations that
+are sufficient to identify effective actions.
+    In principle, TS could be applied to a broad range of problems where
+the parameters θ1 , θ2 , θ3 , ... evolve according to a stochastic process by
+using techniques from filtering and sequential Monte Carlo to gener-
+ate posterior samples. Instead we describe below some much simpler
+approaches to such problems.
+    One simple approach to addressing nonstationarity involves ignoring
+historical observations made beyond some number τ of time periods
+in the past. With such an approach, at each time t, the agent would
+produce a posterior distribution based on the prior and conditioned only
+on the most recent τ actions and observations. Model parameters are
+sampled from this distribution, and an action is selected to optimize the
+associated model. The agent never ceases to explore, since the degree
+to which the posterior distribution can concentrate is limited by the
+number of observations taken into account. Theory supporting such an
+approach is developed in (Besbes et al., 2014).
+    An alternative approach involves modeling evolution of a belief
+distribution in a manner that discounts the relevance of past obser-
+vations and tracks a time-varying parameters θt . We now consider
+such a model and a suitable modification of TS. Let us start with
+44                                       Practical Modeling Considerations
+
+
+the simple context of a Bernoulli bandit. Take the prior for each
+kth mean reward to be beta(α, β). Let the algorithm update parame-
+ters to identify the belief distribution of θt conditioned on the history
+Ht−1 = ((x1 , y1 ), . . . , (xt−1 , yt−1 )) according to
+(6.1)        (                                          
+                (1 − γ)αk + γα, (1 − γ)βk + γβ                   xt 6= k
+(αk , βk ) ←                                                  
+                (1 − γ)αk + γα + rt , (1 − γ)βk + γβ + 1 − rt xt = k,
+
+where γ ∈ [0, 1] and αk , β k > 0. This models a process for which the be-
+lief distribution converges to beta(αk , β k ) in the absence of observations.
+Note that, in the absence of observations, if γ > 0 then (αk , βk ) con-
+verges to (αk , β k ). Intuitively, the process can be thought of as randomly
+perturbing model parameters in each time period, injecting uncertainty.
+The parameter γ controls how quickly uncertainty is injected. At one
+extreme, when γ = 0, no uncertainty is injected. At the other extreme,
+γ = 1 and each θt,k is an independent beta(αk , β k )-distributed process.
+A modified version of Algorithm 2 can be applied to this nonstation-
+ary Bernoulli bandit problem, the differences being in the additional
+arguments γ, α, and β , and the formula used to update distribution
+parameters.
+     The more general form of TS presented in Algorithm 4 can be
+modified in an analogous manner. For concreteness, let us focus on the
+case where θ is restricted to a finite set; it is straightforward to extend
+things to infinite sets. The conditional distribution update in Algorithm
+4 can be written as
+                                p(u)qu (yt |xt )
+                        p(u) ← P                   .
+                                v p(v)qv (yt |xt )
+
+To model nonstationary model parameters, we can use the following
+alternative:
+                            pγ (u)p1−γ (u)qu (yt |xt )
+                  p(u) ← P γ         1−γ (v)q (y |x )
+                                                       .
+                             v p (v)p         v t t
+This generalizes the formula provided earlier for the Bernoulli bandit
+case. Again, γ controls the rate at which uncertainty is injected. The
+modified version of Algorithm 2, which we refer to as nonstationary
+TS, takes γ and p as additional arguments and replaces the distribution
+update formula.
+6.4. Concurrence                                                        45
+
+
+     Figure 6.3 illustrates potential benefits of nonstationary TS when
+dealing with a nonstationairy Bernoulli bandit problem. In these sim-
+ulations, belief distributions evolve according to Equation (6.1). The
+prior and stationary distributions are specified by α = α = β = β = 1.
+The decay rate is γ = 0.01. Each plotted point represents an aver-
+age over 10,000 independent simulations. Regret here is defined by
+regrett (θt ) = maxk θt,k − θt,xt . While nonstationary TS updates its be-
+lief distribution in a manner consistent with the underlying system, TS
+pretends that the success probabilities are constant over time and up-
+dates its beliefs accordingly. As the system drifts over time, TS becomes
+less effective, while nonstationary TS retains reasonable performance.
+Note, however, that due to nonstationarity, no algorithm can promise
+regret that vanishes with time.
+
+
+
+
+Figure 6.3: Comparison of TS versus nonstationary TS with a nonstationary
+Bernoulli bandit problem.
+
+
+
+6.4   Concurrence
+
+In many applications, actions are applied concurrently. As an example,
+consider a variation of the online shortest path problem of Example 4.1.
+In the original version of this problem, over each period, an agent selects
+and traverses a path from origin to destination, and upon completion,
+updates a posterior distribution based on observed edge traversal times.
+46                                       Practical Modeling Considerations
+
+
+Now consider a case in which, over each period, multiple agents travel
+between the same origin and destination, possibly along different paths,
+with the travel time experienced by agents along each edge e to con-
+ditionally independent, conditioned on θe . At the end of the period,
+agents update a common posterior distribution based on their collective
+experience. The paths represent concurrent actions, which should be
+selected in a manner that diversifies experience.
+    TS naturally suits this concurrent mode of operation. Given the
+posterior distribution available at the beginning of a time period, multi-
+ple independent samples can be drawn to produce paths for multiple
+agents. Figure 6.4 plots results from applying TS in this manner. Each
+simulation was carried out with K agents navigating over each time
+period through a twenty-stage binomial bridge. Figure 6.4(a) demon-
+strates that the per-action regret experienced by each agent decays
+more rapidly with time as the number of agents grows. This is due to
+the fact that each agent’s learning is accelerated by shared observations.
+On the other hand, Figure 6.4(b) shows that per-action regret decays
+more slowly as a function of the number of actions taken so far by
+the collective of agents. This loss is due to fact that the the posterior
+distribution is updated only after K concurrent actions are completed,
+so actions are not informed by observations generated by concurrent
+ones as would be the case if the K actions were applied sequentially.
+
+
+
+
+     (a) per-action regret over time     (b) per-action regret over actions
+
+           Figure 6.4: Performance of concurrent Thompson sampling.
+
+   As discussed in (Scott, 2010), concurrence plays an important role in
+web services, where at any time, a system may experiment by providing
+6.4. Concurrence                                                      47
+
+
+different versions of a service to different users. Concurrent TS offers
+a natural approach for such contexts. The version discussed above
+involves synchronous action selection and posterior updating. In some
+applications, it is more appropriate to operate asynchronously, with
+actions selected on demand and the posterior distribution updated as
+data becomes available. The efficiency of synchronous and asynchronous
+variations of concurrent TS is studied in (Kandasamy et al., 2018).
+There are also situations where an agent can alter an action based on
+recent experience of other agents, within a period before the action is
+complete. For example, in the online shortest path problem, an agent
+may decide to change course to avoid an edge if new observations made
+by other agents indicate a long expected travel time. Producing a version
+of TS that effectively adapts to such information while still exploring
+in a reliably efficient manner requires careful design, as explained in
+(Dimakopoulou and Van Roy, 2018).
+                                     7
+                         Further Examples
+
+
+
+
+As contexts for illustrating the workings of TS, we have presented the
+Bernoulli bandit and variations of the online shortest path problem. To
+more broadly illustrate the scope of TS and issues that arise in various
+kinds of applications, we present several additional examples in this
+section.
+
+7.1   News Article Recommendation
+
+Let us start with an online news article recommendation problem in
+which a website needs to learn to recommend personalized and context-
+sensitive news articles to its users, as has been discussed in (Li et al.,
+2010) and (Chapelle and Li, 2011). The website interacts with a sequence
+of users, indexed by t ∈ {1, 2, . . .}. In each round t, it observes a feature
+vector zt ∈ Rd associated with the tth user, chooses a news article xt
+to display from among a set of k articles X = {1, . . . , k}, and then
+observes a binary reward rt ∈ {0, 1} indicating whether the user liked
+this article.
+    The user’s feature vector might, for example, encode the following
+information:
+
+
+                                     48
+7.1. News Article Recommendation                                                    49
+
+
+   • The visiting user’s recent activities, such as the news articles the
+     user has read recently.
+
+   • The visiting user’s demographic information, such as the user’s
+     gender and age.
+
+   • The visiting user’s contextual information, such as the user’s
+     location and the day of week.
+
+Interested readers can refer to Section 5.2.2 of (Li et al., 2010) for an
+example of feature construction in a practical context.
+     Following section 5 of (Chapelle and Li, 2011), we model the proba-
+bility a user with features zt likes a given article xt through a logit model.
+Specifically, each article x ∈ X is associated with a d–dimensional pa-
+rameter vector θx ∈ Rd . Conditioned on xt , θxt and zt , a positive review
+occurs with probability g(ztT θxt ), where g is the logistic function, given
+by g(a) = 1/(1 + e−a ). The per-period regret of this problem is defined
+by
+
+     regrett (θ1 , . . . , θK ) = max g(ztT θx ) − g(ztT θxt )   ∀t = 1, 2, . . .
+                                x∈X
+
+and measures the gap in quality between the recommended article xt
+and the best possible recommendation that could be made based on
+the user’s features. This model allows for generalization across users,
+enabling the website to learn to predict whether a user with given
+features zt will like a news article based on experience recommending
+that article to different users.
+    As in the path recommendation problem treated in Section 5, this
+problem is not amenable to efficient exact Bayesian inference. Conse-
+quently, we applied two approximate Thompson sampling methods: one
+samples from a Laplace approximation of the posterior (see Section 5.2)
+and the other uses Langevin Monte Carlo to generate an approximate
+posterior sample (see Section 5.3). To offer a baseline, we also applied the
+-greedy algorithm, and searched over values of  for the best performer.
+    We present simulation results for a simplified synthetic setting
+with K = |X | = 3 news articles and feature dimension d = 7. At
+each time t ∈ {1, 2, · · · }, the feature vector zt has constant 1 as its
+first component and each of its other components is independently
+50                                                            Further Examples
+
+
+drawn from a Bernoulli distribution with success probability 1/6. Each
+components of zt could, for example, indicate presence of a particular
+feature, like whether the user is a woman or is accessing the site from
+within the United States, in which the corresponding component of
+θx would reflect whether users with this feature tend to enjoy article
+x more than other users, while the first component of θx reflects the
+article’s overall popularity.
+
+
+
+
+Figure 7.1: Performance of different algorithms applied to the news article recom-
+mendation problem.
+
+
+     Figure 7.1 presents results from applying Laplace and Langevin
+Monte Carlo approximations of Thompson sampling as well as greedy
+and -greedy algorithms. The plots in Figure 7.1 are generated by
+averaging over 2, 000 random problem instances. In each instance, the
+θx ’s were independently sampled from N (0, I), where I is the 7 ×
+7 identity matrix. Based on our simulations, the -greedy algorithm
+incurred lowest regret with  = 0.01. Even with this optimized value, it
+is substantially outperformed by Thompson sampling.
+     We conclude this section by discussing some extensions to the
+simplified model presented above. One major limitation is that the
+current model does not allow for generalization across news articles.
+The website needs to estimate θx separately for each article x ∈ X ,
+and can’t leverage data on the appeal of other, related, articles when
+doing so. Since today’s news websites have thousands or even millions
+7.2. Product Assortment                                                      51
+
+
+of articles, this is a major limitation in practice. Thankfully, alternative
+models allow for generalization across news articles as well as users.
+One such model constructs a feature vector zt,x that encodes features
+of the tth user, the article x, and possibly interactions between these.
+Because the feature vector also depends on x, it is without loss of
+generality to restrict to a parameter vector θx = θ that is common
+across articles. The probability user t likes the article xt is given by
+    > θ). Such generalization models enable us to do “transfer learning,”
+g(zt,x t
+i.e. to use information gained by recommending one article to reduce
+the uncertainty about the weight vector of another article.
+     Another limitation of the considered model is that the news article
+set X is time-invariant. In practice, the set of relevant articles will
+change over time as fresh articles become available or some existing
+articles become obsolete. Even with generalization across news articles,
+a time-varying news article set, or both, the considered online news
+article recommendation problem is still a contextual bandit problem. As
+discussed in Section 6.2, all the algorithms discussed in this subsection
+are also applicable to those cases, after some proper modifications.
+
+7.2   Product Assortment
+
+Let us start with an assortment planning problem. Consider an agent
+who has an ample supply of each of n different products, indexed by
+i = 1, 2, . . . , n. The seller collects a profit of pi per unit sold of product
+type i. In each period, the agent has the option of offering a subset
+of the products for sale. Products may be substitutes or complements,
+and therefore the demand for a product may be influenced by the other
+products offered for sale in the same period. In order to maximize her
+profit, the agent needs to carefully select the optimal set of products to
+offer in each period. We can represent the agent’s decision variable in
+each period as a vector x ∈ {0, 1}n where xi = 1 indicates that product i
+is offered and xi = 0 indicates that it is not. Upon offering an assortment
+containing product i in some period, the agent observes a random
+log-Gaussian-distributed demand di . The mean of this log-Gaussian
+distribution depends on the entire assortment x and an uncertain matrix
+52                                                                          Further Examples
+
+
+θ ∈ Rk×k . In particular
+                                                                
+                       log(di ) | θ, x ∼ N (θx)i , σ 2
+
+where σ 2 is a known parameter that governs the level of idiosyncratic
+randomness in realized demand across periods. For any product i con-
+tained in the assortment x,
+                                               X
+                             (θx)i = θii +            xj θij ,
+                                               j6=i
+
+where θii captures the demand rate for item i if it were the sole product
+offered and each θij captures the effect availability of product j has on
+demand for product i. When an assortment x is offered, the agent earns
+expected profit
+                     " n               #       n
+                      X                        X                       σ2
+(7.1)            E         pi xi di | θ, x =          pi xi e(θx)i +    2   .
+                     i=1                       i=1
+
+If θ were known, the agent would always select the assortment x that
+maximizes her expected profit in (7.1). However, when θ is unknown,
+the agent needs to learn to maximize profit by exploring different
+assortments and observing the realized demands.
+      TS can be adopted as a computationally efficient solution to this
+problem. We assume the agent begins with a multivariate Gaussian
+prior over θ. Due to conjugacy properties of Gaussian and log-Gaussian
+distributions, the posterior distribution of θ remains Gaussian after
+any number of periods. At the beginning of each t’th period, the TS
+algorithm draws a sample θ̂t from this Gaussian posterior distribution.
+Then, the agent selects an assortment that would maximize her expected
+profit in period t if the sampled θ̂t were indeed the true parameter.
+      As in Examples 4.1 and 4.2, the mean and covariance matrix of
+the posterior distribution of θ can be updated in closed form. However,
+because θ is a matrix rather than a vector, the explicit form of the update
+is more complicated. To describe the update rule, we first introduce θ̄ as
+the vectorized version of θ which is generated by stacking the columns
+of θ on top of each other. Let x be the assortment selected in a period,
+i1 , i2 , . . . , ik denote the the products included in this assortment (i.e.,
+7.2. Product Assortment                                                    53
+
+
+supp(x) = {i1 , i2 , . . . , ik }) and z ∈ Rk be defined element-wise as
+
+                       zj = ln(dij ), j = 1, 2, . . . , k.
+
+Let S be a k × n “selection matrix” where Sj,ij = 1 for j = 1, 2, . . . , k
+and all its other elements are 0. Also, define
+
+                                W = x> ⊗ S,
+
+where ⊗ denotes the Kronecker product of matrices. At the end of
+current period, the posterior mean µ and covariance matrix Σ of θ̄ are
+updated according to the following rules:
+                              −1
+                     1 >                   1
+                                                             
+           µ ←       Σ−1 +
+                      2
+                        W  W       Σ−1 µ + 2 W > z ,
+                    σ                     σ
+                             −1
+                     1
+              
+          Σ ←  Σ−1 + 2 W > W     .
+                    σ
+    To investigate the performance of TS in this problem, we simulated a
+scenario with n = 6 and σ 2 = 0.04. We take the profit associated to each
+product i to be pi = 1/6. As the prior distribution, we assumed that
+each element of θ is independent and Gaussian-distributed with mean 0,
+the diagonal elements have a variance of 1, and the off-diagonal elements
+have a variance of 0.2. To understand this choice, recall the impact
+of diagonal and off-diagonal elements of θ. The diagonal element θii
+controls the mean demand when only product i is available, and reflects
+the inherent quality or popularity of that item. The off-diagonal element
+θij captures the influence availability of product j has on mean demand
+for product i. Our choice of prior covariance encodes that the dominant
+effect on demand of a product is likely its own characteristics, rather
+than its interaction with any single other product. Figure 7.2 presents
+the performance of different learning algorithms in this problem. In
+addition to TS, we have simulated the greedy and -greedy algorithms
+for various values of . We found that  = 0.07 provides the best
+performance for -greedy in this problem.
+    As illustrated by this figure, the greedy algorithm performs poorly
+in this problem while -greedy presents a much better performance.
+We found that the performance of -greedy can be improved by using
+                     m
+an annealing  of m+t   at each period t. Our simulations suggest using
+54                                                            Further Examples
+
+
+m = 9 for the best performance in this problem. Figure 7.2 shows that
+TS outperforms both variations of -greedy in this problem.
+
+
+
+
+Figure 7.2: Regret experienced by different learning algorithms applied to product
+assortment problem.
+
+
+
+7.3   Cascading Recommendations
+
+We consider an online recommendation problem in which an agent learns
+to recommend a desirable list of items to a user. As a concrete example,
+the agent could be a search engine and the items could be web pages.
+We consider formulating this problem as a cascading bandit, in which
+user selections are governed by a cascade model, as is commonly used
+in the fields of information retrieval and online advertising (Craswell
+et al., 2008).
+    A cascading bandit model is identified by a triple (K, J, θ), where K
+is the number of items, J ≤ K is the number of items recommended in
+each period, and θ ∈ [0, 1]K is a vector of attraction probabilities . At
+the beginning of each tth period, the agent selects and presents to the
+user an ordered list xt ∈ {1, . . . , K}J . The user examines items in xt
+sequentially, starting from xt,1 . Upon examining item xt,j , the user finds
+it attractive with probability θxt,j . In the event that the user finds the
+item attractive, he selects the item and leaves the system. Otherwise,
+he carries on to examine the next item in the list, unless j = J, in
+7.3. Cascading Recommendations                                                              55
+
+
+which case he has already considered all recommendations and leaves
+the system.
+    The agent observes yt = j if the user selects xt,j and yt = ∞ if the
+user does not click any item. The associated reward rt = r(yt ) = 1{yt ≤
+J} indicates whether any item was selected. For each list x = (x1 , . . . , xJ )
+and θ0 ∈ [0, 1]K , let
+                                                      h           i
+                             h(x, θ0 ) = 1 −
+                                               QJ
+                                                j=1       1 − θx0 j .
+
+Note that the expected reward at time t is E [rt |xt , θ] = h(xt , θ). The
+optimal solution x∗ ∈ argmaxx: |x|=J h(x, θ) consists of the J items with
+largest attraction probabilities. Per-period regret is given by regrett (θ) =
+h(x∗ , θ) − h(xt , θ).
+
+
+Algorithm 5 CascadeUCB(K, J, α, β) Algorithm 6 CascadeTS(K, J, α, β)
+ 1: for t = 1, 2, . . . do                       1: for t = 1, 2, . . . do
+ 2:    #compute itemwise UCBs:                   2:    #sample model:
+ 3:    for k = 1, . . . , K do                   3:    for k = 1, . . . , K do
+ 4:        Compute UCB Ut (k)                    4:        Sample θ̂k ∼ Beta(αk , βk )
+ 5:    end for                                   5:    end for
+ 6:                                              6:
+ 7:    #select and apply action:                 7:    #select and apply action:
+ 8:    xt ← argmaxx:|x|=J h(x, Ut )              8:    xt ← argmaxx:|x|=J h(x, θ̂)
+ 9:    Apply xt and observe yt and rt            9:    Apply xt and observe yt and rt
+10:                                             10:
+11:     #update sufficient statistics:          11:     #update posterior:
+12:     for j = 1, . . . , min{yt , J} do       12:     for j = 1, . . . , min{yt , J} do
+13:        αxt,j ← αxt,j + 1(j = yt )           13:         αxt,j ← αxt,j + 1(j = yt )
+14:        βxt,j ← βxt,j + 1(j < yt )           14:         βxt,j ← βxt,j + 1(j < yt )
+15:     end for                                 15:     end for
+16: end for                                     16: end for
+
+
+
+    Kveton et al. (2015) proposed learning algorithms for cascading
+bandits based on itemwise upper confidence bound (UCB) estimates.
+CascadeUCB (Algorithm 5) is a practical variant that allows for spec-
+ification of prior parameters (α, β) that guide the early behavior of
+the algorithm. CascadeUCB computes a UCB Ut (k) for each item
+k ∈ {1, . . . , K} and then chooses a list that maximizes h(·, Ut ), which
+represents an upper confidence bound on the list attraction probabil-
+ity. The list xt can be efficiently generated by choosing the J items
+with highest UCBs. Upon observing the user’s response, the algorithm
+56                                                      Further Examples
+
+
+updates the sufficient statistics (α, β), which count clicks and views
+for all the examined items. CascadeTS (Algorithm 6) is a Thompson
+sampling algorithm for cascading bandits. CascadeTS operates in a
+manner similar to CascadeUCB except that xt is computed based on
+the sampled attraction probabilities θ̂, rather than the itemwise UCBs
+Ut .
+     In this section, we consider a specific form of UCB, which is defined
+by                                          s
+                                 αk           1.5 log(t)
+                      Ut (k) =          +c               ,
+                               αk + β k        αk + βk
+for k ∈ {1, . . . , K}, where αk /(αk + βk ) represents the expected value
+of the attraction probability θk , while the second term represents an
+optimistic boost that encourages exploration. Notice that the parameter
+c ≥ 0 controls the degree of optimism. When c = 1, the above-defined
+UCB reduces to the standard UCB1, which is considered and analyzed
+in the context of cascading bandits in (Kveton et al., 2015). In practice,
+we can select c through simulations to optimize performance.
+    Figure 7.3 presents results from applying CascadeTS and Cas-
+cadeUCB based on UCB1. These results are generated by randomly
+sampling 1000 cascading bandit instances, K = 1000 and J = 100, in
+each case sampling each attraction probability θk independently from
+Beta(1, 40). For each instance, CascadeUCB and CascadeTS are applied
+over 20000 time periods, initialized with (αk , βk ) = (1, 40). The plots
+are of per-period regrets averaged over the 1000 simulations.
+    The results demonstrate that TS far outperforms this version of
+CascadeUCB. Why? An obvious reason is that h(x, Ut ) is far too op-
+timistic. In particular, h(x, Ut ) represents the probability of a click if
+every item in x simultaneously takes on the largest attraction probability
+that is statistically plausible. However, due to the statistical indepen-
+dence of item attractions, the agent is unlikely to have substantially
+under-estimated the attraction probability of every item in x. As such,
+h(x, Ut ) tends to be far too optimistic. CascadeTS, on the other hand,
+samples components θ̂k independently across items. While any sample
+θ̂k might deviate substantially from its mean, it is unlikely that the
+sampled attraction probability of every item in x greatly exceeds its
+7.3. Cascading Recommendations                                         57
+
+
+
+
+Figure 7.3: Comparison of CascadeTS and CascadeUCB with K = 1000 items and
+J = 100 recommendations per period.
+
+
+mean. As such, the variability in h(x, θ̂) provides a much more accurate
+reflection of the magnitude of uncertainty.
+    The plot labeled “UCB-best” in Figure 7.3 illustrates performance
+of CascadeUCB with c = 0.05, which approximately minimizes cumu-
+lative regret over 20,000 time periods. It is interesting that even after
+being tuned to the specific problem and horizon, the performance of
+CascadeUCB falls short of Cascade TS. A likely source of loss stems
+from the shape of confidence sets used by CascadeUCB. Note that
+the algorithm uses hyper-rectangular confidence sets, since the set of
+statistically plausible attraction probability vectors is characterized
+by a Cartesian product item-level confidence intervals. However, the
+Bayesian central limit theorem suggests that “ellipsoidal" confidence
+sets offer a more suitable choice. Specifically, as data is gathered, the
+posterior distribution over θ can be well approximated by a multivariate
+Gaussian, for which level sets are ellipsoidal. Losses due to the use
+of hyper-rectangular confidence sets have been studied through regret
+analysis in (Dani et al., 2008) and through simple analytic examples in
+(Osband and Van Roy, 2017a).
+    It is worth noting that tuned versions of CascadeUCB do sometimes
+perform as well or better than CascadeTS. Figure 7.4 illustrates an
+58                                                       Further Examples
+
+
+example of this. The setting is identical to that used to generate the
+results of Figure 7.3, except that K = 50 and J = 10, and cumulative
+regret is approximately optimized with c = 0.1. CascadeUCB with the
+optimally tuned c outperforms CascadeTS. This qualitative difference
+from the case of K = 1000 and J = 100 is likely due to the fact that
+hyper-rectangular sets offer poorer approximations of ellipsoids as the
+dimension increases. This phenomenon and its impact on regret aligns
+with theoretical results of (Dani et al., 2008). That said, CascadeUCB is
+somewhat advantaged in this comparison because it is tuned specifically
+for the setting and time horizon.
+
+
+
+
+Figure 7.4: Comparison of CascadeTS and CascadeUCB with K = 50 items and
+J = 10 recommendations per period.
+
+
+
+7.4   Active Learning with Neural Networks
+
+Neural networks are widely used in supervised learning, where given an
+existing set of predictor-response data pairs, the objective is to produce a
+model that generalizes to accurately predict future responses conditioned
+on associated predictors. They are also increasingly being used to guide
+actions ranging from recommendations to robotic maneuvers. Active
+learning is called for to close the loop by generating actions that do not
+solely maximize immediate performance but also probe the environment
+7.4. Active Learning with Neural Networks                                           59
+
+
+to generate data that accelerates learning. TS offers a useful principle
+upon which such active learning algorithms can be developed.
+    With neural networks or other complex model classes, computing the
+posterior distribution over models becomes intractable. Approximations
+are called for, and incremental updating is essential because fitting a
+neural network is a computationally intensive task in its own right. In
+such contexts, ensemble sampling offers a viable approach (Lu and Van
+Roy, 2017). In Section 5.6, we introduced a particular mechanism for
+ensemble sampling based on the bootstrap. In this section, we consider
+an alternative version of ensemble sampling and present results from
+(Lu and Van Roy, 2017) that demonstrate its application to active
+learning with neural networks.
+    To motivate our algorithm, let us begin by discussing how it can be
+applied to the linear bandit problem.
+Example 7.1. (Linear Bandit) Let θ be drawn from RM and distributed
+according to a N (µ0 , Σ0 ) prior. There is a set of K actions X ⊆ RM .
+At each time t = 1, . . . , T , an action xt ∈ X is selected, after which a
+reward rt = yt = θ> xt + wt is observed, where wt ∼ N (0, σw    2 ).
+
+
+   In this context, ensemble sampling is unwarranted, since exact
+Bayesian inference can be carried out efficiently via Kalman filtering.
+Nevertheless, the linear bandit offers a simple setting for explaining the
+workings of an ensemble sampling algorithm.
+   Consider maintaining a covariance matrix updated according to
+                                                        −1
+                        Σt+1 = Σ−1      >   2
+                                t + xt xt /σw                  ,
+                    1       N                        1             N
+and N models θt , . . . , θt , initialized with θ1 , . . . , θ1 each drawn inde-
+pendently from N (µ0 , Σ0 ) and updated incrementally according to
+                    n                    n
+                                                                      
+                   θt+1 = Σt+1 Σ−1                 n    2
+                                t θ t + xt (yt + w̃t )/σw ,
+
+for n = 1, . . . , N , where (w̃tn : t = 1, . . . , T, n = 1, . . . , N ) are indepen-
+dent N (0, σw2 ) random samples drawn by the updating algorithm. It is
+
+easy to show that the resulting parameter vectors satisfy
+                        t−1
+                                                                                !
+   n                 1 X                                n > −1        n
+  θt   = arg min      2
+                            (yτ + w̃τn − x>   2
+                                          τ ν) + (ν − θ 1 ) Σ0 (ν − θ 1 ) .
+              ν     σw τ =1
+60                                                            Further Examples
+
+                                                          n
+Thich admits an intuitive interpretation: each θt is a model fit to
+a randomly perturbed prior and randomly perturbed observations.
+As established in (Lu and Van Roy, 2017), for any deterministic se-
+                                                                   1            N
+quence x1 , . . . , xt−1 , conditioned on the history, the models θt , . . . , θt
+are independent and identically distributed according to the posterior
+distribution of θ. In this sense, the ensemble approximates the posterior.
+    The ensemble sampling algorithm we have described for the linear
+bandit problem motivates an analogous approach for the following
+neural network model.
+
+Example 7.2. (Neural Network) Let gθ : RM 7→ RK denote a mapping
+induced by a neural network with weights θ. Suppose there are K actions
+X ⊆ RM , which serve as inputs to the neural network, and the goal is
+to select inputs that yield desirable outputs. At each time t = 1, . . . , T ,
+an action xt ∈ X is selected, after which yt = gθ (xt ) + wt is observed,
+where wt ∼ N (0, σw 2 I). A reward r = r(y ) is associated with each
+                                         t      t
+observation. Let θ be distributed according to a N (µ0 , Σ0 ) prior. The
+idea here is that data pairs (xt , yt ) can be used to fit a neural network
+model, while actions are selected to trade off between generating data
+pairs that reduce uncertainty in neural network weights and those that
+offer desirable immediate outcomes.
+
+   Consider an ensemble sampling algorithm that once again begins
+                                                      1         N
+with N independent models with connection weights θ1 , . . . , θ1 sampled
+from a N (µ0 , Σ0 ) prior. It could be natural here to let µ0 = 0 and
+Σ0 = σ02 I for some variance σ02 chosen so that the range of probable
+models spans plausible outcomes. To incrementally update parameters,
+at each time t, each nth model applies some number of stochastic
+gradient descent iterations to reduce a loss function of the form
+                    t−1
+                 1 X                                    n              n
+     Lt (ν) =     2
+                        (yτ + w̃τn − gν (xτ ))2 + (ν − θ1 )> Σ−1
+                                                              0 (ν − θ 1 ).
+                σw  τ =1
+
+   Figure 7.5 present results from simulations involving a two-layer
+neural network, with a set of K actions, X ⊆ RM . The weights of the
+neural network, which we denote by w1 ∈ RD×N and w2 ∈ RD , are
+each drawn from N (0, λ). Let θ ≡ (w1 , w2 ). The mean reward of an
+7.4. Active Learning with Neural Networks                                  61
+
+
+action x ∈ X is given by gθ (x) = w2> max(0, w1 a). At each time step,
+we select an action xt ∈ X and observe reward yt = gθ (xt ) + zt , where
+zt ∼ N (0, σz2 ). We used M = 100 for the input dimension, D = 50 for
+the dimension of the hidden layer, number of actions K = 100, prior
+variance λ = 1, and noise variance σz2 = 100. Each component of each
+action vector is sampled uniformly from [−1, 1], except for the last
+component, which is set to 1 to model a constant offset. All results are
+averaged over 100 realizations.
+    In our application of the ensemble sampling algorithm we have
+described, to facilitate gradient flow, we use leaky rectified linear units
+of the form max(0.01x, x) during training, though the target neural
+network is made up of regular rectified linear units as indicated above. In
+our simulations, each update was carried out with 5 stochastic gradient
+steps, with a learning rate of 10−3 and a minibatch size of 64.
+
+
+
+
+  (a) Fixed -greedy.     (b) Annealing -greedy.       (c) Ensemble TS.
+
+        Figure 7.5: Bandit learning with an underlying neural network.
+
+
+    Figure 7.5 illustrates the performance of several learning algorithms
+with an underlying neural network. Figure 7.5a demonstrates the per-
+formance of an -greedy strategy across various levels of . We find
+that we are able to improve performance with an annealing schedule
+      k
+ = k+t  (Figure 7.5b). However, we find that an ensemble sampling
+strategy outperforms even the best tuned -schedules (Figure 7.5c).
+62                                                      Further Examples
+
+
+Further, we see that ensemble sampling strategy can perform well with
+remarkably few members of this ensemble. Ensemble sampling with
+fewer members leads to a greedier strategy, which can perform better for
+shorter horizons, but is prone to premature and suboptimal convergence
+compared to true TS (Lu and Van Roy, 2017). In this problem, using
+an ensemble of as few as 30 members provides very good performance.
+
+7.5   Reinforcement Learning in Markov Decision Processes
+
+Reinforcement learning (RL) extends upon contextual online decision
+problems to allow for delayed feedback and long term consequences
+(Sutton and Barto, 1998; Littman, 2015). Concretely (using the notation
+of Section 6.2) the response yt to the action xt depends on a context
+zt ; but we no longer assume that the evolution of the context zt+1 is
+independent of yt . As such, the action xt may affect not only the reward
+r(yt ) but also, through the effect upon the context zt+1 the rewards of
+future periods (r(yt0 ))t0 >t . As a motivating example, consider a problem
+of sequential product recommendations xt where the customer response
+yt is influenced not only by the quality of the product, but also the
+history of past recommendations. The evolution of the context zt+1
+is then directly affected by the customer response yt ; if a customer
+watched ‘The Godfather’ and loved it, then chances are probably higher
+they may enjoy ‘The Godfather 2.’
+     Maximizing cumulative rewards in a problem with long term con-
+sequences can require planning with regards to future rewards, rather
+than optimizing each period myopically. Similarly, efficient exploration
+in these domains can require balancing not only the information gained
+over a single period; but also the potential for future informative actions
+over subsequent periods. This sophisticated form of temporally-extended
+exploration, which can be absolutely critical for effective performance,
+is sometimes called deep exploration (Osband et al., 2017). TS can be
+applied successfully to reinforcement learning (Osband et al., 2013).
+However, as we will discuss, special care must be taken with respect to
+the notion of a time period within TS to preserve deep exploration.
+     Consider a finite horizon Markov decision process (MDP) M =
+(S, A, RM, P M, H, ρ), where S is the state space, A is the action space,
+7.5. Reinforcement Learning in Markov Decision Processes                      63
+
+
+and H is the horizon. The agent begins in a state s0 , sampled from ρ,
+and over each timestep h = 0, .., H − 1 the agent selects action ah ∈ A,
+receives a reward rh ∼ RsMh ,ah , and transitions to a new state sh+1 ∼
+PsMh ,ah
+         . Here, RsMh ,ah and PsM
+                                h ,ah
+                                      are probability distributions. A policy µ
+is a function mapping each state s ∈ S and timestep h = 0, .., H − 1 to
+an action a ∈ A. The value function Vµ,h     M (s) = E[PH−1 r (s , µ(s , j)) |
+                                                           j=h j j         j
+sh = s] encodes the expected reward accumulated under µ over the
+remainder of the episode when starting from state s and timestep h.
+Finite horizon MDPs model delayed consequences of actions through
+the evolution of the state, but the scope of this influence is limited to
+within an individual episode.
+      Let us consider an episodic RL problem, in which an agent learns
+about RM and P M over episodes of interaction with an MDP. In each
+episode, the agent begins in a random state, sampled from ρ, and follows
+a trajectory, selecting actions and observing rewards and transitions
+over H timesteps. Immediately we should note that we have already
+studied a finite horizon MDP under different terminology in Example
+1.2: the online shortest path problem. To see the connection, simply
+view each vertex as a state and the choice of edge as an action within a
+timestep. With this connection in mind we can express the problem of
+                                                  PH−1
+maximizing the cumulative rewards K
+                                            P
+                                              k=1    h=0 r(skh , akh ) in a finite
+horizon MDP equivalently as an online decision problem over periods
+k = 1, 2, .., K, each involving the selection of a policy µk for use over
+an episode of interaction between the agent and the MDP. By contrast,
+a naive application of TS to reinforcement learning that samples a new
+policy for each timestep within an episode could be extremely inefficient
+as it does not perform deep exploration.
+
+
+
+
+Figure 7.6: MDPs where TS with sampling at every timestep within an episode
+leads to inefficient exploration.
+
+   Consider the example in Figure 7.6 where the underlying MDP is
+characterized by a long chain of states {s−N , .., sN } and only the one of
+64                                                        Further Examples
+
+
+the far left or far right positions are rewarding with equal probability; all
+other states produce zero reward and with known dynamics. Learning
+about the true dynamics of the MDP requires a consistent policy over
+N steps right or N steps left; a variant of TS that resamples after each
+step would be exponentially unlikely to make it to either end within N
+steps (Osband et al., 2017). By contrast, sampling only once prior to
+each episode and holding the policy fixed for the duration of the episode
+demonstrates deep exploration and results in learning the optimal policy
+within a single episode.
+    In order to apply TS to policy selection we need a way of sampling
+from the posterior distribution for the optimal policy. One efficient way
+to do this, at least with tractable state and action spaces, is to maintain a
+posterior distribution over the rewards RM and the transition dynamics
+P M at each state-action pair (s, a). In order to generate a sample for the
+optimal policy, simply take a single posterior sample for the reward and
+transitions and then solve for the optimal policy for this sample. This
+is equivalent sampling from the posterior distribution of the optimal
+policy, but may be computationally more efficient than maintaining
+that posterior distribution explicitly. Estimating a posterior distribution
+over rewards is no different from the setting of bandit learning that
+we have already discussed at length within this paper. The transition
+function looks a little different, but for transitions over a finite state
+space the Dirichlet distribution is a useful conjugate prior. It is a multi-
+dimensional generalization of the Beta distribution from Example 3.1.
+The Dirichlet prior over outcomes in S = {1, .., S} is specified by a
+positive vector of pseudo-observations α ∈ RS+ ; updates to the Dirichlet
+posterior can be performed simply by incrementing the appropriate
+column of α (Strens, 2000).
+    In Figure 7.7 we present a computational comparison of TS with
+sampling per timestep versus per episode, applied to the example of
+Figure 7.6. Figure 7.7a compares the performance of sampling schemes
+where the agent has an informative prior that matches the true un-
+derlying system. As explained above, sampling once per episode TS is
+guaranteed to learn the true MDP structure in a single episode. By
+contrast, sampling per timestep leads to uniformly random actions
+7.5. Reinforcement Learning in Markov Decision Processes                 65
+
+
+until either s−N or sN is visited. Therefore, it takes a minimum of 2N
+episodes for the first expected reward.
+
+
+
+
+     (a) Using informed prior.             (b) Using uninformed prior.
+
+        Figure 7.7: TS with sampling per timestep versus per episode.
+
+
+    The difference in performance demonstrated by Figure 7.7a is par-
+ticularly extreme because the prior structure means that there is only
+value to deep exploration, and none to ‘shallow’ exploration (Osband
+et al., 2017). In Figure 7.7b we present results for TS on the same
+environment but with a uniform Dirichlet prior over transitions and a
+standard Gaussian prior over rewards for each state-action pair. With
+this prior structure sampling per timestep is not as hopeless, but still
+performs worse than sampling per episode. Once again, this difference
+increases with MDP problem size. Overall, Figure 7.7 demonstrates
+that the benefit of sampling per episode, rather than per timestep,
+can become arbitrarily large. As an additional benefit this approach is
+also more computationally efficient, since we only need to solve for the
+optimal policy once every episode rather than at each timestep.
+    This more nuanced application of TS to RL is sometimes referred
+to as posterior sampling for reinforcement learning (PSRL) (Strens,
+2000). Recent work has developed a theoretical analyses of PSRL that
+guarantee strong expected performance over a wide range of environ-
+ments (Osband et al., 2013; Osband and Van Roy, 2014b; Osband and
+Van Roy, 2014a; Osband and Van Roy, 2017b; Ouyang et al., 2017). This
+work builds on and extends theoretical results that will be discussed
+66                                                    Further Examples
+
+
+in Section 8.1.2. It is worth mentioning that PSRL fits in the broader
+family of Bayesian approaches to efficient reinforcement learning; we
+refer interested readers to the survey paper (Ghavamzadeh et al., 2015).
+                                  8
+  Why it Works, When it Fails, and Alternative
+                 Approaches
+
+
+
+
+Earlier sections demonstrate that TS approaches can be adapted to
+address a number of problem classes of practical import. In this sec-
+tion, we provide intuition for why TS explores efficiently, and briefly
+review theoretical work that formalizes this intuition. We will then
+highlight problem classes for which TS is poorly suited, and refer to
+some alternative algorithms.
+
+8.1   Why Thompson Sampling Works
+
+To understand whether TS is well suited to a particular application,
+it is useful to develop a high level understanding of why it works.
+As information is gathered, beliefs about action rewards are carefully
+tracked. By sampling actions according to the posterior probability that
+they are optimal, the algorithm continues to sample all actions that
+could plausibly be optimal, while shifting sampling away from those that
+are unlikely to be optimal. Roughly speaking, the algorithm tries all
+promising actions while gradually discarding those that are believed to
+underperform.This intuition is formalized in recent theoretical analyses
+of Thompson sampling, which we now review.
+
+
+                                  67
+68               Why it Works, When it Fails, and Alternative Approaches
+
+
+8.1.1   Regret Analysis for Classical Bandit Problems
+Asymptotic Instance Dependent Regret Bounds. Consider the clas-
+sical beta-Bernoulli bandit problem of Example 1.1. For this problem,
+sharp results on the asymptotic scaling of regret are available. The
+cumulative regret of an algorithm over T periods is
+                                     T 
+                                     X                   
+                      Regret(T ) =         max θk − θxt ,
+                                           1≤k≤K
+                                     t=1
+
+where K is the number of actions, xt ∈ {1, . . . , K} is the action selected
+at time t, and θ = (θ1 , . . . , θK ) denotes action success probabilities. For
+each time horizon T , E[Regret(T ) | θ] measures the expected T -period
+regret on the problem instance θ. The conditional expectation integrates
+over the noisy realizations of rewards and the algorithm’s random
+action selection, holding fixed the success probabilities θ = (θ1 , . . . , θK ).
+Though this is difficult to evaluate, one can show that
+                    E[Regret(T ) | θ]    X     θk ∗ − θk
+(8.1)           lim                   =                     ,
+               T →∞     log(T )              d (θ ∗ || θk )
+                                        k6=k∗ KL k
+
+assuming
+       that there is a unique
+                                    optimal action k ∗ . Here, dKL (θ || θ0 ) =
+θ log θθ0 +(1−θ) log 1−θ 1−θ
+                            0   is the Kullback-Leibler divergence between
+Bernoulli distributions. The fundamental lower bound of (Lai and
+Robbins, 1985) shows no algorithm can improve on the scaling in (8.1),
+establishing a sense in which the algorithm is asymptotically optimal.
+That the regret of TS exhibits this scaling was first observed empirically
+by (Chapelle and Li, 2011). A series of papers provided proofs that
+formalize this finding (Agrawal and Goyal, 2012; Agrawal and Goyal,
+2013a; Kauffmann et al., 2012).
+    This result has been extended to cases where reward distributions are
+Gaussian or, more generally, members of a canonical one-dimensional
+exponential family (Honda and Takemura, 2014). It has also been
+extended to the case of Gaussian distributions with unknown variance by
+(Honda and Takemura, 2014), which further establishes that this result
+can fail to hold for a particular improper prior distribution. Although,
+intuitively, the effects of the prior distribution should wash out as
+T → ∞, all of these results apply to specific choices of uninformative
+8.1. Why Thompson Sampling Works                                         69
+
+
+prior distributions. Establishing asymptotic optimality of TS for broader
+classes of prior distributions remains an interesting open issue.
+
+Instance-Independent Regret bounds. While the results discussed
+in the previous section establishes that the regret of TS is optimal in
+some sense, it is important to understand that this result is asymptotic.
+Focusing on this asymptotic scaling enables sharp results, but even for
+problems with long time horizons, there are substantial performance
+differences among algorithms known to be asymptotically optimal in
+the sense of (8.1). The bound essentially focuses on a regime in which
+the agent is highly confident of which action is best but continues
+to occasionally explore in order to become even more confident. In
+particular, the bound suggests that for sufficiently large T , regret scales
+like
+                                   X     θk ∗ − θk
+              E[Regret(T ) | θ] ≈                     log(T ).
+                                       d (θ ∗ || θk )
+                                  k6=k∗ KL k
+This becomes easier to interpret if we specialize to the case in which
+rewards, conditioned on θ, are Gaussian with unit variance, for which
+dKL (θ||θ0 ) = (θ − θ0 )2 /2, and therefore,
+                                       X            2
+(8.2)            E[Regret(T ) | θ] ≈                     log(T ).
+                                       k6=k∗
+                                               θk ∗ − θk
+
+The fact that the final expression is dominated by near-optimal actions
+reflects that in the relevant asymptotic regime other actions can be
+essentially ruled out using far fewer samples.
+    A more subtle issue is that O(log(T )) regret bounds like those
+described above become vacuous for problems with nearly-optimal
+actions, since the right-side of 8.2 can become arbitrarily large. This
+issue is particularly limiting for complex structured online decision
+problems, where there are often a large or even infinite number of
+near-optimal actions.
+    For the Bernoulli bandit problem of Example 1.1, (Agrawal and
+Goyal, 2013a) establishes that when TS is initialized with a uniform
+prior,
+                                                  q                
+                                        0
+(8.3)       max
+             0
+                E[Regret(T ) | θ = θ ] = O            KT log(T ) .
+             θ
+70             Why it Works, When it Fails, and Alternative Approaches
+
+
+This regret bounds holds uniformly over all problem instances, ensuring
+that there are no instances of bandit problems with binary rewards
+that will cause the regret of TS to explode. This bound is nearly order-
+optimal, in the sense that there exists a distribution over problem
+instances
+   √       under which the expected regret of any algorithm is at least
+Ω( KT ) (Bubeck and Cesa-Bianchi, 2012).
+
+8.1.2   Regret Analysis for Complex Online Decision Problems
+This tutorial has covered the use of TS to address an array of complex
+online decision problems. In each case, we first modeled the problem
+at hand, carefully encoding prior knowledge. We then applied TS,
+trusting it could leverage this structure to accelerate learning. The
+results described in the previous subsection are deep and interesting,
+but do not justify using TS in this manner.
+    We will now describe alternative theoretical analyses of TS that
+apply very broadly. These analyses point to TS’s ability to exploit
+problem structure and prior knowledge, but also to settings where TS
+performs poorly.
+
+Problem Formulation
+Consider the following general class of online decision problems. In each
+period t ∈ N, the agent selects an action xt ∈ X , observes an outcome
+yt , and associates this with a real-valued reward r(yt ) that is a known
+function of the outcome. In the shortest path problem of Examples 4.1
+and 4.2, xt is a path, yt is a vector encoding the time taken to traverse
+each edge in that path, and rt = r(yt ) is the negative sum of these
+travel times. More generally, for each t, yt = g (xt , θ, wt ) where g is
+some known function and (wt : t ∈ N) are i.i.d and independent of θ.
+This can be thought of as a Bayesian model, where the random variable
+θ represents the uncertain true characteristics of the system and wt
+represents idiosyncratic randomness influencing the outcome in period
+t. Let
+                       µ(x, θ) = E[r (g(x, θ, wt )) | θ]
+8.1. Why Thompson Sampling Works                                         71
+
+
+denote the expected reward generated by the action x under the pa-
+rameter θ, where this expectation is taken over the disturbance wt . The
+agent’s uncertainty about θ induces uncertainty about the identity of
+the optimal action x∗ ∈ argmaxx∈X µ(x, θ).
+   An algorithm is an adaptive, possibly randomized, rule for selecting
+an action as a function of the history of actions and observed outcomes.
+The expected cumulative regret of an algorithm over T periods is
+                                  " T                         #
+                                        (µ(x∗ , θ) − µ(xt , θ)) .
+                                   X
+             E [Regret(T )] = E
+                                  t=1
+
+This expectation is taken over draws of θ, the idiosyncratic noise terms
+(wt , . . . , wT ), and the algorithm’s internal randomization over actions.
+This is sometimes called the algorithm’s Bayesian regret, since it is
+integrated over the prior distribution.
+     It is worth briefly discussing the interpretation of this regret mea-
+sure. No single algorithm can minimize conditional expected regret
+E[Regret(T ) | θ = θ0 ] for every problem instance θ0 . As discussed in
+Section 6.1, one algorithm may have lower regret than another for one
+problem instance but have higher regret for a different problem instance.
+In order to formulate a coherent optimization problem, we must some-
+how scalarize this objective. We do this here by aiming to minimize
+integrated regret E [Regret(T )] = E [E[Regret(T ) | θ]]. Under this ob-
+jective, the prior distribution over θ directs the algorithm to prioritize
+strong performance in more likely scenarios. Bounds on expected regret
+help certify that an algorithm has efficiently met this objective. An alter-
+native choice is to bound worst-case regret maxθ0 E[Regret(T ) | θ = θ0 ].
+Certainly, bounds on worst-case regret imply bounds on expected regret,
+but targeting this objective will rule out the use of flexible prior distri-
+butions, discarding one of the TS’s most useful features. In particular,
+designing an algorithm to minimize worst-case regret typically entails
+substantial sacrifice of performance with likely values of θ.
+
+Regret Bounds via UCB
+One approach to bounding expected regret relies on the fact that TS
+shares a property of UCB algorithms that underlies many of their
+72               Why it Works, When it Fails, and Alternative Approaches
+
+
+theoretical guarantees. Let us begin by discussing how regret bounds
+are typically established for UCB algorithms.
+     A prototypical UCB algorithm generates a function Ut based on
+the history Ht−1 such that, for each action x, Ut (x) is an optimistic
+but statistically plausible estimate of the expected reward, referred to
+as an upper-confidence bound. Then, the algorithm selects an action
+xt that maximizes Ut . There are a variety of proposed approaches to
+generating Ut for specific models. For example, (Kaufmann et al., 2012)
+suggest taking Ut (x) to be the (1 − 1/t)th quantile of the posterior
+distribution of µ(x, θ). A simpler heuristic, which is nearly identical
+to the UCB1 algorithm presented and analyzed in (Auer et al., 2002),
+                                                        p
+selects actions to maximize Ut (x) = E[µ(x, θ)|Ht−1 ]+ 2 ln(t)/tx , where
+tx is the number of times action x is selected prior to period t. If tx = 0,
+p
+   2 ln(t)/tx = ∞, so each action is selected at least once. As experience
+with an action accumulates and ln(t)/tx vanishes, Ut (x) converges to
+E[µ(x, θ)|Ht−1 ], reflecting increasing confidence.
+     With any choice of Ut , regret over the period decomposes according
+to
+
+     µ(x∗ , θ) − µ(xt , θ) = µ(x∗ , θ) − Ut (xt ) + Ut (xt ) − µ(xt , θ)
+                            ≤ µ(x∗ , θ) − Ut (x∗ ) + Ut (xt ) − µ(xt , θ) .
+                                |        {z       }   |        {z       }
+                                     pessimism               width
+
+The inequality follows from the fact that x̄t is chosen to maximize Ut .
+If Ut (x∗ ) ≥ µ(x∗ , θ), which an upper-confidence bound should satisfy
+with high probability, the pessimism term is negative. The width term,
+penalizes for slack in the confidence interval at the selected action x̄t .
+For reasonable proposals of Ut , the width vanishes over time for actions
+that are selected repeatedly. Regret bounds for UCB algorithms are
+obtained by characterizing the rate at which this slack diminishes as
+actions are applied.
+    As established in (Russo and Van Roy, 2014b), expected regret
+bounds for TS can be produced in a similar manner. To understand
+why, first note that for any function Ut that is determined by the history
+Ht−1 ,
+
+(8.4) E[Ut (xt )] = E[E[Ut (xt )|Ht−1 ]] = E[E[Ut (x∗ )|Ht−1 ]] = E[Ut (x∗ )].
+8.1. Why Thompson Sampling Works                                              73
+
+
+The second equation holds because TS samples xt from the posterior
+distribution of x∗ . Note that for this result, it is important that Ut is
+determined by Ht−1 . For example, although xt and x∗ share the same
+marginal distribution, in general E[µ(x∗ , θ)] 6= E[µ(xt , θ)] since the joint
+distribution of (x∗ , θ) is not identical to that of (xt , θ).
+    From Equation (8.4), it follows that
+E [µ(x∗ , θ) − µ(xt , θ)] = E [µ(x∗ , θ) − Ut (xt )] + E [Ut (xt ) − µ(xt , θ)]
+                          = E [µ(x∗ , θ) − Ut (x∗ )] + E [Ut (xt ) − µ(xt , θ)] .
+                              |          {z         }   |          {z         }
+                                     pessimism                   width
+If Ut is an upper-confidence bound, the pessimism term should be nega-
+tive, while the width term can be bounded by arguments identical to
+those that would apply to the corresponding UCB algorithm. Through
+this relation, many regret bounds that apply to UCB algorithms trans-
+late immediately to expected regret bounds for TS.
+    An important difference to take note of is that UCB regret bounds
+depend on the specific choice of Ut used by the algorithm in question.
+With TS, on the other hand, Ut plays no role in the algorithm and
+appears only as a figment of regret analysis. This suggests that, while
+the regret of a UCB algorithm depends critically on the specific choice
+of upper-confidence bound, TS depends only on the best possible choice.
+This is a crucial advantage when there are complicated dependencies
+among actions, as designing and computing with appropriate upper-
+confidence bounds present significant challenges.
+    Several examples provided in (Russo and Van Roy, 2014b) demon-
+strate how UCB regret bounds translate to TS expected regret bounds.
+These include a bound that applies to all problems with a finite number
+of actions, as well as stronger bounds that apply when the reward func-
+tion µ follows a linear model, a generalized linear model, or is sampled
+from a Gaussian process prior. As an example, suppose mean rewards
+follow the linear model µ(x, θ) = x> θ for x ∈ Rd and θ ∈ Rd and that
+reward noise is sub-Gaussian. It follows from the above relation that
+existing analyses (Dani et al., 2008; Rusmevichientong and Tsitsiklis,
+2010; Abbasi-Yadkori et al., 2011) of UCB algorithms imply that under
+TS
+                                         √
+(8.5)                E [Regret(T )] = O(d T log(T )).
+74              Why it Works, When it Fails, and Alternative Approaches
+
+
+This bound applies for any prior distribution over a compact set of pa-
+rameters θ. The big-O notation assumes several quantities are bounded
+by constants: the magnitude of feasible actions, the magnitude of θ real-
+izations, and the variance proxy of the sub-Gaussian noise distribution.
+An important feature of this bound is that it depends on the complexity
+of the parameterized model through the dimension d, and not on the
+number of actions. Indeed, when there are a very large, or even infinite,
+number of actions, bounds like (8.3) are vacuous, whereas (8.5) may
+still provide a meaningful guarantee.
+     In addition to providing a means for translating UCB to TS bounds,
+results of (Russo and Van Roy, 2014b; Russo and Van Roy, 2013) unify
+many of these bounds. In particular, it is shown that across a very
+broad class of online decision problems, both TS and well-designed
+UCB algorithms satisfy
+(8.6)                                                             
+                      v                              
+                      u
+  E [Regret(T )] = Õ udimE F, T −2 log N F, T −2 , k·k∞ T  ,
+                                                            
+                       u
+                      t|    {z     }|       {z           } 
+                           eluder dimension    log-covering number
+
+where F = {µ(·, θ) : θ ∈ Θ} is the set of possible reward functions, Θ is
+the set of possible parameter vectors θ, and Õ ignores logarithmic factors.
+This expression depends on the class of reward functions F through two
+measures of complexity. Each captures the approximate structure of
+the class of functions at a scale T −2 that depends on the time horizon.
+The first measures the growth rate of the covering numbers of F with
+respect to the maximum norm, and is closely related to measures of
+complexity that are common in the supervised learning literature. This
+quantity roughly captures the sensitivity of F to statistical overfitting.
+The second measure, the eluder dimension, captures how effectively the
+value of unobserved actions can be inferred from observed samples. This
+bound can be specialized to particular function classes. For example,
+when specialized to the aforementioned linear model, dimE F, T −2 =
+                                                                        
+
+O(d log(T )) and log N F, T −2 , k·k∞ = O(d log(T )), and it follows
+                                         
+
+that                                          √
+                        E [Regret(T )] = Õ(d T ).
+8.1. Why Thompson Sampling Works                                                   75
+
+
+It is worth noting that, as established in (Russo and Van Roy, 2014b;
+Russo and Van Roy, 2013), notions of complexity common to the
+supervised learning literature such as covering numbers and Kolmogorov
+and Vapnik-Chervonenkis dimensions are insufficient for bounding regret
+in online decision problems. As such, the new notion of eluder dimension
+introduced in (Russo and Van Roy, 2014b; Russo and Van Roy, 2013)
+plays an essential role in (8.6).
+
+Regret Bounds via Information Theory
+Another approach to bounding regret, developed in (Russo and Van Roy,
+2016), leverages the tools of information theory. The resulting bounds
+more clearly reflect the benefits of prior knowledge, and the analysis
+points to shortcomings of TS and how they can addressed by alternative
+algorithms. A focal point in this analysis is the notion of an information
+ratio, which for any model and online decision algorithm is defined by
+
+                               (E [µ(x∗ , θ) − µ(xt , θ)])2
+(8.7)                   Γt =                                .
+                                 I (x∗ ; (xt , yt )|Ht−1 )
+The numerator is the square of expected single-period regret, while in
+the denominator, the conditional mutual information I(x∗ ; (xt , yt )|Ht−1 )
+between the uncertain optimal action x∗ and the impending observation
+(xt , yt ) measures expected information gain.1
+      The information ratio depends on both the model and algorithm and
+can be interpreted as an expected “cost” incurred per bit of information
+acquired. If the information ratio is small, an algorithm can only incur
+large regret when it is expected to gain a lot of information about
+which action is optimal. This suggests that expected regret is bounded
+in terms of the maximum amount of information any algorithm could
+    1
+      An alternative definition of the information ratio – the expected re-
+gret (E [µ(x∗ , θ) − µ(xt , θ) | Ht−1 = ht−1 ])2 divided by the mutual information
+I (x∗ ; (xt , yt ) | Ht−1 = ht−1 ), both conditioned on a particular history ht−1 – was
+used in the original paper on this topic (Russo and Van Roy, 2016). That paper
+established bounds on the information ratio that hold uniformly over possible re-
+alizations of ht−1 . It was observed in (Russo and Van Roy, 2018b) that the same
+bounds apply with the information ratio defined as in (8.7), which integrates over ht .
+The presentation here mirrors the more elegant treatment of these ideas in (Russo
+and Van Roy, 2018b).
+76             Why it Works, When it Fails, and Alternative Approaches
+
+
+expect to acquire, which is at most the entropy of the prior distribution
+of the optimal action. The following regret bound from (Russo and
+Van Roy, 2016), which applies to any model and algorithm, formalizes
+this observation:
+                                          q
+(8.8)                 E [Regret(T )] ≤        ΓH(x∗ )T ,
+
+where Γ = maxt∈{1,...,T } Γt . An important feature of this bound is
+its dependence on initial uncertainty about the optimal action x∗ ,
+measured in terms of the entropy H(x∗ ). This captures the benefits of
+prior information in a way that is missing from previous regret bounds.
+    A simple argument establishes bound (8.8):
+                                T
+                                      E [µ(x∗ , θ) − µ(xt , θ)]
+                                X
+           E [Regret(T )] =
+                                t=1
+                                XT q
+                            =           Γt I (x∗ ; (xt , yt )|Ht−1 )
+                                t=1
+                              v
+                              u
+                              u   T
+                                  X
+                            ≤ tΓT   I (x∗ ; (xt , yt )|Ht−1 ),
+                                        t=1
+
+where the inequality follows from Jensen’s inequality and the fact
+that Γt ≤ Γ. Intuitively, I(x∗ , (xt , yt )|Ht−1 ) represents the expected
+information gained about x∗ , and the sum over periods cannot exceed
+the entropy H(x∗ ). Applying this relation, which is formally established
+in (Russo and Van Roy, 2016) via the chain rule of mutual information,
+we obtain (8.8).
+    It may be illuminating to interpret the bound in the case of TS
+applied to a shortest path problem. Here, rt is the negative travel
+time of the path selected in period t and we assume the problem has
+been appropriately normalized so that rt ∈ [−1, 0] almost surely. For a
+problem with d edges, θ ∈ Rd encodes the mean travel time along each
+edge, and x∗ = x∗ (θ) denotes the shortest path under θ. As established in
+(Russo and Van Roy, 2016), the information ratio can be bounded above
+                                                             p
+by d/2, and therefore, (8.8) specializes to E[Regret(T )] ≤ dH(x∗ )T /2.
+Note that the number of actions in the problem is the number of paths,
+which can be exponential in the number of edges. This bound reflects
+8.1. Why Thompson Sampling Works                                        77
+
+
+two ways in which TS is able to exploit the problem’s structure to
+nevertheless learn efficiently. First, it depends on the number of edges
+d rather than the number of paths. Second, it depends on the entropy
+H(x∗ ) of the decision-maker’s prior over which path is shortest. Entropy
+is never larger than the logarithm of the number of paths, but can be
+much smaller if the agent has informed prior over which path is shortest.
+Consider for instance the discussion following Example 4.1, where the
+agent had knowledge of the distance of each edge and believed a priori
+that longer edges were likely to require greater travel time; this prior
+knowledge reduces the entropy of the agent’s prior, and the bound
+formalizes that this prior knowledge improves performance. Stronger
+bounds apply when the agent receives richer feedback in each time period.
+At one extreme, the agent observes the realized travel time along every
+edge in that period, including those she did not traverse. In that case,
+(Russo and Van Roy, 2016) establishes that the information ratio is
+                                                  p
+bounded by 1/2, and therefore, E[Regret(T )] ≤ H(x∗ )T /2. The paper
+also defines a class of problems where the agent observes the time to
+traverse each individual edge along the chosen path and establishes
+that the information ratio is bounded by d/2m and E[Regret(T )] ≤
+p
+   dH(x∗ )T /2m, where m is the maximal number of edges in a path.
+    The three aforementioned bounds of d/2, 1/2 and d/2m on informa-
+tion ratios reflect the impact of each problem’s information structure
+on the regret-per-bit of information acquired by TS about the optimum.
+Subsequent work has established bounds on the information ratio for
+problems with convex reward functions (Bubeck and Eldan, 2016) and
+for problems with graph structured feedback (Liu et al., 2017).
+    The bound of (8.8) can become vacuous as the number of actions
+increases due to the dependence on entropy. In the extreme, the entropy
+H(x∗ ) can become infinite when there are an infinite number of actions.
+It may be possible to derive alternative information-theoretic bounds
+that depend instead on a rate-distortion function. In this context, a rate-
+distortion function should capture the amount of information required to
+deliver near-optimal performance. Connections between rate-distortion
+theory and online decision problems have been established in (Russo
+and Van Roy, 2018b), which studies a variation of TS that aims to
+78              Why it Works, When it Fails, and Alternative Approaches
+
+
+learn satisficing actions. Use of rate-distortion concepts to analyze the
+standard version of TS remains an interesting direction for further work.
+
+Further Regret Analyses
+Let us now discuss some alternatives to the regret bounds described
+above. For linear bandit problems, (Agrawal and Goyal, 2013b) provides
+an analysis of TS with an uninformative Gaussian prior. Their results
+yield a bound on worst-case expected regret of minθ0 :kθ0 k2 ≤1 E[Regret(T ) |
+                   √ 
+θ = θ0 ] = Õ d3/2 T . Due to technical challenges in the proof, this
+bound does not actually apply to TS with proper posterior updating,
+but instead to a variant that inflates the variance of posterior samples.
+This leads to an additional d1/2 factor in this bound relative to that
+in (8.5). It is an open question whether a worst-case regret bound can
+be established for standard TS in this context, without requiring any
+modification to the posterior samples. Recent work has revisited this
+analysis and provided improved proof techniques (Abeille and Lazaric,
+2017). Furthering this line of work, (Agrawal et al., 2017) study an
+assortment optimization problem and provide worst-case regret bounds
+for an algorithm that is similar to TS but samples from a modified pos-
+terior distribution. Following a different approach, (Gopalan et al., 2014)
+provides an asymptotic analysis of Thomson sampling for parametric
+problems with finite parameter spaces. Another recent line of theoretical
+work treats extensions of TS to reinforcement learning (Osband et al.,
+2013; Gopalan and Mannor, 2015; Osband et al., 2016b; Kim, 2017).
+
+8.1.3   Why Randomize Actions
+TS is a stationary randomized strategy: randomized in that each action
+is randomly sampled from a distribution and stationary in that this
+action distribution is determined by the posterior distribution of θ
+and otherwise independent of the time period. It is natural to wonder
+whether randomization plays a fundamental role or if a stationary
+deterministic strategy can offer similar behavior. The following example
+from (Russo and Van Roy, 2018a) sheds light on this matter.
+8.2. Limitations of Thompson Sampling                                   79
+
+
+Example 8.1. (A Known Standard) Consider a problem with two
+actions X = {1, 2} and a binary parameter θ that is distributed
+Bernoulli(p0 ). Rewards from action 1 are known to be distributed
+Bernoulli(1/2). The distribution of rewards from action 2 is Bernoulli(3/4)
+if θ = 1 and Bernoulli(1/4) if θ = 0.
+
+    Consider a stationary deterministic strategy for this problem. With
+such a strategy, each action xt is a deterministic function of pt−1 , the
+probability that θ = 1 conditioned Ht−1 . Suppose that for some p0 > 0,
+the strategy selects x1 = 1. Since the resulting reward is uninformative,
+pt = p0 and xt = 1 for all t, and thus, expected cumulative regret grows
+linearly with time. If, on the other hand, x1 = 2 for all p0 > 0, then
+xt = 2 for all t, which again results in expected cumulative regret that
+grows linearly with time. It follows that, for any deterministic stationary
+strategy, there exists a prior probability p0 such that expected cumula-
+tive regret grows linearly with time. As such, for expected cumulative
+regret to exhibit a sublinear horizon dependence, as is the case with
+the bounds we have discussed, a stationary strategy must randomize
+actions. Alternatively, one can satisfy such bounds via a strategy that
+is deterministic but nonstationary, as is the case with typical UCB
+algorithms.
+
+8.2     Limitations of Thompson Sampling
+
+TS is effective across a broad range of problems, but there are contexts
+in which TS leaves a lot of value on the table. We now highlight four
+problem features that are not adequately addressed by TS.
+
+8.2.1    Problems that do not Require Exploration
+We start with the simple observation that TS is a poor choice for prob-
+lems where learning does not require active exploration. In such contexts,
+TS is usually outperformed by greedier algorithms that do not invest in
+costly exploration. As an example, consider the problem of selecting a
+portfolio made up of publicly traded financial securities. This can be
+cast as an online decision problem. However, since historical returns
+80              Why it Works, When it Fails, and Alternative Approaches
+
+
+are publicly available, it is possible to backtest trading strategies, elimi-
+nating the need to engage in costly real-world experimentation. Active
+information gathering may become important, though, for traders who
+trade large volumes of securities over short time periods, substantially
+influencing market prices, or when information is more opaque, such as
+in dark pools.
+     In contextual bandit problems, even when actions influence observa-
+tions, randomness of context can give rise to sufficient exploration so
+that additional active exploration incurs unnecessary cost. Results of
+(Bastani et al., 2018) formalize conditions under which greedy behavior
+is effective because of passive exploration induced by contextual random-
+ness. The following example captures the essence of this phenomenon.
+Example 8.2. (Contextual Linear Bandit) Consider two actions X =
+{1, 2} and parameters θ1 and θ2 that are independent and standard-
+Gaussian-distributed. A context zt is associated with each time period
+t and is drawn independently from a standard Gaussian. In period t,
+the agent selects an action xt based on prevailing context zt , as well as
+observed history, and then observes a reward rt = zt θxt + wt , where wt
+is i.i.d. zero-mean noise.
+    Consider selecting a greedy action xt for this problem. Given point
+estimates θ̂1 and θ̂2 , assuming ties are broken randomly, each action
+is selected with equal probability, with the choice determined by the
+random context. This probing of both actions alleviates the need for
+active exploration, which would decrease immediate reward. It is worth
+noting, though, that active exploration can again become essential if
+the context variables are binary-valued with zt ∈ {0, 1}. In particular,
+if the agent converges on a point estimate θ̂1 = θ1 > 0, and action 2 is
+optimal but with an erroneous negative point estimate θ̂2 < 0 < θ2 , a
+greedy strategy may repeatedly select action 1 and never improve its
+estimate for action 2. The greedy strategy faces similar difficulties with a
+reward function of the form rt = zt,xt θxt + θxt + wt , that entails learning
+offset parameters θ1 and θ2 , even if context variables are standard-
+Gaussian-distributed. For example, if θ1 < θ2 and θ2 is sufficiently
+underestimated, as the distributions of θ1 and θ2 concentrate around
+0, a greedy strategy takes increasingly long to recover. In the extreme
+8.2. Limitations of Thompson Sampling                                   81
+
+
+case where θ1 = θ2 = 0 with probability 1, the problem reduces to one
+with independent actions and Gaussian noise, and the greedy policy
+may never recover. It is worth noting that the news recommendation
+problem of Section 7.1 involves a contextual bandit that embodies both
+binary context variables and offset parameters.
+
+8.2.2   Problems that do not Require Exploitation
+At the other extreme, TS may also be a poor choice for problems that
+do not require exploitation. For example, consider a classic simulation
+optimization problem. Given a realistic simulator of some stochastic
+system, we may like to identify, among a finite set of actions, the best
+according to a given objective function. Simulation can be expensive,
+so we would like to intelligently and adaptively allocate simulation
+effort so the best choice can be rapidly identified. Though this problem
+requires intelligent exploration, this does not need to be balanced with
+a desire to accrue high rewards while experimenting. This problem is
+called ranking and selection in the simulation optimization community
+and either best arm identification or a pure-exploration problem in the
+multi-armed bandit literature. It can be possible to perform much better
+than TS for such problems. The issue is that once TS is fairly confident
+of which action is best, it exploits this knowledge and plays that action
+in nearly all periods. As a result, it is very slow to refine its knowledge
+of alternative actions. Thankfully, as shown by (Russo, 2016), there is a
+simple modification to TS that addresses this issue. The resulting pure
+exploration variant of TS dramatically outperforms standard TS, and
+is in some sense asymptotically optimal for this best-arm identification
+problem. It is worth highlighting that although TS is often applied to
+A/B testing problems, this pure exploration variant of the algorithm
+may be a more appropriate choice.
+
+8.2.3   Time Sensitivity
+TS is effective at minimizing the exploration costs required to converge
+on an optimal action. It may perform poorly, however, in time-sensitive
+learning problems where it is better to exploit a high performing subop-
+timal action than to invest resources exploring actions that might offer
+82             Why it Works, When it Fails, and Alternative Approaches
+
+
+slightly improved performance. The following example from (Russo and
+Van Roy, 2018b) illustrates the issue.
+Example 8.3. (Many-Armed Deterministic Bandit) Consider an action
+set X = {1, . . . , K} and a K-dimensional parameter vector θ with
+independent components, each distributed uniformly over [0, 1]. Each
+action x results in reward θx , which is deterministic conditioned on
+θ. As K grows, it takes longer to identify the optimal action x∗ =
+argmaxx∈X θx . Indeed, for any algorithm, P(x∗ ∈ {x1 , . . . xt }) ≤ t/K.
+Therefore, no algorithm can expect to select x∗ within time t  K.
+On the other hand, by simply selecting actions in order, with x1 =
+1, x2 = 2, x3 = 3, . . ., the agent can expect to identify an -optimal
+action within t = 1/ time periods, independent of K.
+     Applied to this example, TS is likely to sample a new action in
+each time period so long as t  K. The problem with this is most
+pronounced in the asymptotic regime of K → ∞, for which TS never
+repeats any action because, at any point in time, there will be actions
+better than those previously selected. It is disconcerting that TS can
+be so dramatically outperformed by a simple variation: settle for the
+first action x for which θx ≥ 1 − .
+     While stylized, the above example captures the essence of a basic
+dilemma faced in all decision problems and not adequately addressed by
+TS. The underlying issue is time preference. In particular, if an agent
+is only concerned about performance over an asymptotically long time
+horizon, it is reasonable to aim at learning x∗ , while this can be a bad
+idea if shorter term performance matters and a satisficing action can
+be learned more quickly.
+     Related issues also arise in the nonstationary learning problems
+described in Section 6.3. As a nonstationary system evolves, past ob-
+servations become irrelevant to optimizing future performance. In such
+cases, it may be impossible to converge on the current optimal action
+before the system changes substantially, and the algorithms presented
+in Section 6.3 might perform better if they are modified to explore less
+aggressively.
+     Interestingly, the information theoretic regret bounds described in
+the previous subsection also point to this potential shortcoming of TS.
+8.2. Limitations of Thompson Sampling                                  83
+
+
+Indeed, the regret bounds there depend on the entropy of the optimal
+action H(A∗ ), which may tend to infinity as the number of actions grows,
+reflecting the enormous quantity of information needed to identify the
+exact optimum. This issue is discussed further in (Russo and Van Roy,
+2018b). That paper proposes and analyzes satisficing TS, a variant of
+TS that is designed to minimize exploration costs required to identify
+an action that is sufficiently close to optimal.
+
+8.2.4   Problems Requiring Careful Assessment of Information Gain
+TS is well suited to problems where the best way to learn which action is
+optimal is to test the most promising actions. However, there are natural
+problems where such a strategy is far from optimal, and efficient learning
+requires a more careful assessment of the information actions provide.
+The following example from (Russo and Van Roy, 2018a) highlights this
+point.
+
+Example 8.4. (A Revealing Action) Suppose there are k + 1 actions
+{0, 1, ..., k}, and θ is an unknown parameter drawn uniformly at random
+from Θ = {1, .., k}. Rewards are deterministic conditioned on θ, and
+when played action i ∈ {1, ..., k} always yields reward 1 if θ = i and 0
+otherwise. Action 0 is a special “revealing” action that yields reward
+1/2θ when played.
+
+     Note that action 0 is known to never yield the maximal reward, and
+is therefore never selected by TS. Instead, TS will select among actions
+{1, ..., k}, ruling out only a single action at a time until a reward 1 is
+earned and the optimal action is identified. A more intelligent algorithm
+for this problem would recognize that although action 0 cannot yield
+the maximal reward, sampling it is valuable because of the information
+it provides about other actions. Indeed, by sampling action 0 in the
+first period, the decision maker immediately learns the value of θ, and
+can exploit that knowledge to play the optimal action in all subsequent
+periods.
+     The shortcoming of TS in the above example can be interpreted
+through the lens of the information ratio (8.7). For this problem, the
+information ratio when actions are sampled by TS is far from the
+84              Why it Works, When it Fails, and Alternative Approaches
+
+
+minimum possible, reflecting that it is possible to a acquire information
+at a much lower cost per bit. The following two examples, also from
+(Russo and Van Roy, 2018a), illustrate a broader range of problems for
+which TS suffers in this manner. The first illustrates issues that arise
+with sparse linear models.
+
+Example 8.5. (Sparse Linear Model) Consider a linear bandit problem
+where X ⊂ Rd and the reward from an action x ∈ X is xT θ, which
+is deterministic conditioned on θ. The true parameter θ is known
+to be drawn uniformly at random from the set of one-hot vectors
+Θ = {θ0 ∈ {0, 1}d : kθ0 k0 = 1}. For simplicity, assume d is an integer
+power of two. The action set is taken to be the set of nonzero vectors
+in {0,n1}d , normalized so thatocomponents of each vector sum to one:
+         x
+X = kxk    1
+             : x ∈ {0, 1}d , x 6= 0 .
+
+    Let i∗ be the index for which θi∗ = 1. This bandit problem amounts
+to a search for i∗ . When an action xt is selected the observed reward
+rt = xTt θ is positive if i∗ is in the support of xt or 0 otherwise. Given
+that actions in X can support any subset of indices, i∗ can be found via
+a bisection search, which requires log(d) periods in expectation. On the
+other hand, TS selects exclusively from the set of actions that could be
+optimal. This includes only one-hot vectors. Each such action results in
+either ruling out one index or identifying i∗ . As such, the search carried
+out by TS requires d/2 periods in expectation.
+    Our final example involves an assortment optimization problem.
+
+Example 8.6. (Assortment Optimization) Consider the problem of
+repeatedly recommending an assortment of products to a customer. The
+customer has unknown type θ ∈ Θ where |Θ| = n. Each product is geared
+toward customers of a particular type, and the assortment of m products
+offered is characterized by the vector of product types x ∈ X = Θm .
+We model customer responses through a random utility model in which
+customers are more likely to derive high value from a product geared
+toward their type. When offered an assortment of products x, the
+customer associates with the ith product utility uθit (x) = β1θ (xi ) + wit ,
+where 1θ indicates whether its argument is θ, wit follows a standard
+Gumbel distribution, and β ∈ R is a known constant. This is a standard
+8.2. Limitations of Thompson Sampling                                     85
+
+
+multinomial logit discrete choice model. The probability a customer of
+type θ chooses product i is given by
+                               exp (β1θ (xi ))
+                           Pm                     .
+                              j=1 exp (β1θ (xj ))
+
+When an assortment xt is offered at time t, the customer makes a
+choice it = arg maxi uθit (x) and leaves a review uθit t (x) indicating the
+utility derived from the product, both of which are observed by the
+recommendation system. The reward to the recommendation system is
+the normalized utility uθit t (x)/β.
+    If the type θ of the customer were known, then the optimal recom-
+mendation would be x∗ = (θ, θ, . . . , θ), which consists only of products
+targeted at the customer’s type. Therefore, TS would only ever offer
+assortments consisting of a single type of product. Because of this, TS
+requires n samples in expectation to learn the customer’s true type.
+However, as discussed in (Russo and Van Roy, 2018a), learning can
+be dramatically accelerated through offering diverse assortments. To
+see why, suppose that θ is drawn uniformly at random from Θ and
+consider the limiting case where β → ∞. In this regime, the probability
+a customer chooses a product of type θ if it is available tends to 1,
+and the normalized review β −1 uθit t (x) tends to 1θ (xit ), an indicator for
+whether the chosen product is of type θ. While the customer type re-
+mains unknown, offering a diverse assortment, consisting of m different
+and previously untested product types, will maximize both immediate
+expected reward and information gain, since this attains the highest
+probability of containing a product of type θ. The customer’s response
+almost perfectly indicates whether one of those items is of type θ. By
+continuing to offer such assortments until identifying the customer type,
+with extremely high probability, an algorithm can learn the type within
+dn/me periods. As such, diversification can accelerate learning by a
+factor of m relative to TS.
+    In each of the three examples of this section, TS fails to explore
+in any reasonably intelligent manner. Russo and Van Roy (2018a)
+propose an alternative algorithm – information-directed sampling – that
+samples actions in a manner that minimizes the information ratio, and
+this addresses the shortcomings of TS in these examples. It is worth
+86             Why it Works, When it Fails, and Alternative Approaches
+
+
+mentioning, however, that despite possible advantages, information-
+directed sampling requires more complex computations and may not be
+practical across the range of applications for which TS is well-suited.
+
+8.3   Alternative Approaches
+
+Much of the the work on multi-armed bandit problems has focused on
+problems with a finite number of independent actions, like the beta-
+Bernoulli bandit of Example 3.1. For such problems, for the objective
+of maximizing expected discounted reward, the Gittins index theorem
+(Gittins and Jones, 1979) characterizes an optimal strategy. This strategy
+can be implemented via solving a dynamic program for action in each
+period, as explained in (Katehakis and Veinott, 1987), but this is
+computationally onerous relative to TS. For more complicated problems,
+the Gittins index theorem fails to hold, and computing optimal actions is
+typically infeasible. A thorough treatment of Gittins indices is provided
+in (Gittins et al., 2011).
+    Upper-confidence-bound algorithms, as discussed in Section 8.1.2,
+offer another approach to efficient exploration. At a high level, these
+algorithms are similar to TS, in that they continue sampling all promis-
+ing actions while gradually discarding those that underperform. Section
+8.1.2 also discusses a more formal relation between the two approaches,
+as originally established in (Russo and Van Roy, 2014b). UCB algo-
+rithms have been proposed for a variety of problems, including bandit
+problems with independent actions (Lai and Robbins, 1985; Auer et al.,
+2002; Cappé et al., 2013; Kaufmann et al., 2012), linear bandit problems
+(Dani et al., 2008; Rusmevichientong and Tsitsiklis, 2010), bandits with
+continuous action spaces and smooth reward functions (Kleinberg et al.,
+2008; Bubeck et al., 2011; Srinivas et al., 2012), and exploration in
+reinforcement learning (Jaksch et al., 2010). As discussed, for example,
+in (Russo and Van Roy, 2014b; Osband and Van Roy, 2017a; Osband
+and Van Roy, 2017b), the design of upper-confidence bounds that simul-
+taneously accommodate both statistical and computational efficiency
+often poses a challenge, leading to use of UCB algorithms that sacrifice
+statistical efficiency relative to TS.
+8.3. Alternative Approaches                                             87
+
+
+     Information-directed sampling (Russo and Van Roy, 2014a) aims to
+better manage the trade-off between immediate reward and information
+acquired by sampling an action through minimizing the information
+ratio. The knowledge gradient algorithm (Frazier et al., 2008; Frazier et
+al., 2009) and several other heuristics presented in (Francetich and Kreps,
+2017a; Francetich and Kreps, 2017b) similarly aim to more carefully
+assess the value of information and also address time-sensitivity. Finally,
+there is a large literature on online decision problems in adversarial
+environments, which we will not review here; see (Bubeck and Cesa-
+Bianchi, 2012) for thorough coverage.
+                    Acknowledgements
+
+
+
+
+This work was generously supported by a research grant from Boeing, a
+Marketing Research Award from Adobe, and Stanford Graduate Fellow-
+ships courtesy of Burt and Deedee McMurty, PACCAR, and Sequoia
+Capital. We thank Stephen Boyd, Michael Jordan, Susan Murphy, David
+Tse, and the anonymous reviewers for helpful suggestions, and Roland
+Heller, Xiuyuan Lu, Luis Neumann, Vincent Tan, and Carrie Wu for
+pointing out typos.
+
+
+
+
+                                 88
+                           References
+
+
+
+
+Abbasi-Yadkori, Y., D. Pál, and C. Szepesvári. 2011. “Improved al-
+   gorithms for linear stochastic bandits”. In: Advances in Neural
+   Information Processing Systems 24. 2312–2320.
+Abeille, M. and A. Lazaric. 2017. “Linear Thompson sampling revisited”.
+   In: Proceedings of the 20th International Conference on Artificial
+   Intelligence and Statistics. 176–184.
+Agarwal, D. 2013. “Computational advertising: the LinkedIn way”. In:
+   Proceedings of the 22nd ACM International Conference on Informa-
+   tion & Knowledge Management. ACM. 1585–1586.
+Agarwal, D., B. Long, J. Traupman, D. Xin, and L. Zhang. 2014. “Laser:
+   a scalable response prediction platform for online advertising”. In:
+   Proceedings of the 7th ACM international conference on Web search
+   and data mining. ACM. 173–182.
+Agrawal, S., V. Avadhanula, V. Goyal, and A. Zeevi. 2017. “Thompson
+   sampling for the MNL-bandit”. In: Proceedings of the 30th Annual
+   Conference on Learning Theory. 76–78.
+Agrawal, S. and N. Goyal. 2012. “Analysis of Thompson sampling for
+   the multi-armed bandit problem”. In: Proceedings of the 25th Annual
+   Conference on Learning Theory. 39.1–39.26.
+Agrawal, S. and N. Goyal. 2013a. “Further optimal regret bounds for
+   Thompson sampling”. In: Proceedings of the 16th International
+   Conference on Artificial Intelligence and Statistics. 99–107.
+
+
+                                  89
+90                                                            References
+
+
+Agrawal, S. and N. Goyal. 2013b. “Thompson sampling for contextual
+   bandits with linear payoffs”. In: Proceedings of The 30th Interna-
+   tional Conference on Machine Learning. 127–135.
+Auer, P., N. Cesa-Bianchi, and P. Fischer. 2002. “Finite-time analysis of
+   the multiarmed bandit problem”. Machine Learning. 47(2): 235–256.
+Bai, A., F. Wu, and X. Chen. 2013. “Bayesian mixture modelling and
+   inference based Thompson sampling in Monte-Carlo tree search”. In:
+   Advances in Neural Information Processing Systems 26. 1646–1654.
+Bastani, H., M. Bayati, and K. Khosravi. 2018. “Exploiting the natural
+   exploration in contextual bandits”. arXiv preprint arXiv:1704.09011.
+Besbes, O., Y. Gur, and A. Zeevi. 2014. “Stochastic Multi-Armed-
+   Bandit Problem with Non-stationary Rewards”. In: Advances in
+   Neural Information Processing Systems 27. 199–207.
+Bubeck, S., R. Munos, G. Stoltz, and C. Szepesvári. 2011. “X-armed
+   bandits”. Journal of Machine Learning Research. 12: 1655–1695.
+Bubeck, S. and N. Cesa-Bianchi. 2012. “Regret analysis of stochastic
+   and nonstochastic multi-armed bandit problems”. Foundations and
+   Trends in Machine Learning. 5(1): 1–122.
+Bubeck, S. and R. Eldan. 2016. “Multi-scale exploration of convex
+   functions and bandit convex optimization”. In: Proccedings of 29th
+   Annual Conference on Learning Theory. 583–589.
+Bubeck, S., R. Eldan, and J. Lehec. 2018. “Sampling from a log-concave
+   distribution with projected Langevin Monte Carlo”. Discrete &
+   Computational Geometry.
+Cappé, O., A. Garivier, O.-A. Maillard, R. Munos, and G. Stoltz. 2013.
+   “Kullback-Leibler upper confidence bounds for optimal sequential
+   allocation”. Annals of Statistics. 41(3): 1516–1541.
+Casella, G. and E. I. George. 1992. “Explaining the Gibbs sampler”.
+   The American Statistician. 46(3): 167–174.
+Chapelle, O. and L. Li. 2011. “An empirical evaluation of Thompson
+   sampling”. In: Advances in Neural Information Processing Systems
+   24. 2249–2257.
+Cheng, X. and P. Bartlett. 2018. “Convergence of Langevin MCMC in
+   KL-divergence”. In: Proceedings of the 29th International Conference
+   on Algorithmic Learning Theory. 186–211.
+References                                                           91
+
+
+Craswell, N., O. Zoeter, M. Taylor, and B. Ramsey. 2008. “An experi-
+   mental comparison of click position-bias models”. In: Proceedings of
+   the 2008 International Conference on Web Search and Data Mining.
+   ACM. 87–94.
+Dani, V., T. Hayes, and S. Kakade. 2008. “Stochastic linear optimiza-
+   tion under bandit feedback”. In: Proceedings of the 21st Annual
+   Conference on Learning Theory. 355–366.
+Dimakopoulou, M. and B. Van Roy. 2018. “Coordinated exploration in
+   concurrent reinforcement learning”. arXiv preprint arXiv:1802.01282.
+Durmus, A. and E. Moulines. 2016. “Sampling from strongly log-concave
+   distributions with the Unadjusted Langevin Algorithm”. arXiv
+   preprint arXiv:1605.01559.
+Eckles, D. and M. Kaptein. 2014. “Thompson sampling with the online
+   bootstrap”. arXiv preprint arXiv:1410.4009.
+Ferreira, K. J., D. Simchi-Levi, and H. Wang. 2015. “Online network
+   revenue management using Thompson sampling”. Working Paper.
+Francetich, A. and D. M. Kreps. 2017a. “Choosing a Good Toolkit:
+   Bayes-Rule Based Heuristics”. preprint.
+Francetich, A. and D. M. Kreps. 2017b. “Choosing a Good Toolkit:
+   Reinforcement Learning”. preprint.
+Frazier, P., W. Powell, and S. Dayanik. 2009. “The knowledge-gradient
+   policy for correlated normal beliefs”. INFORMS Journal on Com-
+   puting. 21(4): 599–613.
+Frazier, P., W. Powell, and S. Dayanik. 2008. “A knowledge-gradient pol-
+   icy for sequential information collection”. SIAM Journal on Control
+   and Optimization. 47(5): 2410–2439.
+Ghavamzadeh, M., S. Mannor, J. Pineau, and A. Tamar. 2015. “Bayesian
+   reinforcement learning: A survey”. Foundations and Trends in Ma-
+   chine Learning. 8(5-6): 359–483.
+Gittins, J. and D. Jones. 1979. “A dynamic allocation index for the
+   discounted multiarmed bandit problem”. Biometrika. 66(3): 561–
+   565.
+Gittins, J., K. Glazebrook, and R. Weber. 2011. Multi-armed bandit
+   allocation indices. John Wiley & Sons.
+92                                                            References
+
+
+Gómez-Uribe, C. A. 2016. “Online algorithms for parameter mean
+    and variance estimation in dynamic regression”. arXiv preprint
+    arXiv:1605.05697v1.
+Gopalan, A., S. Mannor, and Y. Mansour. 2014. “Thompson sampling for
+    complex online problems”. In: Proceedings of the 31st International
+    Conference on Machine Learning. 100–108.
+Gopalan, A. and S. Mannor. 2015. “Thompson sampling for learning
+    parameterized Markov decision processes”. In: Proceedings of the
+    24th Annual Conference on Learning Theory. 861–898.
+Graepel, T., J. Candela, T. Borchert, and R. Herbrich. 2010. “Web-
+    scale Bayesian click-through rate prediction for sponsored search
+    advertising in Microsoft’s Bing search engine”. In: Proceedings of
+    the 27th International Conference on Machine Learning. 13–20.
+Hill, D. N., H. Nassif, Y. Liu, A. Iyer, and S. V. N. Vishwanathan. 2017.
+   “An efficient bandit algorithm for realtime multivariate optimization”.
+    In: Proceedings of the 23rd ACM SIGKDD International Conference
+    on Knowledge Discovery and Data Mining. 1813–1821.
+Honda, J. and A. Takemura. 2014. “Optimality of Thompson sampling
+    for Gaussian bandits depends on priors”. In: Proceedings of the 17th
+    International Conference on Artificial Intelligence and Statistics.
+    375–383.
+Jaksch, T., R. Ortner, and P. Auer. 2010. “Near-optimal regret bounds
+    for reinforcement learning”. Journal of Machine Learning Research.
+    11: 1563–1600.
+Kandasamy, K., A. Krishnamurthy, J. Schneider, and B. Poczos. 2018.
+   “Parallelised Bayesian optimisation via Thompson sampling”. In:
+   To appear in proceedings of the 22nd International Conference on
+    Artificial Intelligence and Statistics.
+Katehakis, M. N. and A. F. Veinott Jr. 1987. “The multi-armed bandit
+    problem: decomposition and computation”. Mathematics of Opera-
+    tions Research. 12(2): 262–268.
+Kauffmann, E., N. Korda, and R. Munos. 2012. “Thompson sampling:
+    an asymptotically optimal finite time analysis”. In: Proceedings of
+    the 24th International Conference on Algorithmic Learning Theory.
+    199–213.
+References                                                              93
+
+
+Kaufmann, E., O. Cappé, and A. Garivier. 2012. “On Bayesian upper
+    confidence bounds for bandit problems”. In: Proceedings of the 15th
+    International Conference on Artificial Intelligence and Statistics.
+    592–600.
+Kawale, J., H. H. Bui, B. Kveton, L. Tran-Thanh, and S. Chawla.
+    2015. “Efficient Thompson sampling for online matrix-factorization
+    recommendation”. In: Advances in Neural Information Processing
+    Systems 28. 1297–1305.
+Kim, M. J. 2017. “Thompson sampling for stochastic control: the finite
+    parameter case”. IEEE Transactions on Automatic Control. 62(12):
+    6415–6422.
+Kleinberg, R., A. Slivkins, and E. Upfal. 2008. “Multi-armed bandits
+    in metric spaces”. In: Proceedings of the 40th ACM Symposium on
+    Theory of Computing. 681–690.
+Kveton, B., C. Szepesvari, Z. Wen, and A. Ashkan. 2015. “Cascading
+    bandits: learning to rank in the cascade model”. In: Proceedings of
+    the 32nd International Conference on Machine Learning. 767–776.
+Lai, T. and H. Robbins. 1985. “Asymptotically efficient adaptive alloca-
+    tion rules”. Advances in applied mathematics. 6(1): 4–22.
+Li, L., W. Chu, J. Langford, and R. E. Schapire. 2010. “A Contextual-
+    bandit approach to personalized news article recommendation”. In:
+    Proceedings of the 19th International Conference on World Wide
+    Web. 661–670.
+Littman, M. L. 2015. “Reinforcement learning improves behaviour from
+    evaluative feedback”. Nature. 521(7553): 445–451.
+Liu, F., S. Buccapatnam, and N. Shroff. 2017. “Information directed
+    sampling for stochastic bandits with graph feedback”. arXiv preprint
+    arXiv:1711.03198.
+Lu, X. and B. Van Roy. 2017. “Ensemble Sampling”. Advances in Neural
+    Information Processing Systems 30 : 3258–3266.
+Mattingly, J. C., A. M. Stuart, and D. J. Higham. 2002. “Ergodicity
+    for SDEs and approximations: locally Lipschitz vector fields and
+    degenerate noise”. Stochastic processes and their applications. 101(2):
+    185–232.
+94                                                           References
+
+
+Osband, I., D. Russo, and B. Van Roy. 2013. “(More) Efficient rein-
+   forcement learning via posterior sampling”. In: Advances in Neural
+   Information Processing Systems 26. 3003–3011.
+Osband, I., C. Blundell, A. Pritzel, and B. Van Roy. 2016a. “Deep explo-
+   ration via bootstrapped DQN”. In: Advances in Neural Information
+   Processing Systems 29. 4026–4034.
+Osband, I., D. Russo, Z. Wen, and B. Van Roy. 2017. “Deep exploration
+   via randomized value functions”. arXiv preprint arXiv:1703.07608.
+Osband, I. and B. Van Roy. 2014a. “Model-based reinforcement learning
+   and the eluder dimension”. In: Advances in Neural Information
+   Processing Systems 27. 1466–1474.
+Osband, I. and B. Van Roy. 2014b. “Near-optimal reinforcement learning
+   in factored MDPs”. In: Advances in Neural Information Processing
+   Systems 27. 604–612.
+Osband, I. and B. Van Roy. 2017a. “On optimistic versus randomized
+   exploration in reinforcement learning”. In: Proceedings of The Multi-
+   disciplinary Conference on Reinforcement Learning and Decision
+   Making.
+Osband, I. and B. Van Roy. 2017b. “Why is posterior sampling better
+   than optimism for reinforcement learning?” In: Proceedings of the
+   34th International Conference on Machine Learning. 2701–2710.
+Osband, I., B. Van Roy, and Z. Wen. 2016b. “Generalization and
+   exploration via randomized value functions”. In: Proceedings of The
+   33rd International Conference on Machine Learning. 2377–2386.
+Ouyang, Y., M. Gagrani, A. Nayyar, and R. Jain. 2017. “Learning un-
+   known Markov decision processes: A Thompson sampling approach”.
+   In: Advances in Neural Information Processing Systems 30. 1333–
+   1342.
+Roberts, G. O. and J. S. Rosenthal. 1998. “Optimal scaling of dis-
+   crete approximations to Langevin diffusions”. Journal of the Royal
+   Statistical Society: Series B (Statistical Methodology). 60(1): 255–
+   268.
+Roberts, G. O. and R. L. Tweedie. 1996. “Exponential convergence of
+   Langevin distributions and their discrete approximations”. Bernoulli:
+   341–363.
+References                                                            95
+
+
+Rusmevichientong, P. and J. Tsitsiklis. 2010. “Linearly parameterized
+    bandits”. Mathematics of Operations Research. 35(2): 395–411.
+Russo, D. and B. Van Roy. 2013. “Eluder Dimension and the Sample
+    Complexity of Optimistic Exploration”. In: Advances in Neural
+    Information Processing Systems 26. 2256–2264.
+Russo, D. and B. Van Roy. 2014a. “Learning to optimize via information-
+    directed sampling”. In: Advances in Neural Information Processing
+    Systems 27. 1583–1591.
+Russo, D. and B. Van Roy. 2014b. “Learning to optimize via posterior
+    sampling”. Mathematics of Operations Research. 39(4): 1221–1243.
+Russo, D. and B. Van Roy. 2016. “An Information-Theoretic analysis
+    of Thompson sampling”. Journal of Machine Learning Research.
+    17(68): 1–30.
+Russo, D. 2016. “Simple bayesian algorithms for best arm identification”.
+    In: Conference on Learning Theory. 1417–1418.
+Russo, D. and B. Van Roy. 2018a. “Learning to optimize via information-
+    directed sampling”. Operations Research. 66(1): 230–252.
+Russo, D. and B. Van Roy. 2018b. “Satisficing in time-sensitive bandit
+    learning”. arXiv preprint arXiv:1803.02855.
+Schwartz, E. M., E. T. Bradlow, and P. S. Fader. 2017. “Customer acqui-
+    sition via display advertising using multi-armed bandit experiments”.
+    Marketing Science. 36(4): 500–522.
+Scott, S. 2010. “A modern Bayesian look at the multi-armed bandit”.
+   Applied Stochastic Models in Business and Industry. 26(6): 639–658.
+Scott, S. L. 2015. “Multi-armed bandit experiments in the online service
+    economy”. Applied Stochastic Models in Business and Industry. 31(1):
+    37–45.
+Srinivas, N., A. Krause, S. Kakade, and M. Seeger. 2012. “Information-
+    Theoretic regret bounds for Gaussian process optimization in the
+    bandit setting”. IEEE Transactions on Information Theory. 58(5):
+    3250–3265.
+Strens, M. 2000. “A Bayesian framework for reinforcement learning”.
+    In: Proceedings of the 17th International Conference on Machine
+    Learning. 943–950.
+Sutton, R. S. and A. G. Barto. 1998. Reinforcement learning: An intro-
+   duction. Vol. 1. MIT press Cambridge.
+96                                                          References
+
+
+Teh, Y. W., A. H. Thiery, and S. J. Vollmer. 2016. “Consistency and
+   fluctuations for stochastic gradient Langevin dynamics”. Journal of
+   Machine Learning Research. 17(7): 1–33.
+Thompson, W. R. 1935. “On the theory of apportionment”. American
+   Journal of Mathematics. 57(2): 450–456.
+Thompson, W. 1933. “On the likelihood that one unknown probability
+   exceeds another in view of the evidence of two samples”. Biometrika.
+   25(3/4): 285–294.
+Welling, M. and Y. W. Teh. 2011. “Bayesian learning via stochastic gra-
+   dient Langevin dynamics”. In: Proceedings of the 28th International
+   Conference on Machine Learning. 681–688.
+Wyatt, J. 1997. “Exploration and inference in learning from reinforce-
+   ment”. PhD thesis. University of Edinburgh. College of Science and
+   Engineering. School of Informatics.
+

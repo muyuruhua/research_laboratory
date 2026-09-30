@@ -1,0 +1,1031 @@
+                                             Boosting Fuzzer Efficiency:
+                                        An Information Theoretic Perspective
+                    Marcel Böhme                                              Valentin J.M. Manès                                                   Sang Kil Cha
+           Monash University, Australia                                        CSRC, KAIST, Korea                                                CSRC, KAIST, Korea
+            marcel.boehme@acm.org                                           valentinmanes@outlook.fr                                             sangkilc@kaist.ac.kr
+
+ABSTRACT                                                                                                 In this paper, we take an information-theoretic perspective and
+In this paper, we take the fundamental perspective of fuzzing as a                                    understand fuzzing as a learning process.2 We argue that a fuzzer’s
+learning process. Suppose before fuzzing, we know nothing about                                       efficiency is determined by the average information that each gener-
+the behaviors of a program P: What does it do? Executing the first                                    ated input reveals about the program’s behaviors. A classic measure
+test input, we learn how P behaves for this input. Executing the                                      of information is Shannon’s entropy [37]. If the fuzzer exercises
+next input, we either observe the same or discover a new behavior.                                    mostly the same few program behaviors, then Shannon’s entropy
+As such, each execution reveals łsome amountž of information                                          is small, the information content for each input is low, and the
+about P’s behaviors. A classic measure of information is Shannon’s                                    fuzzer is not efficient at discovering new behaviors. If however,
+entropy. Measuring entropy allows us to quantify how much is                                          most fuzzer-generated inputs exercise previously unseen program
+learned from each generated test input about the behaviors of the                                     behaviors, then Shannon’s entropy is high and the fuzzer performs
+program. Within a probabilistic model of fuzzing, we show how                                         much better at discovering new behaviors.
+entropy also measures fuzzer efficiency. Specifically, it measures the                                   We leverage this insight to develop the first entropy-based power
+general rate at which the fuzzer discovers new behaviors. Intuitively,                                schedule for greybox fuzzing. Entropic assigns more energy to
+efficient fuzzers maximize information.                                                               seeds revealing more information about the program behaviors.
+    From this information theoretic perspective, we develop En-                                       The schedule’s objective is to maximize the efficiency of the fuzzer
+tropic, an entropy-based power schedule for greybox fuzzing                                           by maximizing entropy. A greybox fuzzer generates new inputs
+which assigns more energy to seeds that maximize information. We                                      by slightly mutating so-called seed inputs. It adds those generated
+implemented Entropic into the popular greybox fuzzer LibFuzzer.                                       inputs to the corpus of seed inputs which increase code coverage.
+Our experiments with more than 250 open-source programs (60                                           The energy of a seed determines the probability with which the
+million LoC) demonstrate a substantially improved efficiency and                                      seed is chosen. A seed with more energy is fuzzed more often. A
+confirm our hypothesis that an efficient fuzzer maximizes infor-                                      power schedule implements a policy to assign energy to the seeds
+mation. Entropic has been independently evaluated and invited                                         in the seed corpus. Ideally, we want to assign most energy to those
+for integration into main-line LibFuzzer. Entropic now runs on                                        seeds that promise to increase coverage at a maximal rate.
+more than 25,000 machines fuzzing hundreds of security-critical                                          We implemented our entropy-based power schedule into the pop-
+software systems simultaneously and continuously.                                                     ular greybox fuzzer LibFuzzer [25] and call our extension Entropic.
+                                                                                                      LibFuzzer is a widely-used greybox fuzzer that is responsible for
+KEYWORDS                                                                                              the discovery of several thousand security-critical vulnerabilities
+                                                                                                      in open-source programs. Our experiments with more than 250
+software testing, fuzzing, efficiency, information theory, entropy
+                                                                                                      open-source programs (60 million LoC) demonstrate a substantially
+1     INTRODUCTION                                                                                    improved efficiency and confirm our hypothesis that an efficient
+                                                                                                      fuzzer maximizes information.
+Due to its efficiency, fuzzing has become one of the most successful
+                                                                                                         After a successful independent evaluation of Entropic by the
+vulnerability discovery techniques. For instance, in the three years
+                                                                                                      company that develops LibFuzzer, our tool Entropic is currently
+since its launch, the ClusterFuzz project alone has found about
+                                                                                                      the subject of public code review to be integrated into main-line
+16,000 bugs in the Chrome browser and about 11,000 bugs in over
+                                                                                                      LibFuzzer. Once integrated, Entropic will run on more than 25,000
+160 open source projectsÐonly by fuzzing.1 A fuzzer typically gen-
+                                                                                                      machines fuzzing hundreds of security-critical software systems
+erates random inputs for the program and reports those inputs that
+                                                                                                      simultaneously and continuously. Entropic is available as open-
+crash the program. But, what is fuzzer efficiency?
+                                                                                                      source and will be linked here upon acceptance.
+                                                                                                         In order to stand our information theoretic perspective on solid
+1 https://github.com/google/clusterfuzz#trophies
+                                                                                                      foundations, we explore a probabilistic model of the fuzzing pro-
+Permission to make digital or hard copies of all or part of this work for personal or                 cess. We demonstrate how Shannon’s entropy quantifies the rate
+classroom use is granted without fee provided that copies are not made or distributed                 at which a non-deterministic blackbox fuzzer discovers new behav-
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than the
+                                                                                                      iors in an (hypothetically) infinitely long fuzzing campaign. Simply
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or                speaking, if we are interested in achieving code coverage, Shan-
+republish, to post on servers or to redistribute to lists, requires prior specific permission         non’s entropy quantifies the gradient of the coverage increase. We
+and/or a fee. Request permissions from permissions@acm.org.
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+                                                                                                      also show how non-deterministic greybox fuzzing can be reduced
+© 2020 Copyright held by the owner/author(s). Publication rights licensed to ACM.                     to a series of non-deterministic blackbox fuzzing campaigns, which
+ACM ISBN 978-1-4503-7043-1/20/11. . . $15.00
+https://doi.org/10.1145/3368089.3409748                                                               2 As   in, learning about the colors in an urn full of colored balls by sampling from it.
+
+
+
+
+                                                                                                970
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                        Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+     S                                                                          2     A PROBABILISTIC FRAMEWORK FOR
+                                                              S (n)                   BLACKBOX FUZZING
+                                                                                Fuzzing is an automatic software testing technique where the test
+                                                                                inputs are generated in a random manner. Based on the granularity
+ ∆(k )
+                                                                                of the runtime information that is available to the fuzzer, we can
+                                                                                distinguish three fuzzing approaches. A blackbox fuzzer does not
+                                                                                observe or react to any runtime information. A greybox fuzzer
+                                                                                leverages coverage or other feedback from the program’s execution
+                                                                                to dynamically steer the fuzzer. A whitebox fuzzer has a perfect
+                  k   k +1                              #Test Inputs n          view of the execution of an input. For instance, symbolic execution
+                                                                                enumerates interesting program paths.
+Figure 1: The expected number S(n) of program behaviors                            Non-deterministic blackbox fuzzing lends itself to proba-
+that a test generator discovers as the number of generated                      bilistic modeling because of the small number of assumptions about
+test inputs n increases. The rate ∆(n) = S(n + 1) −S(n) at which                the fuzzing process. Unlike greybox fuzzing, blackbox fuzzing is not
+behaviors are discovered decreases over time. Function ∆(n)                     subject to adaptive bias.3 We adopt the recently proposed STADS
+gives the current discovery rate when the n-th test is gener-                   probabilistic model for non-deterministic blackbox fuzzing [5]: Each
+ated. In the limit, the expected number of behaviors discov-                    generated input can belong to one or more species. Beyond the
+ered approaches the asymptote S.                                                probabilistic model, STADS provides biostatistical estimators, e.g.,
+                                                                                to estimate, after several hours of fuzzing, the probability of discov-
+                                                                                ering a new species or the total number of species.
+allows us to derive the local entropy for each seed and the current
+                                                                                2.1        Software Testing as Discovery of Species
+global entropy for the fuzzer. To efficiently approximate entropy,
+we introduce several statistical estimators.                                    Let P be the program that we wish to fuzz. We call as P’s input
+   Our information-theoretic model explains the performance gains               space D the set of all inputs that P can take in. The fuzzing of P is
+of our entropy-based power schedule for greybox fuzzing. Our                    a stochastic process
+schedule assigns more energy to seeds that have a greater local                                                                 N
+                                                                                                            F = {X n | X n ∈ D }n=1                              (1)
+entropy, i.e., that promise to reveal more information. However, we
+also note that this information-theoretic model does not immedi-                of sampling N inputs with replacement from the program’s input
+ately apply to deterministic fuzzers which systematically enumerate             space. We call F as fuzzing campaign and a tool that performs F
+all inputs they can generate, or whitebox fuzzers that systemati-               as a non-deterministic blackbox fuzzer.
+cally enumerate all (interesting) paths they can explore. For our                  Suppose, we can subdivide the search space D into S individual
+probabilistic model to apply, the fuzzer should generate inputs in              subdomains {Di }i=1S called species [5]. An input X ∈ F is said to
+                                                                                                                                       n
+a random manner (with replacement). If a deterministic phase is                 discover species Di if X n ∈ Di and there does not exist a previously
+followed by a non-deterministic phase (e.g., in the default config-             sampled input Xm ∈ F such that m < n and Xm ∈ Di (i.e., Di is
+uration of the AFL greybox fuzzer), we can compute Shannon’s                    sampled for the first time). An input’s species is defined based on the
+entropy only for the non-determinstic phase.                                    dynamic program properties of the input’s execution. For instance,
+                                                                                each branch that is exercised by input X n ∈ D can be identified as
+In summary, our work makes the following contributions:
+                                                                                a species. The discovery of the new species then corresponds to an
+     • We develop an information-theoretic foundation for non-                  increase in branch coverage.
+       deterministic fuzzing which studies the average information                 Global species discovery. We let pi be the probability that the
+       each test reveals about a program’s behaviors.                           n-th generated input X n belongs to species Di ,
+     • We formally link Shannon’s entropy to a fuzzer’s behavior                                               pi = P[X n ∈ Di ]                                 (2)
+       discovery rate, i.e., we establish efficiency as an information-
+       theoretic quantity.                                                      for i : 1 ≤ i ≤ S and n : 1 ≤ n ≤ N . We call {pi }i=1   S the
+
+     • We introduce several practical estimators of information that            fuzzer’s global species distribution. The expected number of dis-
+       are useful in the context of fuzzing.                                    covered species S(n) can be derived as
+     • We present the first entropy-based power schedule to boost                                     Õ
+                                                                                                      S
+                                                                                                                                Õ
+                                                                                                                                  S
+       the efficiency of greybox fuzzers.                                                    S(n) =          1 − (1 − pi )n = S −   (1 − pi )n .                 (3)
+     • We provide an open-source implementation, called Entropic,                                     i=1                              i=1
+       which will be linked here upon acceptance.                                  Figure 1 shows an example of a species discovery curve S(n), i.e.,
+     • We present a substantial empirical evaluation on over 250                the number of species covered with n generated test cases. We can
+       widely-used, open-source C/C++ programs producing over 2                 show that the number of species S that the fuzzer discovers in the
+       CPU years worth of data. Our data and R scripts are available
+                                                                                3 Unlike
+       here: https://doi.org/10.6084/m9.figshare.12415622.v2.                          for a blackbox fuzzer, for a greybox fuzzer the probability to observe certain
+                                                                                program behaviors during fuzzing changes as new seeds are added to the corpus.
+
+
+
+
+                                                                          971
+Boosting Fuzzer Efficiency: An Information Theoretic Perspective                                                            ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+
+
+limit, i.e., the asymptotic total number of species is given as                                    campaign. Our model accommodates that a blackbox fuzzer may
+                                        S = lim S(n).                                  (4)         generate inputs from a non-uniform distribution, i.e., for any two
+                                            n→∞                                                    inputs d 1 , d 2 ∈ D, it is entirely possible that the probability that
+The discovery rate ∆(n), i.e., the expected number of species dis-                                 n-th test input is d 1 or d 2 differs, i.e., P[X n = d 1 ] , P[X n = d 2 ].
+covered with the (n + 1)-th generated test input is defined as                                        For random testing tools and for generation- or mutation-based
+∆(n) = S(n + 1) − S(n). Discovery rate ∆(n) provides an excellent                                  blackbox fuzzers that generate inputs by some random process it is
+stopping rule [2, 38]. One could abort fuzzing when an insufficient                                realistic to assume that the probability to sample from a subdomain
+progress is made for a long period of time, i.e., when ∆(n) < θ for                                Di ⊆ D does not change during the fuzzing campaign. Without any
+some θ .                                                                                           dynamic program feedback, a non-deterministic blackbox fuzzer
+                                                                                                   has no reason to vary its fuzzing heuristics during the campaign. A
+2.2        Mutation-Based Blackbox Fuzzing                                                         mutation-based blackbox fuzzer usually has a fixed-size seed corpus
+We extend the STADS framework with a model for mutation-based                                      C and fixed-size set of mutation operators.
+fuzzing. Let C be a set of seed inputs, called the seed corpus and                                    Otherwise, we make no assumptions about the number S, rela-
+                                                                                                                           S , or distribution of species in the fuzzer’s
+qt be the probability that the fuzzer chooses the seed t ∈ C.4 For                                 tive abundance {pi }i=0
+each seed t, let D t be the set of all inputs that can be generated                                search space. Specifically, there is no assumption that species are
+by applying the available mutation operators to t. The mutational                                  distributed equally. Some rare species (i.e., pi is very small) may
+fuzzing of t is a stochastic process                                                               well be clustered within a small region of the input space.
+                                             Nt
+                      F t = X nt | X nt ∈ D t n=1                (5)                               3     AN INFORMATION-THEORETIC MEASURE
+of sampling N t  inputs with replacement by random mutation of the                                       OF FUZZER EFFICIENCY
+seed t. We call all species that can be found by fuzzing a seed t as                               We provide an information-theoretic foundation for non-deter-
+the species in t’s neighborhood.                                                                   ministic blackbox fuzzing. In the context of fuzzing, Shannon’s
+   Local species discovery. We let pit be the probability that the n-                              entropy H has several interpretations. It quantifies the average
+th input X nt which is generated by mutating the seed t ∈ C belongs                                information a generated test input reveals about the behaviors (i.e.,
+to species Di ,                                                                                    species) of the program. Alternatively we say, a generated test input
+                                    pit = P[X nt ∈ Di ]                                (6)         reduces our uncertainty by H information units (e.g., nats or bits),
+                                                                                                   on average. Entropy also gives the minimum number of information
+for i : 1 ≤ i ≤ S and n : 1 ≤ n ≤ N . We call {pit }i=1 S the local
+                                                                                                   units needed to reliably store the entire set of behaviors the fuzzer
+species distribution in the neighborhood of the seed t. For a locally                              is capable of testing. Moreover, entropy is a measure of diversity. A
+unreachable species Dj , we have p tj = 0. Note that global and local                              low entropy means that the program does either not exhibit many
+distributions, by the law of total expectation, are related as                                     behaviors or most generated inputs test the same behaviors (i.e.,
+                                Õ
+                           pi =     qt · pit .                    (7)                              belong to an abundant species).
+                                            t ∈C
+                                                                                                       In this work, we show how entropy quantifies the efficiency of
+                                                                                                   a blackbox fuzzer in terms of the species discovery rate. However,
+for i : 1 ≤ i ≤ S such that by Equation (3),
+                            "                     !n #                                             there are several challenges that we need to address. First, Shannon’s
+                        ÕS           Õ                                                             entropy is defined in the case where each input belongs to exactly
+                                                t
+                 S(n) =       1− 1−      q t · pi      .                               (8)         one species. How can we define an entropy when an input can
+                                  i=1              t ∈C                                            belong to multiple species? Second, we cannot determine all the
+is the species discovery curve for a mutation-based blackbox fuzzer.                               species of P and their probabilities with regards to F unless we
+                                                                                                   know test cases for each species beforehand.5 How can we quickly
+2.3        Assumptions                                                                             compute an approximate entropy? Third, we develop information-
+For our probabilistic model of non-deterministic (mutational) black-                               theoretic boosting for greybox fuzzing. Yet, for greybox fuzzers the
+box fuzzing, we require that global and local species distributions                                                    S can vary throughout the fuzzing campaign,
+                                                                                                   probabilities {pi }i=1
+are invariant throughout the fuzzing campaign, i.e.,                                               which violates our assumptions (Sec.2.3). Is there a practical way
+               pi = P[X n ∈ Di ] = P[X n+1 ∈ Di ]                         and          (9)         to enforce our assumptions for a greybox fuzzer?
+
+              pit   =   P[X nt   ∈ Di ] =       t
+                                            P[X n+1   ∈ Di ]                          (10)         3.1     Information Theory in a Nutshell
+for i : 1 ≤ i ≤ S and n : 1 ≤ n < N , where qt is the probability that                             Shannon’s entropy H [37] measures the average amount of informa-
+the fuzzer chooses the seed t ∈ C, where X n and X n+1 are the n-th                                tion in each sample X n ∈ F about the species that can be observed
+and (n + 1)-th test inputs that the fuzzer generates, respectively, and                            by executing the program P. When there are S distinct species, the
+where X nt and X n+1
+                  t    are the n-th and (n + 1)-th test inputs generated                           entropy H is:
+                                                                                                                                      Õ
+by fuzzing the seed t, respectively.                                                                                                  S
+   This is satisfied if, for any program input d ∈ D in the program’s                                                        H =−           pi log(pi ).                    (11)
+input space, we have that P[X n = d] = P[X n+1 = d], i.e., the                                                                        i=1
+probability to generate some input d is invariant throughout the
+                                                                                                   5 Determining Shannon’s entropy H may require probabilistic symbolic execution
+4 This   probability is also called the seed’s energy, weight, or perf_score (AFL).                which involves constraint solving and model counting [16, 18].
+
+
+
+
+                                                                                             972
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                                 Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+                                                                                              entropy H t of t as a straight-forward application of Equation 12,
+                                                                                                                                   ÍS
+                                                                                                                        ©Õ ª
+                                                                                                                           S             pit log(pit )
+                                                                                                             H t = log ­ p tj ® − i=1 ÍS       t
+                                                                                                                                                       .      (13)
+                                                                                                                        « j=1 ¬          j=1 p j
+
+   Urn 1. p1 = 43 , p2 = 14    Urn 2. p1 = p2 = 12        Urn 3. p1 = 41 , p2 = 21            The local entropy H t of t quantifies the information that fuzzing t
+          H = 0.56                  H = 0.69                p3 = 14 , H = 1.04                reveals about the species in t’s neighborhood.
+
+  Figure 2: Learning colors by sampling with replacement.                                     3.4    Information-Theoretic Efficiency Measure
+                                                                                              Intuitively, the rate at which we learn about program behaviors,
+                                                                                              i.e., the species in the program, also quantifies a blackbox fuzzer’s
+                                                                                              efficiency. We formally demonstrate how Shannon’s entropy H
+   Figure 2 illustrates the concept informally. Each color represents                         characterizes the general discovery rate ∆(n) as follows.
+a different species. We learn about the colors in each urn by sam-
+pling. Just how much we learn from each sampling differs from                                    Theorem 1. Let Shannon’s entropy be defined as in Equation (12).
+urn to urn. For instance, in Urn 1 it is three times more likely to                           Let ∆(n) be the expected number of new species the fuzzer discovers
+draw a white ball than a black. It takes more attempts to learn                               with the (n + 1)-th generated test input, then
+about black balls in Urn 1 compared to Urn 2. Hence, we expect                                                                     Õ∞
+                                                                                                                                        ∆(n)
+less information about the urn’s colors in a draw from Urn 1. In                                                     H = log(c) +                            (14)
+                                                                                                                                   n=1
+                                                                                                                                         cn
+fact, given the same number of colors S, the entropy is maximal
+                                                                                                                                 Í
+when all colors are equiprobable p1 = . . . = pS . Among the three                            characterizes the rate at which species are discovered in an infinitely
+urns, we expect to get the maximal amount of information about                                long-running campaign, where c = Sj=1 p j is a normalizing constant.
+the urn’s colors by drawing from Urn 3. Even though there is still
+                                                                                                 Proof. We refer to the Appendix for the proof.                       ■
+a dominating color (black), there is now an additional color (blue)
+which can be discovered.                                                                         According to Theorem 1, entropy measures the species discovery
+                                                                                              rate ∆(n) over an infinitely long-running fuzzing campaign where
+3.2     If Each Input Belongs to Multiple Species                                             discovery is gradually discounted as the number of executed tests
+                                                                                              n goes to infinity. In Figure 1, notice that ∆(n) ≥ 0 for all n ≥ 0.
+Shannon’s entropy is defined for the multinomial distribution where
+                                                                                                                                 Í∞
+                                                                                              If we simply took the sum of ∆(n) over all n, we would compute
+each input belongs to exactly one species (e.g., exercise exactly one
+                                                                                              the total number of species S = n=1      ∆(n). However, S provides
+ÍS
+path). However, an input can belong to several species so that
+                                                                                              no insight on the efficiency of the discovery process. Instead, the
+   i=1 pi ≥ 1. For instance, considering a branch in P as a species,                          diminishing factor 1/n in Equation (14) reduces the contribution
+                                                               ÍS
+each input exercises multiple branches. The top-level branch is ex-
+                                                                                              of species discovery as testing effort n increases. The number of
+ercised with probability one. When it is possible that i=1           pi ≥ 1,                  species discovered at the beginning of the campaign has a higher
+                          ÍS                                        Í
+Chao et al. [13] and Yoo et al. [43] suggest to normalize the probabil-                       contribution to H then the number of species discovered later. In
+ities and compute H = − i=1      pi′ log(pi′ ), such that pi′ = pi / Sj=1 p j .               other words, a shorter łramp upž time yields a higher entropy.
+This normalization maintains the fundamental properties of infor-
+mation based on which Shannon developed his formula, i.e., that                               3.5    Maximum Likelihood Estimator
+information due to independent events is additive, that informa-
+                                                                                              We estimate Shannon’s entropy H based on how often we have seen
+tion is a non-negative quantity, etc. The normalized entropy H is
+                                                                                              each observed species. The incidence frequency Yi for species Di is
+computed as
+                                                                                              the number of generated test inputs that belong to Di . Undetected
+
+                Õ                                    ÍS                                       species yield Yi = 0. An unbiased estimator of the local discovery
+                                        ©Õ ª
+                S                        S
+                                                        i=1 pi log(pi )                       probability pi is p̂i = Yi /n, where n is the total number of generated
+      H =−          pi′ log(pi′ ) = log ­ p j ® −         ÍS                     (12)
+                                                                                              test inputs. By plugging p̂i into Equation (12), we can estimate the
+                i=1                     « j=1 ¬             j=1 p j
+                                                                                              entropy H using maximum likelihood estimation. In our model, the
+                                                                                              estimated entropy Ĥ MLE of H is
+We refer to the Appendix for the derivation of this formula. We
+                                                                                                                                       ÍS
+            Í
+note that Equation (12) reduces to Equation (11) for the special                                                           ©Õ ª
+                                                                                                                              S
+                                                                                                                                              Yi log(Yi )
+case where Sj=1 p j = 1. We also note that the resulting quantity is                                        Ĥ MLE = log ­ Yj ® − i=1      ÍS             ,      (15)
+technically not the average information per input.                                                                         « j=1 ¬            j=1 Yj
+                                                                                                                         Í
+                                                                                              where we assume that Sj=1 Yj > 0.
+3.3     The Local Entropy of a Seed
+Recall from Section 2.2, that we call the probabilities {pit }i=1
+                                                              S that                          3.6    Tackling Adaptive Bias when Estimating
+fuzzing a seed t ∈ C generates an input that belongs to species Di                                   the Global Entropy of a Greybox Fuzzer
+as the local species distribution of t. Moreover, we call the set of                          We introduced our probabilistic model for non-deterministic black-
+species {Di | pit > 0 ∧ 1 ≤ i ≤ S } as the neighborhood of the seed t.                        box fuzzing which satisfies the assumption that the global species
+From the local species distribution of t, we can compute the local                                              S is invariant during the campaign (Section 2.3).
+                                                                                              distribution {pi }i=1
+
+
+
+
+                                                                                        973
+Boosting Fuzzer Efficiency: An Information Theoretic Perspective                                                                            ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+
+
+                       4.820
+                                                                                  Estimate
+                                                                                                               monotonic increase. The maximum likelihood estimator (MLE, bi-
+ Efficiency Estimate
+
+
+
+
+                       4.815
+                                                                                                               ased) is computed from unmodified incidence frequencies Yi while
+                                                                                        Blackbox (MLE)
+                                                                                                               the de-biased estimator (MLE, de-biased) is computed from inci-
+                       4.810                                                                                   dence frequencies that are reset to zero whenever a new seed is
+                                                                                                               added. Considering a greybox fuzzing campaign as a series of black-
+                       4.805
+                                                                                                               box campaigns, resetting will prevent any impact of adaptive bias
+                       4.800                                                                                   on the current entropy estimate.
+                                0                  10                    20                      30
+                                                                                                                  In Figure 3.bottom we observe that the de-biased MLE approaches
+                                                          Time (in min)
+                                                                                                               the final entropy estimate much faster than the unmodified MLE. It
+                       6.22                                                                                    takes the unmodified, adaptively biased MLE more than 10 hours to
+ Efficiency Estimate
+
+
+
+
+                       6.20
+                                                                                                               generate the same entropy estimate that the de-biased MLE gener-
+                                                                                                               ates in an hour. The drawback of resetting the incidence frequencies
+                       6.18                                           Estimate                                 to zero is compensated by a relative increase in the quality of the
+                       6.16                                                   Greybox (MLE, biased)            collected data.
+                                                                              Greybox (MLE, de−biased)            Local entropy. Unlike a fuzzer’s global entropy, a seed’s local
+                       6.14                                                                                    entropy is not subject to adaptive bias. Given seed t, let M be the
+                               0.1                         1.0                            10.0
+                                                                                                               greybox fuzzer’s mutation operators, Lt be the set of locations
+                                                           Time (in h)
+                                                                                                               in t where a mutation operator can be applied. Without loss of
+                                                                                                               generality, suppose the fuzzer generates an input t ′ only when
+Figure 3: Entropy estimates of a blackbox fuzzer’s entropy                                                     applying the operator m ∈ M to location l ∈ Lt .8 Then,
+(top) and a greybox fuzzer’s entropy (bottom) over time. For
+each species Di , we count the number of generated inputs Yi                                                              P[X nt = t ′ ] = P[Atn = m] · P[Bnt = l]                    and         (16)
+                                                                                                                                       ′                    ′
+belonging to Di and in regular intervals compute Ĥ MLE per                                                               P[X nt   =t ]=         t
+                                                                                                                                             P[X n+1    =t ]                                      (17)
+Eqn. (15). For the de-biased estimator (bottom), we reset the
+incidence frequencies Yi = 0 whenever a new seed is added.                                                     where    X nt
+                                                                                                                           is the n-th input that is generated from t by fuzzing t,
+                                                                                                                 t
+                                                                                                               X n+1 is the (n+1)-th input generated from t by fuzzing t, Atn and Bnt
+                                                                                                               are the mutation operator and mutation location in t, respectively,
+However, this assumption does not hold for greybox fuzzing which                                               and both are chosen at random when generating input X nt .
+leverages program feedback. Generated inputs that have discovered                                                  Hence, a seed’s local entropy within a greybox fuzzer is unbiased.
+new species (i.e., increased coverage) are added to the corpus. The                                            The local distribution {pit }i=1
+                                                                                                                                            S is invariant throughout the campaign.
+
+availability of added seeds changes the global species distribution                                                               t
+                                                                                                               The probability pi to generate an input that belongs to species Di
+(but not the local distributions for each seed) and thus the global                                            by fuzzing seed t is the same every time t is chosen for fuzzing.
+entropy for a greybox fuzzer. In other words, a greybox fuzzer
+becomes more efficient over time.                                                                              4     INFORMATION-THEORETIC BOOSTING
+    Global entropy. Clearly, our probablistic model does not di-                                               We present an entropy-based boosting strategy for greybox fuzzing
+rectly apply to model the efficiency of a non-deterministic greybox                                            that maximizes the information each generated input reveals about
+fuzzer. However, it is still worthwhile to derive a reasonabe heuris-                                          the species (i.e., behaviors) in a program. Our technique Entropic
+tic to estimate the current global entropy for a greybox fuzzer. We                                            is implemented into the popular greybox fuzzer LibFuzzer which
+propose to consider greybox fuzzing as a series of mutation-based                                              is responsible for at least 12,000 bugs reported in security-critical
+blackbox fuzzing campaigns ⟨F 1 , F 2 , . . . , Fm ⟩, each starting with a                                     open-source projects and over 16,000 bugs reported in a widely-used
+fixed-size corpus right after a new seed has been added to the cor-                                            browser. After a successful independent evaluation of Entropic
+pus. Hence, for greybox fuzzers we suggest to estimate the global                                              by the company that develops LibFuzzer, our tool Entropic is
+entropy only from incidence frequencies that have been collected                                               currently the subject of public code review9 to be integrated into
+since the last seed was added. We call this a de-biased estimator.                                             main-line LibFuzzer.
+    Figure 3.top6 shows the maximum likelihood estimate (MLE)
+Ĥ MLE over time for a blackbox fuzzer.7 We can see that the estimate                                          4.1      Overview of Entropic
+approaches the true value reasonably fast: from under one minute
+                                                                                                               A greybox fuzzer starts with a corpus of seed inputs and continu-
+onwards, the entropy appears as a straight line. Hence, it is fair
+                                                                                                               ously fuzzes these by applying random mutations. Generated inputs
+to say that a monotonic increase in entropy would demonstrate a
+                                                                                                               that increase coverage are added to the corpus. The probability (i.e.,
+dynamic increase in fuzzer efficiency.
+                                                                                                               frequency) with which a seed is chosen for fuzzing is called the
+    Figure 3.bottom shows two entropy estimates over time for a
+greybox fuzzer: the unmodified, adaptively biased MLE and the                                                  8 The application of a mutation operator to a mutation location is merely an abstraction.
+de-biased MLE. We expect that the efficiency of a greybox fuzzer                                               Concretely, it means to randomly choose from a large but fixed set of possible modifi-
+and thus the entropy increases over time. As more seeds are added,                                             cations to t . For instance, the application of multiple concrete mutation operators can
+                                                                                                               still be considered as the application of one abstract operator.
+previously rare species become łless rarež. Indeed, we observe a                                               9 Recall that the ESEC/FSE chairs advised us to blind the name of our tool, the name
+                                                                                                               of the baseline tool, and the name of the company that is developing LibFuzzer. To
+6 Our                   experimental setup for Figure 3 and Figure 4 is discussed in Section 5.2.4.            understand our choice of baselines in the experiments, we should also mention that
+7 LibFuzzer                   without the ability to add generated inputs to the corpus.                       Entropic is not developed or built on top of the popular AFL greybox fuzzer.
+
+
+
+
+                                                                                                         974
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                          Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+Algorithm 1 Entropic Algorithm.                                                                    10.0%
+
+
+
+
+                                                                                 Estimator Bias
+Input: Program P, Initial Seed Corpus C
+  1: while ¬Timeout() do                                                                            0.0%
+
+
+                Í
+  2:   for all t ∈ C. assignEnergy(t)          // power schedule                                                                                     estimator
+  3:   total = t ∈ C t .energy                // normalizing constant                             −10.0%                                                  Entropy (LAP)
+                                    t .energy
+  4:   for all t ∈ C. t .energy = total       // normalized energy                                                                                        Entropy (MLE)
+  5:   t = sample t from C with probability t .energy
+  6:   t ′ = Mutate(t)                        // fuzzing                                                   1            2          3           4          5          6
+                                                                                                                               Time (in h)
+  7:   if P(t ′ ) crashes then return crashing seed t ′
+  8:   else if P(t ′ ) increases coverage then add t ′ to C
+  9:   for all covered elements i ∈ P exercised by t ′ do                       Figure 4: Mean estimator bias over time. We monitored es-
+ 10:       Yit = Yit + 1                      // local incidence freq.          timates for the same seed t over 6h across 20 runs. Estima-
+ 11:   end for                                                                  tor bias is the difference between the mean estimate and the
+ 12: end while                                                                  true value H t divided by the true value H t , where H t is the av-
+return Augmented Seed Corpus C                                                  erage of both mean estimates at 6 hours into the campaign.
+
+
+                                                                                with a screening phase to compute a rough estimate. Each new seed
+seed’s energy. The procedure that assigns energy to a seed is called            was first fuzzed for a fixed number of times. However, we found
+the fuzzer’s power schedule. For instance, LibFuzzer’s standard                 that too much energy was wasted gaining statistical power that
+schedule assigns more energy to seeds that were found later in the              could have otherwise been spent discovering more species.
+fuzzing campaign. It is this power schedule that we modify.                          To overcome this challenge we took a Bayesian approach. We
+   Algorithm 1 shows how greybox fuzzing is implemented in Lib-                 know that entropy is maximal when all probabilities are equal. For a
+Fuzzer; our changes for Entropic are shown as green boxes. In                   new seed t, we assume an uninformative prior for the probabilities
+a continuous loop, the fuzzer samples a seed t ∈ C from a distri-               pit , i.e., p1t = . . . = pSt , where pit is the probability that fuzzing t
+bution that is given by the seeds’ normalized energy. This energy               generates an input that belongs to species Di . With each input
+is computed using assignEnergy which implements one of our                      that is generated by fuzzing t, the probabilities are incrementally
+information-theoretic power schedules. The seed t is then mutated               updated. The posterior is a Beta distribution over pit . The estimate
+using random bit flips and other mutation operators to generate                 p̂it of pit is thus the mean of this beta distribution which is also
+an input t ′ . If the execution crashes or violates the fuzzer security         known as the Laplace estimator or add-one smoothing,
+policy, enacted by limits on execution time, memory usage, or sani-
+                                                                                                                               Yit + 1
+tizers [36], t ′ is returned as crashing input and LibFuzzer stops. If                                             p̂it =        Í                                       (18)
+the execution increases coverage, t ′ is added to the corpus. We call                                                       Sд + Sj=1 Yjt
+the number of inputs generated by fuzzing a seed t ∈ C and that                 where Sд = S(n) is the number of globally discovered species.
+belong to species Di as local incidence frequency Yit .                                                                                      t
+                                                                                   Thus, we define the improved entropy estimator Ĥ LAP       (LAP) as
+                                                                                                        Õ ª          Í
+4.2     Entropy-Based Power Schedule                                                              ©
+                                                                                                         S             S (Y + 1) log(Y + 1)
+                                                                                            = log ­Sд +     Yj ® − i=1            ÍS
+                                                                                        t                                     i            i
+Our entropy-based schedule assigns more energy to seeds that elicit                  Ĥ LAP                                                        (19)
+                                                                                                  «             ¬
+                                                                                                        j=1                S д  +  j=1 Y j
+more information about the program’s species. In other words, the
+fuzzer spends more time fuzzing seeds that lead to more efficient                  Figure 4 illustrates the main idea. Both estimators are nearly
+discovery of new behaviors. The amount of information about the                 unbiased from two hours onwards. In other words, they are within
+species in the neighborhood of a seed t that we expect for each                 1% from the true value, i.e., Ĥ Xt ∈ H t ± 1%.10 In the beginning, the
+generated test input is measured using the seed’s local entropy H t .           MLE is negatively biased and approaches the true value from below
+   The entropy-based power schedule is inspired by Active SLAM                  while the LAP is positively biased and approaches the true value
+[11, 39], a problem in robot mapping: An autonomous robot is                    from above. Both estimators robustly estimate the same quantity,
+placed in an unknown terrain; the objective is to learn the map of              but only LAP assigns high energy when seed t has not been fuzzed
+the terrain as quickly as possible. General approaches approximate              enough for an accurate estimate of the seeds information H t .
+Shannon’s entropy of the map under hypothetical actions [9, 11].
+                                                                                4.2.2 Measuring Information Only About Rare Species. During our
+The next move is chosen such that the reduction in uncertainty is
+                                                                                initial experiments, we also noticed that the entropy estimates for
+maximized. Similarly, our schedule chooses the next seed such that
+                                                                                different seeds were almost the same. We found that the reason is
+the information about the program’s species is maximized.
+                                                                                a small number of very abundant species which have a huge im-
+4.2.1 Improved Estimator. During our experiments, we quickly                    pact on the entropy estimate. There are some abundant species to
+noticed that the maximum likelihood estimator Ĥ MLE in Equation 15             which each and every generated input belongs. Hence, we defined
+cannot be used. A new seed t that has never been fuzzed will always             a global abundance threshold θ and only maintain local incidence
+                           t
+be assigned zero energy Ĥ MLE = 0. Hence, it would never be chosen             10 In contrast to global entropy   H , local entropy H t is not subject to any adaptive bias;
+for fuzzing and forever remain with zero energy. We experimented                see Section 3.6.
+
+
+
+
+                                                                          975
+Boosting Fuzzer Efficiency: An Information Theoretic Perspective                                                                     ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+
+
+frequencies Yit of globally rare species Di that have a global inci-                                                                      schedule             original      entropy
+dence frequency Yi ≤ θ . In Section 5, we report on the sensitivity
+of the boosting technique on the abundance threshold θ .                                                         freetype2−2017                       guetzli−2017−3−30                    harfbuzz−1.3.2
+                                                                                                                                          1250
+
+                                                                                                                                          1000                                 7500
+5 EXPERIMENTAL EVALUATION                                                                           9000
+                                                                                                                                          750
+                                                                                                    6000                                                                       5000
+5.1 Research Questions                                                                                                                    500
+                                                                                                    3000                                                                       2500
+Our main hypothesis is that increasing information per generated                                                                          250
+
+input increases fuzzer efficiency. To evaluate our hypothesis, we                                     0               entropy *0.74*        0                entropy *0.98*        0            entropy *0.87*
+
+implemented Entropic and ask the following research questions.                                                  lcms−2017−03−21                      libjpeg−turbo−07−2017                 libpng−1.2.56
+                                                                                                    600                                   1200                                   400
+RQ.1 What is the empirical coverage improvement over the baseline?
+                                                                                                                                          900                                    300
+RQ.2 How much faster are bugs detected compared to the baseline?                                    400
+                                                                                                                                          600                                    200
+RQ.3 How does the choice of abundance threshold θ influence the
+                                                                                                    200
+      performance of our technique?
+
+
+
+
+                                                                               Number of Features
+                                                                                                                                          300                                    100
+
+RQ.4 What is the cost of maintaining incidence frequencies?                                           0               entropy *0.64*        0                entropy *0.98*        0            entropy *0.63*
+
+                                                                                                               openssl−1.1.0c−x509           openthread−2018−02−27−ip6             openthread−2018−02−27−radio
+5.2     Setup and Infrastructure                                                                                                                                               2000
+                                                                                                    1500
+5.2.1 Implementation and Baseline. We implemented our entropy-                                                                            1000                                 1500
+based power schedule into LibFuzzer (363 lines of change) and call                                  1000
+                                                                                                                                                                               1000
+our extension as Entropic. LibFuzzer is a state-of-the-art vulnera-                                 500
+                                                                                                                                          500
+                                                                                                                                                                                 500
+bility discovery tool developed at [blinded] which has found almost
+                                                                                                      0               entropy *0.71*        0                entropy *0.84*        0            entropy *0.82*
+30k bugs in hundreds of closed- and open-source projects.
+                                                                                                               sqlite−2016−11−14                      vorbis−2017−12−11                wpantund−2018−02−27
+   As a coverage-based greybox fuzzer (see Alg. 1), LibFuzzer seeks                                                                                                            10000
+to maximize code coverage. Hence, our species is a coverage element,                                900                                   600
+                                                                                                                                                                               7500
+called feature. A feature is a combination of branch covered and
+                                                                                                    600                                   400
+hit count. For instance, two inputs (exercising the same branches)                                                                                                             5000
+
+have a different feature set if one exercises a branch more often.                                  300                                   200                                  2500
+
+Hence, feature coverage subsumes branch coverage. In contrast to                                      0               entropy *0.68*        0                entropy *0.82*        0            entropy *0.86*
+LibFuzzer, Entropic also maintains the local and global incidence                                          0     15     30   45      60          0      15     30    45   60           0   15     30   45   60
+                                                                                                                                                      Time (in minutes)
+frequencies for each feature. We study the performance hit in RQ4.
+   LibFuzzer’s original power schedule assigns more energy to
+seeds that have been added later in the fuzzing campaign. Entropic             Figure 5: Mean coverage in a 60 minute fuzzing campaign
+implements our entropy-based power schedule (Sec. 4.2) which is                (12 subjects × 2 schedules × 40 runs × 1 hour ≈ 40 CPU days).
+parameterized by the abundance threshold θ . We investigate the                The dashed, vertical lines show when Entropic achieves the
+impact of the choice of θ in RQ3.                                              same coverage as LibFuzzer in 1 hour. The values at the bot-
+   ⋆ Our extension Entropic has been independently evaluated by                tom right give the Vargha-Delaney effect size Â12 .
+the company that is developing LibFuzzer and was found to improve
+on LibFuzzer with statistical significance. Entropic was invited for           of runs crash (leaving 12 programs with 1.2M LoC). As LibFuzzer
+integration into the main-line LibFuzzer and is currently subject to           aborts when the first crash is found, the coverage results for those
+public code review. Once integrated, Entropic is poised to run on more         subjects would be unreliable. We set a 8GB memory limit and ran
+than 25,000 machines fuzzing hundreds of security-critical software            LibFuzzer for 1 hour. To gain statistical power, we repeated each
+systems simultaneously and continuously.                                       experiment 40 times. This required 40 CPU days.
+                                                                                  OSS-Fuzz [29] (263 programs, 58.3M LoC, 6 hours, 4 repetitions)
+5.2.2 Benchmark Subjects. We compare Entropic with LibFuzzer                   is an open-source fuzzing platform developed by Google for the
+on 2 benchmarks containing 250+ open-source programs used in                   large-scale continuous fuzzing of security-critical software. At the
+many different domains, including browsers. We conducted almost                time of writing OSS-Fuzz featured 1,326 executable programs in
+1,000 one-hour fuzzing campaigns and 2,000 six-hour campaigns to               176 open-source projects. We selected 263 programs totaling 58.3
+generate almost two CPU years worth of data.                                   million lines of code by choosing subjects that did not crash or reach
+   FTS [35] (12 programs, 1.2M LoC, 1 hour, 40 repetitions) is a stan-         the saturation point in the first few minutes and that generated
+dard set of real-world programs to evaluate fuzzer performance. The            more than 1,000 executions per second. Even for the chosen subjects,
+subjects are widely-used implementations of file parsers, protocols,           we noticed that the initial seed corpora provided by the project
+and data bases (e.g., libpng, openssl, and sqlite), amongst others.            are often for saturation: Feature discovery has effectively stopped
+Each subject contains at least one known vulnerability (CVE), some             shortly after the beginning of the campaign. It does not give much
+of which require weeks to be found. The Fuzzer Test Suite (FTS)                room for further discovery. Hence, we removed all initial seed
+allows to compare the coverage achieved as well as the time to                 corporas. We ran LibFuzzer for all programs for 6 hours and, given
+find the first crash on the provided subjects. There are originally            the large number of subjects, repeated each experiment 4 times.
+25 subjects, but we removed those programs where more than 15%                 This required a total of 526 CPU days.
+
+
+
+
+                                                                         976
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                                                                 Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+5.2.3 Computational Resources. All experiments for FTS were con-                                                                                                   Subjects (in %)
+                                                                                                               200%
+ducted on a machine with Intel(R) Xeon(R) Platinum 8170 2.10GHz                                                100%
+
+
+CPUs with 104 cores and 126GB of main memory. All experiments                                                  10%
+
+
+for OSS-Fuzz were conducted on a machine with Intel(R) Xeon(R)                                                 1%
+
+CPU E5-2699 v4 2.20GHz with a total of 88 cores and 504GB of main
+memory. To ensure a fair comparison, we always ran all schedules                                       −1%
+
+simultaneously (same workload), each schedule was bound to one                                         −10%
+
+(hyperthread) core, and 20% of cores were left unused to avoid                                         −100%
+                                                                                                                                      0%       10%   20%    30%    40%   50%   60%    70%   80%   90% 100%
+interference. In total our experiments took more than 2 CPU years
+                                                                                  (a) Mean coverage increase. For X % of subjects, Entropic achieves at least Y %
+which amounts to more than 2 weeks of wall clock time.                            more coverage than LibFuzzer.
+
+5.2.4 Setup for Figures 3 and 4. Throughout the paper, we reported                                                                                                Number of Subjects
+                                                                                                                                       0                   66            132            198            264
+on the results of small experiments. In all cases when not otherwise                                                              6
+specified, we used LibFuzzer with the original power schedule to
+                                                                                                                                  5
+fuzz the LibPNG project from the fuzzer-test-suite (FTS) started
+
+
+
+
+                                                                                                                Time (in hours)
+                                                                                                                                  4
+with a single seed input. For Figure 3, we conducted 10 runs of 20
+                                                                                                                                  3
+hours using LibFuzzer both as blackbox and as greybox fuzzer. In
+blackbox mode, no seeds are added to the corpus. For Figure 4, we                                                                 2
+
+conducted 20 runs of 6 hours and monitored the single seed input                                                                  1
+
+that we started LibFuzzer with. We printed all four estimates in                                                                  0
+
+regular intervals.                                                                                                                    0%                  25%            50%            75%           100%
+                                                                                                                                                                    Subjects (in %)
+                                                                                  (b) Time to Coverage. For X % of subjects, Entropic achieves the same coverage in
+                                                                                  Y hours, that LibFuzzer achieves in 6 hours (solid line).
+RQ1.1 Code Coverage on FTS
+⋆ Empirical results confirm our hypothesis that increasing the average
+                                                                                        Proportion of 'Wins'
+                                                                                                               80.0%
+
+information each generated input reveals about the program’s species
+                                                                                                               60.0%
+increases the rate at which new species are discovered. By choosing
+the seed that reveals more information, efficiency is improved.                                                40.0%
+
+   Figure 5 shows the mean coverage over time and the Vargha-
+                                                                                                                                           1          3             10         30           100       360
+Delaney [3] effect size Â12 . Values above 0.56, 0.63, 0.71 indicate                                                                                               Time (in min)
+a small, medium, and large effect size, respectively. More intu-                  (c) Entropic gets better at achieving coverage. After X seconds of fuzzing,
+itively, the values indicate how much more likely it is for an En-                Entropic achieves more coverage than LibFuzzer for Y % of the 263 subjects.
+tropic run to cover more features than a LibFuzzer run (or less
+likely if under 0.5). Values in stars (*Â12 ∗) indicate statistical sig-         Figure 6: OSS-Fuzz coverage results (263 subjects × 2 sched-
+nificance (Wilcoxon rank-sum test; p < 0.05). For instance, for                   ules × 4 runs × 6 hours ≈ 1.5 CPU years).
+vorbis-2017-12-11 Entropic (with our entropy-based schedule)
+covers about 700 features in under 15 minutes while LibFuzzer
+(with the original schedule) takes one hour.                                         Figure 6.(a) shows the mean coverage increase of Entropic over
+   Entropic substantially outperforms LibFuzzer within the one-                   LibFuzzer on a logarithmic scale over all 263 subjects. The dashed
+hour time budget for 9 of 12 subjects. For two out of three cases                 line represents the coverage increase of LibFuzzer over Entropic
+where the Â12 effect size is considered medium, the mean difference              for the cases when LibFuzzer achieves more coverage. We can see
+in feature coverage is substantial (30% and 80% increase for libpng               that Entropic achieves more coverage than LibFuzzer after six
+and openssl-1.1.0c, resp.). In almost all cases, Entropic is more than            hours of fuzzing for about 77% of subjects. Entropic covers at least
+twice as fast (2x) as LibFuzzer. The same coverage that LibFuzzer                 10% more features than LibFuzzer for about 25% of subjects. We
+achieves in one hour, Entropic can achieve in less than 30 minutes.               investigated more closely the 23% of the subjects where Entropic
+All differences are statistically significant. The coverage trajectories          achieves less coverage. First, for half of them, the coverage differ-
+seem to indicate that the benefit of our entropy schedule becomes                 ence was marginal (less than 2%). Second, these subjects were much
+even more pronounced for longer campaigns. We increase campaign                   larger (twice the number of branches on average). As we will see in
+length to 6h for our experiments with OSS-Fuzz (RQ2).                             RQ4 that the performance overhead incurred by Entropic grows
+                                                                                  linearly with the number of branches.
+RQ1.2 Large Scale Validation on OSS-Fuzz                                             Figure 6.(b) shows how much faster Entropic is in achieving the
+                                                                                  coverage that LibFuzzer achieves in six hours. Again, the dashed
+⋆ Results for 263 open-source C/C++ projects validate our empirical
+                                                                                  line shows the inverse when LibFuzzer achieves more coverage at
+findings. Entropic generally achieves more coverage than LibFuzzer.
+                                                                                  the six hour mark. We can see that Entropic achieves the same
+The coverage increase is larger than 10% for a quarter of programs. En-
+                                                                                  coverage twice as fast for about 50% of subjects and four times as
+tropic is more than twice as fast as LibFuzzer for half the programs.
+                                                                                  fast for 25% of subjects. More specifically, Entropic achieves the
+The efficiency boost increases with the length of the campaign.
+                                                                                  same coverage in 1.5h as LibFuzzer achieves in 6h for 66 subjects.
+
+
+
+
+                                                                            977
+Boosting Fuzzer Efficiency: An Information Theoretic Perspective                                                                              ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+
+
+                              6                                                                                                              Original                  Entropy Schedule
+                                                                                                                            Max. abundance                  0x100           0x1000       0x10000
+                                                                                                                                                µ           µ     Â12      µ     Â12   µ     Â12
+                                                                                                         freetype2-2017                        9,932.8 10,818.2 0.67 11,219.1 0.73 11,018.1 0.71
+       Time to Error (in h)
+
+
+
+
+                              4                                                                      guetzli-2017-3-30                         1,151.0 1,245.5 0.97 1,189.5 0.98 1,183.7 0.96
+                                                                                                          harfbuzz-1.3.2                       8,639.9 9,095.6 0.83 9,036.2 0.82 8,972.5 0.82
+                                                                                                       lcms-2017-03-21                           455.2     461.6 0.52     563.8 0.66    518.7 0.59
+                                                                                                libjpeg-turbo-07-2017                          1,067.2 1,117.0 0.72 1,174.8 0.97 1,157.2 0.96
+                              2                                                                            libpng-1.2.56                         300.8     328.1 0.51      289.4 0.41   358.9 0.56
+                                                                                                   openssl-1.1.0c-x509                         1,338.0   1,249.1 0.42 1,724.8 0.65 1,744.0 0.68
+                                                                                                     ot-2018-02-27-ip6                         1,240.9 1,085.3 0.32 1,306.3 0.79 1,243.3 0.45
+                                                                                                   ot-2018-02-27-radio                         1,994.8   1,988.0 0.50 2,100.2 0.76 2,015.7 0.70
+                              0                                                                       sqlite-2016-11-14                        1,092.7 1,073.3 0.16 1,084.2 0.69 1,073.0 0.56
+                                  0.00%   1.00%        2.00%           3.00%   4.00%                 vorbis-2017-12-11                           687.9    740.0 0.89      749.5 0.90    721.9 0.80
+                                                  Percentage of Runs                            wpantund-2018-02-27                            9,323.9 9,927.1 0.86 9,905.0 0.85 9,936.8 0.86
+
+
+                                                                                             Figure 8: Sensitivity to abundance threshold which consti-
+Figure 7: OSS-Fuzz crash Time-To-Error results (≈ 1.5 CPU
+                                                                                             tutes łrarež feature (12 subjects x 3 abundance thresholds
+years). X% of runs crashed in Y hours or less. Entropic
+                                                                                             x 40 runs x 1h each = 60 CPU days). Showing mean cover-
+(dashed) and LibFuzzer (solid). Lower is better.
+                                                                                             age (µ) and Vargha-Delaney effect size (Â12 ). Bold values in-
+                                                                                             dicate statistical significance.
+    Figure 6.(c) shows the proportion of subjects where Entropic
+achieves more coverage than LibFuzzer (i.e., wins) over time. Both
+fuzzers break even at about 10 minutes. After 30 minutes, Entropic                              Figure 8 shows the mean coverage for LibFuzzer (original) and
+already wins for 64% of subjects, until at 6 hours, Entropic wins                            Entropic as well as the Vargha-Delaney effect size. The values in
+for about 77% of subjects. We interpret this result as Entropic                              bold indicate statistical significance of the observed difference. A
+becoming more effective at boosting LibFuzzer as saturation is                               closer look at the table reveals that often the best performing thresh-
+being approached. In the beginning of the campaign, almost every                             old value appears to be subject-specific. This opens the opportunity
+new input leads to species discovery. Later in the fuzzing campaign,                         for research on hyper-parameter tuning.
+it becomes more important to choose high-entropic seeds. Moreover,
+estimator bias is reduced when more inputs have been generated.                              RQ4. Performance Overhead
+                                                                                             ⋆ There is a 2% median overhead across the 12 FTS subjects for main-
+RQ2. Crash Detection                                                                         taining incidence frequencies when compared to the entire fuzzing
+⋆ In our experiments with OSS-Fuzz, Entropic found most crashes                              process. There is a 12% median overhead when compared to the time
+faster than LibFuzzer. Some of these crashes were found only by                              spent only in the fuzzer (and not in the subject).
+Entropic. These crashes are potential zero-day vulnerabilities in
+widely-used security-critical open-source libraries.
+   Figure 7 shows the time it takes to find each crash as an aggre-                                                        1.00
+                                                                                                 Proportion of Execution
+
+
+
+
+gate statistic in ascending order over all crashes that have been                                                          0.75
+discovered in any of the four runs of all subjects for both fuzzers.
+For instance, for 2.5% of 263 · 4 runs, Entropic finds a crash in 1.5                                                      0.50
+
+hours or less while LibFuzzer takes 2 hours or less. The crashes are                                                       0.25
+real and potentially exploitable. All subjects are security-critical                                                                  Frequency Updates    Fuzzer Maintenance   Subject Execution
+
+and widely used. Google maintains a responsible disclosure policy                                                          0.00
+                                                                                                                                                            Subjects
+for bugs found by OSS-Fuzz. This gives maintainers some time to
+patch the crash before the bug report is made public. Three bugs
+are discovered only by Entropic.                                                                                            Figure 9: Entropic instrumentation overhead.
+
+RQ3. Sensitivity Analysis
+                                                                                                Figure 9 shows the proportion of the time that Entropic spends
+⋆ Overall, Entropic performs best for an abundance threshold of                              in the different phases of the fuzzing process. In all cases, the most
+θ = 4,096 (i.e., 0x1000) for the FTS subjects.                                               time is spent executing the subject (bright gray). Entropic exe-
+   We analyze the sensitivity of fuzzer performance on the abun-                             cutes the subject between 10,000 and 100,000 times per second. The
+dance threshold θ . The abundance threshold specifies an upper                               remainder of the time is spent in the fuzzer, where the darker gray
+limit on the global incidence frequencies Yi below which a species                           bars represent functions that LibFuzzer normally performs while
+is considered as łrarež. Only incidence frequencies of rare species                          the black bars represent the overhead brought by Entropic.
+are used when computing a seed’s energy (see Section 4). This over-                             The maintenance of incidence frequencies takes more time away
+comes the challenge of overly abundant species dominating the                                from the fuzzing process than we expected, given the substantial
+energy values, a challenge we observed in our initial experiments.                           performance gains discussed in RQ1 and RQ2. Note that Entropic
+In order to study the behavior of Entropic schedules, we vary the                            outperforms LibFuzzer despite this additional overhead. Entropic
+abundance threshold θ on a logarithmic scale. To gain statistical                            is a prototype. We are confident that there are plenty of opportuni-
+power, all experiments of one (1) hour are repeated 40 times.                                ties to reduce this overhead to further boost Entropic’s efficiency.
+
+
+
+
+                                                                                       978
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                      Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+6    THREATS TO VALIDITY                                                           complementary to ours, it is computationally too expensive to be
+Like for any empirical study, there are threats to the validity of our             directly applied to test generation. Finally, by considering fuzzing as
+results. We adopted several strategies to increase internal validity.              a random process in a multi-dimensional space, Ankou [27] enables
+In order to put no fuzzer at a disadvantage, we used default config-               the detection of different combination in fuzzers’ fitness function.
+urations, provided the exact same starting condition, and executed                    Information theory has also found application in software fault
+each technique several times and under the same workload. The                      localization. Given a failing test suite T , suppose we want to localize
+time when the fuzzer crashes identifies unambiguously when a bug                   the faulty statement as quickly as possible. Yoo, Harmann, and Clark
+is found. To define species in our experiments, we use the natural                 [43] discuss an approach to execute test cases in the order of how
+measure of progress for LibFuzzer and its extension Entropic. To                   much information they reveal about the fault location. Specifically,
+mitigate threats to construct validity such as bugs in Entropic or                 test casesÐwhich most reduce the uncertainty that a statement is
+observed performance differences that are not due to our discussed                 the fault locationÐwill be executed first. Campos et al. [10] propose
+improvements, we extended the baseline LibFuzzer using a readily                   a search-based test generation technique with a fitness function
+comprehensible 363 lines of code. We adopted several strategies to                 that maximizes the information about the fault location. In contrast,
+increase external validity. We repeated all experiments from which                 our objective is to quantify and maximize the efficiency of the
+we derive empirical statements (RQ1, RQ2, RQ4) at least 40 times.                  test generation process in learning about the program’s behaviors
+To increase the generality of our results, we conducted experiments                (including whether or not it contains faults).
+on OSS-Fuzz totaling 263 C/C++ programs and 58.3 million LoC.                         Bug finding efficiency and scalability are important properties of
+    For a sound statistical analysis, we followed the recommenda-                  a fuzzing campaign. Böhme and Paul [7] conducted a probabilistic
+tions of Arcuri et al. [3] and Klees et al. [22] to the extent to which            analysis of the efficiency of blackbox versus whitebox fuzzing, and
+our computational resources permitted.                                             provide concrete bounds on the time a whitebox fuzzer can take
+                                                                                   per test input in order to remain more efficient than a blackbox
+                                                                                   fuzzer. Böhme and Falk [6] empirically investigate the scalability
+7    RELATED WORK                                                                  of non-deterministic black- and greybox fuzzing and postulate an
+We begin with an overview of existing approaches to increase the                   exponential cost of vulnerability discovery. Specifically, they make
+efficiency of greybox fuzzing, and continue with earlier applications              the following counter-intuitive observation: Finding the same bugs
+of information theory to software testing and debugging.                           linearly faster requires linearly more machines. Yet, finding linearly
+    Fuzzing has recently gained substantial academic interest [4, 12,              more bugs in the same time requires exponentially more machines.
+14, 17, 19, 20, 30ś34, 44]. We refer to a recent survey [26] for a com-               Alshahwan and Harman [1] introduced the concept of łoutput
+prehensive overview. Woo et al. [40] model blackbox fuzzing as a                   uniquenessž as (blackbox) coverage criterion, where one test suite is
+multi-armed bandit problem, where the fuzzer assigns more energy                   considered as more effective than another if it elicits a larger number
+to seeds that have previously been observed to crash. PerfFuzz [23]                of unique program outputs. This blackbox criterion turns out to be
+assigns more energy to seeds that maximize execution counts to                     similarly effective as whitebox criteria (such as code coverage) in
+discover algorithmic complexity vulnerabilities. FairFuzz [24] and                 assessing test suite effectiveness. In our conceptual framework, a
+AFLFast [8] are greybox fuzzers that assign more energy to seeds                   unique output might be considered as a species. Entropy could be
+that exercise low-probability paths or branches to discover more                   used as blackbox measure of the efficiency of discovering different
+low-probability paths or branches. In contrast, Entropic computes                  unqiue outputs during testing.
+the energy of a seed t based on the discovery probabilities of species
+in the neighborhood of t rather than of t’s species itself. Moreover,
+Entropic is motivated by our key insight that maximizing infor-
+mation each input reveals about a program’s behaviors increases                    8   CONCLUSION
+the fuzzer’s efficiency.                                                           In this paper, we presented Entropic, the first greybox fuzzer that
+    Information theory has previously found application in software                leverages Shannon’s entropy for scheduling seeds. The key intuition
+test selection. Given a test suite T and the probability p(t) that test            behind our approach is to prefer seeds that reveal more informa-
+case t ∈ T fails, one may seek to minimize the number of test cases                tion about the program under test. Our extensive empirical study
+t ∈ T to execute while maximizing the information that executing                   confirms that our information-theoretic approach indeed helps in
+t would reveal about the program’s correctness. Yang et al. [41, 42]               boosting fuzzing performance in terms of both code coverage and
+give several strategies to select a test case t ′ ∈ T (or a size-limited           bug finding ability.
+set of test cases T ′ ⊆ T ) such thatÐif we were to execute t ′ (or T ′ )Ð            Information theory. We formally link entropy (as measure
+the uncertainty about test case failure (i.e., entropy) is minimized.              of information) to fuzzer efficiency, develop estimators and boost-
+Unlike our model, the model of Yang et al. requires to specify for                 ing techniques for greybox fuzzing that maximize information,
+each input the expected output as well as the probability of failure               and empirically investigate the resulting improvement of fuzzer
+(i.e., the observed not matching the expected output). Hence, Yang’s               efficiency. We extend the STADS statistical framework [5] to in-
+model is practical only in the context of test selection, but not in               corporate mutation-based blackbox fuzzing where a new input is
+the context of automated test generation. Similarly, Feldt et al. [15]             generated by modifying a seed input. We hope that our information-
+propose an information-theoretic approach to measure the distance                  theoretic perspective provides a general framework to think about
+between test cases, based on Kolmogorov complexity, and uses                       efficiency in software testing irrespective of the chosen measure of
+it to maximize diversity of selected tests. Although their idea is                 effectiveness (i.e., independent of the coverage criterion).
+
+
+
+
+                                                                             979
+Boosting Fuzzer Efficiency: An Information Theoretic Perspective                                                          ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA
+
+
+   Practical Impact. Our implementation of Entropic has been                             APPENDIX: DERIVATION OF EQUATION (12)
+incorporated into LibFuzzer, one of the most popular industrial                                                  ÍS
+                                                                                         When it is possible that i=1 pi ≥ 1, we normalize the probabilities
+fuzzers. At the time of writing, Entropic was enabled for 50% of                                              ÍS                                 Í
+                                                                                         and compute H = − i=1 pi′ log(pi′ ) such that pi′ = pi / Sj=1 p j .
+fuzzing campaigns that are run on more than 25,000 machines for
+finding bugs and security vulnerabilities in over 350 open-source                                                                                               !
+                                                                                                    Õ
+                                                                                                    S                          Õ
+                                                                                                                               S
+                                                                                                                                       pi              pi
+projects, including Google Chrome. After several additional im-
+                                                                                           H =−           pi′ log(pi′ )   =−         ÍS         log ÍS                     (26)
+provements, Entropic now outperforms all other fuzzers available                                    i=1                        i=1    j=1 p j         j=1 p j
+on FuzzBench [28], Google’s fuzzer benchmarking platform. This                                     Õ                                Õ          
+                                                                                                    S            ©
+                                                                                                                                      S
+                                                                                                                                              ª
+                                                                                              = − 
+result highlights the practical impact of our approach.
+                                                                                                                  ­                           ®
+                                                                                                           pi
+                                                                                                        Í           log(p   ) − log(     p j 
+                                                                                                                                            )                        (27)
+                                                                                                    i=1 Sj=1 p j                               
+   Open science and reproducibility. The practical impact of                                                              i
+
+Entropic is a testament to the effectiveness of open science, open                                               «                  j=1      ¬
+                                                                                                  ÍS                    ÍS              Õ          
+source, and open discourse. There is a growing number of authors                                                                         S         
+                                                                                                                                                   
+                                                                                                        pi log(pi )          i=1 pi
+that publicly release their tools and artifacts. Conferences are adopt-                       = − i=1  ÍS            +  ÍS         log(      p  j 
+                                                                                                                                                  )                  (28)
+                                                                                                                        j=1 p j                    
+ing artifact evaluation committees to support reproducibility [21],                                     j=1 p j                         j=1        
+but, as always, more can be done to accommodate reproducibility                                                                                    Õ S
+as first-class citizens into our peer-reviewing process. We strongly                                                                     since         p j is constant.
+believe that openness is a reasonable pathway to foster rapid and                                                                                      j=1
+                                                                                                             ÍS
+                                                                                                    ©Õ ª
+sound advances in the field and to enable a meaningful engagement                                      S
+                                                                                                                  pi log(pi )
+between industry and academia.                                                                = log ­ p j ® − i=1
+                                                                                                                ÍS                                                         (29)
+                                                                                                    « j=1 ¬       j=1 p j
+ • We make our scripts and experimental data publicly available
+   at https://doi.org/10.6084/m9.figshare.12415622.v2                                    ACKNOWLEDGMENTS
+ • We provide detailed instructions to reproduce our results at                          We thank the anonymous reviewers for their valuable feedback.
+   https://github.com/researchart/fse20                                                  This work was partly funded by the Australian Research Coun-
+                                                                                         cil (ARC) through a Discovery Early Career Researcher Award
+ • Our results for Entropic have been independently reproduced
+                                                                                         (DE190100046). This research was supported by use of the Nectar
+   at https://www.fuzzbench.com/reports/2020-03-04.
+                                                                                         Research Cloud, a collaborative Australian research platform sup-
+                                                                                         ported by the NCRIS-funded Australian Research Data Commons
+                                                                                         (ARDC). This work was partly supported by Institute of Informa-
+APPENDIX: PROOF OF THEOREM 1                                                             tion & communications Technology Planning & Evaluation (IITP)
+In our model where each input can belong to one or more species,                         grant funded by the Korea government (MSIT) (No. 2019-0-01697,
+let ∆(n) be the expected number of new species the fuzzer discovers                      Development of Automated Vulnerability Discovery Technologies
+with the (n + 1)-th generated test input. We prove                                       for Blockchain Platform Security).
+
+
+                           Õ∞
+                               ∆(n)                            Õ
+                                                               S                         REFERENCES
+          H = log(c) +                           where c =           pj .   (20)          [1] Nadia Alshahwan and Mark Harman. 2014. Coverage and Fault Detection of the
+                           n=1
+                                cn                             j=1                            Output-Uniqueness Test Selection Criteria. In Proceedings of the 2014 International
+                                                                                              Symposium on Software Testing and Analysis (ISSTA 2014). 181âĂŞ192. https:
+                                                                                              //doi.org/10.1145/2610384.2610413
+                   Í                                                                      [2] Domenico Amalfitano, Nicola Amatucci, Anna Rita Fasolino, Porfirio Tramontana,
+  Proof. Let c = Sj=1 p j . We prove by Taylor expansion and                                  Emily Kowalczyk, and Atif M. Memon. 2015. Exploiting the Saturation Effect
+                                                                                              in Automatic Random Testing of Android Applications. In Proceedings of the
+Fubini’s theorem that                                                                         Second ACM International Conference on Mobile Software Engineering and Systems
+                   ÍS                                                                         (MOBILESoft ’15). 33ś43.
+                                                                                          [3] Andrea Arcuri and Lionel Briand. 2011. A Practical Guide for Using Statistical
+                     i=1 pi    log(pi )
+  H = log(c) −                                            [by Eqn. (12)] (21)                 Tests to Assess Randomized Algorithms in Software Engineering. In Proceedings
+                   ÍS
+                           c                                                                  of the 33rd International Conference on Software Engineering (ICSE ’11). 1ś10.
+                                                                                          [4] Cornelius Aschermann, Sergej Schumilo, Ali Abbasi, and Thorsten Holz. 2020.
+                          log(1 − (1 − pi ))
+                     i=1 pi                                                                   IJON: Exploring Deep State Spaces via Fuzzing. In IEEE Symposium on Security
+     = log(c) −                                                             (22)
+                          h Í             n i
+                             c                                                                and Privacy (Oakland).
+                   ÍS          ∞ (1−pi )
+                                                                                          [5] Marcel Böhme. 2018. STADS: Software Testing as Species Discovery. ACM
+                       p
+                    i=1 i  −   n=1     n                                                      Transactions on Software Engineering and Methodology 27, 2, Article 7 (June 2018),
+     = log(c) −                                        [by Taylor exp.] (23)                  52 pages. https://doi.org/10.1145/3210309
+                   Í∞1 ÍS p (1 − p )n
+                          c                                                               [6] Marcel Böhme and Brandon Falk. 2020. Fuzzing: On the Exponential Cost of
+                                                                                              Vulnerability Discovery. In Proceedings of the 14th Joint meeting of the European
+                             i     i
+     = log(c) + n=1 n i=1                                    [by Fubini] (24)                 Software Engineering Conference and the ACM SIGSOFT Symposium on the Foun-
+                         c                                                                    dations of Software Engineering (ESEC/FSE). 1ś12. https://doi.org/10.1145/3368089.
+
+           ©Õ ª Õ ∆(n)
+                                                                                              3409729
+              S      ∞                                                                    [7] Marcel Böhme and Soumya Paul. 2016. A Probabilistic Analysis of the Efficiency
+     = log ­ p j ® +     Í                                 [by Ref. [7]] (25)                 of Automated Software Testing. IEEE Transactions on Software Engineering 42, 4
+                        n Sj=1 p j
+           « j=1 ¬ n=1
+                                                                                              (April 2016), 345ś360. https://doi.org/10.1109/TSE.2015.2487274
+                                                                                          [8] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2017. Coverage-
+                                                                                              based Greybox Fuzzing as Markov Chain. IEEE Transactions on Software Engi-
+                                                                             ■                neering (2017), 1ś18.
+
+
+
+
+                                                                                   980
+ESEC/FSE ’20, November 8ś13, 2020, Virtual Event, USA                                                                            Marcel Böhme, Valentin J.M. Manès, and Sang Kil Cha
+
+
+ [9] Mitch Bryson and Salah Sukkarieh. 2008. Observability Analysis and Active                     [26] Valentin J. M. Manès, HyungSeok Han, Choongwoo Han, Sang Kil Cha, Manuel
+     Control for Airborne SLAM. IEEE Trans. Aerospace Electron. Systems 44, 1 (January                  Egele, Edward J. Schwartz, and Maverick Woo. 2019. The Art, Science, and
+     2008), 261ś280.                                                                                    Engineering of Fuzzing: A Survey. IEEE Transactions on Software Engineering
+[10] José Campos, Rui Abreu, Gordon Fraser, and Marcelo d’Amorim. 2013. Entropy-                        (2019). https://doi.org/10.1109/TSE.2019.2946563
+     based Test Generation for Improved Fault Localization. In Proceedings of the 28th             [27] Valentin J. M. Manès, Soomin Kim, and Sang Kil Cha. 2020. Ankou: Guiding Grey-
+     IEEE/ACM International Conference on Automated Software Engineering (ASE ’13).                     box Fuzzing towards Combinatorial Difference. In Proceedings of the International
+     257ś267.                                                                                           Conference on Software Engineering. 1024ś1036.
+[11] Henry Carrillo, Ian Reid, and José A. Castellanos. 2012. On the Comparison of                 [28] Jonathan Metzmann, Abhishek Arya, and Lászl’o Szekeres. 2020. FuzzBench:
+     Uncertainty Criteria for Active SLAM. In Proceedings of the IEEE International                     Fuzzer Benchmarking as a Service. https://security.googleblog.com/2020/03/
+     Conference on Robotics and Automation (ICRA ’12). 2080ś2087.                                       fuzzbench-fuzzer-benchmarking-as-service.html. (2020). Accessed: 2020-09-17.
+[12] Sang Kil Cha, Maverick Woo, and David Brumley. 2015. Program-Adaptive                         [29] OSS-Fuzz. 2019. Continuous Fuzzing Platform. https://github.com/google/oss-
+     Mutational Fuzzing. In Proceedings of the IEEE Symposium on Security and Privacy                   fuzz/tree/master/infra. (2019). Accessed: 2019-02-20.
+     (SP ’15). 725ś741.                                                                            [30] Rohan Padhye, Caroline Lemieux, Koushik Sen, Mike Papadakis, and Yves
+[13] Anne Chao, Y. T. Wang, and Lou Jost. 2013. Entropy and the species accumulation                    Le Traon. 2019. Semantic Fuzzing with Zest. In Proceedings of the 28th ACM
+     curve: a novel entropy estimator via discovery rates of new species. Methods in                    SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2019).
+     Ecology and Evolution 4, 11 (2013), 1091ś1100.                                                     New York, NY, USA, 329âĂŞ340. https://doi.org/10.1145/3293882.3330576
+[14] Hongxu Chen, Yinxing Xue, Yuekang Li, Bihuan Chen, Xiaofei Xie, Xiuheng Wu,                   [31] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. 2020. AFLNet: A
+     and Yang Liu. 2018. Hawkeye: Towards a Desired Directed Grey-box Fuzzer. In                        Greybox Fuzzer for Network Protocols. In Proceedings of the 2020 IEEE Inter-
+     Proceedings of the ACM Conference on Computer and Communications Security                          national Conference on Software Testing, Verification and Validation (ICST 2020).
+     (CCS ’18). ACM, New York, NY, USA, 2095ś2108. https://doi.org/10.1145/3243734.                     460ś465. https://doi.org/10.1109/ICST46399.2020.00062
+     3243849                                                                                       [32] Van-Thuan Pham, Marcel Böhme, Andrew E. Santosa, Alexandru R. Căciulescu,
+[15] R. Feldt, S. Poulding, D. Clark, and S. Yoo. 2016. Test Set Diameter: Quantifying the              and Abhik Roychoudhury. 2019. Smart Greybox Fuzzing. IEEE Transactions on
+     Diversity of Sets of Test Cases. In Proceedings of the IEEE International Conference               Software Engineering (2019), 1ś17.
+     on Software Testing, Verification and Validation. 223ś233.                                    [33] Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos, Jonathan Foote, David
+[16] Antonio Filieri, Corina S. Păsăreanu, and Willem Visser. 2013. Reliability Analysis                Warren, Gustavo Grieco, and David Brumley. 2014. Optimizing Seed Selection
+     in Symbolic Pathfinder. In Proceedings of the 2013 International Conference on                     for Fuzzing. In Proceedings of the USENIX Security Symposium (SEC ’14). 861ś875.
+     Software Engineering (ICSE ’13). 622ś631.                                                     [34] Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner, and Thorsten
+[17] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++:                       Holz. 2020. HYPER-CUBE: High-Dimensional Hypervisor Fuzzing. In 27th An-
+     Combining Incremental Steps of Fuzzing Research. In Proceedings of the 14th                        nual Network and Distributed System Security Symposium, NDSS 2020, San Diego,
+     USENIX Workshop on Offensive Technologies (WOOT ’20). 1ś12.                                        California, USA, February 23-26, 2020.
+[18] Jaco Geldenhuys, Matthew B. Dwyer, and Willem Visser. 2012. Probabilistic Sym-                [35] Konstantin Serebryany. 2017. https://github.com/google/fuzzer-test-suite/blob/
+     bolic Execution. In Proceedings of the 2012 International Symposium on Software                    master/engine-comparison/tutorial/abTestingTutorial.md. (2017). Accessed:
+     Testing and Analysis (ISSTA 2012). 166ś176.                                                        2019-02-20.
+[19] HyungSeok Han and Sang Kil Cha. 2017. IMF: Inferred Model-based Fuzzer. In                    [36] Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry
+     Proceedings of the ACM Conference on Computer and Communications Security                          Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In Proceed-
+     (CCS ’17). 2345ś2358.                                                                              ings of the 2012 USENIX Conference on Annual Technical Conference (USENIX ATC
+[20] HyungSeok Han, DongHyeon Oh, and Sang Kil Cha. 2019. CodeAlchemist:                                ’12). 28ś28.
+     Semantics-Aware Code Generation to Find Vulnerabilities in JavaScript Engines.                [37] Claude E. Shannon. 1948. A Mathematical Theory of Communication. Bell System
+     In Proceedings of the Network and Distributed System Security Symposium (NDSS                      Technical Journal 27 (1948).
+     ’19).                                                                                         [38] Elena Sherman, Matthew B. Dwyer, and Sebastian Elbaum. 2009. Saturation-based
+[21] Ben Herrmann, Stefan Winter, and Janet Siegmund. 2020. Community Expec-                            Testing of Concurrent Programs. In Proceedings of the the 7th Joint Meeting of the
+     tations for Research Artifacts and Evaluation Processes. In Proceedings of the                     European Software Engineering Conference and the ACM SIGSOFT Symposium on
+     ACM Joint European Software Engineering Conference and Symposium on the                            The Foundations of Software Engineering (ESEC/FSE ’09). 53ś62.
+     Foundations of Software Engineering. (ESEC/FSE 2020). 1ś12. https://doi.org/10.               [39] Sebastian Thrun. 2003. Exploring Artificial Intelligence in the New Millennium.
+     1145/3368089.3409767                                                                               Chapter Robotic Mapping: A Survey, 1ś35.
+[22] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.                  [40] Maverick Woo, Sang Kil Cha, Samantha Gottlieb, and David Brumley. 2013.
+     Evaluating Fuzz Testing. In Proceedings of the ACM Conference on Computer and                      Scheduling Black-box Mutational Fuzzing. In Proceedings of the ACM Conference
+     Communications Security (CCS ’18). ACM, New York, NY, USA, 2123ś2138.                              on Computer and Communications Security (CCS ’13). 511ś522.
+[23] Caroline Lemieux, Rohan Padhye, Koushik Sen, and Dawn Song. 2018. PerfFuzz:                   [41] Linmin Yang. 2011. Entropy and Software Systems: Towards an Information-
+     Automatically Generating Pathological Inputs. In Proceedings of the 27th ACM                       theoretic Foundation of Software Testing. Ph.D. Dissertation. Advisor(s) Dang,
+     SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2018).                     Zhe and Fischer, Thomas R.
+     254âĂŞ265. https://doi.org/10.1145/3213846.3213874                                            [42] Linmin Yang, Zhe Dang, and Thomas R. Fischer. 2011. Information gain of
+[24] Caroline Lemieux and Koushik Sen. 2018. FairFuzz: A Targeted Mutation Strat-                       black-box testing. Formal Aspects of Computing 23, 4 (01 Jul 2011), 513ś539.
+     egy for Increasing Greybox Fuzz Testing Coverage. In Proceedings of the 33rd                  [43] Shin Yoo, Mark Harman, and David Clark. 2013. Fault Localization Prioritization:
+     ACM/IEEE International Conference on Automated Software Engineering (ASE 2018).                    Comparing Information-theoretic and Coverage-based Approaches. ACM Trans-
+     New York, NY, USA, 475âĂŞ485. https://doi.org/10.1145/3238147.3238176                              actions on Software Engineering and Methodology 22, 3, Article 19 (July 2013),
+[25] LibFuzzer. 2019. LibFuzzer: A library for coverage-guided fuzz testing. http:                      29 pages.
+     //llvm.org/docs/LibFuzzer.html. (2019). Accessed: 2019-02-20.                                 [44] Michal Zalewski. 2019. AFL: American Fuzzy Lop Fuzzer. http://lcamtuf.
+                                                                                                        coredump.cx/afl/technical_details.txt. (2019). Accessed: 2019-02-20.
+
+
+
+
+                                                                                             981
+

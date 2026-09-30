@@ -1,0 +1,72 @@
+--- before_reference_expansion/main.revised.tex
++++ main.revised.tex
+@@ -134,13 +134,19 @@
+ The scope is textual or semi-textual request-response protocols with usable parsers, response extractors, and code feedback. Response-visible state extraction avoids a target-specific internal-state adapter, but the complete controller remains greybox because productivity requires code feedback. It is not a pure black-box system. Encrypted or opaque binary protocols require suitable construction, response, and code-observation adapters before evaluation.
+ 
+ \section{Related Work and Novelty Boundary}
+-Stateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM, whereas StateAFL and NSFuzz use different internal observations. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to be the first system to identify state aliasing or misleading responses.
+-
+-LLM-assisted generation addresses structured inputs and interaction histories~\cite{chatafl,fuzz4all_universal_fuzzing_large_2024,llmif_augmented_large_language_2024}. Grammar-aware and documentation-guided methods likewise improve input structure~\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. Better proposals still need execution evidence before acquiring long-term queue resources. Our controlled ChatAFL comparison preserves its scheduling lineage rather than replacing its scheduler.
+-
+-State and seed scheduling already use adaptive resource allocation. The Bandit's States studies bandit-based protocol-state selection~\cite{bandits_states2023}; Zhang et al. study seed scheduling with Thompson sampling~\cite{zhang2026thompson}; SSGFuzz studies state significance in protocol fuzzing~\cite{ssgfuzz2026}. These systems delimit the novelty claim: a bandit or productivity score is not itself a contribution. The distinction here is the combination of a response-derived proxy, an independent code-progress target, two-tier LLM-candidate admission, and traceable episode-level evidence.
+-
+-Benchmark methodology requires repeated trials, comparable instrumentation, explicit budgets, and careful failure interpretation~\cite{profuzzbench_benchmark_stateful_protocol_2021,sok_prudent_evaluation_practices_2024,reliability_benchmarking_2022}. Historical vulnerability benchmarks such as Magma~\cite{magma2020} motivate distinguishing execution reaching bug-related code from execution satisfying a trigger condition. We adopt that distinction for network-reachable vulnerable/patch pairs; crash counts do not define security effectiveness.
++Stateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM, whereas StateAFL and NSFuzz use different internal observations. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses.
++
++Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers.
++
++Structured generation reduces the difficulty of producing admissible inputs. Gramatron and CarpetFuzz exploit grammars and documented constraints~\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources.
++
++LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts.
++
++Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\cite{bandits_states2023}; Thompson-sampling seed scheduling~\cite{zhang2026thompson} and state-significance-guided protocol fuzzing~\cite{ssgfuzz2026} further delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\cite{fishfuzz2023}. WingMuzz studies two-dimensional scheduling for blackbox protocol testing~\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence.
++
++Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure.
++
++Evaluation methodology is a further boundary. ProFuzzBench and FuzzBench provide structured evaluation settings for protocol and general-purpose fuzzers~\cite{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}. Reliability analyses and prudent evaluation practices require care when interpreting coverage, repeated trials, and resource controls~\cite{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}. Our protocol adopts these concerns while keeping available retrospective observations distinct from the unfinished confirmatory comparisons. Candidate-level, episode-level, and controlled rediscovery measurements remain necessary to establish the proposed mechanisms.
+ 
+ \begin{table*}[!tbp]
+ \centering\small
+@@ -469,15 +475,14 @@
+ \end{tabularx}
+ \end{table*}
+ 
+-Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. Trial order is randomized within machine blocks and balanced across machines and time periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost.
++Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. Trial order is randomized within machine blocks and balanced across machines and time periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost. Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\cite{greenbenchmark2023}. The proposed analysis therefore distinguishes allocated CPU-hours, measured consumption, and actual search exposure.
+ 
+ Each arm initially receives 10 independent 24-hour runs per target; C/D/E receive 10 more, reaching 20 each. For nine targets and one allocated CPU per run, the stages require 10,800 and 6,480 CPU-hours, totaling 17,280 before overhead/failures. These are planned resources, not measured usage. A four-target pilot covers Forked-daapd, Lighttpd1, LightFTP, and ProFTPD or Pure-FTPd with five arms, three runs, and four to six hours each. Pilot observations are excluded from formal inference.
+ 
+ An intention-to-run analysis accounts for every planned and initiated trial, including completion, timeout, target or fuzzer failure, infrastructure or measurement failure, exclusion, and repetition, with reasons linking repeated attempts. Low coverage never justifies exclusion. Only prespecified infrastructure failures permit repetition. Interrupted observations are not extended to 24 hours; they contribute failure or censoring outcomes according to the estimand, with sensitivity analysis. Restriction to completed trials does not constitute intention-to-run analysis.
+ 
+ \subsection{LLM fairness and configuration}
+-The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Unverified shared settings remain unspecified in Table~
+-ef{tab:llm}.
++The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Unverified shared settings remain unspecified in \namedref{Table}{tab:llm}.
+ 
+ \begin{table*}[!tbp]
+ \centering\small
+@@ -559,7 +564,7 @@
+ \input{revision_20260920/figures_updated_20260929/logged_calibration_table.tex}
+ 
+ \begin{figure*}[!tbp]
+-\centering\includegraphics[width=\textwidth]{revision_20260920/figures_updated_20260929/logged_reward_reliability.pdf}
++\centering\includegraphics[width=0.97\textwidth]{revision_20260920/figures_updated_20260929/logged_reward_reliability.pdf}
+ \caption{E-arm proxy-reward calibration. Points: bin means; bars: 95\% CIs.}
+ \label{fig:reliability}
+ \end{figure*}
+@@ -808,6 +813,8 @@
+ 
+ The analysis is retrospective. Equivalence between the assessed system and every experimental version is unverified, so methodological concerns and observed outcomes retain separate evidential status. A nonsignificant adjusted comparison does not establish equivalence, and favorable endpoints do not identify a mechanism when duration, resources, or effective procedures differ. Admission, calibration, and rediscovery each require independent supporting evidence.
+ 
++Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes.
++
+ \section{Conclusion}
+ LoopFuzz treats response-derived protocol states and LLM output as uncertain evidence for resource allocation. Its admission criteria separate code progress from IPSM novelty, gives state-only proposals bounded provisional validation, and calibrates state productivity at scheduling episodes. The response-visible interface remains useful, while independent code feedback determines its measured value.
+ 
+@@ -833,5 +840,5 @@
+ \input{revision_20260920/archive_arm_results.updated_20260929.tex}
+ 
+ \bibliographystyle{elsarticle-num-names}
+-\bibliography{revision_20260920/references.verified_20260928}
++\bibliography{revision_20260920/references.expanded}
+ \end{document}

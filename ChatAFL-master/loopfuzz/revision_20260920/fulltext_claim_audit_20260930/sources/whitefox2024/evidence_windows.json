@@ -1,0 +1,14 @@
+[
+  {
+    "pdf_page": 2,
+    "excerpt": "                                                                  Black/Grey-box\n 8                  input_node = node.args[0]\n                else:\n                                                                     Fuzzing       Failed checks and does not trigger optimization\n 9\n 10                 input_node = node.kwargs[\"input\"]\n 11             if (\n                    input_node.op == \"call_method\"                                  torch.fx.GraphModule         torch.fx.Node\n 12\n                    and input_node.target == \"permute\"                                 - graph                      - op\n 13"
+  },
+  {
+    "pdf_page": 3,
+    "excerpt": "complexity/scale of modern compiler systems. For instance, the widely-used LLVM [39] compiler is\nimplemented with 14M lines of code, and the popular DL compiler, TensorFlow [78], has 3.5M lines.\nChallenges. Black-box fuzzing, without knowledge of the internal workings, struggles due to the\nintricate conditions required to trigger optimizations. Simply generating random inputs, without\nany guidance, often proves impractical for reaching the deep corners of optimization logic. For\nexample, a recent study [11] shows that the black-box fuzzer for C compilers, Csmith [93], which\nproduces test-cases through grammar-based generation, can be significantly less effective than\ncoverage-guided fuzzing. Grey-box fuzzing, though better informed by source code instrumentation\nto achieve higher code coverage than its black-box counterpart, frequently falls short of fully\nunderstanding the nuanced criteria required to trigger particular optimizations. This shortcoming\nstems from the fact that compiler optimizations typically hinge on meeting precise and strict"
+  },
+  {
+    "pdf_page": 4,
+    "excerpt": "nested if statements) and even complex check functions. Therefore, it is extremely challenging,\nif not impossible, to accurately extract and express these constraints symbolically for constraint\nsolvers, let alone apply any formal method to solve them.\nInsight. Can we scale white-box fuzzing to fully test optimizations for any compilers? We address\nthis question based on the insight that Large Language Models (LLMs) [8, 22, 43, 60, 61, 87, 95] are\npre-trained on a vast array of code spanning various programming languages. This broad foundation\nenables them to excel in comprehending and generating code across diverse languages [6].Therefore,\nfor the permute_linear_fusion optimization, different from typical white-box fuzzing, we can\nleverage LLMs to summarize the requirements for the models that could trigger it based on the\nsource code information, as highlighted in the yellow text box of Figure 1. Subsequently, we can\nleverage the generated requirement description to further prompt LLMs to create the corresponding"
+  }
+]

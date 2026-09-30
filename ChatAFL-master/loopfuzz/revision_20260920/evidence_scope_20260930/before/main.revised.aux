@@ -1,0 +1,245 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldcontentsline\contentsline
+\gdef\contentsline#1#2#3#4{\oldcontentsline{#1}{#2}{#3}}
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\contentsline\oldcontentsline
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\emailauthor{3250006913@student.must.edu.mo}{Ketang Chen}
+\emailauthor{xlren@must.edu.mo}{Xiaolei Ren\corref {cor1}}
+\emailauthor{2240016952@student.must.edu.cn}{Junxi Chen}
+\Newlabel{cor1}{1}
+\citation{aflnet}
+\citation{stateafl}
+\citation{chatafl}
+\Newlabel{inst1}{a}
+\providecommand \oddpage@label [2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{aflnet,stateafl,nsfuzz,sgf_usenix22}
+\citation{aflnet5years2025}
+\citation{stateinspector2022}
+\citation{nyxnet2022}
+\citation{snapfuzz2022}
+\citation{fuzztructionnet2024}
+\citation{blueman2025}
+\citation{distfuzz2025}
+\citation{gramatron_effective_grammar_aware_2021}
+\citation{carpetfuzz_documentation_2023}
+\citation{formatfuzzer}
+\citation{fuzztruction2023}
+\citation{miner2023}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Motivation}{2}{section.2}\protected@file@percent }
+\newlabel{sec:motivation}{{2}{2}{Background and Motivation}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Response-visible state and independent code feedback}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Three falsifiable mismatch cases}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Related Work and Novelty Boundary}{2}{section.3}\protected@file@percent }
+\citation{chatafl}
+\citation{llmif_augmented_large_language_2024}
+\citation{fuzz4all_universal_fuzzing_large_2024}
+\citation{fuzzgpt2024}
+\citation{whitefox2024}
+\citation{prophetfuzz2024}
+\citation{hybridllm2026}
+\citation{hgfuzzer2026}
+\citation{bandits_states2023}
+\citation{tscheduler2024}
+\citation{entropic2020}
+\citation{seqfuzzsdn2026}
+\citation{fox2024}
+\citation{fishfuzz2023}
+\citation{wingmuzz2025}
+\citation{protocolguard2026}
+\citation{bsfuzzer2026}
+\citation{mercuriuzz2026}
+\citation{magma2020}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Motivating hypotheses and current evidence.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:boundary}{{1}{3}{Motivating hypotheses and current evidence}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces A/D code-branch and IPSM state-edge endpoints (mean $\pm $ SD; actual $n$).}}{3}{figure.1}\protected@file@percent }
+\newlabel{fig:mismatch}{{1}{3}{A/D code-branch and IPSM state-edge endpoints (mean $\pm $ SD; actual $n$)}{figure.1}{}}
+\citation{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}
+\citation{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}
+\citation{bandits_states2023}
+\citation{tscheduler2024}
+\citation{entropic2020}
+\citation{seqfuzzsdn2026}
+\citation{magma2020}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Prior mechanisms and novelty boundaries.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:novelty}{{2}{4}{Prior mechanisms and novelty boundaries}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Evidence-Calibrated Controller}{4}{section.4}\protected@file@percent }
+\newlabel{sec:design}{{4}{4}{Evidence-Calibrated Controller}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}LLM proposal interface}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Admission predicates and evidence separation}{4}{subsection.4.2}\protected@file@percent }
+\newlabel{eq:gcode}{{1}{4}{Admission predicates and evidence separation}{equation.4.1}{}}
+\newlabel{eq:gstate}{{2}{4}{Admission predicates and evidence separation}{equation.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Provisional and durable queues}{4}{subsection.4.3}\protected@file@percent }
+\newlabel{eq:admission}{{3}{4}{Provisional and durable queues}{equation.4.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Admission predicates and required evidence.}}{5}{table.3}\protected@file@percent }
+\newlabel{tab:predicates}{{3}{5}{Admission predicates and required evidence}{table.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Evidence-gated admission and two-tier queues.}}{5}{figure.2}\protected@file@percent }
+\newlabel{fig:architecture}{{2}{5}{Evidence-gated admission and two-tier queues}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}State-selection episodes and independent reward}{5}{subsection.4.4}\protected@file@percent }
+\newlabel{eq:reward}{{4}{5}{State-selection episodes and independent reward}{equation.4.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Discounted productivity estimates}{5}{subsection.4.5}\protected@file@percent }
+\newlabel{eq:update}{{7}{5}{Discounted productivity estimates}{equation.4.7}{}}
+\citation{thompson1933}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Calibrated scheduling}{6}{subsection.4.6}\protected@file@percent }
+\newlabel{eq:score}{{11}{6}{Calibrated scheduling}{equation.4.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Online calibration from pre-update predictions and independent code rewards.}}{6}{figure.3}\protected@file@percent }
+\newlabel{fig:posterior}{{3}{6}{Online calibration from pre-update predictions and independent code rewards}{figure.3}{}}
+\@writefile{loa}{\contentsline {algocf}{\numberline {1}{\ignorespaces Evidence-gated candidate processing}}{6}{algocf.1}\protected@file@percent }
+\newlabel{alg:admission}{{1}{6}{Calibrated scheduling}{algocf.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Intervention policy and optional repair}{6}{subsection.4.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Operational criteria and evidence limitations.}}{7}{table.4}\protected@file@percent }
+\newlabel{tab:implementation}{{4}{7}{Operational criteria and evidence limitations}{table.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Operational Validity and Measurement}{7}{section.5}\protected@file@percent }
+\newlabel{sec:implementation}{{5}{7}{Operational Validity and Measurement}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Measurement structure and traceability}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Experimental Protocol}{7}{section.6}\protected@file@percent }
+\newlabel{sec:protocol}{{6}{7}{Experimental Protocol}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Research questions}{7}{subsection.6.1}\protected@file@percent }
+\citation{greenbenchmark2023}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Observation classes and required measurements.}}{8}{table.5}\protected@file@percent }
+\newlabel{tab:events}{{5}{8}{Observation classes and required measurements}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Required configurations for arms A--E.}}{8}{table.6}\protected@file@percent }
+\newlabel{tab:arms}{{6}{8}{Required configurations for arms A--E}{table.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Five arms and causal comparisons}{8}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Targets and experimental controls}{8}{subsection.6.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Target protocols and recorded test conditions.}}{9}{table.7}\protected@file@percent }
+\newlabel{tab:targets}{{7}{9}{Target protocols and recorded test conditions}{table.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces LLM settings for C/D/E and sensitivity groups; B unverified. Configuration rows are verified against end-of-run events in every archive; timeout, retry, seed, and template rows are fixed in the shipped fuzzer source, identical across arms, and source-derived rather than runtime-recorded.}}{9}{table.8}\protected@file@percent }
+\newlabel{tab:llm}{{8}{9}{LLM settings for C/D/E and sensitivity groups; B unverified. Configuration rows are verified against end-of-run events in every archive; timeout, retry, seed, and template rows are fixed in the shipped fuzzer source, identical across arms, and source-derived rather than runtime-recorded}{table.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}LLM fairness and configuration}{9}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Mechanism and calibration metrics}{9}{subsection.6.5}\protected@file@percent }
+\citation{validation2017}
+\citation{guo2017calibration}
+\citation{davis2006pr}
+\citation{efron1979}
+\citation{mann1947}
+\citation{cliff1993}
+\citation{benjamini1995}
+\citation{kaplan1958}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.6}Coverage and statistical analysis}{10}{subsection.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Available Evidence and Results}{10}{section.7}\protected@file@percent }
+\newlabel{sec:results}{{7}{10}{Available Evidence and Results}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Sample composition and observation periods}{10}{subsection.7.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Observed trial counts and D-arm status ($N=10$ nominal runs).}}{11}{table.9}\protected@file@percent }
+\newlabel{tab:observed_inventory}{{9}{11}{Observed trial counts and D-arm status ($N=10$ nominal runs)}{table.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces A/D terminal coverage (mean $\pm $ SD); descriptive comparisons.}}{11}{table.10}\protected@file@percent }
+\newlabel{tab:observed_endpoints}{{10}{11}{A/D terminal coverage (mean $\pm $ SD); descriptive comparisons}{table.10}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces D-arm candidate and episode counts; dispositions are reported labels.}}{11}{table.11}\protected@file@percent }
+\newlabel{tab:observed_log_counts}{{11}{11}{D-arm candidate and episode counts; dispositions are reported labels}{table.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}RQ1: Current alignment observations}{11}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Proxy-reward calibration in E (95\% CIs in brackets).}}{12}{table.12}\protected@file@percent }
+\newlabel{tab:logged_calibration}{{12}{12}{Proxy-reward calibration in E (95\% CIs in brackets)}{table.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}RQ2: Observed admission records and missing counterfactual}{12}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}RQ3: Scheduling evidence and unfilled causal results}{12}{subsection.7.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces E-arm proxy-reward reliability (bin means; 95\% CIs).}}{13}{figure.4}\protected@file@percent }
+\newlabel{fig:reliability}{{4}{13}{E-arm proxy-reward reliability (bin means; 95\% CIs)}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Branch endpoints (top) and AUCs (bottom), mean $\pm $ SD.}}{14}{table.13}\protected@file@percent }
+\newlabel{tab:mainresults}{{13}{14}{Branch endpoints (top) and AUCs (bottom), mean $\pm $ SD}{table.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces A--E code-branch trajectories (median and interquartile range).}}{14}{figure.5}\protected@file@percent }
+\newlabel{fig:trajectories}{{5}{14}{A--E code-branch trajectories (median and interquartile range)}{figure.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}RQ5: Recorded costs and interpretation limits}{14}{subsection.7.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces E-arm pre-update probabilities (top) and scheduling multipliers (bottom).}}{15}{figure.6}\protected@file@percent }
+\newlabel{fig:posterior_cases}{{6}{15}{E-arm pre-update probabilities (top) and scheduling multipliers (bottom)}{figure.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces C/D/E mechanism observations; blanks indicate unvalidated evidence.}}{15}{table.14}\protected@file@percent }
+\newlabel{tab:mechanisms}{{14}{15}{C/D/E mechanism observations; blanks indicate unvalidated evidence}{table.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces C/D/E reported dispositions (left) and first $P/U/R$ failures (right).}}{16}{figure.7}\protected@file@percent }
+\newlabel{fig:dispositions}{{7}{16}{C/D/E reported dispositions (left) and first $P/U/R$ failures (right)}{figure.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces D-arm cost ranges; total tokens = input + output (k = 1,000).}}{16}{table.15}\protected@file@percent }
+\newlabel{tab:observed_costs}{{15}{16}{D-arm cost ranges; total tokens = input + output (k = 1,000)}{table.15}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Optional repair diagnostics; unavailable values remain blank.}}{16}{table.16}\protected@file@percent }
+\newlabel{tab:repair}{{16}{16}{Optional repair diagnostics; unavailable values remain blank}{table.16}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Vulnerability Replay Evidence and Rediscovery Protocol}{16}{section.8}\protected@file@percent }
+\newlabel{sec:cve}{{8}{16}{Vulnerability Replay Evidence and Rediscovery Protocol}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Case identity and evidence provenance}{16}{subsection.8.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Code-branch endpoints versus reported tokens, by target and arm.}}{17}{figure.8}\protected@file@percent }
+\newlabel{fig:cost}{{8}{17}{Code-branch endpoints versus reported tokens, by target and arm}{figure.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Code-branch endpoints versus reported calls, by target and arm.}}{17}{figure.9}\protected@file@percent }
+\newlabel{fig:callcost}{{9}{17}{Code-branch endpoints versus reported calls, by target and arm}{figure.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Vulnerability cases and supporting evidence (L: direct observation; R: report).}}{18}{table.17}\protected@file@percent }
+\newlabel{tab:cve}{{17}{18}{Vulnerability cases and supporting evidence (L: direct observation; R: report)}{table.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Replay outcomes and their denominators}{18}{subsection.8.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Controlled rediscovery still to be measured}{18}{subsection.8.3}\protected@file@percent }
+\citation{benchmarkproperties}
+\citation{mutationassessment2023}
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Replay outcomes and controls; original denominators retained.}}{19}{table.18}\protected@file@percent }
+\newlabel{tab:cveresults}{{18}{19}{Replay outcomes and controls; original denominators retained}{table.18}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Discussion}{19}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}What calibration can and cannot repair}{19}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Cost, nonstationarity, and provider variability}{19}{subsection.9.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Evidence required for confirmatory claims}{19}{subsection.9.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Threats to Validity}{19}{section.10}\protected@file@percent }
+\newlabel{sec:threats}{{10}{19}{Threats to Validity}{section.10}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Validity threats, required controls, and evidence limits.}}{20}{table.19}\protected@file@percent }
+\newlabel{tab:threats}{{19}{20}{Validity threats, required controls, and evidence limits}{table.19}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{20}{section.11}\protected@file@percent }
+\@writefile{toc}{\let\numberline\tmptocnumberline}
+\@writefile{toc}{\contentsline {section}{\numberline {Appendix\nobreakspace  {}A}Complete descriptive results}{20}{appendix.A}\protected@file@percent }
+\newlabel{sec:archive_appendix}{{Appendix\nobreakspace  {}A}{20}{Complete descriptive results}{appendix.A}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {A.1}{\ignorespaces Target--arm coverage (mean $\pm $ SD; actual $n$, nominal $N=10$).}}{20}{table.appendix.A.1}\protected@file@percent }
+\newlabel{tab:archive_arms}{{A.1}{20}{Target--arm coverage (mean $\pm $ SD; actual $n$, nominal $N=10$)}{table.appendix.A.1}{}}
+\bibstyle{elsarticle-num-names}
+\bibdata{revision_20260920/references.expanded}
+\bibcite{aflnet}{{1}{2020}{{Pham et~al.}}{{Pham, B{\"o}hme, and Roychoudhury}}}
+\bibcite{stateafl}{{2}{2022}{{Natella}}{{}}}
+\bibcite{chatafl}{{3}{2024}{{Meng et~al.}}{{Meng, Mirchev, B{\"o}hme, and Roychoudhury}}}
+\bibcite{nsfuzz}{{4}{2023}{{Qin et~al.}}{{Qin, Hu, Ma, Zhao, Yin, and Zhang}}}
+\bibcite{sgf_usenix22}{{5}{2022}{{Ba et~al.}}{{Ba, B{\"o}hme, Mirzamomen, and Roychoudhury}}}
+\bibcite{aflnet5years2025}{{6}{2025}{{Meng et~al.}}{{Meng, Pham, Böhme, and Roychoudhury}}}
+\bibcite{stateinspector2022}{{7}{2022}{{McMahon~Stone et~al.}}{{McMahon~Stone, Thomas, Vanhoef, Henderson, Bailluet, and Chothia}}}
+\bibcite{nyxnet2022}{{8}{2022}{{Schumilo et~al.}}{{Schumilo, Aschermann, Jemmett, Abbasi, and Holz}}}
+\bibcite{snapfuzz2022}{{9}{2022}{{Andronidis and Cadar}}{{}}}
+\bibcite{fuzztructionnet2024}{{10}{2024}{{Bars et~al.}}{{Bars, Schloegel, Schiller, Bernhard, and Holz}}}
+\bibcite{blueman2025}{{11}{2025}{{Kao et~al.}}{{Kao, Chen, Lin, Yang, Li, and Huang}}}
+\bibcite{distfuzz2025}{{12}{2025}{{Zou et~al.}}{{Zou, Bai, Jiang, Zhao, and Zhou}}}
+\bibcite{gramatron_effective_grammar_aware_2021}{{13}{2021}{{Srivastava and Payer}}{{}}}
+\bibcite{carpetfuzz_documentation_2023}{{14}{2023}{{Wang et~al.}}{{Wang, Li, Zhang, and Chen}}}
+\bibcite{formatfuzzer}{{15}{2024}{{Dutra et~al.}}{{Dutra, Gopinath, and Zeller}}}
+\bibcite{fuzztruction2023}{{16}{2023}{{Bars et~al.}}{{Bars, Schloegel, Scharnowski, Schiller, and Holz}}}
+\bibcite{miner2023}{{17}{2023}{{Lyu et~al.}}{{Lyu, Xu, Ji, Zhang, Wang, Zhao, Pan, Cao, Chen, and Beyah}}}
+\bibcite{llmif_augmented_large_language_2024}{{18}{2024}{{Wang et~al.}}{{Wang, Yu, and Luo}}}
+\bibcite{fuzz4all_universal_fuzzing_large_2024}{{19}{2024}{{Xia et~al.}}{{Xia, Paltenghi, Tian, Pradel, and Zhang}}}
+\bibcite{fuzzgpt2024}{{20}{2024}{{Deng et~al.}}{{Deng, Xia, Yang, Zhang, Yang, and Zhang}}}
+\bibcite{whitefox2024}{{21}{2024}{{Yang et~al.}}{{Yang, Deng, Lu, Yao, Liu, Jabbarvand, and Zhang}}}
+\bibcite{prophetfuzz2024}{{22}{2024}{{Wang et~al.}}{{Wang, Zhou, Chen, Li, and Miao}}}
+\bibcite{hybridllm2026}{{23}{2026}{{Meng et~al.}}{{Meng, Duck, and Roychoudhury}}}
+\bibcite{hgfuzzer2026}{{24}{2026}{{Xu et~al.}}{{Xu, Zhao, Yu, and Wang}}}
+\bibcite{bandits_states2023}{{25}{2023}{{Borcherding et~al.}}{{Borcherding, Giraud, Fitzgerald, and Beyerer}}}
+\bibcite{tscheduler2024}{{26}{2024}{{Luo et~al.}}{{Luo, Herrera, Quirk, Chase, Ranasinghe, and Kanhere}}}
+\bibcite{entropic2020}{{27}{2020}{{B{\"o}hme et~al.}}{{B{\"o}hme, Man{\`e}s, and Cha}}}
+\bibcite{seqfuzzsdn2026}{{28}{2026}{{Ollando et~al.}}{{Ollando, Shin, and Briand}}}
+\bibcite{fox2024}{{29}{2024}{{She et~al.}}{{She, Storek, Xie, Kweon, Srivastava, and Jana}}}
+\bibcite{fishfuzz2023}{{30}{2023}{{Zheng et~al.}}{{Zheng, Zhang, Huang, Ren, Wang, Cao, Zhang, Toffalini, and Payer}}}
+\bibcite{wingmuzz2025}{{31}{2025}{{Zhu et~al.}}{{Zhu, Dai, Feng, Wang, Xia, Wen, Lam, and Xiang}}}
+\bibcite{protocolguard2026}{{32}{2026}{{Song et~al.}}{{Song, Pei, Wu, Zeng, He, Zuo, Liu, Zhao, and Guo}}}
+\bibcite{bsfuzzer2026}{{33}{2026}{{Yang et~al.}}{{Yang, Qin, Zhang, Fu, Chen, Wang, Zhao, Li, Li, Wang, and Zhang}}}
+\bibcite{mercuriuzz2026}{{34}{2026}{{Wang et~al.}}{{Wang, Chen, Chen, Zhuge, Bai, and Duan}}}
+\bibcite{magma2020}{{35}{2020}{{Hazimeh et~al.}}{{Hazimeh, Herrera, and Payer}}}
+\bibcite{profuzzbench_benchmark_stateful_protocol_2021}{{36}{2021}{{Natella and Pham}}{{}}}
+\bibcite{fuzzbench2021}{{37}{2021}{{Metzman et~al.}}{{Metzman, Szekeres, Simon, Sprabery, and Arya}}}
+\bibcite{reliability_benchmarking_2022}{{38}{2022}{{B{\"o}hme et~al.}}{{B{\"o}hme, Szekeres, and Metzman}}}
+\bibcite{sok_prudent_evaluation_practices_2024}{{39}{2024}{{Schloegel et~al.}}{{Schloegel, Bars, Schiller, Bernhard, Scharnowski, Crump, Ale-Ebrahim, Bissantz, Muench, and Holz}}}
+\bibcite{thompson1933}{{40}{1933}{{Thompson}}{{}}}
+\bibcite{greenbenchmark2023}{{41}{2023}{{Ounjai et~al.}}{{Ounjai, Wüstholz, and Christakis}}}
+\bibcite{validation2017}{{42}{2017}{{Tantithamthavorn et~al.}}{{Tantithamthavorn, McIntosh, Hassan, and Matsumoto}}}
+\bibcite{guo2017calibration}{{43}{2017}{{Guo et~al.}}{{Guo, Pleiss, Sun, and Weinberger}}}
+\bibcite{davis2006pr}{{44}{2006}{{Davis and Goadrich}}{{}}}
+\bibcite{efron1979}{{45}{1979}{{Efron}}{{}}}
+\bibcite{mann1947}{{46}{1947}{{Mann and Whitney}}{{}}}
+\bibcite{cliff1993}{{47}{1993}{{Cliff}}{{}}}
+\bibcite{benjamini1995}{{48}{1995}{{Benjamini and Hochberg}}{{}}}
+\bibcite{kaplan1958}{{49}{1958}{{Kaplan and Meier}}{{}}}
+\bibcite{benchmarkproperties}{{50}{2026}{{Wolff et~al.}}{{Wolff, Böhme, and Roychoudhury}}}
+\bibcite{mutationassessment2023}{{51}{2023}{{G{\"o}rz et~al.}}{{G{\"o}rz, Mathis, Hassler, G{\"u}ler, Holz, Zeller, and Gopinath}}}

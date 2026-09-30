@@ -1,0 +1,1340 @@
+Fuzztruction: Using Fault Injection-based Fuzzing
+    to Leverage Implicit Domain Knowledge
+   Nils Bars, Moritz Schloegel, Tobias Scharnowski, and Nico Schiller,
+    Ruhr-Universität Bochum; Thorsten Holz, CISPA Helmholtz Center
+                         for Information Security
+     https://www.usenix.org/conference/usenixsecurity23/presentation/bars
+
+
+
+
+     This paper is included in the Proceedings of the
+           32nd USENIX Security Symposium.
+                 August 9–11, 2023 • Anaheim, CA, USA
+                              978-1-939133-37-3
+
+
+
+
+                                     Open access to the Proceedings of the
+                                      32nd USENIX Security Symposium
+                                           is sponsored by USENIX.
+                       Fuzztruction: Using Fault Injection-based Fuzzing to
+                              Leverage Implicit Domain Knowledge
+
+                                 Nils Bars∗ , Moritz Schloegel∗ , Tobias Scharnowski∗
+                                            Nico Schiller∗ , Thorsten Holz‡
+                                                ∗ Ruhr-UniversitätBochum
+                                 ‡ CISPA    Helmholtz Center for Information Security
+
+                         Abstract                                 to handle the communication: One application generates
+Today’s digital communication relies on complex protocols         the data (hereafter referred to as generator), while the other
+and specifications for exchanging structured messages and         consumes it (called consumer). For example, various pro-
+data. Communication naturally involves two endpoints: One         grams generate PDF documents as output and corresponding
+generating data and one consuming it. Traditional fuzz testing    PDF viewers display the result. Another example is cryp-
+approaches replace one endpoint, the generator, with a fuzzer     tographic libraries, which generate encrypted messages that
+and rapidly test many mutated inputs on the target program        their corresponding counterparts can process. From a secu-
+under test. While this fully automated approach works well        rity perspective, the consumer plays a crucial role, as it pro-
+for loosely structured formats, this does not hold for highly     cesses potentially untrusted data and is thus exposed to attacks.
+structured formats, especially those that go through complex      Fuzz testing (fuzzing for short), a form of randomized testing,
+transformations such as compression or encryption.                has proven helpful in efficiently finding software faults in
+   In this work, we propose a novel perspective on generating     the input processing of consumer programs. Past advances
+inputs in highly complex formats without relying on heavy-        in fuzzing methods focused on throughput [1–3], effective-
+weight program analysis techniques, coarse-grained grammar        ness [4–6], and applicability to new target domains [7–12].
+approximation, or a human domain expert. Instead of mu-           Even after years of research, an unresolved challenge is the ef-
+tating the inputs for a target program, we inject faults into     fective generation of valid inputs for complex formats, includ-
+the data generation program so that this data is almost of        ing cryptographic primitives, compression, and other kinds
+the expected format. Such data bypasses the initial parsing       of tricky transformations.
+stages in the consumer program and exercises deeper program          Prior works and industry best practices attempted two ap-
+states, where it triggers more interesting program behavior.      proaches to tackle this challenge. First, heavy-weight pro-
+To realize this concept, we propose a set of compile-time         gram analysis techniques, such as symbolic execution and
+and run-time analyses to mutate the generator in a targeted       taint analysis, or manual workarounds, have been suggested
+manner, so that it remains intact and produces semi-valid out-    to solve roadblocks (e. g., checksums or hashes) [5, 6, 13–20].
+puts that satisfy the constraints of the complex format. We       Unfortunately, these methods do not scale to complex pro-
+have implemented this approach in a prototype called F UZZ -      grams. Second, grammar-based fuzzing [21–29] has been in-
+TRUCTION and show that it outperforms the state-of-the-art        vestigated to generate inputs of a specific syntactical structure.
+fuzzers AFL++, S YM CC, and W EIZZ. F UZZTRUCTION                 However, the use of grammars does not address the complex-
+finds significantly more coverage than existing methods, espe-    ity of applications using complex types of transformations,
+cially on targets that use cryptographic primitives. During our   especially cryptographic primitives and compression.
+evaluation, F UZZTRUCTION uncovered 151 unique crashes               Instead of using heavy-weight techniques, grammars, or
+(after automated deduplication). So far, we manually triaged      manually bypassing these fuzzing roadblocks, we propose
+and reported 27 bugs and 4 CVEs were assigned.                    a novel generic approach to generate highly structured and
+                                                                  complex inputs for fuzzing in an automated way. More specif-
+1   Introduction                                                  ically, we propose to take advantage of the domain knowledge
+                                                                  that is already encoded in the applications that generate data:
+Our modern digital infrastructure is based on well-defined        In traditional fuzzing approaches, the generator is replaced
+message and data formats, including standards and specifica-      by a fuzzer that passes input directly to the consumer (repre-
+tions for data exchange. These systems have at least two end-     senting the system under test). On the contrary, we devise a
+points, both of which encode the domain knowledge required        mechanism to mutate the generator and then pass its output
+
+
+
+USENIX Association                                                                   32nd USENIX Security Symposium           1847
+to the consumer. The core idea is that this mutated generator           S YM CC, and W EIZZ. Our results show that our ap-
+produces inputs that mostly adhere to the required data format          proach achieves significant gains in terms of coverage
+but introduces subtle deviations that may trigger faults in the         and number of software faults found.
+consumer’s processing logic. For example, an application             To foster further research on this topic, we release the
+that signs cryptographic certificates knows how to generate a      source code and evaluation artifacts of F UZZTRUCTION at
+valid signature that can be parsed and verified by any appli-      https://github.com/fuzztruction/fuzztruction.
+cation designed to verify such signatures (e. g., browsers or
+cryptographic libraries). To enable fuzzing of the signature
+verification logic, we exploit the fact that the generator im-
+plicitly knows how to compute valid signatures. We leverage
+                                                                   2   Fuzzing Complex Input Formats
+this knowledge by slightly mutating the generator’s code so
+that the produced output may violate the specification but is      Generally speaking, fuzzing means that we execute a tar-
+technically valid (i. e., a valid signature or encryption).        get program with numerous mutated inputs to trigger unex-
+   Randomly flipping instruction bits in the generator would       pected behavior, thus revealing faults. To reach deep into
+likely not affect its output, and—even worse—it would lead         the state space of the program under test, fuzzers typically
+the generator to crash in most cases. To avoid such undesir-       need to generate well-structured inputs. In addition to being
+able cases, we devised a compile-time analysis to identify op-     well-structured, these inputs also need to account for check-
+erations on data and filter out operations that would crash the    sums, compression algorithms, or cryptographic primitives
+generator when they are mutated. We also analyze data-flow         that guard more in-depth processing. In practice, both the
+dependencies to avoid redundant mutations. Then, we iden-          efficient identification of logical units within an input format
+tify which parts of the generator actually affect the output for   and the subsequent effective resolution of obstacles within
+the remaining mutation candidates and focus our mutations          these units pose a major challenge. Fuzzers currently attempt
+on the most promising candidates. Based on these insights,         to solve these challenges via different approaches, which we
+we instrument the generator and just-in-time (JIT)-compile         outline in the following.
+both tracing and mutation mechanisms into it, facilitating
+                                                                   Execution Feedback. Gathering feedback on the execution
+efficient fuzzing.
+                                                                   of the target program for a given input is a well-established
+   To demonstrate the practical feasibility of the proposed
+                                                                   technique in modern fuzzers [1, 31, 32]. This feedback pro-
+approach, we implement a tool called F UZZTRUCTION. Our
+                                                                   vides a measure of input quality and allows a fuzzer to recog-
+method can be used as a stand-alone tool or augment existing
+                                                                   nize inputs that explore new program behavior. By keeping
+fuzzers. In a comprehensive evaluation, we show that our
+                                                                   and further mutating these increasingly well-structured in-
+approach not only avoids the shortcomings of traditional ap-
+                                                                   puts, a fuzzer derives inputs that match the expected formats
+proaches for targets that consume complex input formats, but
+                                                                   to a greater degree over time. Gathering execution feedback
+also outperforms fuzzers such as S YM CC [6], W EIZZ [30],
+                                                                   (and most prominently, coverage feedback) is attractive as
+and AFL++ [1]: On average, we find 21% more coverage,
+                                                                   it is generically applicable and introduces a low run-time
+both for targets that heavily use cryptographic primitives (up
+                                                                   overhead. In fact, after this coverage-guided technique was
+to 70% more coverage) and for extensively tested targets
+                                                                   introduced in AFL [31], fuzzers have been able to explore
+(up to 23% more coverage on objdump). Beyond coverage,
+                                                                   common, more loosely-structured binary file formats and
+we find more than five times the number of (deduplicated)
+                                                                   identify a large number of bugs as a result [33]. Even though
+crashing inputs compared to these fuzzers. During our eval-
+                                                                   it is not directly available to the fuzzer, the execution feedback
+uation, we uncovered 151 unique crashes (after automated
+                                                                   provides a side channel to the domain knowledge encoded in
+deduplication). We manually triaged and reported 27 bugs
+                                                                   the program under test.
+in a coordinated way to the developers. Up to now, 4 CVEs
+were assigned.                                                     Grammars. Instead of trying to extract domain knowledge
+In summary, we make the following main contributions:              from a target program, a human expert can provide pre-
+   • We propose a novel fuzzing method that automatically          existing domain knowledge to the fuzzer. In these approaches,
+     leverages the domain knowledge in generator applica-          the fuzzer is either provided with information about the in-
+     tions to improve fuzzing without relying on advanced          put structure of the target program (e. g., a grammar) or a
+     and expensive program analysis techniques.                    structure-aware logic for input generation is integrated into
+   • We demonstrate the generic capabilities of the approach       the fuzzer [21–29]. This precise knowledge about the target
+     by fuzzing even complex cryptographic procedures, such        format allows the fuzzer to generate inputs that fulfill the
+     as the parsing and validation of encrypted RSA keys,          target’s requirements about the input structure. The main
+     automatically and without custom-crafted seeds.               drawback of these approaches lies in the fact that while they
+   • We implement and evaluate our prototype, called F UZZ -       allow generating high-quality inputs, they require pre-existing
+     TRUCTION , against the state-of-the-art fuzzers AFL++,        knowledge about the program under test.
+
+
+
+1848    32nd USENIX Security Symposium                                                                        USENIX Association
+Automated Grammar Approximation. Instead of requir-                3     Design
+ing domain knowledge in the form of a grammar a priori,
+there are techniques to automate the process of generating         In this work, we take an orthogonal approach by changing the
+approximations of the grammar embedded into the target. Dif-       perspective of fuzzing: We propose to focus on the genera-
+ferent approaches exist which target text-based [34] or binary     tor applications that produce the input to the target program
+formats [30, 35]. Both have in common that they try to in-         under test. Our approach uses a simple yet powerful idea:
+fer the structure of a provided input by identifying logical       instead of directly mutating the input to create a new test
+units within the data format, e. g., chunks, tokens, or fields.    case, we mutate the generator application and use its output
+This enables structure-aware mutations that allow the fuzzer       as a fuzzing test case for the target under test. This way, we
+to modify, insert, remove, or replace such logical units. Al-      can (implicitly) leverage domain knowledge and overcome
+though these techniques sidestep the requirement for crafting      complex constraints without suffering from the shortcomings
+the grammar manually and successfully locate logical units,        of heavyweight techniques or manual approaches.
+the process of approximating is inherently coarse-grained.             Our observation is that generator programs generally pro-
+                                                                   duce well-formed outputs, which is indispensable to ensure
+                                                                   interoperability. By selectively injecting faults into these gen-
+Heavyweight Feedback and Analyses. Beyond the efforts              erator programs, they produce almost well-formed outputs,
+described above, which improve the fuzzer’s capability to          i. e., they may violate the specifications in subtle ways. This
+generate highly structured inputs, an orthogonal line of re-       allows us to produce high-quality test cases for the respective
+search has focused on solving typical fuzzing roadblocks,          consumer program. For example, suppose that we inject faults
+such as checksums or cryptographic primitives, without re-         into instructions that manipulate (i. e., read or write) partially
+quiring a grammar. As a more direct way of extracting              processed data, which will subsequently be cryptographically
+the domain knowledge encoded in the target program, re-            signed. In this case, we can produce mutated but valid inputs
+cent approaches employ sophisticated program analyses and          with respect to the enveloping signature. Crucially, these in-
+more heavyweight feedback types. These approaches tackle           puts are not discarded early during signature validation, but
+the deficits of (lightweight) feedback-driven fuzzers by aid-      reach deeper program logic in the consumer.
+ing the fuzzer in solving constraints within data structures,          Figure 1 presents a high-level overview of our approach and
+e. g., via taint tracking [17–19] or concolic/symbolic exe-        shows how the individual components of our design interact.
+cution [5, 6, 13–15]. Using taint tracking, the fuzzer can         On a high level, we want the generator application to produce
+backtrace which parts of an input affect a specific branch         diverse test cases that we can supply to our actual fuzzing tar-
+condition. Given this semantic insight, fuzzers can concen-        get, the consumer. To this end, the fuzzing scheduler selects
+trate their efforts on mutating input parts that are relevant to   Ê one or multiple mutation(s) for the generator application
+overcome specific constraints. Using symbolic or concolic ex-      (e. g., changing a value stored by a mov instruction) and, if
+ecution, fuzzers can compute values that are required to solve     needed, a seed file processed by the generator. Next, Ë the
+conditions or integrity checks or, more generally speaking,        selected mutation(s) are applied to the generator. The mu-
+exercise all paths in a given program. While heavyweight           tated generator now processes the input Ì and produces Í a
+feedback-driven fuzzers have proven effective in generating        slightly mutated output. Finally, the scheduler passes Î the
+well-structured inputs, they suffer from new challenges and        generated output to the consumer, and coverage feedback is
+limitations. The main limitation is that they are relatively       collected Ï. If the test case triggers interesting behavior (new
+slow, fail to scale to large target programs, and require run-     coverage), the pair of mutated generator program and input
+time environments that specify, e. g., side effects of library     file is enqueued for further mutation in subsequent rounds.
+functions [4]. Furthermore, complex constraints imposed by
+cryptographic primitives such as hash functions or signatures      3.1    Generator
+cannot be solved due to their computational complexity.
+                                                                   In essence, the generator can be considered a seed generator
+                                                                   for producing inputs tailored to the fuzzing target, the con-
+                                                                   sumer. While common fuzzing approaches mutate inputs on
+   In summary, we find that current approaches to generating
+                                                                   the fly through bit-level mutations, we mutate inputs indirectly
+complex, highly structured input rely either on a grammar
+                                                                   by injecting faults into the generator program. More precisely,
+provided by a human expert, which is effective but costly,
+                                                                   we identify and mutate data operations the generator uses to
+or approximate the grammar (less costly but less effective).
+                                                                   produce its output.
+Note that neither of them can handle mutations of complex
+data. Other methods use heavyweight techniques that do             Generator Requirements. To facilitate our approach, we
+not require a grammar but are inefficient and do not scale.        require a program that generates outputs that match the input
+None of the state-of-the-art approaches can leverage existing      format the fuzzing target expects. Most generator applications,
+domain knowledge in an automated and effective manner.             such as image converters, require files that can be converted
+
+
+
+USENIX Association                                                                    32nd USENIX Security Symposium           1849
+                                 Ê                                                              more than once since the initial modification can already
+                                                                                                produce any possible value; in the worst case, the second
+ PNG    PNG
+               ...                       ...                                                    change can cancel the changes of the first. This does not
+       Seeds                Mutations                                        Consumer           apply for partial dependencies.
+                                                                         5                  To address these challenges, we design our compiler pass
+                                            01100100010111001
+                                             01100100010111001
+                                           0110011111011100110001011
+                                          0110010001011100110001011
+                                                                                     Ï
+                      Ë                                                                  to only instrument instructions loading or storing value types
+                                        0110010001011011110001011
+                                           0110010001011100110001011
+                                          0110011101011100110001011
+                                     0110010001011100110001011
+                                             0110010001011100110001011
+                                             0110010001011100110001011
+
+
+
+                                                                                         and avoid pointer types. Additionally, we use the data-flow
+                                                                             Î
+          Ì3         Generator
+                                               4                                         information available to the compiler to instrument only the
+                                                                         Scheduler
+                                           Í                                             first instance of a data value being modified. Unfortunately,
+                                                                                         static analysis during compile-time falls short in determining
+Figure 1: High-level overview of our approach for a generator and a                      whether a particular instruction will have a significant impact
+consumer program. Noteworthy, the generator may produce outputs                          (if at all) on the application’s output. Consequently, before
+(Í) that slightly violate the specification.                                             starting the actual fuzzing process, our design budgets for a
+                                                                                         lightweight identification and pruning phase during runtime,
+                                                                                         a process we describe in the following.
+to the target format. Thus, in contrast to traditional fuzzing
+approaches, the initial seed files are inputs for the generator                          Instrumentation Site Pruning & Impact Analysis. We
+instead of the consumer. Based on the type of generator, seed                            have observed that allowing the fuzzer to inject faults at all
+inputs may not be required. This applies, for instance, to                               potential instrumentation sites leads to many ineffective muta-
+generators of cryptographic keys.                                                        tions. For example, a given input file exercises only a specific
+                                                                                         path in the (potentially mutated) generator’s code, which com-
+Data operations. One core challenge for mutating the gen-
+                                                                                         monly only includes a fraction of all instrumentation sites.
+erator is to identify and mutate data operations. We consider
+                                                                                         We call these sites dead w.r.t. a specific input and (mutated)
+any instruction reading from or writing to memory as a data
+                                                                                         version of the generator. Even alive (i. e., not dead) instru-
+operation. The underlying insight is that output generated
+                                                                                         mentation sites may have no actual impact. This means that,
+by a program is stored in memory at one point or another
+                                                                                         for a given combination of input and generator version, inject-
+in almost all cases, especially for the type of complex data
+                                                                                         ing a fault into this instrumentation site will not lead to any
+formats that we target in this work. For a particular input
+                                                                                         coverage change in the consumer.
+to the program, we say it covers the data operation when it
+                                                                                            Intuitively, to maximize the number of effective fault in-
+executes the respective operation (an essential requirement
+                                                                                         jections, we want to avoid mutating dead instrumentation
+for a mutation to have any effect). Moreover, we say that
+                                                                                         sites and ones without a visible impact. Consequently, the
+the data operation is mutated when the underlying data is
+                                                                                         goal of our pruning and impact analysis phase is twofold:
+modified with respect to the original program.
+                                                                                         For each combination of seed input and (potentially) mutated
+   To reliably identify all data operations within a program,
+                                                                                         generator, we first aim to identify and remove dead instrumen-
+we design a compiler pass that allows us to instrument all
+                                                                                         tation sites and then analyze the impact of the remaining ones.
+load and store operations. These operations are ubiquitous in
+                                                                                         To this end, we trace the execution and keep only the alive
+programs, resulting in many potentially interesting operations.
+                                                                                         instrumentation sites. Additionally, to analyze the impact
+Consequently, we cannot instrument every instance. Instead,
+                                                                                         of alive instrumentation sites, we observe whether injecting
+we must identify a subset of data operations that gives us
+                                                                                         a fault into the underlying data operation yields a different
+maximum control over the processed data while minimizing
+                                                                                         code coverage in the consumer. This stage results in a list
+adverse runtime effects, such as crashes. Besides their sheer
+                                                                                         of alive and impactful instrumentation sites per seed file and
+number, several factors determine an instruction’s relevance:
+                                                                                         (potentially) mutated generator application. Furthermore, we
+   • Impact: Does this particular instruction modify relevant                            record additional information, such as the number of times
+     data, i. e., data that has an observable impact on the                              an instrumentation site is exercised, for later use, e. g., when
+     output? Modifying instructions unrelated to the gener-                              generating mutations.
+     ated data has no benefit towards the goal of producing
+     interesting input files for our fuzzing target.                                     Mutations. To generate slightly corrupt inputs, we mutate
+   • Type: Does the modified data represent a value that is                              the generator: We randomly select an input for the generator
+     likely to cause a crash of the generator if it is mutated,                          and one or more instrumentation sites. We then apply bit-
+     e. g., because it is a function pointer? Modifying pointers                         level mutations to the data values processed at the respective
+     instead of actual values is prone to crash the application                          instrumentation sites. As these sites can be visited multiple
+     instead of producing interesting values.                                            times during program execution, e. g., in loops, we can either
+   • Data-flow Dependency: Does the data depend on a value                               always apply the same mutation or opt for more fine-granular
+     that has already been modified by earlier instructions?                             control in the form of independent mutations that differ for
+     Intuitively, it is undesirable to modify the same data                              each visit. For the latter, we need a priori knowledge of how
+
+
+
+1850     32nd USENIX Security Symposium                                                                                           USENIX Association
+often a particular input will visit an instrumentation site. This       2. Add Phase: We pick multiple instrumentation sites and
+information is conveniently available from our pruning &                   apply mutations. We prefer sites that have previously
+impact analysis pass. This allows us to specify a list of muta-            successfully yielded new code coverage in the consumer.
+tions for each instrumentation site. Each visit of the mutation            This phase adds new mutations to the queue entry, ex-
+site consumes one of its mutations, until all mutations for a              tending the instances of mutated data operations.
+given instrumentation site are consumed. In the rare case a
+mutation modifies control flow, such that an instrumentation            3. Mutate Phase: We apply a fixed number of mutations
+site is visited more often than observed during the impact                 to all mutated data operations of the selected queue entry.
+analysis, we can not apply any further mutation but return the             In contrast to the add-phase, this phase does not add any
+unmodified data value.                                                     new data operations but mutates existing ones.
+
+                                                                        4. Combine Phase: For each mutated data operation, we
+3.2    Consumer                                                            inspect whether other queue entries have mutated it as
+                                                                           well. If so, we try their mutations. This is similar to
+The generator’s counterpart is the consumer: As the target                 splicing, known from traditional fuzzing, and allows to
+of our fuzzing campaign, it consumes the inputs generated                  benefit from mutations that have already proved to affect
+by the generator. Similar to typical fuzzing targets, we im-               coverage.
+pose no specific restrictions or limitations on the consumer.
+Since we use coverage feedback to guide our mutations in the           If we observe new code coverage during the main fuzzing
+generator, the consumer must provide an interface to retrieve       loop, we need to execute the calibration phase for the new
+coverage information (via instrumenting the source code or          queue entry, which is created to represent the combination of
+from emulation).                                                    input and mutations that yielded the new coverage.
+                                                                       Our queue entry selection algorithm is similar to the one
+                                                                    used by AFL. Both use the concept of novelty search, i. e.,
+3.3    Scheduler                                                    we keep inputs based on whether they yielded new code cov-
+                                                                    erage. Furthermore, we apply a similar favoring scheme that
+The last component is the scheduler, which orchestrates the         prioritizes a minimal set of inputs covering a maximum of
+interaction of the generator and the consumer. It governs the       the code in the consumer. The main difference to AFL is
+fuzzing campaign, and its main task is to organize the fuzzing      that we prefer queue entries containing rarely observed data
+loop. The scheduler contains the following components:              operations; AFL has no similar concept given that the method
+                                                                    does not observe data operations at all.
+Queue. The scheduler maintains a queue containing queue
+entries. Each entry consists of the seed input passed to the
+generator (if any) and all mutations which have been applied        3.4      Combined Fuzzing
+to the generator. Each such queue entry represents a single
+                                                                    Compared to traditional fuzzer designs, our input generation
+test case. In traditional fuzzing, such a test case would be
+                                                                    method is slower: instead of flipping a byte, the generator
+represented as a single file.
+                                                                    program is mutated and executed to produce an input. Further-
+Phases. The main fuzzing loop is split into multiple phases,        more, AFL-based fuzzers are capable of splicing or splitting
+see Algorithm 1. Depending on the phase type, the steps             inputs—operations that a generator typically does not expose.
+within a phase are performed exactly once for each new queue        To compensate for these missing operations and the perfor-
+entry (calibration phase) or several times during fuzzing.          mance impact, our approach can be used in tandem with a
+Upon launching a fuzzing campaign, all seed files are added         traditional fuzzer such as AFL++. This approach is similar
+to the queue and thus calibrated.                                   to fuzzers such as QSYM [5], S YM CC [6], or D RILLER [14],
+                                                                    which use AFL for regular fuzzing and augment it by provid-
+  1. Calibration Phase: We pass the input to the (potentially       ing new inputs that solve fuzzing roadblocks which common
+     mutated) generator and record the instrumentation sites        mutations cannot address. In the same vein, we propose an
+     visited during execution (instrumentation site pruning).       approach focusing on a generator application to produce in-
+     For each instrumentation site of the target, we further        teresting inputs that unlock new, deeper state space for the
+     assess its impact on the coverage in the consumer (im-         traditional fuzzer.
+     pact analysis). This information, alongside the input and
+     mutations, is stored within the queue entry. Importantly,      4     Implementation
+     this phase is part of the regular fuzzing iteration.
+                                                                    We implement our design in a prototype called F UZZ -
+During the main fuzzing loop, we then repeatedly pick one           TRUCTION that consists of about 14, 000 lines of Rust code.
+queue entry and select one of the following phases:                 Next we discuss implementation aspects.
+
+
+
+USENIX Association                                                                      32nd USENIX Security Symposium          1851
+ Algorithm 1: Simplified algorithm representing our ap-            (2) the mutation of data operations themselves.
+    proach. Before the main fuzzing loop starts, all seed inputs   Instrumentation Site Pruning and Impact Analysis. Us-
+    are calibrated. This includes the instrumentation site prun-   ing the JIT compiler, we facilitate the analysis phase by in-
+    ing and analysis of the data operations’ impact w.r.t. the     jecting a callback to a custom logging function into each
+    target’s (i. e.,consumer’s) coverage. Finally, the fuzzing     instrumentation site. Based on these callbacks, we determine
+    loop is executed until it is stopped.                          which instrumentation sites are alive. As an additional piece
+1    Input: Seeds                                                  of metadata, we also count how often they are visited (i. e.,
+2    Q ← create_queue()                                            executed) for a specific input. These execution counts allow
+3    forall seed ∈ Seeds do                                        the fuzzing loop of the scheduler to determine how many data
+ 4       Q ← Q ∪ calibration_phase(seed)                           operations can be mutated at each instrumentation site.
+5    while True do                                                 Mutations. The second type of JIT stub implements the ap-
+ 6      entry ← select_next(Q)                                     plication of mutations to data operations. In F UZZTRUCTION,
+ 7      choice ∈Random {1..3}                                      we implement a mutation on a data operation by XORing a
+ 8      switch choice do                                           bit mask into its data operand. For load operations the instru-
+ 9          case 1 do                                              mentation site is placed after the operation, while for stores
+10              result ← add_phase(entry)                          the site is placed before the data operation. Figure 2 shows
+11              case 2 do                                          how a store operation is mutated based on a provided list
+12                 result ← mutate_phase(entry)                    of bit masks (mutation masks). Beyond XORing, we could
+13              case 3 do                                          implement other operations to mutate the data, e. g., setting
+14                 result ← combine_phase(entry, Q)                it to specific value or incrementing/decrementing it. This is
+                                                                   analogous to mutations used in traditional fuzzing. However,
+15          if crash_or_new_coverage(Q, result) then               these mutators empirically often yield only few coverage, thus
+16              Q ← Q ∪ calibration_phase(result)                  we do not implement them.
+                                                                       We use the number of observed executions of each instru-
+                                                                   mentation site we collected during tracing as a hint towards
+                                                                   how many mutations (i. e., bit masks) can be inserted for each
+Generator. To instrument the generator, we develop a com-
+                                                                   instrumentation site. We also keep track of the instrumenta-
+piler pass for LLVM which identifies all data operations and
+                                                                   tion sites for which mutations yielded new code coverage in
+prepares them for mutation. We use an experimental LLVM
+                                                                   the consumer, prioritizing them while subsequently picking
+feature called stack maps to create an instrumentation site for
+                                                                   instrumentation sites to mutate.
+each data operation. In essence, this means that the compiler
+records the location of instruction arguments during runtime,      Generator Stability. Given that we mutate the generator
+e. g., in which register an argument is passed to a store in-      application, and despite the analysis passes described in Sec-
+struction (stack map record). In conjunction with another          tion 3, we risk modifying the generator in such a way that
+LLVM feature called patch points, which places padding (in         input causes it to crash instead of producing an output. If
+the form of nop instructions) at the position of a stack map       we detect such a case, we remove the offending instrumen-
+record, this allows us to inject arbitrary code that mutates       tation site from the set of sites that are picked for mutation.
+the operands of each data operation. We Just-In-Time (JIT)         While this may appear conservative (as there can exist other
+compile dynamically generated JIT stubs into the padding           mutations that would not crash), we empirically found it is
+provided by patch points. To keep the required padding size        very unlikely that a crashing instrumentation site recovers.
+small and predictable, we opt for trampolines that call into       Similarly, we detect stalls in the generator by setting a timeout
+code that we allocate in a separate, executable section.           of a few milliseconds and handle them in the same way as
+   As stack maps and patch points are an experimental feature      generator crashes. Furthermore, to prevent generators from
+of LLVM, they do not correctly handle all corner cases (such       negatively affecting the host filesystem, we jail them such
+as vector operations). We developed patches for LLVM 11.0.1        that they cannot modify files beyond their output.
+and LLVM 12.0.1 to introduce the missing support 1 . Beyond
+implementing the instrumentation pass, we insert a runtime         Consumer. To collect code coverage from the consumer,
+component that implements a forkserver to quickly execute          we use the AFL-compatible fork server interface. If source
+multiple inputs and develop the JIT compiler to apply, remove,     code is available, we apply AFL’s compile-time coverage
+and generate JIT stubs. We use these stubs to implement            instrumentation. Otherwise, we can fall back to QEMU user
+two types of functionality: (1) The tracing required for the       mode instrumentation for binary-only programs.
+instrumentation site pruning and impact analysis phase, and           To avoid unnecessary executions of the consumer, we hash
+                                                                   the inputs, i. e., the data produced by the generator, and only
+     1 We   release the patches alongside our code.                execute those not tested before.
+
+
+
+1852         32nd USENIX Security Symposium                                                                  USENIX Association
+         ...                       Target Data Operation               prototype implementation of F UZZTRUCTION against two
+                                                                       other methods, S YM CC [6] and W EIZZ [30], representing the
+                                   Instrumentation
+                                                                       state of the art regarding heavyweight program analysis and
+ mov eax, [ebx]                                                        approximation of input structure. None of the fuzzers require
+ nop
+ nop                         0x0       0x4       0x8   0xC    ...      any precomputation.
+ nop                          Offset    Length     Mutation Mask          1) F UZZTRUCTION -N OAFL. This stand-alone variant
+                                                              ...      of F UZZTRUCTION is not paired with AFL++, but instead re-
+                                                                       lies solely on the inputs produced by the generator application.
+ push ...                    mov   ebx, mutation_base                  As a consequence, it has no access to traditional mutations,
+ call stub_n                 mov   eax, [ebx]; offset into msk         especially the freedom of splicing and splitting inputs.
+ pop ...                     mov   eax, [ebx+eax+8]; load mask
+ mov [ecx], edx              xor   edx, eax ; apply mask
+                                                                          2) AFL++. The second baseline is AFL++ [1] (version
+                             add   [ebx], 4                            4.00c): An approach representing the traditional byte-level
+                             ret                                       mutation-oriented fuzzers. Being constantly developed and
+        ...                                                            improved, AFL++ represents state-of-the-art greybox fuzzers
+                                                                       and is used by many specialized fuzzers, such as S YM CC.
+Figure 2: Technical perspective of how JIT stubs are used to per-         3) F UZZTRUCTION. This method represents our ap-
+form a mutation on different types of data operations. First, a load   proach presented in this paper. We augment AFL++ with the
+operation is left unmodified. In the second instrumentation site, an   idea of mutating generator programs, basically combining the
+operand of a store operation is modified before it is commited to      two techniques mentioned above.
+memory. The example assembly code is simplified in that it assumes
+a 32-bit process and omits bounds checks. The stored data value is        4) S YM CC. We choose S YM CC [6] (commit 07c8895)
+modified by XORing a different bit mask into the edx register each     as a representative method for heavyweight program analysis-
+time before the mov instruction is executed.                           based approaches, here symbolic execution. S YM CC uses
+                                                                       compiler-based instrumentation to leverage LLVM optimiza-
+                                                                       tion passes to make constraint extraction more feasible. Simi-
+Scheduler. In addition to the compiler passes instrument-              lar to F UZZTRUCTION, it is paired with AFL (in our experi-
+ing generator and consumer, we implement a scheduler that              ments with AFL++) and used to solve constraints that AFL
+orchestrates the whole fuzzing process and communication               cannot solve. To the best of our knowledge, S YM CC is the
+between generator and consumer. Furthermore, we integrated             only state-of-the-art concolic fuzzer that does not require any
+support for using AFL++ to apply simple bit level mutations            sort of warm-up to, e. g., collect constraints, and therefore is
+to inputs found by F UZZTRUCTION. Consequently, we can                 comparable to our approach. As S YM CC requires a descrip-
+spend more time on unlocking new program compartments                  tion of library functions, such that constraints can be carried
+while leaving the task of discovering these to a fuzzer that is        across the library calls, e. g., libc, Poeplau and Francillon
+suited to achieve high test case throughput.                           have annotated several functions. Unfortunately, others, such
+                                                                       as open64 or pread64 are missing. Without descriptions,
+5     Evaluation                                                       S YM CC will not work for a target calling these. We manually
+                                                                       add missing annotations, such that S YM CC works for the
+In this section, we evaluate our prototype F UZZTRUCTION to            targets in our evaluation.
+gain deeper insights into where our approach applies and how              5) W EIZZ. W EIZZ [30] is a fuzzer that approximates,
+our prototype performs compared to state-of-the-art fuzzers.           during run-time, the input structure based on input-to-state
+                                                                       correspondence. It shares F UZZTRUCTION’s idea of creating
+5.1    Setup                                                           complex structured inputs and uses a R ED Q UEEN-like [4] ap-
+                                                                       proach to profit from input-to-state correspondence, which has
+We first describe our experimental setup for the evaluation            been successfully used to overcome roadblocks such as check-
+including the hardware environment, the fuzzers we are eval-           sums [4]. We use W EIZZ (commit c9cbeef) as provided for
+uating against, and the target programs.                               our evaluation: Contrary to S YM CC and F UZZTRUCTION,
+                                                                       W EIZZ is tightly coupled to AFL and a binary-only approach
+Hardware Environment. We use the same hardware con-
+                                                                       using AFL’s QEMU mode instead of source instrumenta-
+figuration for all experiments: An Intel Xeon Gold 5320 CPU
+                                                                       tion. This gives it a slight disadvantage compared to the other
+@ 2.20GHz (52 physical cores), 256 GB of RAM, and SSD
+                                                                       fuzzers, which have access to the faster compile-time instru-
+memory as backing storage.
+                                                                       mentation. However, we still include it in our evaluation as it
+Fuzzers. We evaluate the following five fuzzing methods.               is, to the best of our knowledge, the most powerful approach
+As a baseline, we use F UZZTRUCTION -N OAFL and AFL++,                 in the domain of grammar inference paired with techniques
+the two components used by our approach. We evaluate our               to overcome roadblocks.
+
+
+
+USENIX Association                                                                       32nd USENIX Security Symposium          1853
+Target Applications. We select ten different applications               Furthermore, since S YM CC is incompatible with the de-
+based on several factors to determine the effectiveness and          fault, collision-free instrumentation schema used by AFL++,
+efficiency of our approach. We mark applications using cryp-         we set AFL_LLVM_INSTRUMENT to CLASSIC for S YM CC, such
+tographic primitives with a lock symbol, µ . The symbol (µ)          that the injected instrumentation remains backward compati-
+indicates that a program uses these primitives only optionally.      ble with plain AFL. We use the S YM CC compiler wrapper
+Overall, our goal was to select different groups of applications     to inject the constraint recording logic. For W EIZZ, we use
+that process three different types of input formats:                 the same uninstrumented binary as for the coverage com-
+                                                                     putation. Finally, since we need generator applications for
+   • Loosely Structured Formats (objdump, readelf):                  F UZZTRUCTION to mutate, we compile for each target (con-
+     These formats do not employ complex constraints and             sumer) application a generator application with our custom
+     are chunk-based. The targets of this group are already          LLVM compiler pass.
+     well-tested by traditional fuzzers which employ bit-level
+     mutations (AFL++) or inference for chunk based for-             Seeds. To create seeds for each target, we use existing seed
+     mats (W EIZZ).                                                  sets for the generator of each respective consumer or create
+                                                                     basic ones from scratch. A description of each seed input can
+   • Complex Formats (pngtopng, unzip, 7zip(µ) , and                 be found in Appendix C. In some cases, such as genrsa, we
+     pdftotext(µ) ): Such programs usually exhibit an in-            do not provide any seed corpus to the generator since the ap-
+     put structure that is challenging to fuzz, e. g., because of    plication does not consume any input. To ensure fairness, the
+     transformations, such as compression or checksums. As           seed file sets for the consumer are generated by executing the
+     a result, more sophisticated approaches than traditional        generator on all generator seed files and using the resulting
+     byte level-oriented mutations, e. g., symbolic execution        files as seed file sets for AFL++, S YM CC, and W EIZZ. Addi-
+     or structure inference paired with input-to-state corre-        tionally, in case the generator and consumer process the same
+     spondence (W EIZZ), are necessary to achieve high cov-          kind of format, we also provide the unprocessed generator
+     erage. We include targets using cryptography optionally,        inputs to the other fuzzers.
+     as fuzzers can create inputs exercising deep program
+     states without using cryptography, e. g., because only          Coverage computation. We use coverage as a metric to
+     some chunks of the inputs are encrypted.                        evaluate fuzzer performance. For this, we use the drcov sub-
+                                                                     module of the DYNAMO RIO [38] tracing framework. This
+   • Cryptographic Formats (OpenSSL’s dsaµ and rsaµ ,                allows us to retrieve execution traces (i. e., start addresses of
+     and Mozilla NSS’ vfychainµ ): These applications elude          all executed basic blocks) for a given input on an uninstru-
+     state-of-the-art fuzzers, primarily due to using crypto-        mented binary. Running the inputs from all fuzzers on the
+     graphic primitives.                                             same uninstrumented binaries ensures that coverage numbers
+                                                                     reported in this paper are consistent and comparable. To re-
+   All applications used during our evaluation are described in      duce noise generated during tracing, we excluded the follow-
+more detail in Appendix B. As commonly done in fuzzer eval-          ing standard libraries from being traced: libgcc, libstdc++,
+uations, we use code coverage as a proxy of how well a fuzzer        libc, libpthread, libm, libdl, and ld-linux.
+performs. To discuss whether this reflects the fuzzers’ ability
+to find bugs, we refer the interested reader to Böhme et al. [36].
+                                                                     Table 1: Fuzzing roadblocks in our targets alongside their generators.
+We use no sanitizers as they do not exhibit new code coverage
+                                                                     Some targets heavily rely on checksums or crypto. Several targets,
+(to triage bugs, we use Valgrind as described in Section 5.3).       such as 7zip, can work with unencrypted and encrypted data; (3)
+Noteworthy, S YM CC runs into segmentation faults for 7zip           indicates that these targets use cryptographic as an opt-in. More
+and fails to build vfychainµ because it does not support some        details on the applications can be found in Appendix 5.
+vectorized instructions (i. e., an assert is triggered during com-
+pilation). We exclude it from these targets as a consequence.                              Roadblocks
+                                                                       Target                                    Generator for FT
+                                                                                        Checksums Crypto
+Target Preparation. All targets under test were prepared
+according to the respective fuzzers’ needs. Since AFL++,               rsaµ                  3            3      genrsaµ
+F UZZTRUCTION, and S YM CC rely on the AFL++’s com-                    dsaµ                  3            3      gendsaµ
+                                                                       vfychainµ             3            3      signµ
+piler pass instrumentation, all targets (for F UZZTRUCTION,
+                                                                       7zip(µ)               3           (3)     7zip, 7zipµ
+only the consumers) were compiled via afl-clang-fast in
+                                                                       pdftotext(µ)          3           (3)     pdfseparate, qpdfµ
+version 4.00c. In addition to the default settings, we also set
+                                                                       unzip(µ)              3           (3)     zip
+the following flags [1, 37]:                                           pngtopng              3            8      pngtopng
+   • AFL_LLVM_LAF_SPLIT_SWITCHES=1                                     e2fsck                3            8      mke2fs
+   • AFL_LLVM_LAF_SPLIT_COMPARES=1                                     readelf               8            8      objcopy
+                                                                       objdump               8            8      objcopy
+   • AFL_LLVM_LAF_TRANSFORM_COMPARES=1
+
+
+
+1854    32nd USENIX Security Symposium                                                                            USENIX Association
+                                                rsa                                                   dsa                                                   vfychain
+                                                                                                                                        20000
+                          12000                                               10000
+
+                          10000                                                8000                                                     15000
+                           8000
+                                                                               6000
+                           6000                                                                                                         10000
+                                                         Fuzztruction-NoAFL                                       Fuzztruction-NoAFL
+                                                                               4000
+                           4000                          AFL++                                                    AFL++                                                Fuzztruction-NoAFL
+                                                         Fuzztruction                                             Fuzztruction           5000                          AFL++
+                           2000                                                2000
+                                                         SymCC                                                    SymCC                                                Fuzztruction
+                                                         Weizz                                                    Weizz                                                Weizz
+                              0                                                   0                                                         0
+                                  0   4   8      12      16      20                   0   4   8          12       16      20                    0   4   8      12      16      20
+
+                                              7zip-enc                                            pdftotext-enc                                             pngtopng
+                                                                                                                                         5000
+                          50000
+                                                                              40000
+                                                                                                                                         4000
+                          40000
+                                                                              30000
+                                                                                                                                         3000
+                          30000
+
+                                                                              20000                               Fuzztruction-NoAFL     2000                          Fuzztruction-NoAFL
+                          20000
+                                                         Fuzztruction-NoAFL                                       AFL++                                                AFL++
+                                                         AFL++                10000                               Fuzztruction           1000                          Fuzztruction
+                          10000
+                                                         Fuzztruction                                             SymCC                                                SymCC
+  #Covered Basic Blocks
+
+
+
+
+                                                         Weizz                                                    Weizz                                                Weizz
+                              0                                                   0                                                         0
+                                  0   4   8      12      16      20                   0   4   8          12       16      20                    0   4   8      12      16      20
+
+                                                7zip                                               pdftotext                                                 e2fsck
+                          50000
+                                                                              40000                                                     15000
+                          40000                                                                                                         12500
+                                                                              30000
+                          30000                                                                                                         10000
+
+                                                                              20000                                                      7500
+                          20000                                                                                   Fuzztruction-NoAFL                                   Fuzztruction-NoAFL
+                                                         Fuzztruction-NoAFL                                       AFL++                  5000                          AFL++
+                                                         AFL++                10000                               Fuzztruction                                         Fuzztruction
+                          10000
+                                                         Fuzztruction                                             SymCC                  2500                          SymCC
+                                                         Weizz                                                    Weizz                                                Weizz
+                              0                                                   0                                                         0
+                                  0   4   8      12      16      20                   0   4   8          12       16      20                    0   4   8      12      16      20
+
+                                              objdump                                                readelf                                                 unzip
+                          15000
+                                                                              15000                                                      3000
+                          12500
+                                                                              12500                                                      2500
+                          10000
+                                                                              10000                                                      2000
+                           7500                                                7500                                                      1500
+                                                         Fuzztruction-NoAFL                                       Fuzztruction-NoAFL                                   Fuzztruction-NoAFL
+                           5000                          AFL++                 5000                               AFL++                  1000                          AFL++
+                                                         Fuzztruction                                             Fuzztruction                                         Fuzztruction
+                           2500                          SymCC                 2500                               SymCC                   500                          SymCC
+                                                         Weizz                                                    Weizz                                                Weizz
+                              0                                                   0                                                         0
+                                  0   4   8      12      16      20                   0   4   8          12       16      20                    0   4   8      12      16      20
+
+                                                                                              Time [h]
+
+
+Figure 3: The coverage (in basic blocks) produced by various tools over five 24h runs on different targets. Displayed are the median and the
+60% intervals. S YM CC crashes on 7zip and vfychainµ ; thus we have excluded it from these targets.
+
+
+5.2                          Coverage Experiments                                                        readelf and unzip, most fuzzers perform equally, while
+                                                                                                         F UZZTRUCTION is still on par with the other candidates. Only
+To evaluate the effectiveness of our approach, we compare                                                in a single case, for objdump, F UZZTRUCTION is outper-
+F UZZTRUCTION with AFL++, S YM CC, and W EIZZ using                                                      formed by W EIZZ by a small margin.
+the ten application (pairs) displayed in Table 1. For each of
+the ten targets, we repeatedly run each fuzzer five times, for                                                 F UZZTRUCTION outperforms state-of-the-art methods
+24 hours on 52 cores (if a fuzzer has multiple baselines, e. g.,                                               in terms of overall code coverage.
+F UZZTRUCTION, we fairly split the cores, giving each 26).
+   The results of these experiments are shown in Figure 3.                                                  In the following, we analyze the results in more detail
+At first, we take a look at the overall results and how our                                              for each of the application groups described in Target Ap-
+approach performs in general. In the majority of all cases,                                              plications in Section 5.1. In particular, we consider two
+F UZZTRUCTION covers the most basic blocks. In two cases,                                                dimensions: First, we inspect F UZZTRUCTION’s individual
+
+
+
+USENIX Association                                                                                                                     32nd USENIX Security Symposium                1855
+baselines, AFL++ and F UZZTRUCTION -N OAFL, and ana-               the combination of the two, performs better than its respec-
+lyze if and how they synergize. Second, we compare how             tive baselines, we can see that F UZZTRUCTION -N OAFL con-
+F UZZTRUCTION performs relative to S YM CC and W EIZZ,             tributes even more high-quality inputs for complex formats
+which represent the state-of-the-art of more traditional fuzzing   than for loosely structured formats.
+approaches.                                                           Notably, F UZZTRUCTION -N OAFL performs worse than
+                                                                   AFL++ on targets when they do not use cryptographic prim-
+Loosely Structured Formats. This group, represented by             itives (here, password-based encryption of input files). In
+readelf and objdump, represents the baseline of targets            contrast, if the input files are encrypted, F UZZTRUCTION -
+which general purpose fuzzers are commonly evaluated               N OAFL can show its strengths and performs about as well as
+against. F UZZTRUCTION -N OAFL, as an isolated baseline of         AFL++. This implies that our approach is capable of gener-
+F UZZTRUCTION, fares worse than its other baseline AFL++.          ating interesting encrypted input files. To verify that notion,
+This can intuitively be expected: Traditional fuzzers such         we inspect the uniquely covered functions for all fuzzers and
+as AFL++ use simple bit mutations which are effective in           find that F UZZTRUCTION is the only fuzzer to cover various
+exploring common, chunk-based binary file formats as they          encryption-related functions. These inputs, in turn, unlock
+feature a high throughput in their input generation. This is in    AFL++’s byte-level mutations within F UZZTRUCTION to find
+contrast to the fault injection-based mutation introduced in       new coverage, showcasing their synergy effects. Interestingly,
+this work, where generating an input requires the generator        F UZZTRUCTION’s coverage intervals for 7zipµ significantly
+application to be run to produce a new input. Measuring the        differ from the median after 24 hours, indicating it has not
+actual executions per second for all targets, F UZZTRUCTION -      yet converged. Anecdotally, when running F UZZTRUCTION
+N OAFL performs by a factor of 3.2 slower than AFL++.              for 72 hours on 7zipµ , we indeed find it still uncovered new
+Beyond throughput, there is a second reason for the differ-        coverage after 24 hours. Another interesting target is e2fsck,
+ence in coverage found: F UZZTRUCTION -N OAFL has no no-           where F UZZTRUCTION and F UZZTRUCTION -N OAFL per-
+tion of splicing, which is particularly useful for chunk-based     form nearly equally, indicating that AFL++ is unable to con-
+formats—such as ELF files processed by objdump.                    tribute any meaningful test cases. Looking at the test cases
+   Apart from the rather low individual performance of             produced by the generator, mke2fs, we find that one reason
+F UZZTRUCTION -N OAFL, we find that combining the two              for our approaches’ good performance is the fact that our
+baselines (F UZZTRUCTION) yields synergies for objdump:            mutations managed to generate different file system versions,
+F UZZTRUCTION -N OAFL uniquely covers functions that han-          such as ext2, ext3 or ext4.
+dle complex format parts such as compressed ELF sections              Comparing the coverage produced by F UZZTRUCTION
+or ones in formats that are entirely different from the format     to W EIZZ and S YM CC, the synergies between F UZZ -
+of the provided seed files (e. g., Common Object File Format       TRUCTION ’s components also become more clearly visible.
+(COFF)). This way, F UZZTRUCTION -N OAFL provides high-            F UZZTRUCTION outperforms W EIZZ and S YM CC by a more
+value inputs to AFL++, such that F UZZTRUCTION profits             significant margin than for the last set of targets.
+from both.
+   Compared to W EIZZ and S YM CC, we observe a simi-                 The synergy effects of combining F UZZTRUCTION -
+larly intuitive overall picture: As the other fuzzers are also        N OAFL and AFL++ are clearly visible for targets that
+optimized for testing chunk-based binary targets, the other           impose complex transformations, such as compression
+fuzzers perform comparatively well, where W EIZZ outper-              or chunk-wise encryption onto their input.
+forms F UZZTRUCTION for objcopy, whereas all fuzzers per-
+form similarly for readelf.
+                                                                   Cryptographic Formats. The last group entails the targets
+                                                                   rsaµ , dsaµ , and vfychainµ (top row in Figure 3). These tar-
+   F UZZTRUCTION’s fault injection-based input genera-
+                                                                   gets are characterized by the fact that they implement complex
+   tion falls short on traditional fuzzing targets, but pro-
+                                                                   cryptographic primitives such as asymmetric cryptography or
+   duces inputs unlocking new coverage in several cases.
+                                                                   operations, such as signing, which is typically applied to cer-
+                                                                   tificates. These values are complex since they have an inner
+Complex Formats. The next group contains pngtopng,                 structure defined by the underlying mathematical primitives,
+unzip, e2fsck, 7zip(µ) , and pdftotext(µ) in the middle            which is likely voided if mutated.
+rows of Figure 3. These programs feature more sophisti-                For all targets in this group, F UZZTRUCTION -N OAFL and
+cated challenges for fuzzers, namely checksums and trans-          F UZZTRUCTION perform equally well. One interesting in-
+formations such as (chunk-wise) encryption or compression.         sight is that AFL++ does not meaningfully contribute to
+Regarding the interplay between the baselines of F UZZ -           F UZZTRUCTION’s coverage and also does not benefit from
+TRUCTION , we see that in comparison to the previous set           the seeds generated by our approach. This is because it instan-
+of applications, F UZZTRUCTION -N OAFL is closer in individ-       taneously breaks the inner structure of these inputs by apply-
+ual performance to AFL++ than before. As F UZZTRUCTION,            ing its bit-oriented mutations. By more closely inspecting the
+
+
+
+1856    32nd USENIX Security Symposium                                                                      USENIX Association
+                                                                                                                                  Table 2: Confirmatory data analysis of our experiment. We compare
+                                                   16500 14773
+
+                  10   4                   8964                                                                  FT               the coverage produced by F UZZTRUCTION against the strongest
+                                                                 6978
+
+                                  3258
+                                                                          4781                                   Weizz            competitor. We report both the p-values produced by the Mann-
+                           3093
+
+                                                                   1435       1395
+                                                                                            1935                 SymCC            Whitney-U test as well as the effect size from Vargha-Delaney’s Â12 .
+                  103                                                                                                             The labels S, M, and L refer to a small, medium, or large effect
+  #Basic Blocks
+
+
+
+
+                                                     725   820
+                                                                                     619            669
+
+                                                                                                                                  size, respectively. Â12 > 0.5 means a positive effect size, i. e., an
+                                                                        140                141
+                                                                                                        176
+                                                                                                                                  improvement over the baseline, Â12 < 0.5 a negative effect size.
+                  102                                                            87
+                                                                                                 58
+                                                                                                   75
+                                                                                                          63      67
+
+
+
+                             19       18                                                                       1919                   Target         Best Competitor     p-value    Â12 effect size
+                                                                                                                       1011
+                  101             6
+                                                                                       7
+                                                                                                                                      rsa µ
+                                                                                                                                                          AFL ++          < 0.05         +L (1.00)
+                                                                                                                              5
+
+
+                                           2   2
+                                                                                                                                      dsaµ                AFL ++          < 0.05         +L (1.00)
+                                                                                                                                      vfychainµ           AFL ++          < 0.05         +L (1.00)
+                                                                                                                                      7zipµ               AFL ++          < 0.05         +L (1.00)
+                           rsa
+
+                                  dsa
+
+
+
+
+                                                    p
+                                                   in
+                                                  nc
+
+
+
+
+                                                                           g
+                                                                         sck
+
+                                                                         mp
+
+                                                                            f
+                                                                         zip
+                                                                            t
+                                                                 pd -enc
+
+
+
+
+                                                                        del
+                                                                        tex
+
+                                                                        pn
+                                                7zi
+                                               cha
+
+                                              p-e
+
+
+
+
+                                                                                                                                      pdftotextµ
+
+
+
+                                                                      un
+                                                                                                                                                          AFL ++          < 0.05         +L (1.00)
+                                                                     e2f
+
+                                                                    jdu
+                                                                    rea
+                                                                    gto
+                                                                    fto
+                                                                      t
+                                                                  tex
+                                        vfy
+
+                                           7zi
+
+
+
+
+                                                                 ob
+                                                                                                                                                          S YM CC         < 0.05         +L (1.00)
+                                                                 pn
+
+
+
+
+                                                                                                                                      pngtopng
+                                                             fto
+
+
+
+
+                                                                                                                                      7zip                AFL ++          < 0.05         +L (1.00)
+                                                           pd
+
+
+
+
+                                                                                                                                      pdftotext           AFL ++          < 0.05         +L (1.00)
+                                                                                                                                      e2fsck              W EIZZ          < 0.05         +L (1.00)
+Figure 4: Logarithmic plot showing the number of basic blocks
+                                                                                                                                      objdump             W EIZZ          1.0000             (0.48)
+exclusively found by F UZZTRUCTION (FT), W EIZZ, or S YM CC.
+                                                                                                                                      readelf             S YM CC         0.8413             (0.44)
+S YM CC does not support vfychainµ and 7zip (µ) .
+                                                                                                                                      unzip               S YM CC         0.6905          -S (0.40)
+
+
+unique functions covered by F UZZTRUCTION in case of rsaµ ,                                                                       Statistical significance. Following Klees et al.’ [39] as well
+we find that F UZZTRUCTION uniquely covers 298 functions                                                                          as Arcuri’s and Briand’s [40, 41] recommendations, we ver-
+related to implementations of different encryption and hash-                                                                      ify whether the observed differences are statistically signifi-
+ing algorithms, like sha256, sha512, AES, and IDEA; it even                                                                       cant. To do so, we use the two-sided non-parametric Mann-
+triggers the use of different cipher modes. This is particularly                                                                  Whitney-U test [42]. Additionally, we measure effect sizes
+noteworthy as the generator does not consume any seed input                                                                       to quantify the improvement. To this end, we conduct the
+for this target. Consequently, the variety in outputs resulting                                                                   non-parametric Vargha and Delaney Â12 test [43, 44]. It mea-
+from our approach succeeds in generating high-quality inputs                                                                      sures the probability that running F UZZTRUCTION yields
+for complex structures, even without seed inputs.                                                                                 higher coverage values than its best performing competitor
+   Other fuzzers struggle with this type of targets: Since the                                                                    (AFL++, S YM CC, or W EIZZ): If both algorithms are equiv-
+mathematics underpinning public key cryptography are de-                                                                          alent, Â12 = 0.5; if, for instance, Â12 = 0.9, 90% of the time,
+signed as one-way operations, it is impossible for symbolic                                                                       F UZZTRUCTION achieves better coverage results than the
+execution to generate valid key pairs out of thin air. AFL++                                                                      fuzzer we compared it to. Based on Vargha and Delaney’s
+and W EIZZ both void the cryptographic primitives due to                                                                          guidelines [43], we consider an effect size Â12 > 0.56 as small,
+the bit-level mutations and W EIZZ does not benefit from its                                                                      > 0.64 as medium, and > 0.71 as large. For the sake of sim-
+approach since it can not infer valid signatures or encryption.                                                                   plicity, we only report the difference to the best-performing
+As a result, F UZZTRUCTION significantly outperforms other                                                                        competitor (chosen by median coverage).
+fuzzers for cryptographic applications.                                                                                               The results in Table 2 show that F UZZTRUCTION is sig-
+                                                                                                                                  nificantly better for all but three targets, i. e., the difference
+        Our approach is excellent for fuzzing cryptographic                                                                       in the number of found basic blocks is statistically signifi-
+        applications and represents the only way of fuzzing such                                                                  cant (indicated by p-value < 0.05) and the effect size is large
+        applications without relying on manual harnessing.                                                                        (Â12 > 0.71). Unsurprisingly, this does not hold for objdump
+                                                                                                                                  and readelf, targets where traditional fuzzers already per-
+                                                                                                                                  form well. Here, W EIZZ and S YM CC are slightly better (in
+Exclusively Covered Basic Blocks. To further quantify the                                                                         the median coverage), however, according to Mann-Whitney-
+difference between the state-of-the-art techniques tackling                                                                       U, there is no statistical difference for objdump and readelf.
+the creation of complex input formats, we analyze the ba-                                                                         Additionally, in both cases, the effect size does not meet the
+sic blocks found exclusively by a single fuzzer from F UZZ -                                                                      bar suggested by Vargha and Delaney [43]. Only for the third
+TRUCTION , W EIZZ , and S YM CC. As visible in Figure 4,                                                                          target, unzip, a small negative effect size is visible, however,
+F UZZTRUCTION finds significantly more basic blocks (that                                                                         it is statistically insignificant (p-value > 0.05).
+are not found by any other fuzzer) for all targets but readelf                                                                        Overall, these results support our intuition that F UZZ -
+and unzip. This indicates that F UZZTRUCTION covers code                                                                          TRUCTION finds significantly more coverage on most targets.
+the other two fuzzers failed to explore.                                                                                          For the other targets, we could not find a significant difference
+
+
+
+USENIX Association                                                                                                                                    32nd USENIX Security Symposium              1857
+Table 3: Unique crashes found by different fuzzers. All crashes have                       supporting our argument that it is effective in uncovering
+been bucketed by hashing the last three functions of Valgrind’s                            bugs in programs using cryptographic primitives. Still, for
+backtrace (or of all backtraces if Valgrind reports multiple, e. g., for                   several targets, no fuzzer finds any crash: This is unsurpris-
+adjacent allocations of the memory location accessed by an invalid
+                                                                                           ing, as targets such as OpenSSL’s rsaµ and dsaµ have been
+write). We mark targets for which a fuzzer failed to run with a dash.
+Best result is marked in bold.
+                                                                                           audited often and exhibit a comparably small attack surface.
+                                                                                           Others, such as pngtopng (i. e., libpng) have been well-
+ Target             SYMCC        WEIZZ        AFL++       FT-N OAFL        FT     Total    tested by previous fuzzing campaigns [33]. Interestingly,
+ rsaµ                  0             0           0              0          0       0
+                                                                                           S YM CC performs as well as AFL++ despite its subpar cov-
+ dsaµ                  0             0           0              0          0       0       erage. Underlining the synergy effects of combining our
+ vfychainµ              -           0            0              3           3      3       approach with AFL++, F UZZTRUCTION finds significantly
+ 7zipµ                  -           2            5              4          86      90
+ pdftotextµ            0             0           0              0           1      1
+                                                                                           more crashes than F UZZTRUCTION -N OAFL alone. We man-
+ pngtopng              0             0           0              0          0       0       ually triaged and reported 27 bugs so far in a coordinated
+ 7zip                   -           4            2              1          54      56      way to the developers. At the time of writing, 19 of these
+ pdftotext             0             0           0              0          0       0
+ e2fsck                1             1           1              6           7      10
+                                                                                           reports were acknowledged as valid by the developers. The re-
+ objdump               0             0           0              0           8      8       ported bugs belong to the following targets (# Acknowledged,
+ readelf               1             1           0              0           2      2       # Reported): unzip (3/3), readelf (1/1), objdump (4/4),
+ unzip                 23           31           25             4          23      38
+                                                                                           pdftotext (1/1), 7zipµ (0/8), e2fsck (7/7), and vfychainµ
+ Sum1                  25           37           31            17          151     261
+ 1)
+                                                                                           (3/3).
+      For 7zipµ and 7zip, a fuzzer may inadvertently find the same crash twice (once for
+      7zipµ and once for 7zip). We count such overlapping bugs only once for the sum.
+                                                                                               F UZZTRUCTION significantly outperforms current state-
+                                                                                               of-the-art fuzzers both w.r.t. to coverage and the number
+between F UZZTRUCTION and its best competitor.                                                 of found security-relevant crashes.
+
+
+5.3        Found Bugs
+During our evaluation, we found multiple crashes in the pro-                               6    Discussion
+grams under test. Since detecting crashes, and therefore bugs,
+                                                                                           The novel approach we present in this work is suitable for
+is the overarching goal of a fuzzer, these findings provide an
+                                                                                           successfully leveraging domain knowledge in generator appli-
+additional proxy for the effectiveness of our approach. To
+                                                                                           cations to generate inputs for complex formats that are both
+reduce noise in the huge number of produced crashes, we
+                                                                                           structurally correct and adhere to constraints within the struc-
+first ran Valgrind on all crashing inputs to categorize them
+                                                                                           ture, such as cryptographic primitives or compression. We
+according to the type of the underlying memory violation,
+                                                                                           provide a critical discussion of the results, limitations, and
+e. g., segmentation fault, invalid read, or invalid write. For
+                                                                                           possible future work in the following.
+vfychainµ , we also consider uninitialized reads, which are
+considered security relevant by upstream. Alongside this cat-                              Threats to Validity. It is critical to assert the validity of
+egory, Valgrind also provides a stack trace of the function                                conclusions drawn from experiments, especially if they are
+causing the crash and context information, such as stack traces                            empirical. We identify three particularly relevant dimensions
+of neighboring allocations. We bucket the crashes based on                                 for our research and outline our assumptions and the steps
+the last three functions in the stack trace(s). This massively                             taken to ensure the experiments are valid.
+deduplicates the number of crashing inputs (as each bucket                                    External Validity. A major risk is whether any conclusions
+contains hundreds if not thousands of crashing inputs), how-                               based on the set of target programs tested can be applied to
+ever, it still represents no exact mapping to the underlying                               a broader, more general category of targets. Even though
+bugs. Identifying and triaging bugs requires significant man-                              assessing untested software is challenging, we have carefully
+ual effort and often the expertise of a domain expert familiar                             selected a diverse set of targets covering different categories
+with the program.                                                                          of programs. In particular, we have not only selected targets
+   Our results are reported in Table 3. As can be seen, F UZZ -                            employing cryptography, for which our approach is designed
+TRUCTION found the most crashes, with a majority of all                                    and thus likely to succeed, but also targets that have been
+crashes occurring in 7zip. As we fuzz two configurations of                                tested regularly by other fuzzers, such as objdump or libpng
+7zip (µ) , one using encryption and one without, the fuzzers                               (used by pngtopng). Beyond our evaluation, we open-source
+can inadvertently find the same crash for both of them. In-                                our implementation to allow anyone to evaluate our approach.
+vestigating how many bugs overlap this way, we find this                                      Internal Validity. Beyond generality, it is crucial to mini-
+occurs for all fuzzers (W EIZZ: 2 overlapping bugs, AFL++:                                 mize systematic errors in the evaluation process itself. We
+2, F UZZTRUCTION -N OAFL: 1, F UZZTRUCTION: 33). In-                                       repeat our experiments for all targets five times to avoid any
+terestingly, F UZZTRUCTION finds 53 bugs unique to 7zipµ ,                                 such errors. Furthermore, we evaluate the achieved coverage
+
+
+
+1858        32nd USENIX Security Symposium                                                                                           USENIX Association
+for all fuzzers on the same uninstrumented binary to enable         as input: When fuzzed, AFL++ will make many mutations
+comparable and consistent coverage measurements. Finally,           destroying the PDF’s format, such that pdftotext is unable
+to avoid selection bias, we use the same set of seeds files         to produce interesting outputs that can be fed into the con-
+for all fuzzers (or even larger sets for competitors of our ap-     sumer, pdftotext. Ultimately, this shifts the problem of
+proach), as outlined in Section 5.1.                                generating valid input for the consumer to the problem of
+   Construct Validity. A final threat to validity is whether the    generating valid input for the generator. F UZZTRUCTION, on
+evaluation measures what it is supposed to measure. In gen-         the other hand, modifies the generator itself to produce valid
+eral, it is difficult to compare the approach implemented by        but slightly incorrect data.
+a particular fuzzer with another, since it is highly dependent
+on engineering factors that are orthogonal to the fuzzer’s ap-      Seeding. In practice, forming a well-rounded seed corpus
+proach itself. To avoid such discrepancies, we ensure that          is crucial for setting up a successful fuzzing campaign. Prior
+fuzzer configurations use the same baseline, i. e., we com-         research has also shown that selecting seeds has an impact on
+bine them with the same version of AFL++. Thus, when                fuzzing results [45, 46]. For a fair evaluation, we use simple,
+observing changes in coverage relative to the performance           uninformed seed files during our experiments (see Table 6 in
+of AFL++, we can attribute this change to the paired ap-            Appendix C).
+proach, F UZZTRUCTION or S YM CC respectively. This does            Interactive Generator Consumer Execution. While this
+not hold for W EIZZ, which cannot be configured this way.           is not a limitation inherent to our approach, our prototype im-
+Note that W EIZZ and AFL++ share some concepts, e. g.,              plementation does not support bidirectional communications,
+AFL++’s cmpcov feature is inspired by W EIZZ [1]. Ad-               e. g., client-server applications. Although it is generally possi-
+ditionally, W EIZZ outperforms AFL++ on almost all their            ble, supporting such scenarios introduces new challenges that
+tested benchmarks [30]. Hence, we believe the comparison to         demand consideration. For example, it requires a new oracle
+be acceptable w.r.t. to construct validity.                         to determine whether a fuzzing iteration is over or if one of
+Requirement for a Generator Application. Intuitively,               the participants is still processing data and about to send an
+requiring a generator application for our approach seems like       answer to the other party. Apart from that, we believe our
+a restriction. However, if an application parses a specific         approach could be well suited to fuzz complex protocols such
+data format or protocol, there is typically a complementing         as TLS that cannot be fuzzed by current approaches [47, 48],
+program capable of producing such data. Having a data for-          mainly due to the cryptographic primitives used.
+mat without programs producing such data would render the
+existence of the format itself futile.                              7   Related Work
+Multiple Generator Applications. Having multiple gener-
+ator applications that implement different set of features w.r.t.   Our approach opens a new avenue towards overcoming the
+to the target data format can be beneficial to cover more code      problem of solving complex constraints. Previous research
+within the target program. Intuitively, this is comparable to       has proposed several different approaches to tackle different
+having a more diverse seed set for traditional fuzzing, where       aspects of the same problem.
+the seeds cover different code locations and serve as a starting
+                                                                    Hybrid Fuzzers. To address the shortcomings of blind
+point for later mutations. Similarly, having multiple genera-
+                                                                    fuzzers and feedback-driven fuzzers in solving complex con-
+tors implementing the same features may help fuzzing, since
+                                                                    straints, several hybrid fuzzers have been developed. These
+different implementations may produce different outputs.
+                                                                    fuzzers commonly employ advanced program analysis tech-
+Using an Unmodified Generator. Approximating F UZZ -                niques to assist the fuzzer. They identify difficult-to-solve
+TRUCTION’s     approach, we could use AFL++ to provide mu-          constraints and compute an input that passes this constraint.
+tated input to the generator and feed the outputs produced          In theory, this unlocks the fuzzer by showing it how to bypass
+by the generator into the consumer. Other than for F UZZ -          this particular roadblock. Frequently used program analysis
+TRUCTION , the generator itself is here left untouched. This        techniques are taint tracking [17–19] and concolic/symbolic
+has a number of drawbacks: First, a number of applications          execution [5, 6, 14, 16]. While these techniques work for con-
+does not use any input (genrsaµ , gendsaµ , mke2fs, or signµ ).     straints imposed by checksums and similar constructs, they
+Second, other applications such as 7zip(µ) or zip only wrap         fail for more complex constraints as imposed by cryptographic
+the input, here in an compressed container. F UZZTRUCTION’s         primitives, as also becomes visible in our evaluation.
+approach can modify the wrapper itself, i. e., produce slightly        Moreover, symbolic execution fails to scale to large pro-
+corrupt zip-files, which AFL++ mutated input data is unable         grams due to the path explosion problem and requires de-
+to achieve. Third, for applications not affected by these draw-     scriptions of the execution environment. Our approach, how-
+backs, e. g., qpdfµ or pngtopng, using AFL++ to produce             ever, fulfills the same role as these techniques, but without
+input still suffers from AFL++’s inability to overcome more         their shortcomings: Instead of trying to extract the domain
+complex constraints. For example, qpdfµ expects a PDF file          knowledge needed to solve a particular constraint from the
+
+
+
+USENIX Association                                                                    32nd USENIX Security Symposium            1859
+fuzzing target (using heavy-weight analysis techniques), we         8   Conclusion
+use a second program to generate such data. While not di-
+rected towards solving one particular constraint, our approach      In this paper, we present F UZZTRUCTION, a novel approach
+generates inputs that (almost) fulfill the specification these      to software fault injection-based fuzzing. Based on the in-
+programs use for data exchange, thereby implicitly passing          sight that programs that consume an input have one (or more)
+these constraints.                                                  counterpart programs generating this input, we propose to
+                                                                    instrument and mutate this generator. By injecting subliminal
+Grammar-based Fuzzing. Like our approach, grammar-                  software faults, we can harness the implicit domain knowl-
+based fuzzers use a specification to generate valid inputs for      edge encoded in the application and generate inputs that al-
+programs, thus exercising deeper state space [21–29]. As            most match the specification. Using these inputs for fuzzing,
+opposed to our approach, typically these grammars must be           F UZZTRUCTION produces high-quality inputs that produce
+manually generated. A subset of fuzzers attempts to approx-         high code coverage and exercise deep program states. Our
+imate grammars without prior domain knowledge about the             approach is lightweight and does not require costly analyses
+target [30, 34, 35]. While such approximations can identify         or manually prepared execution environments. In the evalua-
+logical units (chunks, tokens, or fields) within the targeted       tion, we find that our approach shows its strength by generally
+data format, they cannot solve complex constraints imposed          outperforming state-of-the-art fuzzing methods, especially
+on these logical units. This can also be seen in our evaluation,    on targets with complex constraints, usually in the form of
+where F UZZTRUCTION outperforms W EIZZ for targets that             cryptographic primitives or compression applied to the input.
+use cryptography.
+Domain Expertise. Given a human expert, they can bypass             9   Acknowledgements
+many of the challenges addressed by our work. A human
+expert can manually harness the target, remove checksums,           We would like to thank our anonymous reviewers for their
+provide a grammar to the fuzzer, or explicitly annotate the tar-    valuable comments and suggestions. We also thank Marcel
+get to guide the fuzzer [20]. However, having a domain expert       Böhme, Merlin Chlosta, Thorsten Eisenhofer, Joel Frank,
+is costly and not feasible in all applications, such as legacy      Keno Hassler, Daniel Klischies, Lea Schönherr, and Simon
+software. Our approach approximates the human expert’s              Wörner for their feedback. This work was funded by the
+knowledge by harnessing the domain knowledge encoded by             Deutsche Forschungsgemeinschaft (DFG, German Research
+the programmer in the generator application.                        Foundation) under Germany’s Excellence Strategy – EXC
+Differential Fuzzing. Other approaches [27, 49–56] sim-             2092 CASA – 390781972 and by the German Federal Min-
+ilarly exploit the fact that two programs share a specifica-        istry of Education and Research (BMBF, project CPSec –
+tion: Differential fuzzers or, more general, differential test-     16KIS1564K).
+ing. However, their underlying idea is to compare two con-
+sumers against each other, providing a fine-granular oracle         References
+that detects miscomputations beyond memory safety bugs.
+Our approach focuses on the two endpoints, a generator and           [1] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and
+a consumer, using a shared data format, making these ap-                 Marc Heuse. AFL++ : Combining Incremental Steps of
+proaches orthogonal. Our approach could be used to generate              Fuzzing Research. In USENIX Workshop on Offensive
+seeds that are then tested in a differential fuzzing setup of two        Technologies (WOOT), 2020. (Cited on 1, 2, 7, 8, 13)
+consumers.
+                                                                     [2] Ren Ding, Yonghae Kim, Fan Sang, Wen Xu, Gururaj
+Mutation Testing. Similar to our approach, mutation test-
+                                                                         Saileshwar, and Taesoo Kim. Hardware Support to
+ing [57–59] inserts faults into a target program. The goal is
+                                                                         Improve Fuzzing Performance and Precision. In ACM
+usually to simulate common programming bugs to assess the
+                                                                         Conference on Computer and Communications Security
+quality of a test suite or generate one. Our work is similar
+                                                                         (CCS), 2021. (Cited on 1)
+in that we inject faults into a program; however, we do not
+attempt to generate mutations that the test suites do not cover,     [3] Wen Xu, Sanidhya Kashyap, Changwoo Min, and Tae-
+but instead inject arbitrary faults. Instead of assessing the            soo Kim. Designing New Operating Primitives to Im-
+quality of an existing set of test cases, we use the outputs             prove Fuzzing Performance. In ACM Conference on
+produced by the mutant, i. e., the buggy program, to fuzz                Computer and Communications Security (CCS), 2017.
+another application. We then use coverage feedback within                (Cited on 1)
+the fuzzing target, amongst other information, to determine
+the quality of a mutation. In summary, mutation testing and          [4] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko,
+our approach share the idea of injecting faults; however, their          Robert Gawlik, and Thorsten Holz. RedQueen: Fuzzing
+goals and thus designs are fundamentally different.                      with Input-to-State Correspondence. In Symposium on
+
+
+
+1860    32nd USENIX Security Symposium                                                                       USENIX Association
+     Network and Distributed System Security (NDSS), 2019.         Symbolic Execution. In Symposium on Network and
+     (Cited on 1, 3, 7)                                            Distributed System Security (NDSS), 2016. (Cited on 1,
+                                                                   3, 5, 13)
+ [5] Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and
+     Taesoo Kim. QSYM: A Practical Concolic Execu-            [15] Cristian Cadar, Daniel Dunbar, Dawson R Engler, et al.
+     tion Engine Tailored for Hybrid Fuzzing. In USENIX            KLEE: Unassisted and Automatic Generation of High-
+     Security Symposium, 2018. (Cited on 1, 3, 5, 13)              Coverage Tests for Complex Systems Programs. In
+                                                                   Symposium on Operating Systems Design and Imple-
+ [6] Sebastian Poeplau and Aurélien Francillon. Symbolic
+                                                                   mentation (OSDI), 2008. (Cited on 1, 3)
+     Execution with SymCC: Don’t Interpret, Compile! In
+     USENIX Security Symposium, 2020. (Cited on 1, 2, 3,      [16] Hui Peng, Yan Shoshitaishvili, and Mathias Payer.
+     5, 7, 13)                                                     T-Fuzz: Fuzzing by Program Transformation.      In
+ [7] Sergej Schumilo, Cornelius Aschermann, Robert Gaw-            IEEE Symposium on Security and Privacy (S&P), 2018.
+     lik, Sebastian Schinzel, and Thorsten Holz. kAFL:             (Cited on 1, 13)
+     Hardware-Assisted Feedback Fuzzing for OS Kernels.
+     In USENIX Security Symposium, 2017. (Cited on 1)         [17] Vijay Ganesh, Tim Leek, and Martin Rinard. Taint-
+                                                                   based Directed Whitebox Fuzzing. In International Con-
+ [8] Tobias Scharnowski, Nils Bars, Moritz Schloegel, Eric         ference on Software Engineering (ICSE), 2009. (Cited
+     Gustafson, Marius Muench, Giovanni Vigna, Christo-            on 1, 3, 13)
+     pher Kruegel, Thorsten Holz, and Ali Abbasi. Fuzzware:
+     Using Precise MMIO Modeling for Effective Firmware       [18] Tielei Wang, Tao Wei, Guofei Gu, and Wei Zou.
+     Fuzzing. In USENIX Security Symposium, 2022. (Cited           TaintScope: A Checksum-aware Directed Fuzzing Tool
+     on 1)                                                         for Automatic Software Vulnerability Detection. In
+                                                                   IEEE Symposium on Security and Privacy (S&P), 2010.
+ [9] Bo Feng, Alejandro Mera, and Long Lu. P2IM: Scal-             (Cited on 1, 3, 13)
+     able and Hardware-independent Firmware Testing via
+     Automatic Peripheral Interface Modeling. In USENIX       [19] Peng Chen and Hao Chen. Angora: Efficient Fuzzing
+     Security Symposium, 2020. (Cited on 1)                        by Principled Search. In IEEE Symposium on Security
+                                                                   and Privacy (S&P), 2018. (Cited on 1, 3, 13)
+[10] Eric Gustafson, Marius Muench, Chad Spensky, Nilo
+     Redini, Aravind Machiry, Yanick Fratantonio, Da-         [20] Cornelius Aschermann, Sergej Schumilo, Ali Abbasi,
+     vide Balzarotti, Aurélien Francillon, Yung Ryn Choe,          and Thorsten Holz. IJON: Exploring Deep State Spaces
+     Christopher Kruegel, et al. Toward the Analysis of Em-        via Fuzzing. In IEEE Symposium on Security and
+     bedded Firmware through Automated Re-hosting. In              Privacy (S&P), 2020. (Cited on 1, 14)
+     Symposium on Recent Advances in Intrusion Detection
+     (RAID), 2019. (Cited on 1)                               [21] Christian Holler, Kim Herzig, and Andreas Zeller.
+                                                                   Fuzzing with Code Fragments. In USENIX Security
+[11] Karl Koscher, Tadayoshi Kohno, and David Molnar. Sur-         Symposium, 2012. (Cited on 1, 2, 14)
+     rogates: Enabling Near-Real-Time Dynamic Analyses
+     of Embedded Systems. In USENIX Workshop on Offen-        [22] Van-Thuan Pham, Marcel Böhme, Andrew E Santosa,
+     sive Technologies (WOOT), 2015. (Cited on 1)                  Alexandru Răzvan Căciulescu, and Abhik Roychoud-
+[12] Sergej Schumilo, Cornelius Aschermann, Ali Abbasi,            hury. Smart Greybox Fuzzing. IEEE Transactions on
+     Simon Wörner, and Thorsten Holz. Nyx: Greybox                 Software Engineering, 47(9):1980–1997, 2019. (Cited
+     Hypervisor Fuzzing using Fast Snapshots and Affine            on 1, 2, 14)
+     Types. In USENIX Security Symposium, 2021. (Cited
+                                                              [23] Cornelius Aschermann, Tommaso Frassetto, Thorsten
+     on 1)
+                                                                   Holz, Patrick Jauernig, Ahmad-Reza Sadeghi, and
+[13] Sang Kil Cha, Maverick Woo, and David Brumley.                Daniel Teuchert. Nautilus: Fishing for Deep Bugs
+     Program-adaptive Mutational Fuzzing. In IEEE Sympo-           with Grammars. In Symposium on Network and Dis-
+     sium on Security and Privacy (S&P), 2015. (Cited on 1,        tributed System Security (NDSS), 2019. (Cited on 1, 2,
+     3)                                                            14)
+
+[14] Nick Stephens, John Grosen, Christopher Salls, An-       [24] Rohan Padhye, Caroline Lemieux, Koushik Sen, Mike
+     drew Dutcher, Ruoyu Wang, Jacopo Corbetta, Yan                Papadakis, and Yves Le Traon. Semantic Fuzzing with
+     Shoshitaishvili, Christopher Kruegel, and Giovanni Vi-        Zest. In International Symposium on Software Testing
+     gna. Driller: Augmenting Fuzzing Through Selective            and Analysis (ISSTA), 2019. (Cited on 1, 2, 14)
+
+
+
+USENIX Association                                                            32nd USENIX Security Symposium       1861
+[25] HyungSeok Han, DongHyeon Oh, and Sang Kil Cha.           [36] Marcel Böhme, László Szekeres, and Jonathan Metz-
+     CodeAlchemist: Semantics-Aware Code Generation to             man. On the Reliability of Coverage-Based Fuzzer
+     Find Vulnerabilities in JavaScript Engines. In Sym-           Benchmarking. In International Conference on Soft-
+     posium on Network and Distributed System Security             ware Engineering (ICSE), 2022. (Cited on 8)
+     (NDSS), 2019. (Cited on 1, 2, 14)
+                                                              [37] lafintel. laf-intel - Circumventing Fuzzing Roadblocks
+[26] Soyeon Park, Wen Xu, Insu Yun, Daehee Jang, and               with Compiler Transformations. https://lafintel.
+     Taesoo Kim. Fuzzing JavaScript Engines with Aspect-           wordpress.com. (Cited on 8)
+     preserving Mutation. In IEEE Symposium on Security
+                                                              [38] The DynamoRIO Team. DynamoRIO.              https://
+     and Privacy (S&P), 2020. (Cited on 1, 2, 14)
+                                                                   dynamorio.org/. (Cited on 8)
+[27] Jihyeok Park, Seungmin An, Dongjun Youn, Gyeong-         [39] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei,
+     won Kim, and Sukyoung Ryu. JEST: N+1-Version                  and Michael Hicks. Evaluating Fuzz Testing. In ACM
+     Differential Testing of Both JavaScript Engines and           Conference on Computer and Communications Security
+     Specification. In International Conference on Software        (CCS), 2018. (Cited on 11)
+     Engineering (ICSE), 2021. (Cited on 1, 2, 14)
+                                                              [40] Andrea Arcuri and Lionel Briand. A Practical Guide
+[28] Vasudev Vikram, Rohan Padhye, and Koushik Sen.                for Using Statistical Tests to Assess Randomized Algo-
+     Growing A Test Corpus with Bonsai Fuzzing. In Inter-          rithms in Software Engineering. In International Con-
+     national Conference on Software Engineering (ICSE),           ference on Software Engineering (ICSE), 2011. (Cited
+     2021. (Cited on 1, 2, 14)                                     on 11)
+
+[29] Y. Chen, R. Zhong, H. Hu, H. Zhang, Y. Yang, D. Wu,      [41] Andrea Arcuri and Lionel Briand. A Hitchhiker’s
+     and W. Lee. One Engine to Fuzz ’em All: Generic               Guide to Statistical Tests for Assessing Randomized
+     Language Processor Testing with Semantic Validation.          Algorithms in Software Engineering. Software Test-
+     In IEEE Symposium on Security and Privacy (S&P),              ing, Verification and Reliability, 24(3):219–250, 2014.
+     2021. (Cited on 1, 2, 14)                                     (Cited on 11)
+
+[30] Andrea Fioraldi, Daniele Cono D’Elia, and Emilio         [42] Henry B Mann and Donald R Whitney. On a Test of
+     Coppa. WEIZZ: Automatic Grey-box Fuzzing for                  whether One of Two Random Variables is Stochasti-
+     Structured Binary Formats. In International Symposium         cally Larger than the Other. Annals of Mathematical
+     on Software Testing and Analysis (ISSTA), 2020. (Cited        Statistics, 18(1):50–60, 1947. (Cited on 11)
+     on 2, 3, 7, 13, 14)
+                                                              [43] András Vargha and Harold D Delaney. A Critique and
+[31] Michał Zalewski. American Fuzzy Lop. http://                  Improvement of the CL Common Language Effect Size
+     lcamtuf.coredump.cx/afl/. (Cited on 2, 18)                    Statistics of McGraw and Wong. Journal of Educational
+                                                                   and Behavioral Statistics, 25(2):101–132, 2000. (Cited
+[32] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-             on 11)
+     hury. Coverage-based Greybox Fuzzing as Markov
+                                                              [44] Robert J Grissom and John J Kim. Effect Sizes for
+     Chain. IEEE Transactions on Software Engineering,
+                                                                   Research: A Broad Practical Approach. Lawrence
+     45(5):489–506, 2017. (Cited on 2)
+                                                                   Erlbaum Associates Publishers, 2005. (Cited on 11)
+[33] OSS-Fuzz - Continuous Fuzzing for Open Source            [45] Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos,
+     Software. https://github.com/google/oss-fuzz.                 Jonathan Foote, David Warren, Gustavo Grieco, and
+     (Cited on 2, 12)                                              David Brumley. Optimizing Seed Selection for Fuzzing.
+                                                                   In USENIX Security Symposium, 2014. (Cited on 13)
+[34] Tim Blazytko, Cornelius Aschermann, Moritz
+     Schloegel, Ali Abbasi, Sergej Schumilo, Simon Wörner,    [46] Dongdong She, Abhishek Shah, and Suman Jana. Effec-
+     and Thorsten Holz. Grimoire: Synthesizing Structure           tive Seed Scheduling for Fuzzing with Graph Centrality
+     while Fuzzing. In USENIX Security Symposium, 2019.            Analysis. In IEEE Symposium on Security and Privacy
+     (Cited on 3, 14)                                              (S&P), 2022. (Cited on 13)
+
+[35] Wei You, Xuwei Liu, Shiqing Ma, David Mitchel Perry,     [47] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoud-
+     Xiangyu Zhang, and Bin Liang. SLF: Fuzzing without            hury. AFLNet: A Greybox Fuzzer for Network Proto-
+     Valid Seed Inputs. In International Conference on             cols. In International Conference on Software Testing,
+     Software Engineering (ICSE), 2019. (Cited on 3, 14)           Validation and Verification (ICST), 2020. (Cited on 13)
+
+
+
+1862   32nd USENIX Security Symposium                                                                USENIX Association
+[48] Sergej Schumilo, Cornelius Aschermann, Andrea Jem-        [58] Goran Petrović and Marko Ivanković. State of Mutation
+     mett, Ali Abbasi, and Thorsten Holz. Nyx-Net: Net-             Testing at Google. In International Conference on Soft-
+     work Fuzzing with Incremental Snapshots. In Euro-              ware Engineering: Software Engineering in Practice,
+     pean Conference on Computer Systems (EuroSys), 2022.           2018. (Cited on 14)
+     (Cited on 13)
+                                                               [59] Mike Papadakis, Marinos Kintis, Jie Zhang, Yue Jia,
+[49] Xuejun Yang, Yang Chen, Eric Eide, and John Regehr.            Yves Le Traon, and Mark Harman. Mutation Testing
+     Finding and Understanding Bugs in C Compilers. In              Advances: an Analysis and Survey. In Advances in
+     ACM SIGPLAN Conference on Programming Language                 Computers, volume 112, pages 275–378. Elsevier, 2019.
+     Design and Implementation (PLDI), 2011. (Cited on              (Cited on 14)
+     14)
+                                                               [60] Samples of binary with different formats and ar-
+[50] Chad Brubaker, Suman Jana, Baishakhi Ray, Sarfraz              chitectures. A test suite for your binary analysis
+     Khurshid, and Vitaly Shmatikov. Using Frankencerts for         tools.      https://github.com/JonathanSalwan/
+     Automated Adversarial Testing of Certificate Validation        binary-samples. (Cited on 18)
+     in SSL/TLS Implementations. In IEEE Symposium on
+     Security and Privacy (S&P), 2014. (Cited on 14)           A    Assigned CVEs
+[51] Vu Le, Mehrdad Afshari, and Zhendong Su. Com-             In Table 4, we list the CVEs assigned to bugs found by
+     piler Validation via Equivalence Modulo Inputs. ACM       F UZZTRUCTION -N OAFL.
+     SIGPLAN Notices, 49(6):216–226, 2014. (Cited on 14)
+                                                               Table 4: Table of CVEs found by F UZZTRUCTION -N OAFL. We
+[52] Changwoo Min, Sanidhya Kashyap, Byoungyoung Lee,          used F UZZTRUCTION -N OAFL rather than F UZZTRUCTION to en-
+     Chengyu Song, and Taesoo Kim. Cross-checking Se-          sure the found vulnerabilities cannot be attributed to AFL++’s mu-
+     mantic Correctness: The Case of Finding File System       tations but are a result of our novel approach.
+     Bugs. In Symposium on Operating Systems Principles
+     (SOSP), 2015. (Cited on 14)                                   CVE identifier      Target    Bug Description
+                                                                   CVE-2021-4217       unzip     Out-of-bounds read in fn
+[53] Yuting Chen, Ting Su, Chengnian Sun, Zhendong Su,             CVE-2022-0530       unzip     Out-of-bounds read in fn
+     and Jianjun Zhao. Coverage-directed Differential Test-        CVE-2022-0529       unzip     Out-of-bounds write in fn
+     ing of JVM Implementations. In ACM SIGPLAN Con-               CVE-2022-1304       e2fsck    Out-of-bounds write in fn
+     ference on Programming Language Design and Imple-
+     mentation (PLDI), 2016. (Cited on 14)
+
+[54] Theofilos Petsios, Adrian Tang, Salvatore Stolfo, Ange-   B    Target Description
+     los D. Keromytis, and Suman Jana. Nezha: Efficient
+     Domain-independent Differential Testing. In IEEE Sym-     Table 5 describes the programs we have tested for our evalua-
+     posium on Security and Privacy (S&P), 2017. (Cited        tion.
+     on 14)
+
+[55] Jaewon Hur, Suhwan Song, Dongup Kwon, Eunjin              C    Seed Description
+     Baek, Jangwoo Kim, and Byoungyoung Lee. Difuz-
+     zRTL: Differential Fuzz Testing to Find CPU Bugs. In      Table 6 shows the different seeds sets we used as input for the
+     IEEE Symposium on Security and Privacy (S&P), 2021.       generators and consumers during our evaluation.
+     (Cited on 14)
+
+[56] Igor Lima, Jefferson Silva, Breno Miranda, Gustavo
+     Pinto, and Marcelo d’Amorim.       Exposing Bugs
+     in JavaScript Engines through Test Transplantation
+     and Differential Testing. Software Quality Journal,
+     29(1):129–158, 2021. (Cited on 14)
+
+[57] Yue Jia and Mark Harman. An Analysis and Survey
+     of the Development of Mutation Testing. IEEE Trans-
+     actions on Software Engineering, 37(5):649–678, 2010.
+     (Cited on 14)
+
+
+
+USENIX Association                                                                32nd USENIX Security Symposium           1863
+Table 5: This table provides an overview of the different applications used during the evaluation. We tested the latest versions of the Ubuntu
+20.04 packages available at the time of our evaluation. For OpenSSL, vfychainµ , and pngtopng, we tested the latest versions from upstream.
+
+ Name               Version                       Description
+           µ
+ gendsa             openssl 1.1.1l                An OpenSSL sub command used to generate (possibly encrypted) DSA keys
+ dsaµ               openssl 1.1.1l                Sub command of OpenSSL for parsing (possibly encrypted) DSA keys
+ genrsaµ            openssl 1.1.1l                A Sub command of OpenSSL to generate (possibly encrypted) RSA keys
+ rsaµ               openssl 1.1.1l                Parsing of (possibly encrypted) RSA keys via the rsa sub command of OpenSSL
+ signµ              openssl 1.1.1l                The req sub command of OpenSSL for producing a self-signed keys certificate
+ vfychainµ          vfychain 3.79                 A utility that is part of the Network Security Services (NSS) suite of Mozilla
+                                                  Firefox and is used to validate certificate (chains).
+ 7zip(µ)            p7zip 16.02                   Application used to compress or decompress data. Optionally encrypted and
+                                                  protected via password.
+ qpdfµ (µ)          qpdf 9.1.1                    Tool for encrypting and manipulating PDF files
+ pdftotext(µ)       poppler-utils 0.86.1          Utility that is part of the poppler software suite and is used to convert (potentially
+                                                  encrypted) PDFs to text
+ zip(µ)             zip 3.0                       Decompressing utility with optional support for encryption
+ unzip(µ)           unzip 6.0                     Decompressing utility with optional support for encryption
+ pngtopng           libpng 1.6.37                 Utility of libpng that simply parses a png into memory and writes it back to hard
+                                                  disk afterwards
+ e2fsck             e2fsprogs 1.45.5              A application for checking hard disk images for errors and inconsistency
+ objcopy            binutils 2.34                 Utility for transforming different types of files, like ELFs. Used for, e. g., stripping
+                                                  symbols or removing sections.
+ readelf            binutils 2.34                 Tool for dumping information of ELF files
+ objdump            binutils 2.34                 Tool for disassembling ELF files and dumping additional information
+
+
+
+Table 6: Table of the different seed sets used during fuzzing. The columns Generator and Consumer list the applications that used the described
+seed set in the role of a consumer or generator, respectively. In case of the generators, objcopy was used to generate inputs for two different
+consumers (readelf, objdump) which causes the number of generators (11) to be unequal to the number of consumers (12).
+
+                Seed set used for                          Description                                                            Set Name
+         Generator              Consumer
+  {rsaµ , dsaµ , signµ }                 {}                An empty seed set                                                        empty
+       {mke2fs}                          {}                A single file of size 256 KiB containing zeros                       empty_256
+   {zip, 7zip, 7zipµ }                   {}                A single text file with the content aaaaa                                 text
+ {pdfseparate, qpdfµ }              {pdftotext}            Six simple PDF documents containing forms, annotations,                    pdf
+                                                           or basic geometric shapes
+            {}                     {pdftotextµ }           The same files as in the pdf set, but password protected                        -
+            {}                     {vfychainµ }            A self signed certificate generated using OpenSSL                               -
+            {}                         {rsaµ }             A password protected RSA key pair generated by openssl                          -
+            {}                         {dsaµ }             A password protected DSA key pair generated by openssl                          -
+            {}                         {7zip}              The text seed set compressed using 7zip                                         -
+            {}                        {7zipµ }             The text seed set compressed and encrypted using 7zip                           -
+            {}                        {unzip}              The text seed set compressed using zip                                          -
+        {pngtopng}                  {pngtopng}             The png seed from AFL [31]                                                      -
+            {}                       {e2fsck}              The file of the empty_256 set converted to an ext4 image                        -
+                                                           via mke2fs
+        {objcopy}              {objdump, readelf}          Files from [60] of size smaller than 1 MiB (a requirement                       -
+                                                           enforced by AFL++) which objcopy is able to process
+
+
+
+
+1864    32nd USENIX Security Symposium                                                                                 USENIX Association
+

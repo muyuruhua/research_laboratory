@@ -1,0 +1,1323 @@
+     BSFuzzer: Context-Aware Semantic Fuzzing for
+              BLE Logic Flaw Detection
+     Ting Yang126 , Yue Qin3 , Lan Zhang4 , Zhiyuan Fu5 , Junfan Chen5 , Jice Wang5 , Shangru Zhao6 , Qi Li78 * ,
+                                  Ruidong Li2 * , He Wang1 , and Yuqing Zhang61 *
+                                         1 School
+                                               of Cyber Engineering, Xidian University, China
+                              2 Schoolof Natural Science and Technology, Kanazawa University, Japan
+                        3 School of Information, Central University of Finance and Economics, China
+                4 School of Informatics, Computing, and Cyber Systems, Northern Arizona University, USA
+                                   5 College of Cyberspace Security, Hainan University, China
+            6 School of Computer Science and Technology, University of Chinese Academy of Sciences, China
+                        7 Institute for Network Sciences and Cyberspace, Tsinghua University, China
+                                           8 State Key Laboratory of Cryptology, China
+
+     yangt@nipc.org.cn, qinyue@cufe.edu.cn, Lan.Zhang@nau.edu, fuzy@hainanu.edu.cn, chenjunfan@hainanu.edu.cn,
+   wangjice@hainanu.edu.cn, zhaosr@nipc.org.cn, qli01@tsinghua.edu.cn, lrd@se.kanazawa-u.ac.jp, hewang@xidian.edu.cn,
+                                                        zhangyq@ucas.ac.cn
+
+
+   Abstract—Bluetooth Low Energy (BLE) has become a foun-             able connectivity, has become a cornerstone communication
+dational communication standard for modern connected devices.         standard for a wide range of devices, including consumer
+However, its complex design introduces subtle logic flaws, such as    wearables, medical monitoring devices, and Industrial Internet
+misinterpreted fields or invalid state transitions, that can enable
+authentication bypass, unauthorized control, or Denial-of-Service     of Things (IIoT) systems [1]–[3]. The widespread adoption
+(DoS) attacks. These issues often evade conventional fuzzing and      of BLE has significantly advanced device inter connectivity,
+formal analysis. To address this gap, we propose BSFuzzer, a          but it has also exposed security vulnerabilities in increasingly
+black-box, context-aware semantic fuzzing framework guided by         diverse and critical application scenarios. Bluetooth-enabled
+the Bluetooth Core Specification. BSFuzzer uses a Large Lan-          devices suffer from diverse security flaws, ranging from
+guage Model (LLM) agent to semantically parse the Bluetooth
+specification, extracting state machines and packet semantics         privacy violations (e.g., BlueSnarfing [4], Badbluetooth [5])
+from text, diagrams, and context. It then generates two types         and unauthorized device control (e.g., BLEEDINGBIT [6]) to
+of mutations: field-level violations of protocol rules and state-     Denial-of-Service (DoS) attacks (e.g., L2Fuzz [7]). As BLE
+level disruptions of key transitions. These are composed into         adoption continues to expand, such security weaknesses pose
+structured test sequences and executed on target devices. The         escalating threats, with potential consequences ranging from
+LLM agent is further used to verify responses against expected
+behaviors, enabling detection of subtle logic flaws beyond the        personal data breaches to systemic failures in mission-critical
+reach of traditional fuzzers.                                         applications.
+   We evaluated BSFuzzer on 19 real-world BLE devices, includ-           Among the security weaknesses in BLE, logic flaws pose
+ing 9 System-on-Chip (SoC) modules and 10 smartphones. It             a uniquely critical and elusive threat due to their ability to
+uncovered 36 security issues, including 34 previously unknown         bypass protocol-level safeguards without causing immediate,
+bugs, 9 of which have received CVE identifiers. Two critical flaws
+were recognized by a major vendor through bug bounty pro-             observable failures. By silently compromising authentication,
+grams. The experimental results indicate that BSFuzzer attains        encryption, or access control, they allow attackers to per-
+high accuracy in both LLM-based specification analysis (up to         sistently undermine device integrity and exfiltrate sensitive
+97%) and response validation (up to 85.8%), demonstrating its         data without raising alarms. Moreover, logic flaws are hidden
+effectiveness in semantic extraction and enhancing fuzzing per-       within seemingly valid protocol interactions and are only trig-
+formance. Compared to four state-of-the-art BLE vulnerability
+detection tools, BSFuzzer achieved 9.34% higher code coverage         gered under specific sequences and contextual states, making
+and exposed a broader class of vulnerabilities, demonstrating its     their detection inherently non-trivial. Therefore, to enhance the
+effectiveness in uncovering deep interpretation inconsistencies in    security of BLE-enabled systems, there is a pressing need for
+BLE protocol implementations.                                         logic flaw detection methods that preserve protocol compliance
+                        I. I NTRODUCTION                              and enable deep exploration of vulnerable states.
+                                                                      Research Gap. Recent research has explored various tech-
+   The Bluetooth Low Energy (BLE) protocol, known for                 niques for identifying vulnerabilities in Bluetooth protocol
+its low power consumption, high compatibility, and reli-              implementations, including formal specification testing [8],
+  * Corresponding authors: Yuqing Zhang, Qi Li, and Ruidong Li.       state machine analysis [9], firmware emulation [10], and
+                                                                      fuzzing [11]–[14]. Among them, fuzzing has emerged as
+Network and Distributed System Security (NDSS) Symposium 2026
+23-27 February 2026, San Diego, CA, USA                               the most widely adopted and practically effective approach
+ISBN 979-8-9919276-8-0                                                for exposing memory corruption bugs via crash-triggering
+https://dx.doi.org/10.14722/ndss.2026.240094
+www.ndss-symposium.org
+      State Machine     Formal Specification    Traditional      LLM                                   constructing test cases that reveal logic flaws requires care-
+                                                                                 BSFuzzer
+         Analysis            Testing           BLE Fuzzing    Semantic Core
+                                                                                                       fully crafted multi-step message sequences. These sequences
+                                                                                                       must satisfy all syntactic constraints while navigating through
+       No Packet
+       Mutation
+                             Limited
+                             Mutation
+                                                 Random
+                                                 Mutation
+                                                                 Prompt           Targeted
+                                                                                  Mutation
+                                                                                                       tightly constrained state transitions and field dependencies.
+                                                                                                       Naive mutation or random permutation strategies fail to sat-
+      Limited State        Conformance          State-Space    LLM Agent         Violation             isfy these conditions and often generate invalid or irrelevant
+        Analysis              Trace              Explosion                        Trace
+                                                                                                       inputs (C2). Together, these challenges underscore the need
+                                                                                                       for a principled approach that combines semantic extraction,
+        Limited              Limited              Crash
+                                                              Specification
+                                                                                Crash Bugs &
+                                                                                                       structured reasoning, and context-aware test synthesis to detect
+       Logic Bugs           Logic Bugs            Bugs                        Diverse Logic Bugs       logic vulnerabilities effectively.
+                      Conventional Techniques                    Our Tool                                 To address these challenges, BSFuzzer performs deep se-
+                                                                                                       mantic parsing of the specification to extract the protocol’s
+Fig. 1: LLM-Assisted BLE Fuzzing with Semantic and Con-                                                state machines and packet-level semantics. Instead of rely-
+textual Knowledge.                                                                                     ing solely on sentence-level processing, the Large Language
+                                                                                                       Model (LLM) operates at a broader scope by integrating natu-
+                                                                                                       ral language descriptions, state diagrams, and other contextual
+malformed packets. However, these approaches remain limited                                            cues to infer packet semantics (to address C1). BSFuzzer uses
+in detecting logic flaws, which arise during valid protocol                                            the extracted semantic knowledge to generate two types of mu-
+executions without causing crashes or observable failures. De-                                         tations: field mutation and state mutation. Field mutation lever-
+tecting such flaws requires context-aware reasoning about state                                        ages the semantic meaning of individual fields to deliberately
+transitions, field constraints, and protocol-specified behavior,                                       violate protocol rules and trigger semantic inconsistencies.
+which are beyond the capabilities of traditional techniques.                                           State mutation, on the other hand, exploits packet-to-packet de-
+As a result, existing methods fall short in detecting subtle yet                                       pendencies to enforce contextual constraints and strategically
+security-critical logic flaws in BLE implementations.                                                  inject mutations at critical points during protocol execution,
+Our Solution: BSFuzzer. To bridge this gap, we present                                                 thereby altering the state machine’s behavior (to address C2).
+BSFuzzer, a context-aware semantic fuzzing framework de-                                               These mutated seeds are then composed into test sequences,
+signed to systematically detect logic vulnerabilities in BLE                                           which are transmitted to the System Under Test (SUT), and
+protocol implementations, as shown in Figure 1. Logic flaws                                            the corresponding responses are collected for analysis. In the
+arise when an implementation violates high-level protocol                                              bug verification stage, BSFuzzer invokes the LLM agent to
+semantics—for example, by accepting an invalid field value                                             extract behavioral handling strategies and continuously checks
+such as MaxRxOctets = 20 (below the minimum allowed value                                              for deviations between expected and actual behaviors. Both
+of 27), or by permitting an out-of-order state transition, such as                                     inconsistencies and crash-level vulnerabilities are analyzed
+enabling encryption before completing authentication. These                                            further, leading to detailed bug reports that uncover protocol
+subtle violations often evade syntactic checks and detection,                                          flaws and security weaknesses.
+yet can silently compromise core security properties. A notable                                           We evaluated BSFuzzer on 9 BLE SoC devices and 10
+example is the BLUFFS attack [15], which exploited missing                                             smartphones, uncovering 36 bug instances, with 2 previously
+state-integrity checks during key derivation to compromise                                             known. Of these, 9 were assigned CVEs, and two were
+billions of Bluetooth devices. Motivated by these observations,                                        acknowledged by the vendor with bug bounties. Compared to
+we enhance fuzzing with the ability to detect logic flaws                                              four state-of-the-art BLE vulnerability detection tools (Boo-
+by extracting protocol semantics and contextual information                                            fuzz [16], LLMIF [17], SweynTooth [12], and Proteus [8]),
+from the Bluetooth Core Specification (hereafter referred to                                           BSFuzzer discovered a broader range of bugs and achieved
+as the specification) and integrating them throughout the                                              more comprehensive coverage1 . Our method achieved 9.34%
+fuzzing pipeline. This protocol-aware approach enables the                                             higher code coverage than Proteus, the strongest baseline. We
+generation of semantically meaningful test cases that explore                                          evaluated the effectiveness of BSFuzzer across specification
+deeper protocol states while supporting precise, automated                                             analysis, semantic seed generation, and response validation. In
+verification of device responses.                                                                      specification analysis, 112 field semantics and 595 packet de-
+• Challenges. Achieving this capability involves overcoming                                            pendencies were extracted with 92% and 97% accuracy, while
+two fundamental technical challenges. First, the specification                                         112 field-handling and 37 state-handling strategies achieved
+encodes protocol semantics in a highly implicit and frag-                                              94% and 85% accuracy, respectively. Semantic-guided muta-
+mented manner. Key rules are scattered across more than                                                tions further improved bug discovery efficiency over random
+3,000 pages of natural language descriptions, state diagrams,                                          baselines. In response validation, the analyzer achieved an
+footnotes, and examples. Many critical constraints are not                                             average accuracy of 85.8% for field-level and 74.0% for
+explicitly stated but are only implied through informal refer-                                         state-level validation. These results validate that BSFuzzer not
+ences or widely separated sections, which makes it difficult                                           only improves fuzzing depth and coverage, but also enables
+to extract a coherent and complete semantic model (C1).
+Second, even with a semantic understanding of the protocol,                                              1 In   this paper, unless otherwise specified, coverage refers to code coverage.
+
+
+
+
+                                                                                                   2
+                                                                            phases, including device discovery, connection establishment,
+         Central                                           Peripheral       pairing, encryption, disconnection, and reconnection. These
+                                                                            phases are illustrated in detail in Figure 2.
+                                     Scan_Req
+                                     Scan_Rsp
+                                    Connect_Ind
+                                                                            BLE Protocol Flow. The specification formalizes interaction
+                                                                            sequences using Message Sequence Charts (MSCs), which
+                   Step 0: Base Information Exchange
+                                  LL_Feature_Req
+                                                                            visually represent the ordered sequence of message exchanges
+                                  LL_Feature_Rsp                            between the central and peripheral. Each MSC captures es-
+
+
+                                        …
+                                  LL_Version_Ind                            sential information such as the sender, receiver, message type,
+                               Step 1: Pairing                              and temporal ordering of protocol events. Crucially, MSCs not
+                                 SM_Security_Req                            only illustrate the normative state transitions that occur during
+                                 SM_Pairing_Req
+                                 SM_Pairing_Rsp                             standard operations but also define the expected behaviors
+                                        …
+
+
+
+                    SM_Pairing_Random\SM_Pairing_DHKey_Check                under exceptional conditions, including authentication failures,
+                    SM_Pairing_Random\SM_Pairing_DHKey_Check                timeout events, and aborted procedures. These formally de-
+              Step 2: Encryption || Step 4:Reconnection                     scribed message flows serve as the foundation for constructing
+                             LL_Enc_Req: SKDm, IVm                          Finite State Machines (FSM) [18], which is widely used to
+                              LL_Enc_Rsp: SKDs, IVs
+                                LL_Start_Enc_Req                            model, analyze, and verify protocol behavior.
+                            ENC(SK, LL_Start_Enc_Rsp)
+                            ENC(SK, LL_Start_Enc_Rsp)                       Protocol Semantic Information. In BLE, it refers to the
+                            Key and Identity Information
+                            Key and Identity Information                    higher-level meaning and rules that govern the expected pro-
+                                     ENC DATA
+                                                                            tocol behavior beyond the raw byte-level layout of messages.
+                                        …
+
+
+
+
+                            Step 3: Disconnection                           It encompasses the intended purpose of each message and
+                              ENC(LL_Terminate_ind)                         field, the conditions under which specific messages may be
+                                                                            transmitted, the causal and conditional dependencies among
+         Single Packet
+         Multiple Packets
+                                                                            messages across different protocol states, and the security and
+                                                                            consistency rules that must be strictly enforced. For example,
+   Fig. 2: The Messaging Flows in BLE Communication.                        the rand and ediv fields carried in the LL_ENC_REQ
+                                                                            message are not arbitrary values; rather, they are used to locate
+                                                                            and validate the previously established Long Term Key (LTK)
+the discovery of previously undetected, high-impact flaws in                during the encryption setup process. These semantic rules form
+real-world BLE stacks. Our contributions are summarized as                  the critical foundation for BLE devices to operate correctly
+follows:                                                                    and securely, and understanding them is essential for effective
+   • We designed BSFuzzer, a novel BLE fuzzing frame-                       protocol analysis and vulnerability detection.
+     work that operationalizes LLMs as semantic inference                   Security Mechanisms. BLE is a layered communication
+     engines to interpret protocol intent and guide context-                protocol composed of multiple sub-protocols, including the
+     aware mutation, advancing the integration of semantic                  Link Layer (LL), Logical Link Control and Adaptation Pro-
+     reasoning into systematic protocol fuzzing across multi-               tocol (L2CAP), Attribute Protocol (ATT), Security Manager
+     stage communication protocols.                                         Protocol (SMP), and higher-level profiles, each responsible for
+   • We proposed a specification-guided test sequence gener-                distinct aspects of device interaction. The security mechanisms
+     ator that leverages LLM-based reasoning to incorporate                 in BLE are implemented across multiple protocol layers,
+     semantic constraints into field-level and state-level muta-            each serving a distinct role in enforcing different aspects of
+     tions, enabling the generation of state-aware, dependency-             security. The LL layer ensures encryption and privacy through
+     consistent test cases that effectively uncover logical vul-            AES-CCM [19] and Resolvable Private Address (RPA)-based
+     nerabilities.                                                          address resolution, preventing eavesdropping and tracking. The
+   • We implemented and evaluated BSFuzzer on 19 real-                      host layer, driven by the SMP, orchestrates the pairing process,
+     world BLE devices, uncovering 34 previously unknown                    negotiates authentication methods, and manages key distri-
+     bugs (9 CVEs, two bug bounties from a major vendor).                   bution schemes, supporting both LE Legacy Pairing and LE
+     BSFuzzer is publicly available at: https://github.com/yang             Secure Connections. The SMP defines how devices exchange
+     ting111/BSFuzz.git.                                                    security capabilities and select an appropriate pairing method
+                                                                            based on their I/O capabilities and security requirements.
+             II. BACKGROUND AND M OTIVATION
+                                                                            Once key exchange is completed, the LL enforces encryption
+A. BLE Protocol                                                             at the transport level using algorithms such as AES-CCM
+   In BLE communication, devices typically take on one of                   to protect packet transmission integrity and confidentiality.
+two roles: central or peripheral. The central initiates and                 Security mechanisms rely on the correct execution of protocol
+manages communication, while the peripheral responds to                     logic, but logic flaws break this assumption by enabling state
+the central’s commands and data requests. The basic BLE                     manipulation or violations that cause security controls to fail
+communication procedure is organized into multiple protocol                 or be bypassed.
+
+
+
+                                                                        3
+                                                                                                         improper state management, and developers’ incomplete or
+ Central                                   Peripheral                                                    inconsistent interpretation of the specification. Existing ap-
+                    Attacker                                                  Connected
+            Inject LL_LENGTH_REQ
+                                                         Standby
+                                                                                                         proaches primarily monitor device feedback without reasoning
+       MaxRxOctets = 20 (<MinAllowed=27)
+                                                                Premature
+                                                                                           Pairing       about protocol logic. As a result, they cannot verify the
+           Violation of semantic constraints               LL_START_ENC_REQ
+                                                                                                         correctness of responses to semantically invalid inputs and
+                                                             Normal Path
+                                                                              Encryption
+                                                                                                         often miss logic-level flaws.
+                 LL_LENGTH_RSP                               Violation Path                     ……
+                                                                                                         Case 2: State Machine Violation via Premature LL_START
+       Semantic inconsistency and "soft lockup"
+                                                                                                         _ENC_REQ. According to the Bluetooth Core Specifica-
+                                                                                                         tion, the encryption start request LL_START_ENC_REQ
+ a) Malformed LL Length Request.                        b) Encryption State Violation.
+                                                                                                         should only occur after successful pairing and encryption
+                           Fig. 3: Motivation Examples.                                                  start procedures. However, in flawed implementations, if
+                                                                                                         LL_START_ENC_REQ is sent immediately after establishing
+                                                                                                         a connection, the peripheral device does not reject it due to
+B. Motivation: Logic Flaws Beyond Conventional Detection                                                 incorrect state validation but instead prematurely transitions
+   Despite advances in detection techniques such as formal                                               into encryption mode without negotiating a session key, as
+specification testing [8], firmware emulation [10], and fuzzing                                          shown in Figure 3b). An attacker can exploit this flaw by
+[11]–[14], logic vulnerabilities—stemming from violations of                                             prematurely injecting an LL_START_ENC_REQ packet right
+protocol semantics and state machine constraints—remain                                                  after connection establishment, forcing the device into an en-
+largely unaddressed. These flaws are difficult to detect, as                                             crypted communication state. This premature transition leads
+they rarely cause crashes and typically arise only during valid,                                         to a mismatched encryption context, where the central and
+context-sensitive protocol executions that current tools fail to                                         peripheral disagree on encryption status, ultimately resulting
+analyze effectively. The risk is especially high in the manda-                                           in failed communication and a connection timeout.
+tory LL and SMP, which govern tightly coupled procedures                                                 Limitations of Existing Tools in Identifying This Vul-
+like connection setup, encryption, and authentication. Their                                             nerability. The root cause of this bug lies in the BLE
+complex, stateful interactions create fertile ground for subtle,                                         peripheral device’s improper implementation of state machine
+security-critical flaws that conventional detection techniques                                           validation and insufficient input checks when processing the
+are ill-equipped to expose. To illustrate these limitations                                              LL_START_ENC_REQ packet. This issue stems from devel-
+and motivate our approach, we analyze two real-world cases                                               opers’ failure to strictly adhere to the Bluetooth Core Specifi-
+uncovered during our research.                                                                           cation, including neglecting to enforce logic for rejecting unex-
+Case 1: State Inconsistency via Invalid MaxRxOctets                                                      pected packets and omitting robust state transition validations.
+Value. The specification explicitly defines the valid range of                                           Moreover, the flawed assumption that the central device would
+MaxRxOctets as 27 to 251 bytes, with the minimum value                                                   always conform to specification-compliant behavior resulted in
+of 27 ensuring basic interoperability among devices. However,                                            insufficient defensive programming, allowing premature state
+an attacker can exploit this by injecting an LL_LENGTH_REQ                                               changes without verifying the existence of a valid session key
+containing an invalid MaxRxOctets value below the re-                                                    and ultimately leading to a mismatched encryption context.
+quired minimum (e.g., 20), to a vulnerable device, as shown in                                           Existing tools, such as formal specification testing [8] and state
+Figure 3a). If the peripheral device fails to enforce the lower-                                         machine analysis [9], cannot reliably generate the packet se-
+bound constraint strictly, it inadvertently accepts this invalid                                         quences required to reach vulnerable states or verify deviations
+configuration, effectively downgrading its data reception ca-                                            from expected behavior, leaving them ineffective for detecting
+pability to only 20 bytes. Although the connection appears                                               this class of vulnerabilities.
+normal initially, any subsequent legitimate packets exceeding
+                                                                                                                                   III. D ESIGN
+20 bytes are silently discarded. This condition creates inter-
+pretation inconsistencies and leads to a ”soft deadlock”, the                                            A. Overview
+device does not crash, yet effective communication becomes                                                  The core idea of BSFuzzer is to integrate BLE protocol
+impossible.                                                                                              knowledge into the fuzzing process to enable the detection
+Limitations of Existing Tools in Identifying This Vulnera-                                               of semantic and logic flaws. By leveraging insights derived
+bility. The root cause of this bug stems from the BLE protocol                                           from the specification, BSFuzzer guides state tracking, en-
+stack’s failure to strictly enforce the specified MaxRxOctets                                            forces protocol constraints during test generation, and per-
+range and to execute the logic flow as defined by the spec-                                              forms precise verification of device responses, thereby facili-
+ification. Insufficient validation of out-of-range values and                                            tating deeper, context-aware exploration of protocol behavior.
+inadequate error handling mechanisms allow devices to accept                                             Figure 4 shows the overall framework of BSFuzzer, which
+invalid configurations, leading to an overly restrictive receive                                         comprises three components: semantic parsing, test sequences
+buffer that silently discards legitimate packets exceeding the                                           generation, and bug verification. The input to BSFuzzer is
+configured size. This disrupts normal communication with-                                                the specification document. Specifically, (1) BSFuzzer begins
+out explicit error notifications. Contributing factors include                                           by performing semantic parsing, which extracts two types of
+inadequate input validation, deficient error handling routines,                                          protocol knowledge from the specification: the state machine
+
+
+
+                                                                                                     4
+           Semantic Parsing                             Test Sequences Generation                                                                           Central                      Peripheral
+              ➀                                  ➂                            ➃ Sequence
+                                    S0                        State Seeds       Generation                                                                              LL_ENC_REQ
+
+              ➁
+                                                                Field Seeds                                                                                             LL_ENC_RSP
+                                   i/o
+                                                                                                                                                                                                      Current State   Input/Output                                Next State
+                                                 ➂
+                              S1         S2
+  Specification                 State                         Semantic                           Test                                                                                                 S0              LL ENC REQ / LL ENC RSP, LL START ENC REQ   S1
+                               Machine                                                                                                                                LL_START_ENC_RSP                S1              LL START ENC RSP / LL START ENC RSP         S2
+                                                               Seeds                           Sequence                                                               LL_START_ENC_RSP
+
+
+
+
+                                                                                                           Bluetooth Controller
+
+                                                                                                                                  System Under Test
+                              Packet
+                            Semantic                                           ➅ Detection                                                                a) Message Sequence Chart.                              b) State Machine Extraction.
+                           Information
+
+          ➄ Rule Extraction                   ➅ Detection                      ➅ Detection                                                                Fig. 5: State Machine Extraction of the Start Encryption
+                              Handling                      Identified                        Response                                                    Procedure on the Peripheral.
+                              Strategies                    Deviations                        Sequence
+                         BLE Protocol
+                          Knowledge                                            ➆ Analyzing
+            LLM-assisted process                              Bug
+                                                             Report
+                                                                                                Crash
+                                                                                             Information
+                                                                                                                                                          indicating mutual confirmation and completion of the encryp-
+            Non-LLM process
+                                         Bug Verification                                                                                                 tion process. These state transitions are derived based on the
+                                                                                                                                                          temporal ordering and directionality of the messages in the
+                        Fig. 4: Overview of BSFuzzer.
+                                                                                                                                                          MSCs. At each protocol state transition, we assign a label
+                                                                                                                                                          that records the expected input message and the corresponding
+(derived from MSCs in step 1 ), and the packet semantic                                                                                                   output message during that transition by iterating over the
+information (extracted by an LLM agent via protocol parsing                                                                                               MSCs defined in the LL and SMP procedures. We can
+in step 2 ). Together, these two outputs serve as the foundation                                                                                          construct a state machine that captures the normative behavior
+for understanding protocol logic and behavioral constraints.                                                                                              of the Peripheral during protocol execution.
+(2) Based on this extracted semantic knowledge, BSFuzzer                                                                                                     2) Packet Semantic Information Parsing: BSFuzzer extracts
+performs semantic seed generation. It produces field seeds                                                                                                two types of packet semantic information from the specifica-
+(semantically meaningful input values) and state seeds (inputs                                                                                            tion: single field semantics and packet-packet dependency, as
+designed to trigger specific transitions), as shown in step 3 .                                                                                           illustrated in Figure 6.
+These seeds are used in step 4 to synthesize context-aware                                                                                                Single Field Semantics. BSFuzzer employs a structured
+test sequences that comply with the protocol’s encryption,                                                                                                prompt (see Appendix A.1) that instructs the LLM agent to
+timing, and fragmentation rules. The generated sequences                                                                                                  extract three key semantic attributes for each field: Bit Length,
+are then transmitted through a Bluetooth controller to the                                                                                                Semantic Role, and Defined Values. The Bit Length ensures
+SUT, and the corresponding response sequences are collected.                                                                                              structural correctness by enforcing the proper encoding size,
+(3) In the bug verification stage, BSFuzzer uses the LLM                                                                                                  preventing the generation of malformed packets that would
+agent to extract behavioral handling strategies (step 5 ) and                                                                                             be rejected by the target device. The Semantic Role, which
+continuously checks (step 6 ) for any identified deviations                                                                                               describes the field’s functional purpose within the protocol, is
+between the expected protocol behavior and actual device                                                                                                  critical for modeling packet-packet dependency. The Defined
+responses. Both deviations and crash artifacts are subjected                                                                                              Values capture valid ranges and special constants specified in
+to further analysis, enabling the generation of detailed bug                                                                                              the protocol, serving as the foundation for seed generation. For
+reports that reveal potential security flaws.                                                                                                             example, the max_rx_bytes field in the LL_LENGTH_REQ
+                                                                                                                                                          packet is a 16-bit value used to negotiate the maximum number
+B. Semantic Parsing                                                                                                                                       of payload bytes a device can receive. The minimum valid
+   BSFuzzer leverages an LLM agent to extract protocol state                                                                                              value is explicitly defined as 0x001B, while the maximum
+machines and packet semantics from natural language, state                                                                                                is implicitly limited by the field’s size to 0x00FB. BSFuzzer
+diagrams, and scattered references, capturing key elements that                                                                                           utilizes this information to ensure that the generated values
+are often implicit and dispersed throughout the specification.                                                                                            strictly conform to the 16-bit format. Beyond structural com-
+Below, we elaborate on the parsing process.                                                                                                               pliance, BSFuzzer further exploits the Defined Values con-
+   1) State Machine Construction: We parse the MSCs de-                                                                                                   straints to deliberately construct semantically invalid inputs,
+fined in the specification to extract the underlying protocol                                                                                             such as 0x001A.
+logic and construct the corresponding protocol state machines.                                                                                            Packet-Packet Dependency. In stateful protocols, a packet-
+For example, Figure 5 illustrates the state machine extrac-                                                                                               packet dependency exists when a field (f1 ∈ P1 ) constrains
+tion process for the Start Encryption procedure. Figure 5a)                                                                                               the value or validity of a field (f2 ∈ P2 ), as dictated by
+shows the corresponding MSC, while Figure 5b) presents the                                                                                                protocol specifications or cryptographic mechanisms. Guided
+extracted state machine from the perspective of the Periph-                                                                                               by a prompt (see Appendix A.2), the LLM agent extracts
+eral. The message sequence is segmented into two macro-                                                                                                   semantic links between fields in different packets using both
+transitions. The first transition, from state S0 to S1 , is trig-                                                                                         textual definitions and normative constraints found in the
+gered by the exchange of LL_ENC_REQ, LL_ENC_RSP, and                                                                                                      specification. The prompt defines both the analysis input and
+LL_START_ENC_REQ, which represent the negotiation phase                                                                                                   the evaluation criteria, requiring the model to (1) strictly
+of the encryption setup. The second transition, from S1 to S2 ,                                                                                           adhere to protocol-defined semantics, (2) detect only direct
+involves the bidirectional exchange of LL_START_ENC_RSP,                                                                                                  dependencies—where one field directly determines another,
+
+
+
+                                                                                                                                                      5
+                                                             For example:                                                                                   Pairing DHKey Check
+     1.Single Field Semantics                                Packet name: LL Length Request, Field name: max rx bytes
+       Bit Length: Number of bits it occupies.               Bit Length: 16                                                                  Mapper
+                                                             Semantic Role: Specifies the maximum number of octets that                                      Access Address Data Header L2CAP Header      Opcode   DHKey Check        CRC
+       Semantic Role: The meaning of the field.              the sender can receive.
+       Defined Values: Possible values and their             Defined Values: 0x001B-0x00FB (Minimum value 27 octets,                                    P       4 Bytes       2 Bytes       4 Bytes       1 Byte    16 Bytes        3 Bytes
+                                                             maximum value 251 octets per Bluetooth LE Data Length
+       interpretations.                                      Extension)
+                                                                                                                                        Cryptographic
+                                                                                                                                         Calculation         Access Address Data Header L2CAP Header      Opcode   DHKey Check        CRC
+     2.Packet-Packet Dependency                              For example:
+                                                             Packet name 1: Pairing Random                                                              P   0x 2f cd cb cd   0x 15 06   0x 11 00 00 06   0x 0d    0x cd 3d a9 ··· 0x a8 29 02
+       Packet Name 1: Packet A                               Packet name 2: Encryption Information
+       Packet Name 2: Packet B                               Cross packet dependency:
+       Cross packet dependency:                                 Ra ndom → LT K : "The 'random' value from the Pairing
+       Field Ax → Field Bx: The semantic dependency exists   Random packet is a direct input to the key derivation function
+       between the two fields.
+                                                             (e.g., using algorithms like AES-CMAC) that generates the
+                                                             LTK in the Encryption Information packet, as defined by the
+                                                                                                                                     Fig. 7: Transformation of Abstract PAIRING_DHKEY_CH
+       Field Ax → Field By: The semantic dependency exists   Bluetooth Core Specification. The LTK calculation depends
+       between the two fields.
+       ……
+                                                             deterministically on both the initiator's and responder's pairing
+                                                             random values."
+                                                                                                                                     ECK into Concrete BLE Packet.
+
+    Packet A        Preamble Access Address Field Ax                   Field Ay                    ……                 CRC
+                                                                                                                                     the implementation. (4) Length-Specific Structural mutations:
+    Packet B        Preamble Access Address Field Bx                   Field By                    ……                 CRC
+                                                                                                                                     For fields that define length semantics, we apply structural
+                                                                              Payload                                                mutation strategies that intentionally create inconsistencies
+                                                                                                                                     between the declared length and the actual data size. By
+ Fig. 6: Example of Extracted Packet Semantic Information.
+                                                                                                                                     crafting payloads that exceed or fall short of the specified
+                                                                                                                                     length, these mutations induce parsing errors or unexpected
+and (3) exclude indirect or speculative associations involving                                                                       behaviors. (5) Random Values: A controlled proportion of field
+intermediate fields. For instance, as illustrated in Figure 6, the                                                                   values are randomly generated within the field’s bit range. This
+prompt enables the agent to identify a contextual dependency                                                                         introduces noise to cover a wider value space.
+between the Random field in the PAIRING_RANDOM packet                                                                                State Mutation. BSFuzzer employs a structured prompt (see
+and the LTK field in the ENCRYPTION_INFORMATION                                                                                      Appendix A.4) that instructs the LLM agent to generate test
+packet, where the Random field directly influences the key                                                                           paths around a target packet based on the specification-derived
+derivation process according to the specification. More gen-                                                                         state machine (Section III-B1) and packet dependencies (Sec-
+erally, by modeling interactions across protocol stages, BS-                                                                         tion III-B2). For each target packet, we analyze the specifica-
+Fuzzer identifies dependencies where a field in a prior message                                                                      tion to determine its state transition requirements (e.g., prereq-
+constrains subsequent messages, capturing the semantic links                                                                         uisite conditions and valid state sequences) and, using packet
+governing valid protocol behavior.                                                                                                   dependency information, identify the critical protocol assump-
+                                                                                                                                     tions such as mandatory pre-state completions, restrictions
+C. Test Sequence Generation                                                                                                          on repeated operations, and constraints on permissible state
+   Our approach uses specification-derived packet semantics                                                                          transitions. Based on these dependencies and the baseline state
+and protocol states to generate test sequences that maintain                                                                         machine, we construct packet transmission paths that deliber-
+valid context while deliberately violating selected constraints                                                                      ately violate at least one of these assumptions. Each mutation
+to trigger logic flaws. This ensures anomalies stem from                                                                             path includes the target packet and falls into one or more of
+intended violations rather than unrelated misconfigurations.                                                                         the following categories: (1) Prestate Not Completed: sending
+BSFuzzer first generates semantic seeds, then constructs and                                                                         a packet before its prerequisite states or dependent packets
+sends complete packet sequences to the SUT. Below, we                                                                                have been satisfied; (2) Repeated Operations: re-sending a
+elaborate on the process of test sequence generation.                                                                                state-altering packet already processed, thereby violating one-
+   1) Seed Generation: We implement two mutation strate-                                                                             time-use constraints; (3) Unexpected State Change: forcing the
+gies: (1) field mutation, focusing on the SUT’s handling of                                                                          system into an invalid or undefined state by manipulating the
+anomalous values within packet fields; and (2) state mutation,                                                                       order of state transitions; (4) Combined Violations: combining
+focusing on the SUT’s ability to manage states throughout the                                                                        two or more of the above violation types to achieve deeper
+entire protocol interaction flow.                                                                                                    coverage of potential logic flaws.
+Field Mutation. BSFuzzer employs a structured prompt (see                                                                               2) Sequence Generation: This part is built upon two core
+Appendix A.3) that instructs the LLM agent to generate                                                                               components: a Mapper, which instantiates abstract protocol
+semantically guided mutations for a target field, enabling both                                                                      packets, and a Cryptographic Calculation Module, which en-
+semantic-logic testing and crash-bug exploration. The prompt                                                                         sures compliance with protocol-specific security requirements.
+defines the mutation scope and guides the process through five                                                                       Together, these components enable the construction of context-
+concrete mutation strategies: (1) Semantically Invalid Values:                                                                       aware test inputs, forming the foundation for executing both
+These values violate the protocol’s defined value constraints                                                                        field mutation and state mutation strategies.
+as specified in the packet semantic information, which are                                                                           Mapper. Responsible for converting abstract representations
+used to evaluate how strictly an implementation adheres to                                                                           of protocol messages, derived from protocol state machines
+protocol rules. (2) Bit-Length Boundary values: For each field,                                                                      or state mutation strategies, into fully structured binary packet
+we generate boundary values based on its defined bit length.                                                                         formats. During this process, the Mapper populates each field
+These values are useful for triggering edge-case behaviors.                                                                          based on configuration templates and dependency constraints,
+(3) Bit-Flip Mutations: Individual or multiple bits in the field                                                                     ensuring syntactic correctness and contextual relevance. As
+are flipped to reveal improper masking or parsing errors in                                                                          illustrated in Figure 7, the abstract message ω is translated into
+
+
+
+                                                                                                                                 6
+a structured packet format P , which is a hierarchical structure                              Compliance                     Expected
+                                                                                               Checking                      Behavior
+composed of multiple layers, with each layer containing fields
+                                                                                            ⚫ Clause Reference            ⚫ Primary Action
+that represent specific attributes of the BLE protocol.
+                                                                                            ⚫ Invalid Conditions          ⚫ Error Signaling
+Cryptographic Calculation Module. This component is re-
+sponsible for computing values in security-critical fields to                                        a) Field-Level Validation.
+ensure that the generated packets conform to protocol security                                             Precondition                State Validation
+requirements. At the LL, it handles real-time encryption and                     Compliance             ⚫ Connection State             Valid State
+                                                                                                                                       ⚫ Response Packet
+decryption in coordination with key management. In addition,                      Checking              ⚫ Pairing Phase
+                                                                              ⚫ Clause Reference                                       Invalid State
+segmentation is applied to satisfy physical-layer transmission                                          ⚫ Previous Packet              ⚫ Error Response
+                                                                                                                                       ⚫ Error Code
+constraints, ensuring that packet construction reflects realistic                                       ⚫ Role
+
+protocol behavior. At the SMP layer, it executes cryptographic                                        b) State-Level Validation.
+algorithms to derive key material and validate the authenticity
+of exchanged messages. As illustrated in Figure 7, this module                           Fig. 8: Handling Rule Extraction.
+processes the structured packet P and computes session-
+specific cryptographic fields to produce the final transmission-
+ready packet Pλ . The parameters required to compute the                (1) Violation Scenarios, which distinguish between protocol-
+PAIRING_DHKEY_CHECK value, such as random numbers,                      level violations, where field values directly violate format
+pairing credentials, and role identifiers, are dynamically gen-         or range constraints, and capability mismatches, where the
+erated during the pairing process to reflect the session-specific       values are technically valid but exceed the implementation’s
+security context.                                                       supported limits; (2) Behavior Prediction, where the model
+   The Sequence Generation process is adapted according to              identifies the mandatory behavior required by the specification,
+the mutation strategy in use: For field mutation, we follow a           any recommended behavior for optional handling, and the
+valid protocol execution path as defined by the state machine.          expected error signaling actions—such as silent drop, sending
+Abstract packets are instantiated into concrete formats using           an error code, or issuing a reject packet. This structured
+the Mapper. Along this execution path, we identify the target           extraction allows BSFuzzer to map field-level violations to
+packet for mutation. When the protocol flow reaches this                their expected protocol responses, enabling precise compliance
+packet, the designated field is modified to the mutation value.         checking against the normative specification.
+Throughout this process, the message sequence, session state,           State-Level Rule Extraction. BSFuzzer uses a prompt tem-
+encryption status, and other contextual parameters remain               plate (see Appendix A.6) designed to extract the required
+unchanged, ensuring that any observed behavioral differences            preconditions under which each protocol message may be
+are attributed solely to the mutated field. For state mutation,         processed. This prompt guides the model through two main
+BSFuzzer operates at the message-sequence level. The entire             components: (1) Precondition Extraction, where the model
+packet sequence is constructed based on mutated control logic           identifies the contextual requirements under which a given
+derived from a state seed. Each packet in the mutated sequence          protocol message is allowed to be processed. These precon-
+is then instantiated using the Mapper and processed through             ditions are based on factors such as the stack layer, device
+the Cryptographic Calculation Module to ensure semantic and             role, packet type, packet direction, and security mode. The
+cryptographic correctness.                                              model determines whether the current device state satisfies
+                                                                        these normative conditions defined in the specification. (2)
+                                                                        Behavior Prediction, where the model infers the expected
+D. Bug Verification
+                                                                        response behavior based on the state validation result. If the
+   BSFuzzer extracts field-level and state-level handling rules         preconditions are satisfied, the model identifies the correct
+from the specification and employs an LLM agent to vali-                next-step behavior as defined by the specification. If the
+date device responses against expected behaviors, revealing             preconditions are violated, the model extracts the mandated
+improper field handling and state inconsistencies. It combines          error-handling behavior, including the type of rejection packet
+automated checks with targeted analysis to efficiently detect           and the corresponding error code required by the protocol.
+logic flaws in critical transitions and unexpected acceptances.         This structured extraction allows BSFuzzer to validate state-
+We elaborate on the verification process as below.                      dependent protocol logic and detect semantic inconsistencies
+   1) Handling Rule Extraction: BSFuzzer supports two pro-              that arise from processing packets in invalid contexts, enabling
+tocol validation types: field-level, which targets violations           comprehensive state-level compliance checking.
+in individual message fields, and state-level, which detects               2) Inconsistency Detection: This module leverages an LLM
+inconsistencies caused by invalid protocol states, as shown in          agent to compare device responses with expected protocol
+Figure 8.                                                               behaviors, thereby identifying inconsistencies in protocol im-
+Field-Level Rule Extraction. BSFuzzer employs a prompt                  plementations. It adopts two targeted prompt designs:
+(see Appendix A.5) that instructs the LLM agent to analyze the          Field-Level Validation. We focus on the handling of anoma-
+field semantics and derive the corresponding handling rules.            lous values in individual fields of BLE control packets (see
+This prompt guides the model through two main components:               the field validation prompt in Appendix A.7). (1) The LLM
+
+
+
+                                                                    7
+agent first determines whether the mutated field values comply           Semantic Parsing. We modeled the BLE protocol as Mealy
+with the Bluetooth Core Specification. (2) If the field value is         machines and generated DOT files for both the Legacy Pairing
+invalid, it further checks whether the device’s response adheres         and Secure Connections Pairing methods. To ensure that
+to the protocol-defined error-handling logic.                            the extracted data is accurate and factual, we set the LLM
+State-Level Validation. We target interaction sequences con-             temperature to 0 when parsing structured information from the
+sisting of multiple BLE packets (see the state validation                BLE specifications. This parsing process is a one-time effort.
+prompt in Appendix A.8). (1) The LLM agent verifies, packet              From the specifications, we extracted semantic information
+by packet, whether the device is in a valid protocol state to            for the LL and SMP layers, covering 84 fields across 22
+legally receive the current packet. (2) If the precondition state        LL packets and 34 fields across 14 SMP packets. Based on
+is valid, the LLM agent checks whether the device’s response             these field semantics, we identified 48 pairs of packets with
+follows the expected state transition; if the precondition state         dependency relationships, including 22 intra-LL dependencies,
+is invalid, it checks whether the device correctly returns the           17 intra-SMP dependencies, and 9 cross-layer dependencies
+corresponding error response as specified.                               between LL and SMP.
+   3) Bug Analysis: We manually analyze each logged incon-               Test Sequence Generation. BSFuzzer mutates state-machine
+sistency to trace its root cause and determine whether it orig-          traces extracted from the specification and subsequently val-
+inates from implementation defects or protocol misinterpreta-            idated on real devices. Mutation operators are derived from
+tions. To minimize the amount of manual analysis required,               specification-defined semantic dependencies and interaction
+we designed distinct verification rules for field mutations and          patterns, each encoding a specific intent and applying con-
+state mutations.                                                         trolled changes to field constraints or state transitions. Using
+Field-Level Analysis. We use the expected behaviors defined              an LLM with temperature set to 1, we generated diverse
+in the Bluetooth Core Specification to assess whether the                and semantically valid seeds for both Legacy and Secure
+device’s responses are correct. Because mutated packets are              Connections pairing. These seeds were executed by a 2K-line
+deliberately crafted to violate protocol rules, rejecting them           Python sequence engine that constructs protocol-consistent
+is typically considered normal. Verification, therefore, focuses         test flows, resolving dependencies and handling cryptographic
+only on cases where invalid inputs are unexpectedly accepted.            parameters across key BLE interactions, including connection
+If the device correctly rejects a mutated input, no further action       establishment, capability negotiation, encryption initiation, and
+is required. However, if it unexpectedly accepts the input, the          reconnection, to achieve semantic coverage of real-world pro-
+corresponding sequence is subjected to further analysis.                 tocol behaviors.
+State-Level Analysis. These usually involve packet sequences             Bug Verification. To validate protocol compliance, we again
+designed to violate the expected state machine behavior. We              used the LLM with the temperature set to 0. To reduce manual
+focus only on critical state transitions. First, we identify             analysis effort, we implemented over 300 lines of Python code
+packets capable of triggering significant protocol state changes         to define filtering rules, thereby further narrowing down the
+and exclude those that do not lead to meaningful transitions             results requiring human verification.
+(e.g., LL_VERSION_IND in the Link Layer). Verification
+then checks whether these critical state transitions occur as                                   V. E VALUATION
+expected. This selective focus on a small number of high-                   To evaluate the effectiveness of our tool, we conducted
+risk events significantly reduces the need for extensive manual          experiments on real-world BLE protocol implementations. Our
+analysis.                                                                evaluation aims to answer the following questions:
+                                                                            Q1. Does our tool achieve better detection of logic vulner-
+                    IV. I MPLEMENTATION                                  abilities than existing BLE fuzzers? (Section V-B)
+   We have implemented BSFuzzer in Python 3 [20] using                      Q2. How does each component of our design contribute to
+a modular approach to facilitate future extensions. We ran               discovering logic vulnerability? (Section V-C)
+our tool on Ubuntu 22.04.4 LTS, 16GB RAM, Intel Core                        Q3. Can our tool uncover previously unknown bugs in real-
+i7-13700F CPU, 500GB Disk, and nRF52840 dongle [21].                     world BLE protocol implementations? (Section V-D)
+We utilized the driver developed in the SweynTooth [12] and
+flashed it to the nRF52840 dongle, enabling the dongle to send           A. Experimental Setup
+and receive raw LL packets to and from the BLE device.                      1) Real-world BLE devices: To evaluate the generalizabil-
+LLM Usage. We develop an LLM agent system powered                        ity and robustness of our approach, we selected 9 different
+by Grok-3 [22], capable of semantic understanding and rea-               BLE SoCs from 9 distinct vendors (such as Cypress [24],
+soning over protocol specifications. The specification is first          Microchip [25]) and 10 smartphones from 7 major smartphone
+modularized by sub-protocol, and each module is embedded                 manufacturers (such as Google [26], Huawei [27]), ensuring
+into vector representations using OpenAI’s text-embedding-3-             broad coverage of widely used BLE platforms and popular
+large model [23]. These embedded modules serve as callable               commercial brands. As summarized in Appendix B.1, these
+external knowledge sources, enabling the agent to perform                devices span various BLE versions and are representative of
+semantic retrieval, interpretation, and alignment of normative           mainstream deployments. The selected BLE SoCs are widely
+content.                                                                 integrated into products across multiple industries, including
+
+
+
+                                                                     8
+                                        Boofuzz         LLMIF       SweynTooth       Proteus       BSFuzzer                      SweynTooth Boofuzz LLMIF BSFuzzer Proteus
+              Device
+                                       M    S   I   M     S     I   M   S   I    M      S      I   M     S    I
+              CY8CKIT-042-BLE          0    0   0   0     0     0   1   0   0    0      0      0   1     1    1
+                                                                                                                                                 Memory
+              WBZ451                   1    0   0   1     0     0   1   0   0    0      0      0   1     1    1                                    Bug                  State and
+                                                                                                                                                                    Inconsistency Bug
+              ESP32-WROOM-32E          1    0   0   1     0     0   1   0   1    0      1      1   1     2    2                                  Memory and
+                                                                                                                                              Inconsistency Bug
+              RTL8762EKF-EVB           1    0   0   1     0     0   1   0   0    0      1      0   1     3    0
+                                                                                                                                                         Memory, State, and
+              SUM                      3    0   0   3     0     0   4   0   0    0      2      1   4     7    4                                          Inconsistency Bug
+
+            Note: The table shows the number of discovered bugs in three categories: M (memory corruption),
+            S (state bugs), and I (inconsistency bugs).
+                                       a) Bugs Found on Different Devices.                                                           b) Bug Categories across Tools.
+
+                                   Fig. 9: Comparison of Bugs Discovered by Different Fuzzing Tools.
+
+
+smart home systems, wearable devices, medical equipment,                                               TABLE I: Comparison with Baseline Tool.
+and industrial automation. Each SoC-based device was pro-                                                                                 Semantic            Semantic              Bug
+                                                                                                             Specification   State
+grammed using the sample code provided by its corresponding                                 Tool                                          Awareness           Consistency           Detection
+                                                                                                             Awareness       Awareness
+                                                                                                                                          Mutation            Verification          Diversity
+Software Development Kit (SDK), and by modifying the                                        Boofuzz          ×               ×            ×                   ×                     M
+configuration files, we customized key parameters such as                                   LLMIF            ✓               ×            ✓                   ×                     M
+                                                                                            SweynTooth       ×               ✓            ×                   ×                     M/I
+pairing methods and authentication modes. For smartphone-                                   Proteus          ✓               ✓            ✓                   ×                     S/I
+based evaluation, we leveraged nRF Connect to configure the                                 Our tool         ✓               ✓            ✓                   ✓                     M/S/I
+
+mobile devices as servers and enable advertising, allowing us                          Note: M (memory corruption), S (state bugs), and I (inconsistency bugs).
+to flexibly set different device modes and conduct experiments.
+   2) Baseline Methods: We select four fuzzing tools as our
+baseline: Boofuzz [16], LLMIF [17], SweynTooth [12], and                               limits their ability to generate semantically valid or state-
+Proteus [8]. These tools are either published in top security                          sensitive inputs. In contrast, LLMIF, Proteus, and our tool
+conferences or widely recognized in the community. Boofuzz                             incorporate specification-aware logic. Notably, only our tool
+and LLMIF are general-purpose black-box fuzzing tools for                              supports fine-grained semantic analysis at both the field level
+IoT protocols, while SweynTooth and Proteus are dedicated                              and the state level. SweynTooth, Proteus, and our tool support
+fuzzers for BLE protocol implementations. Boofuzz is widely                            stateful fuzzing, which enables the preservation and manipu-
+adopted in the security industry for protocol fuzz testing; in                         lation of internal BLE protocol states during test execution.
+our evaluation, we use Boofuzz to define the structure of BLE                          This capability allows these tools to explore deeper protocol
+packets and adopt its default mutation strategies as a baseline                        logic and trigger state-dependent bugs. Regarding bug detec-
+for comparison. LLMIF integrates LLM into the fuzzing                                  tion diversity, baseline tools such as Boofuzz, LLMIF, and
+process and, although originally designed for Zigbee protocol                          SweynTooth primarily identify memory-related bugs. Proteus
+testing, its prompt-based architecture is adaptable to BLE. We                         expands this scope by including state logic errors and spec-
+leverage LLMIF’s prompt templates for BLE seed generation                              ification inconsistencies. Proteus demonstrates improved bug
+and response verification as part of our comparative analysis.                         exposure through state and inconsistency analysis, but lacks
+SweynTooth is a BLE-specific fuzzer that applies particle                              support for semantic consistency verification, which is critical
+swarm optimization to discover bugs. It focuses on detecting                           for identifying complex bugs stemming from interactions
+memory-related crashes and has successfully identified a set of                        between protocol layers.
+such flaws in BLE protocol stacks from several major vendors.                             2) Bug Detection Capability: We selected four BLE SoCs
+In contrast, Proteus adopts a model-guided approach using                              as benchmarks and compared our approach against existing
+protocol state machines and predefined properties to uncover                           baseline works. We present a detailed comparison of the
+state-related logical bugs in BLE implementations.                                     number and types of bugs discovered during a 24-hour fuzzing
+                                                                                       session, as shown in Figure 9a) and Figure 9b). Boofuzz
+B. Comparison with Existing Works                                                      and LLMIF are not specifically designed for BLE protocols
+                                                                                       and therefore lack support for BLE-specific state transitions,
+   To evaluate the effectiveness of our approach, we compare                           making them incapable of exploring deep protocol logic and
+it against existing baseline tools across three key dimensions:                        uncovering state-dependent bugs. SweynTooth, while effective
+qualitative comparison, bug detection capability and coverage                          in detecting certain implementation flaws, is unable to identify
+growth over time.                                                                      state-dependent issues due to the absence of appropriate test
+   1) Qualitative Comparison: As summarized in Table I, we                             oracles. Proteus’s detection is limited to predefined properties
+compare our tool with baseline works across five qualitative                           in the BLE Core Specification, identifying only explicitly
+dimensions. Among these tools, Boofuzz and SweynTooth do                               specified violations while missing deep logical vulnerabilities
+not leverage any form of protocol specification knowledge                              requiring understanding of protocol states, field semantics, and
+to guide test case generation. Instead, they adopt traditional                         behavioral logic. In contrast, our approach leverages protocol
+fuzzing strategies based on generic input mutation, which                              semantics-aware test generation and enables semantic consis-
+
+
+
+                                                                                  9
+ tency verification of test cases and responses to reveal hidden                                  hallucination and omission patterns. Based on these observa-
+ inconsistencies, potentially uncovering bugs overlooked by                                       tions, we introduced structured output constraints and explicit
+ existing methods.                                                                                specification references to guide the generation process. The
+                                                                                                  prompts were iteratively refined through measured accuracy
+                   1600                                                                           and detailed error analysis on manually annotated samples,
+                   1400                                                                           with each iteration re-evaluated until the accuracy converged
+                   1200                                                                           to a stable level. During extraction, every artifact is validated
+Branches Covered
+
+
+
+
+                   1000                                                                           across multiple runs, and any inconsistency or reference viola-
+                    800                                                                           tion triggers targeted manual review. In practice, all 22 LL and
+                    600      LLMIF
+                             Boofuzz
+                                                                                                  10 SMP Message Sequence Charts were correctly transformed
+                    400      SweynTooth                                                           into protocol state machines; 112 field semantics and 595
+                             Proteus
+                    200      BSFuzzer
+                                                                                                  packet dependencies achieved accuracies of 92% and 97%,
+                      0                                                                           respectively; and 112 field-handling and 37 state-handling
+                          0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+                                                  Hours                                           strategies reached accuracies of 94% and 85%. The entire
+                                                                                                  analysis, encompassing state machine derivation, semantic
+ Fig. 10: Branch Coverage Over Time for Different Fuzzing                                         extraction, and handling strategy identification, is performed
+ Tools.                                                                                           once as a preprocessing step. The resulting structured artifacts
+                                                                                                  are cached and reused across all fuzzing runs, while manual
+    3) Coverage Growth Over Time: The objective of fuzzing
+                                                                                                  verification requires only about 4.5 hours in total.
+ is to maximize the activation of distinct logical execution
+                                                                                                     2) Effectiveness of Semantic Seed Generation: To evaluate
+ paths within the target implementation. Higher code coverage
+                                                                                                  the effectiveness of semantic seed generation in triggering
+ indicates that the method more effectively explores protocol
+                                                                                                  protocol bugs, we conducted a comparative study on two BLE
+ logic, state transitions, and boundary conditions, thereby facil-
+                                                                                                  devices, comparing semantic seeds with randomly generated
+ itating the discovery of deep logical flaws. Since our approach
+                                                                                                  seeds under two mutation strategies: field mutation and state
+ targets the LL and SMP sub-protocols as integral components
+                                                                                                  mutation. Each strategy includes a semantic-aware variant and
+ of the full protocol stack, we adopt coverage growth over
+                                                                                                  a random baseline:
+ time as the evaluation metric and compare our results against
+                                                                                                     • For field mutation,
+ existing baseline tools. To evaluate the code coverage of our
+ approach, we compare the results against existing baseline                                               – Fs uses field values guided by protocol semantics,
+ tools. However, since most BLE SoCs do not open-source                                                   – Fr relies on randomly generated field values.
+ their protocol stack implementations, existing evaluations are                                      • For state mutation,
+ typically limited to black-box testing without access to internal                                        – Ss generates state transitions guided by analyzing
+ coverage metrics. We follow Proteus’s methodology by run-                                                   protocol dependencies,
+ ning the open-source btstack and collecting coverage data                                                – Sr performs random state transitions without seman-
+ via gcov every five minutes. We repeated the entire fuzzing                                                 tic consideration.
+ campaign three independent times, and the observed variation
+ among runs was very small (standard deviation < 0.018). As                                               8                                                             8
+                                                                                                          7      BSFuzzerFs                                             7      BSFuzzerSs
+ shown in Figure 10, our method achieves a 9.34% increase                                                        BSFuzzerFr                                                    BSFuzzerSr
+                                                                                                          6                                                             6
+                                                                                                          5                                                             5
+                                                                                              Bug Count
+
+
+
+
+                                                                                                                                                            Bug Count
+
+
+
+
+ in code coverage compared to Proteus, which was previously
+                                                                                                          4                                                             4
+ reported to achieve the highest coverage among existing tools.                                           3                                                             3
+    The improvement in code coverage is related to the protocol                                           2                                                             2
+                                                                                                          1                                                             1
+ depth explored by our fuzzing tool. LE Legacy Pairing and                                                00 100 200 300 400 500 600 700 800 9001000                    00 100 200 300 400 500 600 700 800 9001000
+ Secure Connections Pairing represent two distinct authen-                                                a) Field Mutation Iterations in ESP32-WROOM-32E               b) State Mutation Iterations in ESP32-WROOM-32E
+ tication and key establishment procedures, each involving                                                8                                                             8
+                                                                                                          7      BSFuzzerFs                                             7      BSFuzzerSs
+ different message sequences, cryptographic computations, and                                             6      BSFuzzerFr
+                                                                                                                                                                        6      BSFuzzerSr
+                                                                                                          5                                                             5
+                                                                                              Bug Count
+
+
+
+
+                                                                                                                                                            Bug Count
+
+
+
+
+ state transitions. By supporting both pairing modes and the
+                                                                                                          4                                                             4
+ associated encryption-handling logic, our approach is capable                                            3                                                             3
+ of triggering a diverse set of code paths. In addition, our field                                        2                                                             2
+                                                                                                          1                                                             1
+ mutation and state mutation mechanisms enable the precise                                                00 100 200 300 400 500 600 700 800 9001000                    00 100 200 300 400 500 600 700 800 9001000
+ triggering of edge-case behaviors and state-dependent logic                                               c) Field Mutation Iterations in RTL8762EKF-EVB                d) State Mutation Iterations in RTL8762EKF-EVB
+ within the protocol implementation. As a result, our tool
+                                                                                                  Fig. 11: Effectiveness of Semantic vs. Random Seed Genera-
+ exercises deeper protocol logic, thereby achieving broader
+                                                                                                  tion under Field and State Mutation Strategies.
+ code coverage.
+ C. Effectiveness                                                                                   As shown in Figure 11, BSFuzzerF s is more effective at
+    1) Effectiveness of LLM-based Specification Analysis: We                                      producing edge cases and malformed inputs, leading to faster
+ first analyzed early LLM extraction results to identify common                                   and more consistent discovery of bugs and inconsistencies.
+
+
+
+                                                                                             10
+                                                            TABLE II: Details of Discovered Bugs.
+ ID    Bug Description                                                       Pair.    Issue      CVSS   Security Impact Summary                                          Spec. Ref.
+ M1    Buffer overflow via oversized len in LL_PAUSE_ENC_REQ                 Leg.     DoS        6.5    Causes crash due to unchecked field size                         –
+ M2    Buffer overflow via RFU=7 in LL_TERMINATE_IND                         –        DoS        4.3    Improper handling of reserved value leads to memory fault        –
+ M3    Invalid ChMap=0x0 in CONNECT_REQ                                      –        DoS        6.5    Triggers crash during setup, preventing new connections          V6B§4.5.8
+ M4    Invalid AccessAddr=0x0 in CONNECT_REQ                                 –        DoS        6.5    Triggers crash during setup, preventing new connections          V6B§2.1.2
+ M5    Invalid timeout=0xFFFF in CONNECT_REQ                                 –        DoS        6.5    Triggers crash during setup, preventing new connections          V6B§4.5.2
+ M6    Invalid win_offset=0xFFFF in CONNECT_REQ                              –        DoS        6.5    Triggers crash during setup, preventing new connections          V6B§2.3.3
+ S1    Accepts LL_PAUSE_ENC_REQ before encryption is enabled                 –        DoS        7.5    Allows early transition to encryption pause state                V6B§4.7
+ S2    SK reuse allows reconnection without re-pairing                       SC       SecByp     8.8    Enables attacker to rejoin session using old SK                  V3H§2.3.5
+ S3    Accepts zero LTK after PAIRING_FAILED                                 Leg.     SecByp     8.1    Neglects key validation; encryption proceeds with all-zero key   V3H§2.4.4
+ S4    Misaligned state by early LL_ENC_REQ before pairing                   –        DoS        7.5    Improper sequence handling leads to desync                       V3H§2.4
+ S5    Accepts LL_START_ENC_RSP before pairing                               –        DoS        8.1    Fails to verify preconditions before encryption start            V6B§4.7
+ S6    Multiple LL_LENGTH_REQ causes crash                                   –        DoS        6.5    Flooding LL_LENGTH_REQ causes stack overflow                     V6B§4.5.10
+ S7    Accepts LL_START_ENC_REQ before pairing                               –        DoS        7.5    Bypasses authentication phase during pairing                     V6B§4.7
+ S8    Accepts PAIRING_RANDOM before public key exchange                     SC       DoS        7.5    Breaks pairing sequence                                          V3H§2.3.5.7
+ I1    Accepts LL_LENGTH_REQ with max_tx_bytes < 27                          –        DoS        6.5    Violates minimal payload constraint                              V6B§4.5.10
+ I2    Falls back to Legacy despite SC request                               SC       Downg.     7.6    Allows downgrade to weaker authentication mode                   V3H§2.2
+ I3    Incorrect response to malformed LL_PAUSE_ENC_REQ with invalid RFU     –        –          –      –                                                                V6B§4.7
+ I4    Incorrect response to malformed LL_LENGTH_REQ with invalid params     –        –          –      –                                                                V3H§2.3.5.10
+ I5    Disconnect triggered by premature LL_PAUSE_ENC_REQ                    –        DoS        4.5    State inconsistency during encryption setup                      V6B§4.7
+Note: Leg.=Legacy Pairing; SC=Secure Connections; DoS=Denial of Service; SecByp=Security Bypass; Downg.=Security Downgrade. “–” means no observable security impact.
+“V6B§4.7” denotes Volume 6, Part B, Section 4.7 of the specification.
+
+
+
+TABLE III: Validation Results of the Accuracy of the LLM-                                     overhead without affecting overall detection accuracy.
+based Bug Analyzer.
+                                                                                              D. Discovered Real-world Bugs
+  Pairing              Mutation   Total    Correct   False      False
+  Type                 Type       Inputs   Cases     Positive   Negative
+                                                                           Accuracy              We categorize the identified bugs into three types: memory
+  Legacy Pairing       Field      1000     854       112        34         85.4%              corruption, state bugs, and inconsistency bugs, as shown in
+  Legacy Pairing       State      500      369       125        6          73.8%
+  Secure Connections   Field      1000     862       110        28         86.2%              Appendix B.2. Across the 19 tested devices, we discovered
+  Secure Connections   State      500      371       120        9          74.2%              a total of 36 bug instances. Given the wireless nature of
+                                                                                              BLE communication, the overall fuzzing time is influenced by
+                                                                                              connection latency and signal stability. Therefore, we measure
+Similarly, BSFuzzerSs navigates the protocol state space more                                 the duration of a single fuzzing iteration from the moment the
+efficiently by avoiding invalid paths and prioritizing mean-                                  connection is established to the point when the last test packet
+ingful state transitions. In contrast, BSFuzzerF r often pro-                                 is sent. The time taken for the device to manifest abnormal
+duces invalid packets, resulting in longer bug-triggering time                                behavior or for the bug to be observed is not included in this
+and wasted communication resources. BSFuzzerSr exhibits                                       measurement, similar to SweynTooth [12]. The Disclosure Sta-
+shallow exploration and frequently encounters unreachable or                                  tus column in Appendix B.2 summarizes the current disclosure
+illegal states, making it less effective in uncovering deep logic                             progress of each bug. All identified bugs have been disclosed
+flaws.                                                                                        to vendors. Nine bugs (two memory corruption, five state bugs
+   3) Effectiveness of LLM-based Response Validation: To                                      and two inconsistency bugs) have been officially assigned CVE
+evaluate the effectiveness of the LLM-based bug analyzer                                      identifiers. To eliminate redundancy, we conducted necessary-
+in validating device responses, we conducted an experiment                                    condition tests for each Proof of Concept (PoC) to identify
+involving both Secure Connections and Legacy Pairing. For                                     the essential fields or packets that trigger the bug and merged
+each pairing mode, we manually analyzed the results produced                                  cases sharing the same root cause. After deduplication, these
+by the LLM agent under two mutation strategies: field mu-                                     instances correspond to 19 unique root causes, including 6
+tation and state mutation. As shown in Table III, the LLM                                     memory corruption, 8 state, and 5 inconsistency bugs, as
+agent achieved over 85% accuracy in validating responses                                      shown in Table II. Detailed descriptions are provided below.
+from field mutations. In contrast, its accuracy was lower for                                 Memory Corruption: M1 and M2. Both vulnerabilities stem
+state mutations, primarily due to the inherent complexity of                                  from improper handling of mutated control packet fields,
+reasoning over protocol state transitions. Manual validation of                               resulting in buffer overflows. M1 is triggered by an oversized
+each response is time-consuming and often requires examining                                  length field in the LL_PAUSE_ENC_REQ packet. When the
+thousands of specification pages. In contrast, the LLM agent                                  payload exceeds expected bounds, the device writes beyond
+can automatically reference specifications, significantly im-                                 allocated memory, causing a crash. This indicates insuffi-
+proving the efficiency of identifying suspicious responses. As                                cient bounds checking during control packet parsing. M2
+demonstrated in Table III, while LLM-based analysis is not the                                arises from setting a reserved RFU field to 0x07 in the
+sole basis for bug detection and may introduce false negatives                                LL_TERMINATE_IND packet. According to the Bluetooth
+and false positives, it remains highly effective at filtering                                 specification, RFU bits must be ignored by the receiver; how-
+high-probability anomalies. False negatives have minimal im-                                  ever, the device incorrectly parses them, leading to memory
+pact since vulnerable test sequences typically appear multiple                                corruption due to unsafe field handling.
+times during fuzzing, ensuring abnormal behavior can still                                    Memory Corruption: M3, M4, M5 and M6. These vulnera-
+be detected. False positives only increase manual verification                                bilities are caused by the device’s inability to properly handle
+
+
+
+                                                                                       11
+  Central                                  Peripheral   Central                          Peripheral
+                                                                                                           ing an all-zero LTK after receiving a PAIRING_FAILED
+            After pairing: LTK is stored                                                                   message, bypassing the required pairing procedure. This vi-
+
+
+
+
+                                                                          …
+                        …
+               SM_SECURITY_REQ                                                                             olates the SMP state machine and enables unauthenticated
+              Step 4: Reconnection                                Step 4: Reconnection                     encrypted communication. As a result, the connection becomes
+         LL_ENC_REQ: SKDm, IVm
+          LL_ENC_RSP: SKDs, IVs
+                                                                                                           vulnerable to unauthorized access. The root cause is a state
+                                                               SK,IV,SKD is last time used
+            LL_START_ENC_REQ
+       SK = bt_enc_e(LTK, SKDm|SKDs)
+                                                             ENC(SK, LL_START_ENC_RSP)                     machine flaw in handling the PAIRING_FAILED message,
+
+
+
+
+                                                                          …
+       ENC(SK, LL_START_ENC_RSP)
+                                                                      ENC DATA
+                                                                                                           which allows the device to skip the pairing phase entirely.
+                                                                                                           State Bug: S4. The device receives an LL_ENC_REQ
+                        …
+
+
+
+
+                    ENC DATA
+     a) Normal Reconnection Process.                                 b) SK Reuse.
+                                                                                                           before pairing and correctly rejects it, but the connec-
+                                                                                                           tion remains active. An attacker can subsequently send an
+            Fig. 12: An Illustration of Session Key Reuse.                                                 LL_PAUSE_ENC_REQ, placing the device into an inconsis-
+                                                                                                           tent encryption state that causes all subsequent packets to be
+                                                                                                           ignored. This results in communication failure and can be
+invalid values in critical fields during connection establish-                                             exploited to launch a DoS attack. The root cause is a state
+ment, leading to crashes due to memory corruption. M3 is trig-                                             machine flaw that permits encryption-related procedures to
+gered by a CONNECT_IND packet with a Channel Map set to                                                    proceed despite a prior encryption rejection, without validating
+0x0000000000, which disables all 37 data channels. According                                               the current security state.
+to the specification, at least one data channel must be enabled;                                           State Bug: S6. The device sends multiple LL_LENGTH_REQ
+violating this constraint results in undefined behavior during                                             packets during the pairing process, leading to a crash. It fails
+channel selection. M4 involves the use of an all-zero Access                                               to properly serialize control procedure handling across the
+Address, which is prohibited by the specification and leads to                                             LL and SMP, resulting in memory corruption. The root cause
+errors during connection filtering. M5 is caused by setting the                                            lies in a cross-layer state management flaw, where the device
+connSupervisionTimeout field to 0xFFFF, an explicitly invalid                                              fails to enforce mutual exclusion or ordering between ongoing
+value outside the allowed range of 0x000A to 0x0C80 (100                                                   pairing operations and lower-layer control exchanges.
+ms to 32.0 s). Finally, M6 results from assigning winOffset =                                              Inconsistency Bug: I1. The devices (D4, D7, D11, D14 and
+0xFFFF, which exceeds the maximum legal value of 0x1FFF                                                    D15) accept LL_LENGTH_REQ packets where max tx bytes
+(12.799 ms). In all cases, the lack of value validation results                                            or max rx bytes are set below the minimum allowed value
+in a crash upon receiving malformed connection parameters.                                                 of 27 bytes. According to the specification, such values are
+State Bug: S1, S5 and S7. These vulnerabilities stem from                                                  invalid and must be rejected. An attacker can exploit this
+improper handling of encryption control procedures, caus-                                                  behavior to inject malformed packets during communication,
+ing devices to enter encryption states at invalid times. S1                                                leading to connection failure or DoS. The devices (D1, D10,
+occurs when the device accepts an LL_PAUSE_ENC_REQ                                                         and D17) accept fragmented data packets with payload lengths
+before encryption is established. S5 and S7 involve pre-                                                   below the minimum of 27 bytes. This behavior may lead to
+mature entry into the encrypted state: S5 is triggered                                                     unstable communication. The root cause is insufficient input
+by receiving an LL_START_ENC_RSP, and S7 by an                                                             validation during the data length update procedure.
+LL_START_ENC_REQ, both before pairing. According to the                                                    Inconsistency Bug: I2. The device falls back to Legacy
+specification, these procedures are valid only after encryption                                            Pairing even though both peers advertise and require Secure
+is properly initiated. Accepting these packets prematurely                                                 Connections. According to the specification, if both devices
+leads to state desynchronization, which can block legitimate                                               support SC (as indicated by the SC bit in the authReq field of
+communication, cause undefined behavior, or enable DoS                                                     the PAIRING_REQUEST and PAIRING_RESPONSE pack-
+attacks. These bugs arise from missing encryption-state val-                                               ets), the pairing procedure must enforce Secure Connections.
+idation in the LL state machine.                                                                           This downgrade violates the pairing requirements negotiation
+State Bug: S2. The device allows reconnection using a                                                      protocol and weakens the security guarantees of the connec-
+previously stored session key without requiring re-pairing. Ac-                                            tion. The root cause lies in the incorrect enforcement of the
+cording to the specification, during the reconnection process,                                             authReq flags during the pairing method selection process.
+the device is expected to retrieve the LTK from the previous                                               Inconsistency Bug: I3 and I4. These two bugs are caused
+bonding context and combine it with a newly exchanged                                                      by improper handling of malformed control packet fields,
+Session Key Diversifier (SKD) to derive a temporary Session                                                resulting in inconsistent protocol behavior. For I3, according
+Key (SK) for AES-CCM encryption, ensuring freshness and                                                    to the specification, RFU fields must be ignored by the
+forward secrecy, as illustrated in Figure 12a). However, the                                               receiver, and the packet should be processed as if the RFU
+device deviated from this expected behavior and directly re-                                               bits were set to zero. However, the device incorrectly attempts
+sumed encrypted communication using the old SK without re-                                                 to parse these bits, leading to unexpected responses or silent
+executing key derivation, as illustrated in Figure 12b). The root                                          discards. For I4, the issue arises when the device accepts
+cause lies in the device’s failure to enforce key diversification                                          an LL_LENGTH_REQ packet containing invalid parameters.
+and bonding state validation during re-connection.                                                         The specification requires devices to accept only valid values;
+State Bug: S3. The device accepts encryption requests us-                                                  however, devices D2 and D3 incorrectly respond to such
+
+
+
+                                                                                                      12
+malformed requests with an LL_LENGTH_RSP instead of                      BLEDiff [9] utilizes an active automata learning approach to
+rejecting them, violating the expected protocol behavior.                extract the FSM of a BLE implementation. A checking module
+Inconsistency Bug: I5. This bug is triggered when the device             is then used to detect deviations from expected protocol
+receives an LL_PAUSE_ENC_REQ before encryption is estab-                 behavior. Proteus [8] proposes a state machine mutation-based
+lished, causing unexpected connection termination. According             testing framework to uncover logical vulnerabilities in wireless
+to the specification, this control procedure is valid only during        protocol implementations. Pferscher et al. [13] implemented
+an active encrypted session and should be ignored or rejected if         a stateful black-box fuzzing from the connection procedure
+received prematurely. However, the device instead treats it as a         to the start of the pairing procedure of BLE devices using
+fatal error and disconnects, indicating a violation of protocol          automata learning. BrakTooth [14] enables fuzz testing by
+robustness requirements. This behavior can be exploited for              modifying the central’s requests. However, they may not iden-
+DoS attacks. The root cause is insufficient encryption-state             tify flaws in the program logic of protocol implementations.
+validation before handling control procedures, leading the               BrokenMesh [28] conducted fuzz testing on the network build
+device to process the packet in an invalid context.                      and network control stages of the BLE Mesh protocol to
+                                                                         assess the security of their implementation. Some of the work
+            VI. D ISCUSSION AND L IMITATIONS                             conducted fuzz testing only on specific functions of the Blue-
+Device Hardware Constraints. Due to hardware limitations                 tooth stacks from certain manufacturers. Sami Babigeon et al.
+of the SUT, our evaluation of the pairing process was limited            [29] adopted a fuzzing approach to test the OTA function of
+to the Just Works authentication method. Alternative methods             the GATT service on Silicon BLE devices. Matias Karhumaa
+such as Out of Band and Passkey Entry were not tested. While             [30] tested the controller of Zephyr’s Bluetooth LE stack by
+these methods only affect the authentication phase and do not            fuzzing. Zinuo Han [31] found multiple vulnerabilities by
+alter the core encryption or authentication logic of the proto-          fuzzing and code auditing the Bluetooth protocol implemen-
+col, potential vulnerabilities specific to them may have gone            tation in AOSP. Some studies focus on fuzz testing specific
+undetected. Future work could incorporate a broader range of             subprotocols within the Bluetooth protocol. ToothPicker [11]
+authentication mechanisms to provide a more comprehensive                implemented an in-process Bluetooth daemon fuzzer based on
+assessment of security features in BLE implementations.                  Frida to evaluate the implementation of the Bluetooth protocol
+Handling Non-Structured Packets. BSFuzzer conducts                       in the iOS system. L2Fuzz [7] implements a stateful fuzzer to
+packet dependency analysis by leveraging the semantic mean-              detect vulnerabilities in the Bluetooth BR/EDR L2CAP layer.
+ings of individual protocol fields. However, several packets             Frankenstein [10] fuzz the Bluetooth stack of Broadcom and
+in the SMP layer lack structured fields. For instance, the               Cypress firmware in an emulated environment.
+LL_START_ENC_REQ packet is an LL control Protocol Data                   LLM-based Network Protocol Security Testing. Recent
+Unit that contains only an Opcode field without any additional           advances have explored the use of LLMs to enhance various
+parameters. This absence of fields limits the applicability              aspects of protocol security testing. These studies leverage the
+of our standard prompt templates for dependency extraction.              language understanding and reasoning capabilities of LLMs
+Consequently, such cases require special handling and manual             to automate traditionally manual tasks such as specification
+analysis to infer their relationships with other packets.                parsing [32], seed generation [17], [33], and state infer-
+Manual Effort. The reliability of the LLM-based verifier                 ence [34]. ChatHTTPFuzz [32] utilizes LLMs to annotate data
+tends to decline when analyzing complex protocol state tran-             fields of the HTTP protocol [35], construct structured seed
+sitions, which often involve dependencies and contextual in-             templates, and identify optimal mutation points. ChatAFL [33]
+formation spanning multiple interaction steps, with certain              combines LLMs with public RFCs to enrich initial seeds for
+conditions even requiring consideration of historical states             the RTSP protocol [36], enabling structure-aware mutation.
+or implicit protocol semantics to correctly interpret device             LLMIF [17] integrates LLMs with the ZigBee specifica-
+behavior. In such scenarios, the LLM agent may produce                   tion [37] to assist in seed generation, mutation, and test case
+misjudgments or overlook latent issues. Nevertheless, the                evaluation. mGPTFuzz [34] employs LLMs to extract state
+verifier’s outputs remain highly valuable during bug analysis,           machines from the Matter protocol [38] to guide fuzzing, while
+enabling researchers to rapidly pinpoint suspicious interac-             LLMgSSA [39] leverages LLM reasoning to infer valuable
+tion sequences or responses, significantly narrow the analysis           protocol states during fuzzing. MBFuzzer [40] further adopts
+scope, and reduce the need to manually examine large volumes             an LLM-driven approach to analyze bug reports and validate
+of protocol logs line by line.                                           protocol non-compliance. In contrast to these works, BSFuzzer
+                                                                         moves beyond token-level or format-based mutation and op-
+                    VII. R ELATED W ORK                                  erationalizes LLMs as semantic inference engines capable
+Bluetooth Stack Security Testing. The security issues in the             of comprehending protocol state machines and inter-packet
+BLE stack have drawn significant attention. Some studies have            dependencies. This enables context-aware mutations, targeted
+already been conducted to identify potential vulnerabilities in          state transitions, and dependency-preserving field perturba-
+the BLE stack. SweynTooth [12] designs a BLE fuzzing frame-              tions that expose logic flaws beyond existing LLM-based
+work that achieves full control over communication at the LL             fuzzers. Moreover, because mutation operators are grounded
+to identify vulnerabilities in BLE protocol implementations.             in semantic and dependency representations extracted from
+
+
+
+                                                                    13
+formal specifications, the methodology is generalizable to                             [8] S. M. M. Rashid, T. Wu, K. Tu, A. A. Ishtiaq, R. H. Tanvir, Y. Dong,
+other multi-stage communication protocols beyond Bluetooth.                                O. Chowdhury, and S. R. Hussain, “State machine mutation-based
+                                                                                           testing framework for wireless communication protocols,” in Proceed-
+                                                                                           ings of the 2024 on ACM SIGSAC Conference on Computer and
+                         VIII. C ONCLUSION                                                 Communications Security, 2024, pp. 2102–2116.
+                                                                                       [9] I. Karim, A. Al Ishtiaq, S. R. Hussain, and E. Bertino, “Blediff: Scalable
+   In this paper, we presented BSFuzzer, a context-aware                                   and property-agnostic noncompliance checking for ble implementa-
+semantic fuzzing framework for BLE protocol stacks that                                    tions,” in 2023 IEEE Symposium on Security and Privacy (SP). IEEE,
+leverages protocol knowledge extracted from specifications.                                2023, pp. 3209–3227.
+                                                                                      [10] J. Ruge, J. Classen, F. Gringoli, and M. Hollick, “Frankenstein: Ad-
+Specifically, BSFuzzer first performs semantic parsing, which                              vanced wireless fuzzing to exploit new bluetooth escalation targets,”
+combines both state machine information and semantic infor-                                in 29th USENIX Security Symposium (USENIX Security 20), 2020, pp.
+mation extracted by an LLM agent. Based on this knowledge,                                 19–36.
+                                                                                      [11] D. Heinze, J. Classen, and M. Hollick, “ToothPicker: Apple
+it generates mutation seeds, including field seeds and state                               picking in the iOS bluetooth stack,” in 14th USENIX Workshop
+seeds, to create context-aware test cases. By executing these                              on Offensive Technologies (WOOT 20). USENIX Association, Aug.
+cases and validating responses against expected semantic be-                               2020. [Online]. Available: https://www.usenix.org/conference/woot20/
+                                                                                           presentation/heinze
+havior, BSFuzzer effectively detects logic and state inconsis-                        [12] M. E. Garbelini, C. Wang, S. Chattopadhyay, S. Sumei, and E. Kurni-
+tencies invisible to traditional fuzzers. We evaluated BSFuzzer                            awan, “{SweynTooth}: unleashing mayhem over bluetooth low energy,”
+on 19 real-world BLE devices, uncovering 34 previously                                     in 2020 USENIX Annual Technical Conference (USENIX ATC 20), 2020,
+                                                                                           pp. 911–925.
+undocumented bugs, including memory corruption, semantic                              [13] A. Pferscher and B. K. Aichernig, “Stateful black-box fuzzing of
+violations, and state transition flaws. Among these, 9 bugs                                bluetooth devices using automata learning,” in NASA Formal Methods
+received CVE identifiers, and two were acknowledged by                                     Symposium. Springer, 2022, pp. 373–392.
+                                                                                      [14] M. E. Garbelini, V. Bedi, S. Chattopadhyay, S. Sun, and E. Kurniawan,
+the vendor with bug bounties. BSFuzzer outperformed four                                   “{BrakTooth}: Causing havoc on bluetooth link manager via directed
+baseline tools, achieving 9.34% higher code coverage, demon-                               fuzzing,” in 31st USENIX Security Symposium (USENIX Security 22),
+strating its effectiveness in exposing high-impact, context-                               2022, pp. 1025–1042.
+                                                                                      [15] D. Antonioli, “Bluffs: Bluetooth forward and future secrecy attacks and
+sensitive bugs in BLE implementations.                                                     defenses,” in Proceedings of the 2023 ACM SIGSAC Conference on
+                                                                                           Computer and Communications Security, 2023, pp. 636–650.
+                        ACKNOWLEDGMENT                                                [16] B. Community, “Boofuzz: Network protocol fuzzing for humans,” https:
+                                                                                           //github.com/jtpereyda/boofuzz, accessed: 2024-10-22.
+   This work was supported by the National Natural Sci-                               [17] J. Wang, L. Yu, and X. Luo, “Llmif: Augmented large language model
+ence Foundation of China (U2336203, 62132011), the Na-                                     for fuzzing iot devices,” in 2024 IEEE Symposium on Security and
+                                                                                           Privacy (SP). IEEE, 2024, pp. 881–896.
+tional Key Research and Development Program of China
+                                                                                      [18] J. E. Hopcroft, R. Motwani, and J. D. Ullman, “Introduction to automata
+(2023QY1202), the Beijing Natural Science Foundation                                       theory, languages, and computation,” Acm Sigact News, vol. 32, no. 1,
+(L242015, 4242031), the Innovation Fund of Xidian University                               pp. 60–65, 2001.
+(GNYZ2024QC009), the Beijing-Tianjin-Hebei Natural Sci-                               [19] Morris Dworkin, “NIST Special Publication 800-38C: Recommendation
+                                                                                           for Block Cipher Modes of Operation: The CCM Mode
+ence Foundation Cooperation Project (No. 25JJJJC0003), and                                 for Authentication and Confidentiality,” National Institute of
+the China Scholarship Council (CSC) International Cooper-                                  Standards and Technology (NIST), Tech. Rep. SP 800-38C,
+ation Training Program for Innovative Cybersecurity Talents                                2007. [Online]. Available: https://nvlpubs.nist.gov/nistpubs/Legacy/
+                                                                                           SP/nistspecialpublication800-38c.pdf
+(CXXM20210118).                                                                       [20] Python Software Foundation, “Python 3.11.0 documentation,” https://
+                                                                                           docs.python.org/3.11/, 2022, accessed: 2025-05-04.
+                             R EFERENCES                                              [21] Nordic       Semiconductor,       “nRF52840         Dongle,”       https://
+                                                                                           www.nordicsemi.com/Products/Development-hardware/nRF52840-
+[1] Bluetooth SIG, “Bluetooth® market update 2025,” https:                                 Dongle, 2025, accessed: 2025-05-04.
+    //www.bluetooth.com/2025-market-update/, 2025, accessed: 2025-                    [22] xAI, “xai api documentation,” https://docs.x.ai/docs/overview, 2025,
+    06-23.                                                                                 accessed: 2025-06-20.
+[2] Statista, “Bluetooth – topic overview,” Statista Topic Page, 2025, https:         [23] OpenAI, “text-embedding-3-large,” https://platform.openai.com/docs/
+    //www.statista.com/topics/7730/bluetooth/#topicOverview.                               guides/embeddings, 2024, https://platform.openai.com/docs/guides/
+[3] IndustryARC, “Bluetooth low energy market size report 2024–2030,”                      embeddings/embedding-models.
+    IndustryARC market report, 2024, https://www.industryarc.com/Report/              [24] Cypress Semiconductor Corporation, “Cy8ckit-042-ble-a bluetooth
+    187/bluetooth-smart-market-forecast.html.                                              low energy pioneer kit guide,” Cypress Semiconductor Corporation,
+[4] A. Agarwal, “Bluebugging: How hackers utilize bluetooth-enabled                        User Guide 002-11468 Rev. E, 2018, https://www.infineon.com/dgdl/
+    devices to steal data,” 2023, times of India Blog. [Online]. Avail-                    Infineon-CY8CKIT-042-BLE-A Bluetooth Low Energy Pioneer Kit
+    able:      https://timesofindia.indiatimes.com/blogs/voices/bluebugging-               Guide-UserManual-v01 00-EN.pdf.
+    how-hackers-utilize-bluetooth-enabled-devices-to-steal-data/                      [25] Microchip Technology Inc., “Wbz451 curiosity board user’s guide,”
+[5] F. Xu, W. Diao, Z. Li, J. Chen, and K. Zhang, “Badbluetooth: Breaking                  Microchip Technology Inc., User Guide DS50003367, 2022,
+    android security mechanisms via malicious bluetooth peripherals.” in                   https://ww1.microchip.com/downloads/aemDocuments/documents/
+    NDSS, 2019.                                                                            WSG/ProductDocuments/UserGuides/WBZ451-Curiosity-Board-User-
+[6] B. Seri and G. Vishnepolsky, “Bleedingbit: The hidden attack                           Guide-DS50003367.pdf.
+    surface within ble chips,” Black Hat USA, Dec. 2018, presented                    [26] Google LLC, “Pixel 6 pro – learn about your pixel,” Google product
+    at Black Hat USA 2019; accessed via Black Hat EU 2018                                  page, 2025, https://pixel.withgoogle.com/Pixel 6 Pro?hl=en&country=
+    materials. [Online]. Available: https://i.blackhat.com/eu-18/Thu-Dec-6/                US. [Online]. Available: https://pixel.withgoogle.com/Pixel 6 Pro?hl=
+    eu-18-Seri-BleedingBit-wp.pdf                                                          en&country=US
+[7] H. Park, C. K. Nkuba, S. Woo, and H. Lee, “L2fuzz: Discovering                    [27] Huawei Device Co., Ltd., “Huawei phones,” Huawei Smartphone official
+    bluetooth l2cap vulnerabilities using stateful fuzz testing,” in 2022 52nd             product page, 2025, https://consumer.huawei.com/ke/phones/.
+    Annual IEEE/IFIP International Conference on Dependable Systems and               [28] D.      K.    Han     Yan,     Lewei      Qu.    (2024)     Brokenmesh:
+    Networks (DSN), 2022, pp. 343–354.                                                     New attack surfaces of bluetooth mesh. [Online]. Avail-
+
+
+
+
+                                                                                 14
+       able: https://www.blackhat.com/us22/briefings/schedule/#brokenmesh-
+       new-attack-surfaces-of-bluetooth-mesh-26853
+[29]   B. F. Sami Babigeon. (2023) Breaking secure boot on the silicon
+       labs gecko platform. [Online]. Available: https://blog.quarkslab.com/
+       breaking-secure-boot-on-the-silicon-labs-gecko-platform.html
+[30]   M. Karhumaa. (2021) Cyrc vulnerability advisory: Denial-of-service
+       vulnerabilities in zephyr bluetooth le stack. [Online]. Avail-
+       able: https://www.synopsys.com/blogs/software-security/cyrc-advisory-
+       zephyr-vulnerability.html
+[31]   Z. Han. (2022) Deep into android bluetooth bug hunting -
+       new attack surfaces and weak code patterns. [Online]. Avail-
+       able: https://i.blackhat.com/EU-22/Thursday-Briefings/EU-22-Zinuo-
+       Deep-into-Android-Bluetooth-Bug-Hunting.pdf
+[32]   Z. Yang, H. Peng, Y. Jiang, X. Li, H. Du, S. Wang, and J. Liu,
+       “Chathttpfuzz: large language model-assisted iot http fuzzing,” Interna-
+       tional Journal of Machine Learning and Cybernetics, pp. 1–22, 2025.
+[33]   R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large
+       language model guided protocol fuzzing,” in Proceedings of the 31st
+       Annual Network and Distributed System Security Symposium (NDSS),
+       2024.
+[34]   X. Ma, L. Luo, and Q. Zeng, “From one thousand pages of specification
+       to unveiling hidden bugs: Large language model assisted fuzzing of
+       matter {IoT} devices,” in 33rd USENIX Security Symposium (USENIX
+       Security 24), 2024, pp. 4783–4800.
+[35]   M. Belshe, R. Peon, and M. Thomson, “Hypertext transfer protocol ver-
+       sion 2 (http/2),” RFC 7540, IETF, May 2015, https://datatracker.ietf.org/
+       doc/html/rfc7540.
+[36]   H. Schulzrinne, A. Rao, and R. Lanphier, “Real time streaming protocol
+       (rtsp),” RFC 2326, Internet Engineering Task Force (IETF), April 1998,
+       https://datatracker.ietf.org/doc/html/rfc2326.
+[37]   ZigBee Alliance, “Zigbee specification,” ZigBee Document 053474r17,
+       2008, https://zigbeealliance.org/solution/zigbee/.
+[38]   Connectivity       Standards       Alliance,   “Matter     specification,
+       version 1.4,” Connectivity Standards Alliance Standard, 2024,
+       https://csa-iot.org/wp-content/uploads/2024/11/24-27349-006 Matter-
+       1.4-Core-Specification.pdf.
+[39]   B. Yu, Q. Song, and C. Cai, “Large language model guided state selec-
+       tion approach for fuzzing network protocol,” in 2024 IEEE International
+       Performance, Computing, and Communications Conference (IPCCC).
+       IEEE, 2024, pp. 1–6.
+[40]   X. Song, J. Wu, Y. Zeng, H. Pan, C. Zuo, Q. Zhao, and S. Guo,
+       “Mbfuzzer: A multi-party protocol fuzzer for MQTT brokers,” in Pro-
+       ceedings of the USENIX Security Symposium. USENIX Association,
+       2025, implementation and evaluation report a prototype that triggered
+       73 bugs across six mainstream MQTT brokers.
+
+
+
+
+                                                                                   15
+                         A PPENDIX A
+                   P ROMPT I MPLEMENTATION
+                                                                                 Prompt Template for State Mutation
+ Prompt Template for Field Semantics Extraction
+                                                                                 As a Bluetooth protocol testing expert, your task is to generate protocol
+ As a Bluetooth protocol expert, please perform the following protocol           mutation test cases as central role based on state dependencies.
+ analysis task: Analysis Target: The [Field] in the [Packet]                     Please follow the process below:
+ Execution Steps:                                                                Target Data Packet:
+ 1) Locate Packet Structure Accurately identify the definition of the            [Packet]
+ [Packet] in the protocol document. Parse the binary structure of the            [Dependent packets]
+ [Field].                                                                        [Dependency info]
+ 2) Field Semantic Analysis Extract the intended purpose and functional          [State transition path]
+ description of the field.
+ 3) Value Range Derivation                                                       Generation Rules:
+ a. Basic Value Range:                                                           1.Parse Dependent packets to get the state transition requirements
+ Determine the bit-length of the field.                                          related to [Packet].
+ Calculate the theoretical minimum (0) and maximum 2n − 1 values.                2.Comprehensive coverage of [Packet]-related protocol violations to
+ b. Semantic Value Range:                                                        ensure comprehensive testing.
+ Extract descriptions of reserved bits.                                          3.Based on the state transition requirements, generate the packet
+                                                                                 transmission path, at least one of the following state dependencies
+ [Example Output]                                                                must be violated:
+                                                                                 -Must include: [Packet]
+                                                                                 -Prestate Not Completed
+Fig. A.1: Prompt Template for Field Semantics Extraction.                        -Repeated Operations Not Following Protocol Specifications
+                                                                                 -Unexpected State Change
+ Prompt Template for Packet-Packet Dependency                                    -Combinations containing the above variants
+                                                                                 -Each test case corresponds to a specific failure scenario
+ As a Bluetooth protocol expert, you need to analyze the direct de-              -Technical basis description (cite the protocol chapter or specification
+ pendencies between the two data packet parameters of [Packet 1] and             clause)
+ [Packet 2].
+ Please follow these steps for professional analysis:                            Generation Steps:
+ Data packet definition:
+ ALL [Packet 1] field: [Packet 1 fields]                                         1. List violations of specific parts and descriptions related to [Packet]
+ ALL [Packet 2] field: [Packet 2 fields]                                         in <Analysis> tags.
+ Analysis requirements:                                                          2. Generate the packet transmission path.
+ 1. Strictly analyze based on the provided [Packet 1] fields and                 3. Only focus on the [Packet] related state transition mutation.
+ [Packet 2] fields without omitting or fabricating any fields.                   3. Confirm in the <Validation> tag whether each mutation directly
+ 2. Direct dependency is defined as: The parameter value in one data             violates protocol clauses.
+ packet directly affects or determines the setting of the parameter value        4. Describe the specific mutation steps in <Mutation Steps>,
+ in another data packet.                                                         using only: - Send [data packet name] - Skip [data packet name].
+ 3. Consider the constraints between the parameters defined by the               5. Generate xx test cases, no repeat.
+ protocol specification.
+ 4. Exclude indirect effects or associations generated by intermediate           [Example Output]
+ parameters.
+ Complete it in the <think> tag:
+ 1. List the protocol definition of each parameter
+ 2. Analyze the direct causal relationship between the parameters                      Fig. A.4: Prompt Template for State Mutation.
+ 3. Record the excluded indirect associations
+ Output requirements:
+ 1. Use strict JSON format
+                                                                                 Prompt Template for Field Validation Rules
+ 2. Contain Boolean cross packet dependency fields                               As a Bluetooth Core Specification expert, analyze the expected device
+ 3. Describe each parameter pair relationship with key-value pairs in            behavior upon receiving a packet with invalid or unsupported field values
+ the explanation field                                                           and a correct CRC. Follow the structure below:
+ 4. Keeping the same field structure as the example                              [Single Field Semantics]
+                                                                                 Analysis Requirements
+ [Example Output]                                                                1. Violation Scenarios
+                                                                                 Protocol-Level Violation: Directly violates the defined value range or
+                                                                                 format.
+Fig. A.2: Prompt Template for Packet-Packet Dependency.                          Capability Mismatch: Technically valid, but exceeds receiver’s
+                                                                                 implementation limits.
+ Prompt Template for Field Mutation
+                                                                                 2. Behavior Prediction
+ You are a Bluetooth protocol testing expert specializing in fuzz                Mandatory Behavior: Required behavior per the spec
+ testing for Bluetooth peripheral, given the following packet and field          Recommended Behavior: Optional implementation
+ information, generate mutations targeting this field.                           behavior Error Signaling: Silent drop / Send error code / Return reject
+                                                                                 packet, prioritization of error codes.
+ Background Information: [Field Semantics]
+ Field Mutation: boundary conditions, semantic invalid cases, bit-flip           [Example Output]
+ tests, random values
+ [Example Output]
+                                                                                  Fig. A.5: Prompt Template for Field Validation Rules.
+       Fig. A.3: Prompt Template for Field Mutation.
+
+
+
+                                                                            16
+Prompt Template for State Validation Rules
+As a Bluetooth Core Specification certified expert, analyze the required
+preconditions for the specified packet within the protocol stack and
+predict the device’s response behavior based on whether the state is
+valid or invalid.
+Protocol Scope:
+Layers: [LL,SMP]
+Role: peripheral,
+Security mode: [Device Security Mode],
+Packet Type: [packet name],
+Direction: Received by peripheral device
+
+[Example Output]
+
+
+ Fig. A.6: Prompt Template for State Validation Rules.
+
+Prompt Template for Field Validation
+You are an expert in the Bluetooth Core Specification. A single
+field in a BLE control packet has been mutated: [Packet mutation]
+[Actual response], where ”empty” in [Actual response] indicates a
+silently dropped packet. Perform the following steps:
+1. Field Validity Verification
+Determine whether the mutated field value is valid or invalid according
+to the [Specification Section].
+2. Device Response Compliance
+If the field value is invalid, evaluate whether the device’s actual response
+aligns with the expected behavior [Expected Device Behavior].
+
+[Example Output]
+
+
+     Fig. A.7: Prompt Template for Field Validation.
+
+Prompt Template for State Validation
+You are a Bluetooth Core Specification expert. Given a sequence of
+BLE packets: [Send Sequence] and [Device Response Sequence],
+perform the following checks for [Send Packet] in the path:
+
+1. Pre-State Verification
+
+For [Send Packet], determine whether the device was in a valid
+protocol state to legally receive and process this packet, based on the
+[Precondition].
+
+If the send packet is expected in the current state, it should be treated
+as a state-valid packet.
+
+If the send packet is unexpected in the current state, it should be
+treated as a state-invalid packet.
+
+2. Device Response Compliance
+
+For response packet:
+
+If the pre-state was valid, verify whether the device replied with the
+expected [Valid Response].
+
+If the pre-state was invalid, verify whether the device replied with the
+expected [Invalid Response].
+
+[Example Output]
+
+
+      Fig. A.8: Prompt Template for State Validation.
+
+
+
+
+                                                                               17
+                                               A PPENDIX B
+                                   E XPERIMENTAL D EVICES AND F INDINGS
+
+                                          TABLE B.1: List of BLE Devices.
+Category     ID      Device                   Vendor/Manufacturer       BLE Ver.   BLE SDK/System Ver.      Sample Code
+             D1      CY8CKIT-042-BLE          Cypress                   5.1        V3.66                    BLE Battery Level
+             D2      WBZ451                   Microchip                 5.2        V1.3.0                   BLE Throughput
+             D3      ESP32-WROOM-32E          Espressif                 4.2        V5.3.0                   GATT Security Server
+             D4      B91                      Telink                    5.0        V4.0.1.0                 Tlkapp General
+BLE SoC      D5      RTL8762EKF-EVB           Realtek                   5.0        V1.4.0                   BLE Peripheral
+             D6      CH592                    WCH                       5.3        V1.8                     Peripheral
+             D7      LP-CC2652RB              Texas Instruments         5.2        V7.41.00.17              Throughput Peripheral
+             D8      nRF52840-DK              Nordic Semiconductor      5.0        V2.9.1                   Peripheral Hids Mouse
+             D9      NUCLEO-WB55RG            STMicroelectronics        5.2        V1.21.0                  BLE HeartRateThreadX
+             D10     P40                      Huawei                    5.1        HarmonyOS 4.2.0          /
+             D11     Nova5                    Huawei                    5.0        HarmonyOS 4.0.0          /
+             D12     Mate50                   Huawei                    5.2        HarmonyOS 4.2.0          /
+             D13     Honor90                  Honor                     5.2        Android 13               /
+             D14     OPPO A72                 OPPO                      5.0        ColorOS V12.1            /
+Smartphone
+             D15     Note 10 Pro              Redmi                     5.0        MIUI 13.0.13             /
+             D16     Xiaomi 14                Xiaomi                    5.4        HyperOS 2.0.60           /
+             D17     Galaxy C55               Samsung                   5.2        Android14                /
+             D18     Google Pixel 2           Google                    5.0        Android 10               /
+             D19     Google Pixel 6 Pro       Google                    5.2        Android 15               /
+
+
+
+
+                     TABLE B.2: Summary of Bugs Found on the Tested Devices.
+                                       Bugs
+                   Device                               Fuzzing Time      Disclosure Status
+                              M    S           I
+                   D1         M1   S3          I1       1h   38m          Two CVE Assigned
+                   D2         M6   S5          I4       3h   26m          Vendor Reporting
+                   D3         M4   S1,S2       I3,I4    2h   08m          S2:CVE Assigned; CVE Request
+                   D4         -    -           I1       2h   57m          Vendor Reporting
+                   D5         M2   S6,S7,S8    I1       1h   20m          Four CVE Assigned
+                   D6         -    S1          I2       1h   46m          Vendor Reporting
+                   D7              S1          I5       3h   02m          Two CVE Assigned
+                   D8         -    -           -        2h   23m          -
+                   D9         M5   -           -        2h   21m          Vendor Reporting
+                   D10        -    S2          I1       2h   25m          Bug Bounty
+                   D11        -    S2          I1       2h   03m          Bug Bounty
+                   D12        -    -           I1       2h   11m          I1:Bug Bounty,Vendor Reporting
+                   D13        -    -           -        2h   05m          -
+                   D14        M3   S1          I1       3h   16m          M3:Previously Reported,Vendor Reporting
+                   D15        M3   S1          I1       1h   47m          M3:Previously Reported,Vendor Reporting
+                   D16        M3   -           -        1h   28m          Vendor Confirmed
+                   D17        -    -           I1       1h   22m          Vendor Confirmed
+                   D18                         I5       1h   38m          Vendor Reporting
+                   D19        -    S8          -        1h   27m          Vendor Reporting
+              Note: M (memory corruption), S (state bugs), and I (inconsistency bugs).
+
+
+
+
+                                                                   18
+

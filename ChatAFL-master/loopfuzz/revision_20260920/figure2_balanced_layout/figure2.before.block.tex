@@ -1,0 +1,40 @@
+\begin{figure*}[!tbp]
+\centering
+\begin{tikzpicture}[
+  font=\fontsize{9}{11}\selectfont,
+  box/.style={draw=black!75,line width=0.6pt,rounded corners=2pt,
+    align=center,text width=21mm,minimum width=24mm,
+    minimum height=13mm,inner sep=3pt},
+  queue/.style={box,text width=27mm,minimum width=30mm,
+    minimum height=15mm},
+  flow/.style={-{Latex[length=2.5mm,width=1.7mm]},
+    draw=black!85,line width=0.85pt,rounded corners=2pt,
+    shorten <=1pt,shorten >=1pt},
+  failure/.style={flow,dashed},
+  condition/.style={font=\fontsize{8.5}{10}\selectfont,
+    text=black,fill=white,inner sep=1.2pt,align=center}]
+\node[box,fill=blue!5] (llm) at (0,0) {LLM proposal};
+\node[box] (p) at (3.4,0) {Structural\\check $P$};
+\node[box] (trial) at (6.8,0) {Bounded trial\\check $U,R$};
+\node[box,fill=blue!5] (gain) at (10.2,0) {Separate\\$\gcode,\gstate$};
+\node[queue,fill=blue!8] (dur) at (14,1.5) {Durable queue\\code evidence};
+\node[queue,fill=orange!12] (prov) at (14,-1.5) {Provisional queue\\bounded validation};
+\node[queue,fill=black!4] (rej) at (6.8,-2.8) {Reject / expire\\retain evidence};
+
+\draw[flow] (llm.east)--(p.west);
+\draw[flow] (p.east)--node[condition,above] (p_ok) {pass}(trial.west);
+\draw[flow] (trial.east)--node[condition,above] (ur_ok) {pass}(gain.west);
+\draw[flow] (gain.north)|-node[condition,above,pos=.7] (code_gate) {$\gcode$}(dur.west);
+\draw[flow] (gain.south)|-node[condition,above,pos=.7] (state_gate) {$\gstate$ only}(prov.west);
+\draw[flow] (prov.north)--node[condition,right] (promotion) {Validated\\code gain}(dur.south);
+
+\draw[failure] (p.south)|-node[condition,left,pos=.25] (p_fail) {$\neg P$}(rej.west);
+\draw[failure] (trial.south)--node[condition,right] (ur_fail) {$\neg U\lor\neg R$}(rej.north);
+\draw[failure] (gain.south west)|-(rej.east);
+\node[condition,anchor=west] (no_gain) at (9.12,-2.05) {Neither gain};
+\draw[failure] (prov.south)--(14,-4.3)--
+  node[condition,above] (expiry) {Budget exhausted}(6.8,-4.3)--(rej.south);
+\end{tikzpicture}
+\caption{Evidence-gated admission with provisional and durable queues.}
+\label{fig:architecture}
+\end{figure*}

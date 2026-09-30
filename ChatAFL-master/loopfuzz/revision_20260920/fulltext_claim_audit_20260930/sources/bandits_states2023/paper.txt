@@ -1,0 +1,428 @@
+    The Bandit’s States: Modeling State Selection for Stateful Network Fuzzing
+                         as Multi-armed Bandit Problem
+
+          1st Anne Borcherding                        2nd Mark Giraud                       3rd Ian Fitzgerald
+             Fraunhofer IOSB                          Fraunhofer IOSB               Karlsruhe Institute of Technology
+           Karlsruhe, Germany                       Karlsruhe, Germany                     Karlsruhe, Germany
+   anne.borcherding@iosb.fraunhofer.de         mark.giraud@iosb.fraunhofer.de         ian.fitzgerald@student.kit.edu
+            0000-0002-8144-2382                      0000-0002-2972-2758
+
+                                                    4th Jürgen Beyerer
+                                                    Fraunhofer IOSB,
+                                          Karlsruhe Institute of Technology, and
+                                            KASTEL Security Research Labs,
+                                                  Karlsruhe, Germany
+                                           juergen.beyerer@iosb.fraunhofer.de
+
+
+Abstract—Network interfaces of Industrial Control Systems       One way to reveal weaknesses in robustness and resilience
+are a common entry point for attackers, and thus need           is to perform security testing. In particular, security tests
+to be thoroughly tested for vulnerabilities. One way to         should include tests against the network interfaces of
+perform such tests is with network fuzzers, which randomly      the System under Test (SUT). On the one hand, this
+mutate network packets to induce unexpected behavior and        allows to test the SUT from the attacker’s perspective in
+vulnerabilities. Highly stateful network protocols pose a       an automated way. On the other hand, it is one of the
+particular challenge to fuzzers, since a fuzzer needs to be     requirements formulated by IEC 62443, the standard for
+aware of the states in order to find deep vulnerabilities.      security in automation and control systems [12, part 4-1].
+Even if a fuzzer is aware of the states of a stateful network   Amongst various testing techniques, this should include
+protocol, there are still several challenges to overcome. The   fuzzing of the network interfaces. Fuzzing is a testing
+challenge we focus on is deciding which state to test next.     technique in which random input is generated and sent
+To make this decision, the fuzzer needs to strike a balance     to the SUT. The behaviour of the SUT in response to the
+between exploiting known states and exploring states not        input is analyzed to identify anomalies, potential bugs and
+yet tested. We propose to model this exploration versus         vulnerabilities, or to guide the fuzzing process.
+exploitation dilemma using a Multi-armed Bandit. In this            Most network protocols, however, are highly stateful.
+work, we present two modeling approaches and prelimi-           This is especially true for industrial network protocols,
+nary experiments. We choose to model the state selection
+                                                                such as OPC UA. The stateful nature of network protocols
+                                                                presents a challenge for thorough testing and fuzzing, as
+problem with (I) a stochastic Multi-armed Bandit, and (II)
+                                                                vulnerabilities may be hidden in deep states of the SUT.
+an adversarial Multi-armed Bandit. The latter takes into
+                                                                One approach to this issue is stateful fuzzing, which uses
+account that coverage can only be discovered once, and
+                                                                state models to guide the fuzzing process (see e.g. [3],
+that the underlying reward probability therefore decreases
+                                                                [7], [14]). Nevertheless, stateful fuzzers have additional
+over time. Although the adversarial Multi-armed Bandit
+                                                                challenges to overcome. One of these challenges is to
+models the state selection problem more accurately, our
+                                                                decide which state to select for the next testing phase
+experiments show that both approaches lead to statistically     (see Section 2.1). This decision can be seen as an explo-
+indistinguishable fuzzer performance. Furthermore, we show      ration versus exploitation problem since the probability of
+that the baseline fuzzer AFLNet leads to significantly better   success per state is not known a priori. A success would
+results in terms of coverage. Building on these unintuitive     be, for example, to find new coverage in the SUT, or to
+preliminary results, we aim to investigate the behavior of      trigger a crash of the SUT.
+the agents in more detail, to include additional modeling
+approaches, and to use additional Systems under Test for        Approach. An instance of the exploration versus exploita-
+the evaluation.                                                 tion problem is the Multi-armed Bandit (MaB) problem,
+                                                                where a non-contextual reinforcement learning agent re-
+1. Introduction                                                 peatedly needs to choose between several actions. Each
+                                                                action results in a certain reward for the agent. The goal
+    Securing Industrial Control Systems (ICSs) requires to      of the agent is to maximize their reward (see Section 2.2).
+consider security in all steps of the development lifecycle.    Various algorithms for agents solving the MaB problem
+This includes ensuring the robustness and resilience of         have already been proposed [19]. Thus, we propose to
+the used components, such as Programmable Logic Con-            model the state selection problem as a MaB problem, and
+trollers (PLCs) and Human Machine Interfaces (HMIs).            to leverage these existing algorithms.
+Contributions. This work makes two main contributions:         2.2. Multi-armed Bandit Problem
+(I) We present a novel approach to model the state selec-
+tion problem of stateful network fuzzers as an instance            Figuratively speaking, in the MaB problem, an agent is
+of the MaB problem, and (II) we conduct preliminary            presented with multiple slot machines (one-armed bandits)
+experiments analyzing whether this improves the fuzzing        to choose from and has the goal of maximizing the total
+performance.                                                   winnings over several rounds. To be more formal, in
+                                                               the MaB problem, a non-contextual agent is repeatedly
+Research Goals. The overall goal of our work is to             presented with a choice between several actions. These
+understand whether the state selection problem can be          actions lead to rewards which are drawn from a probability
+successfully modeled as a MaB problem and whether              distribution that depends on the chosen action. The aim of
+this improves the performance of a stateful fuzzer. We         the agent is to maximize the expected total reward [20].
+formulate the following two research questions:                As the agent has no prior knowledge of the probability
+RQ1 Does the modeling approach for the MaB problem             distributions of the rewards, they must decide whether to
+    affect the performance of stateful fuzzers based on        exploit known actions or to explore unknown actions. Note
+    a MaB state selection?                                     that the agent is non-contextual, i.e. the environment in
+                                                               which the agent operates has no state. Thus, the agent
+RQ2 How do stateful fuzzers using a MaB based state            only receives the information about the reward and no
+    selection compare to the state of the art fuzzer           additional information about the environment, the fuzzer,
+    AFLNet?                                                    or the SUT. Several approaches to formulate MaB prob-
+Preliminary Results. For our preliminary experiments,          lems have been proposed (see e.g. [2], [19], [20]). For our
+we implemented four graybox MaB fuzzers using two dif-         setting, we choose two different approaches: a stochastic
+ferent modeling approaches and used the stateful network       MaB and an adversarial MaB. The main difference is that
+protocol OPC UA as fuzzing target (see Section 5). These       for a stochastic MaB, the reward is based on stationary
+experiments showed the following two main insights: On         probability distributions whereas for an adversarial MaB
+the one hand, the experiments suggest that the four MaB        these distributions can change over time.
+based fuzzers show no statistically significant performance        The adversarial approach is especially interesting for
+increase over one another (RQ1). On the other hand, the        the modeling of the state selection in fuzzing. In general,
+baseline fuzzer AFLNet performs significantly better than      the success in fuzzing is based on the new coverage or new
+all MaB fuzzers (RQ2). These preliminary results support       bugs the fuzzing test discovers. Note that this explicitly
+results from literature [14], and build a starting point       refers to new coverage or bugs. Finding the same coverage
+for further investigations on modeling the state selection     or bugs several times will not lead to new insights and will
+problem as MaB problem. These further investigations           consequently usually not lead to a reward for the agent.
+could include, in particular, an analysis of the learning      Thus, the probability distribution for the reward changes
+behavior of the agents, and the use of different modeling      over time, and an adversarial MaB should be able to model
+approaches and SUTs (see Section 6).                           the state selection problem more accurately.
+                                                                   For both modeling approaches, various algorithms for
+                                                               the agent’s interaction with the MaB have been proposed.
+2. Background and Related Work                                 In our work, we choose the following common algorithms.
+    Our work combines two different domains: state se-         For the stochastic MaB, we choose
+lection in stateful network fuzzing and the MaB problem.       (1) the ϵ-Greedy algorithm (EPS), which chooses the
+The following provides an overview of those two domains.           action with the highest expected reward with a prob-
+                                                                   ability of ϵ, and a random action with the probability
+2.1. State Selection in Stateful Network Fuzzing                   1 − ϵ [20],
+     Generally, fuzzing can be divided into blackbox, gray-    (2) the UCB1 algorithm (UCB), which is based on the
+box, and whitebox fuzzing, depending on the information            optimism under uncertainty principle and chooses the
+that is available to the fuzzer [15]. Our work is concerned        best action based on optimistic estimates [20], and
+with graybox fuzzers. Thus, we assume that the fuzzer          (3) a tuned version of UCB1 (UCBT) which additionally
+has access to the information which code was covered               takes the variance of an action into account [1].
+by a certain test case (code coverage). The goal of state-
+                                                               For the adversarial MaB, we choose
+ful network fuzzing is to improve the fuzzing of highly
+stateful systems such as network protocols. To achieve         (1) the Exp3 algorithm (EXP) presented by Auer et al.
+this, state of the art fuzzers extract a state model and           which makes no statistical assumptions about the
+use this model to guide the fuzzing process [18]. Several          distributions of rewards [2].
+approaches to represent and extract the state model have
+been proposed (e.g. [3], [17]). Next to other challenges       2.3. Related Work
+that need to be solved for stateful fuzzing, the fuzzer
+needs to decide which state should be used for testing             The MaB problem or reinforcement learning in general
+in the next fuzzing phase (state selection) [14]. Liu et       has been successfully used to model various other parts
+al. show that current state selection algorithms do not        of the fuzzing process (see e.g. [22] for an overview). For
+increase performance in a significant manner [14]. In our      example, it has been used for seed selection [8], [23], [24],
+work, we therefore investigate whether this is also the case   coverage metric selection [21], and mutation selection [4],
+if the state selection is modeled as MaB problem.              [5]. All of these publications show an improvement of the
+fuzzing process by leveraging reinforcement learning for       The input mutation is almost identical to AFL, except
+one or several decisions. However, to our knowledge, there     for a new mutation operation that concatenates different
+is no publication trying to pass the state selection problem   network messages as a whole. AFLNet requires a trace
+to a reinforcement learning agent.                             of a full network communication with the target in order
+                                                               to extract a reasonable starting state machine and valid
+3. Methodology                                                 inputs. For state selection, AFLNet by default uses its
+                                                               own schedule based on a manually crafted heuristic based
+    The goal of our work is to understand how the state        on the number of times a state has been used and on how
+selection can be modeled as a MaB problem and whether          successful the fuzzer was in finding new coverage in this
+this modeling improves the overall fuzzer performance.         state [18]. For the experiments, we use the coverage to
+Liu et al. showed that current approaches to state selection   compare the performance of the fuzzers again.
+do not increase the overall performance [14]. However,
+approaches based on reinforcement learning and the MaB         3.2. Potential Impact
+problem showed good performance in other decisions in
+fuzzing (see Section 2.3), and provide a good approach             Our work will provide insights on how to model the
+to the exploitation versus exploration problem. Based on       state selection problem of a stateful network fuzzer as a
+these observations, we aim to investigate whether mod-         MaB problem. In addition, our work will provide insights
+eling the state selection using the MaB problem can            on what agents can learn regarding the state selection and
+improve the overall fuzzer performance. Especially, we         how this information can be leveraged to provide a more
+aim to focus on different modeling approaches, including       efficient state selection. With a more efficient state selec-
+stochastic and adversarial approaches, and on how the          tion, fuzzers can find vulnerabilities in different depths of
+modeling choices affect the fuzzer’s performance.              a SUT faster and more accurately. This can improve the
+                                                               overall performance of a fuzzer regarding code coverage
+                                                               and found vulnerabilities. As a result, vulnerabilities can
+3.1. Research Questions                                        be found faster and closed earlier, and thus the affected
+                                                               SUT can be made more secure.
+    We formulate two research questions. The first re-
+search question is concerned with the choice of the mod-       3.3. Evaluation Strategy
+eling approach for the MaB problem.
+RQ1 Does the modeling approach for the MaB problem                  In general, we base our evaluation on the recommen-
+    affect the performance of stateful fuzzers based on        dations by Klees et al. [13]. This includes executing each
+    a MaB state selection?                                     of the fuzzing runs for at least 24 hours, and to repeat each
+                                                               configuration at least 30 times to account for the random-
+As presented in Section 2.2, one can choose from various       ness of the fuzzer and the agents. To ensure transferable
+approaches to model the MaB problem. For this work, we         and robust results, the fuzzers will be evaluated against
+choose a stochastic approach and an adversarial approach.      several stateful network protocols. As a baseline, the state
+One would expect the agent in the adversarial setting to       of the art graybox fuzzer AFLNet will be used.
+perform better since it takes the changing reward distribu-         This work includes preliminary experiments of the
+tions into account. The rewards distributions change over      two research questions. Note that this only includes four
+time since coverage that has been found earlier in the         different agents, one stateful network protocol as SUT,
+fuzzing process will not be rewarded again. In addition        and 10 repetitions of each configuration. AFLNet is used
+to the general modeling approach, the reward and the           as a baseline for the evaluations. As has been stated, we
+hyperparameters of the agents need to be modeled (see          will expand our evaluation by including more agents and
+Section 4). To evaluate the performance of the various         a broader set of evaluation SUTs in the future. Note that a
+configurations for the agents, we measure the code cover-      state machine for each of the SUTs needs to be constructed
+age a fuzzer based on the respective agent achieves during     first.
+fuzzing.
+    The second research question is concerned with the
+overall performance of fuzzers which base their state
+                                                               4. Modeling
+selection on a MaB agent.                                          We model the state selection problem in stateful net-
+RQ2 How do stateful fuzzers using a MaB based state            work fuzzing as MaB problem to be able to leverage
+    selection compare to the state of the art fuzzer           existing algorithms. The agent’s task is to select the state
+    AFLNet?                                                    of the SUT to be tested in the next testing phase. Overall,
+                                                               the goal is to find new coverage and crashes. For the
+As a baseline for our experiments, we choose AFLNet,
+                                                               preliminary evaluation presented in this work, we decided
+a state of the art stateful graybox network fuzzer [18].
+                                                               on a modeling approach that is presented in the following.
+AFLNet is based on AFL1 and extends it with a state
+                                                               In the future, we plan to propose and evaluate more
+machine. The state machine identifies states via the re-
+                                                               approaches, especially for modeling the reward.
+sponse codes to messages that were sent by the fuzzer.
+Before fuzzing, the SUT is set to a specific state by          Actions. For the definition of actions in the MaB problem,
+sending the messages required to reach this specific state     we assume that
+first. After this, the mutated input is sent to the SUT.
+                                                               (1) a deterministic finite-state machine with states S of
+  1. https://github.com/google/AFL                                 the SUT is available,
+        :Agent                       :Fuzzer                   :SUT         a new crash was observed, and 0 otherwise. Note that
+                                                                            the agent is only rewarded if it finds previously unseen
+                                                                            coverage or crashes, resulting in non-stationary probability
+          Loop
+                                                                            distributions for the rewards.
+
+               select action()                                              5. Preliminary Experiments
+
+                 action selected()
+                                                                                In order to gain first insights into the topic and the re-
+                                                                            search questions, we performed preliminary experiments.
+                                               go to state()                These experiments include three stochastic MaB agents,
+                                                                            one adversarial MaB agent, and one SUT. In future work,
+                                           mutate input()                   we aim to extend the variation of the agents as well as
+                                                                            the number of SUTs (see Section 6 for details).
+                                                  input()
+                                                                            5.1. Setup
+                                                 feedback
+                                           evaluate feedback()                  Based on AFL++ [9] and the algorithms discussed in
+                                                                            Section 2.2, we implemented the four MaB based fuzzers
+                                                                            EPS, EXP, UCB, and UCBT. The three fuzzers EPS, UCB,
+                      reward                                                and UCBT are fuzzers using a stochastic MaB, whereas
+                                                                            EXP is a fuzzer using an adversarial MaB (see Section 2.2
+                                                                            for details on the algorithms). As baseline, we used the
+                                                                            state of the art stateful greybox fuzzer AFLNet [18]. We
+Figure 1. Abstract sequence diagram of the interaction between the agent,   executed each of the five fuzzers 10 times for 24 hours
+the fuzzer, and the SUT.                                                    to accommodate for the fuzzers’ randomness. We sped
+                                                                            up the resulting 1200 hours of runtime by using docker
+                                                                            to enable parallel evaluation runs. We ran our evaluation
+ (2) each state in S is reachable from the start state, and                 on an Ubuntu 20.04 LTS Server with an Intel® Xeon®
+ (3) that the SUT can be coerced into a specific state.                     CPU ES-1650 v3 @ 3.50GHz (12 physical cores) with
+                                                                            64 GB of RAM. As SUT, we chose open625412 , an open
+With this, the specifics of state machine itself can be
+                                                                            source implementation of the stateful network protocol
+transparent to the agent. Consequently, we define the set
+                                                                            OPC UA. For our experiments, we included and modeled
+of possible actions A to be the set of states S . Note that S
+                                                                            five different states of the OPC UA protocol (see e.g.
+represents the states of the SUT, whereas the agent itself
+                                                                            the OPC UA standard3 for more details on OPC UA).
+is stateless since it is non-contextual. In each round, the
+                                                                            We chose the five states that are needed to establish
+agent selects one of the states of the SUT’s state machine
+                                                                            a connection successfully and model them as the state
+by choosing one action. This state is then used by the
+                                                                            machine shown in Figure 2. The SUT starts in an initial
+fuzzer in the next fuzzing iteration.
+                                                                            state. By sending OPC UA messages to the SUT, the
+    The interaction between the agent, the fuzzer, and the
+                                                                            internal state of the SUT can be changed. Since this state
+SUT is shown in Figure 1, and a corresponding description
+                                                                            machine is only used to coerce the SUT into a specific
+follows. By selecting an action, the agent selects the next
+                                                                            state instead of representing the full behavior of the SUT,
+state of the SUT to be tested. After the agent’s decision,
+                                                                            it does not need to include all possible error cases and
+the SUT is put into the chosen state. In our setting, this
+                                                                            error transitions. Note that the fuzzers also implement
+task is done by the fuzzer, but in principle it could be
+                                                                            the corresponding closing messages which allow to go
+done directly by the agent. Next, the fuzzer generates the
+                                                                            back in the state machine. However, for our preliminary
+fuzzing input and sends it to the SUT. The SUT executes
+                                                                            experiments, we chose to only include the establishment
+based on the input, and it measures the code coverage and
+                                                                            of the connection in the intended order.
+crashes produced by the fuzzing input. The code coverage
+and crashes are the feedback that is sent back to the fuzzer.
+Note that we assume a graybox setting in which the fuzzer                   5.2. Results
+has access to code coverage information during fuzzing.
+Based on the feedback, the fuzzer calculates the reward                         The results of the evaluation are presented in Figures 3
+for the agent and rewards the agent accordingly. After                      and 4. Figure 3 shows the final coverage which has been
+that, one round of the fuzzing process is finished and the                  achieved by 10 runs of the MaB fuzzers on the SUT
+agent starts again with selecting the next state. Note that                 open62541 as a box plot. Based on the box plot, one
+this process is non-deterministic since the fuzzer performs                 can come to the conclusion that the MaB fuzzers show
+non-deterministic mutations and the agent might make                        no statistically significant performance increase over one
+non-deterministic decisions.                                                another (RQ1). To verify this, we present the p-values
+                                                                            calculated using a Mann-Whitney U Test in Table 1. Being
+                                                                            greater than 0.05, these values indicate that we cannot
+Reward. In the abstract sequence diagram (see Figure 1),                    reject the null hypothesis that all fuzzers result in the
+the reward for the agent is calculated by the fuzzer, based
+on the feedback of the SUT. The agent receives a reward                       2. https://www.open62541.org/
+of 1 if new coverage was achieved, a reward of 10 if                          3. https://reference.opcfoundation.org/
+                               Hello                   OpenSecureChannel             CreateSessionRequest      ActivateSessionRequest
+
+
+start         Initial                          Hello                           Channel                   Session                       Activated
+
+
+Figure 2. States of the OPC UA protocol used during the preliminary experiments. The text on the transitions represent the OPC UA message needed
+for the transition. The MaB agent selects one of the states for the next fuzzing phase and the fuzzer send the necessary messages to the SUT before
+sending the mutated fuzzing input.
+
+
+                                                                                   TABLE 1. R ESULTING P - VALUES OF A M ANN -W HITNEY U TEST
+                                                                                  REGARDING THE STATISTICAL SIGNIFICANCE OF THE DISTANCE OF
+                                                                                     THE RESULTING COVERAGES . N O ALGORITHM PERFORMS
+                                                                                                    SIGNIFICANTLY BETTER .
+
+
+                                                                                                     UCB     UCBT     EPS      EXP
+                                                                                             UCB       -     0.545    0.364    0.879
+                                                                                             UCBT    0.545     -      0.198    0.449
+                                                                                             EPS     0.364   0.198      -      0.542
+                                                                                             EXP     0.879   0.449    0.542      -
+
+
+
+                                                                                 algorithms. Overall, AFLNet performs significantly better
+                                                                                 than all the MaB fuzzers (RQ2). Our analysis shows that
+Figure 3. Box plot of the final coverages achieved by 10 runs of the MaB         one reason for this is the difference in inputs. AFLNet
+fuzzers. The boxes extend from the lower quartile to the upper quartile,
+the line in the boxes corresponds to the median, the whiskers represent
+                                                                                 requires one full sequence of input messages, while the
+1.5 times the interquartile range, and outliers are shown as single circles.     MaB fuzzers only receive information about individual
+No MaB fuzzer leads to significantly different results.                          states (see Section 2.3). This knowledge allows AFLNet
+                                                                                 to start analyzing deep states directly, while the MaB
+                                                                                 fuzzers need to identify the deep states first. This insight
+                                                                                 represents one starting point for further research and on
+                                                                                 how to make MaB fuzzers more efficient.
+
+                                                                                 6. Future Work
+                                                                                     Based on the preliminary experiments, we aim to
+                                                                                 extend the approaches and experiments to provide deeper
+                                                                                 insights into the modeling of the state selection problem
+                                                                                 as a MaB problem. On the one hand, this will include
+                                                                                 different approaches on modeling the reward, and choos-
+                                                                                 ing the MaB algorithm and inputs for the agent. In par-
+                                                                                 ticular, we aim to further investigate why the adversarial
+                                                                                 MaB approach did not perform better than the stochastic
+                                                                                 MaB models. In order to provide a modular structure
+                                                                                 for the various approaches, we aim to re-implement our
+Figure 4. Coverage comparison of the MaB fuzzers and AFLNet (mean                approaches building upon the modular fuzzing framework
+of 10 runs). The MaB fuzzers perform similarly, while AFLNet performs            LibAFL [10]. On the other hand, we aim to perform the
+significantly better.                                                            evaluation with more SUTs. This will include, amongst
+                                                                                 others, SUTs similar to the ones used by Liu et al. [14], in
+                                                                                 order to achieve comparable results. In addition, this will
+same performance. This result is interesting, since the                          provide the possibility to analyze the protocol-depenent
+adversarial MaB models the state selection problem more                          behavior of the agents in more detail. In order to gain
+accurately, and we should thus expect the corresponding                          deeper insights into how and what the agents learn, we
+algorithm (EXP) to lead to better results. Nevertheless, this                    also aim to perform in-depth analysis of the agents and
+result is in line with the results by Liu et al. [14]. Liu et al.                to perform hyperparameter tuning.
+show in their work that previously existing approaches for                           The next step, building upon the insights on modeling
+state selection as well as the new approach they propose                         the state selection problem as MaB, would be to combine
+lead to indistinguishable fuzzing performances in most                           the state selection with an automated learning of the
+cases.                                                                           state graph. Automated learning of a protocol state graph
+    The plot in Figure 4 depicts the mean of the coverage                        has been done for graybox settings (e.g. [16]), and for
+in basic blocks of the different MaB fuzzers in comparison                       blackbox settings (e.g. [6], [7]). With this, we could omit
+to AFLNet on the SUT open62541 over time. The orange                             the assumption of a given state graph. On top of this, one
+dotted line is the baseline AFLNet, whereas the solid lines                      could look into other modeling approaches for the states
+correspond to the different fuzzers implementing the MaB                         of the SUT (e.g. Markov chains [11]).
+7. Conclusions                                                            [11] Hugo Gascon, Christian Wressnegger, Fabian Yamaguchi, Daniel
+                                                                               Arp, and Konrad Rieck. Pulsar: Stateful black-box fuzzing of pro-
+                                                                               prietary network protocols. In Security and Privacy in Communi-
+    Our work contributes further to the question of                            cation Networks: 11th EAI International Conference, SecureComm
+whether or not the state selection algorithm has a sig-                        2015, Dallas, TX, USA, October 26-29, 2015, Proceedings 11,
+nificant impact on the results achieved by the fuzzer.                         pages 330–347. Springer, 2015.
+Our preliminary experiments show that the choice of the                   [12] IEC 62443 Security for Industrial Automation and Control Sys-
+agent’s algorithm has no statistically significant impact,                     tems. Standard, Internation Electrotechnical Commission, Geneva,
+                                                                               CH, 2009-2020.
+which supports results from literature. Nevertheless, we
+plan to analyze the modeling using MaB in greater depth                   [13] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael
+                                                                               Hicks. Evaluating fuzz testing. In Proceedings of the 2018 ACM
+to fully understand its implications and potentials. For                       SIGSAC conference on computer and communications security,
+this, we plan to perform in-depth hyperparameter tuning to                     pages 2123–2138, 2018.
+understand the impact of hyperparameters on the fuzzer’s                  [14] Dongge Liu, Van-Thuan Pham, Gidon Ernst, Toby Murray, and
+performance. This includes providing additional knowl-                         Benjamin IP Rubinstein. State selection algorithms and their
+edge, such as the depth of states, to the MaB fuzzers.                         impact on the performance of stateful network protocol fuzzing.
+In addition, we aim to analyze the learning phase of the                       In 2022 IEEE International Conference on Software Analysis,
+                                                                               Evolution and Reengineering (SANER), pages 720–730. IEEE,
+agents to see what they learn during their interaction with                    2022.
+the SUT. To go a step further, state selection could be
+                                                                          [15] Valentin JM Manès, HyungSeok Han, Choongwoo Han, Sang Kil
+combined with state graph learning, omitting the assump-                       Cha, Manuel Egele, Edward J Schwartz, and Maverick Woo.
+tion of a given state graph.                                                   The art, science, and engineering of fuzzing: A survey. IEEE
+    With this, we contribute to more efficient stateful                        Transactions on Software Engineering, 47(11):2312–2331, 2019.
+network fuzzing approaches. As a result, fuzzing can find                 [16] Chris McMahon Stone, Sam L Thomas, Mathy Vanhoef, James
+vulnerabilities in ICS faster and thus the vulnerabilities                     Henderson, Nicolas Bailluet, and Tom Chothia. The closer you
+can be closed earlier.                                                         look, the more you learn: A grey-box approach to protocol state
+                                                                               machine learning. In Proceedings of the 2022 ACM SIGSAC
+                                                                               Conference on Computer and Communications Security, pages
+References                                                                     2265–2278, 2022.
+                                                                          [17] Roberto Natella. Stateafl: Greybox fuzzing for stateful network
+                                                                               servers. Empirical Software Engineering, 27(7):191, 2022.
+[1]   Peter Auer, Nicolo Cesa-Bianchi, and Paul Fischer. Finite-time
+      analysis of the multiarmed bandit problem. Machine learning,        [18] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury.
+      47:235–256, 2002.                                                        Aflnet: A greybox fuzzer for network protocols. In 2020 IEEE
+                                                                               13th International Conference on Software Testing, Validation and
+[2]   Peter Auer, Nicolo Cesa-Bianchi, Yoav Freund, and Robert E               Verification (ICST), pages 460–465, 2020.
+      Schapire. The nonstochastic multiarmed bandit problem. SIAM
+                                                                          [19] Aleksandrs Slivkins. Introduction to multi-armed bandits. Foun-
+      journal on computing, 32(1):48–77, 2002.
+                                                                               dations and Trends® in Machine Learning, 12(1-2):1–286, 2019.
+[3]   Jinsheng Ba, Marcel Böhme, Zahra Mirzamomen, and Abhik Roy-        [20] Richard S Sutton and Andrew G Barto. Reinforcement learning:
+      choudhury. Stateful greybox fuzzing. In 31st USENIX Security             An introduction. MIT press, 2018.
+      Symposium (USENIX Security 22), pages 3255–3272, 2022.
+                                                                          [21] Jinghan Wang, Chengyu Song, and Heng Yin. Reinforcement
+[4]   Lorenzo Binosi, Luca Rullo, Mario Polino, Michele Carminati, Ste-        learning-based hierarchical seed scheduling for greybox fuzzing.
+      fano Zanero, et al. Rainfuzz: Reinforcement-learning driven heat-        In Network and Distributed Systems Security (NDSS) Symposium
+      maps for boosting coverage-guided fuzzing. In Proceedings of the         2021, 2021.
+      12th International Conference on Pattern Recognition Applications
+      and Methods-ICPRAM, pages 39–50. SciTePress, 2023.                  [22] Yan Wang, Peng Jia, Luping Liu, Cheng Huang, and Zhonglin
+                                                                               Liu. A systematic review of fuzzing based on machine learning
+[5]   Konstantin Böttinger, Patrice Godefroid, and Rishabh Singh. Deep        techniques. PloS one, 15(8):e0237749, 2020.
+      reinforcement fuzzing. In 2018 IEEE Security and Privacy Work-      [23] Maverick Woo, Sang Kil Cha, Samantha Gottlieb, and David
+      shops (SPW), 2018.                                                       Brumley. Scheduling black-box mutational fuzzing. In 2013 ACM
+[6]   Joeri De Ruiter and Erik Poll. Protocol state fuzzing of TLS             SIGSAC conference on Computer & communications security,
+      implementations. In 24th USENIX Security Symposium (USENIX               pages 511–522, 2013.
+      Security 15), pages 193–206, 2015.                                  [24] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu, Kai
+                                                                               Lu, and Xu Zhou. EcoFuzz: Adaptive Energy-Saving greybox
+[7]   Adam Doupé, Ludovico Cavedon, Christopher Kruegel, and Gio-
+                                                                               fuzzing as a variant of the adversarial Multi-Armed bandit. In
+      vanni Vigna. Enemy of the state: A state-aware black-box web
+                                                                               29th USENIX Security Symposium (USENIX Security 20), pages
+      vulnerability scanner. In Presented as part of the 21st USENIX
+                                                                               2307–2324, 2020.
+      Security Symposium (USENIX Security 12), pages 523–538, 2012.
+[8]   Kaiming Fang and Guanhua Yan. Emulation-instrumented fuzz
+      testing of 4g/lte android mobile devices guided by reinforce-
+      ment learning. In Computer Security: 23rd European Symposium
+      on Research in Computer Security, ESORICS 2018, Barcelona,
+      Spain, September 3-7, 2018, Proceedings, Part II 23, pages 20–
+      40. Springer, 2018.
+[9]   Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse.
+      Afl++ combining incremental steps of fuzzing research. In Pro-
+      ceedings of the 14th USENIX Conference on Offensive Technolo-
+      gies, pages 10–10, 2020.
+[10] Andrea Fioraldi, Dominik Christian Maier, Dongjia Zhang, and Da-
+     vide Balzarotti. Libafl: A framework to build modular and reusable
+     fuzzers. In Proceedings of the 2022 ACM SIGSAC Conference on
+     Computer and Communications Security, pages 1051–1065, 2022.
+

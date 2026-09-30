@@ -1,0 +1,127 @@
+{
+  "source": "filled_experiment_data_20260929.json",
+  "source_sha256": "38fd501f6d235d0626d107386a3b33dd1189f9dd2f5db6750b885c266b1df840",
+  "error_bars": "sample SD; observed runs only",
+  "values": [
+    {
+      "target": "forked-daapd",
+      "arm": "A",
+      "metric": "branches",
+      "n": 10,
+      "mean": 2330.8,
+      "sd": 59.95331517105622,
+      "min": 2206.0,
+      "max": 2441.0
+    },
+    {
+      "target": "forked-daapd",
+      "arm": "A",
+      "metric": "ipsm_edges",
+      "n": 10,
+      "mean": 21.6,
+      "sd": 2.1186998109427604,
+      "min": 18.0,
+      "max": 24.0
+    },
+    {
+      "target": "forked-daapd",
+      "arm": "D",
+      "metric": "branches",
+      "n": 12,
+      "mean": 2670.25,
+      "sd": 87.2781603422487,
+      "min": 2573.0,
+      "max": 2874.0
+    },
+    {
+      "target": "forked-daapd",
+      "arm": "D",
+      "metric": "ipsm_edges",
+      "n": 12,
+      "mean": 22.75,
+      "sd": 2.8643577734887544,
+      "min": 20.0,
+      "max": 29.0
+    },
+    {
+      "target": "lighttpd1",
+      "arm": "A",
+      "metric": "branches",
+      "n": 10,
+      "mean": 1940.7,
+      "sd": 21.16627296221777,
+      "min": 1912.0,
+      "max": 1974.0
+    },
+    {
+      "target": "lighttpd1",
+      "arm": "A",
+      "metric": "ipsm_edges",
+      "n": 10,
+      "mean": 17.7,
+      "sd": 2.4517567397911058,
+      "min": 15.0,
+      "max": 23.0
+    },
+    {
+      "target": "lighttpd1",
+      "arm": "D",
+      "metric": "branches",
+      "n": 11,
+      "mean": 2126.7272727272725,
+      "sd": 15.697712630131239,
+      "min": 2109.0,
+      "max": 2149.0
+    },
+    {
+      "target": "lighttpd1",
+      "arm": "D",
+      "metric": "ipsm_edges",
+      "n": 11,
+      "mean": 28.90909090909091,
+      "sd": 2.7001683449201996,
+      "min": 22.0,
+      "max": 32.0
+    },
+    {
+      "target": "lightftp",
+      "arm": "A",
+      "metric": "branches",
+      "n": 13,
+      "mean": 71.0,
+      "sd": 0.0,
+      "min": 71.0,
+      "max": 71.0
+    },
+    {
+      "target": "lightftp",
+      "arm": "A",
+      "metric": "ipsm_edges",
+      "n": 13,
+      "mean": 187.30769230769232,
+      "sd": 11.272271402166583,
+      "min": 168.0,
+      "max": 202.0
+    },
+    {
+      "target": "lightftp",
+      "arm": "D",
+      "metric": "branches",
+      "n": 15,
+      "mean": 71.66666666666667,
+      "sd": 2.3196879921559237,
+      "min": 71.0,
+      "max": 80.0
+    },
+    {
+      "target": "lightftp",
+      "arm": "D",
+      "metric": "ipsm_edges",
+      "n": 15,
+      "mean": 207.0,
+      "sd": 16.983184961265994,
+      "min": 175.0,
+      "max": 231.0
+    }
+  ]
+}

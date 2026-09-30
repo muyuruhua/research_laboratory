@@ -1,0 +1,86 @@
+{
+  "status": "PASS",
+  "backup": "before_acronym_consistency",
+  "scope_rule": "Abstract and body starting at Introduction are independent definition scopes. Title, keywords, formal bibliography titles, literal field names and software names retain their proper forms.",
+  "abstract_words_compounds_as_one": 181,
+  "abstract_words_components_split": 192,
+  "keyword_count": 5,
+  "main_edits": [
+    {
+      "before": "from code and IPSM state novelty.",
+      "after": "from code and inferred protocol state machine (IPSM) novelty."
+    },
+    {
+      "before": "LLM-assisted protocol fuzzing makes this distinction consequential for queue management. ChatAFL demonstrates that language models can derive protocol structures and propose interaction sequences",
+      "after": "Assistance from large language models (LLMs) makes this distinction consequential for queue management. ChatAFL demonstrates that LLMs can derive protocol structures and propose interaction sequences"
+    },
+    {
+      "before": "(mean and sample standard deviation; observed run counts are labeled;",
+      "after": "(mean and sample standard deviation (SD); observed run counts are labeled;"
+    },
+    {
+      "before": "Sample standard deviations express variation among the supplied rows;",
+      "after": "Sample SDs express variation among the supplied rows;"
+    },
+    {
+      "before": "The table uses the same observed values and sample standard deviations as the main results;",
+      "after": "The table uses the same observed values and sample SDs as the main results;"
+    },
+    {
+      "before": "The directional hypotheses are improved downstream productivity for D over C and improved code-branch AUC for E over D.",
+      "after": "The directional hypotheses are improved downstream productivity for D over C and greater area under the code-branch coverage curve (AUC) for E over D."
+    },
+    {
+      "before": "The Brier score~\\cite{brier1950} is",
+      "after": "The Brier score (BS)~\\cite{brier1950} is"
+    },
+    {
+      "before": "Reliability plots and precision--recall diagnostics~\\cite{davis2006pr}, summarized by AUPRC, accompany the score; with no positive episodes AUPRC is undefined. Compare Brier score to a prequential base-rate predictor",
+      "after": "Reliability plots and the area under the precision--recall curve (AUPRC)~\\cite{davis2006pr} accompany the BS; with no positive episodes AUPRC is undefined. The archived diagnostics summarize AUPRC using non-interpolated average precision (AP). Compare the BS to a prequential base-rate predictor"
+    },
+    {
+      "before": "bootstrap 95\\% intervals~\\cite{efron1979}",
+      "after": "bootstrap 95\\% confidence intervals (CIs)~\\cite{efron1979}"
+    },
+    {
+      "before": "reports Brier score, ten-bin ECE, and AUPRC,",
+      "after": "reports the BS, ten-bin ECE, and AUPRC,"
+    },
+    {
+      "before": "Whiskers are percentile 95\\% intervals from 2,000 resamples of whole runs within target; bins represented by fewer than two runs have no interval.",
+      "after": "Whiskers are percentile 95\\% CIs from 2,000 resamples of whole runs within target; bins represented by fewer than two runs have no CI."
+    },
+    {
+      "before": "shaded ranges are not confidence intervals.",
+      "after": "shaded ranges are not CIs."
+    },
+    {
+      "before": "Brier / ECE / AUPRC &",
+      "after": "BS / ECE / AUPRC &"
+    }
+  ],
+  "source_requirement_sha256": "ca3d8b7ce23bcf2462fc9c85e40352b671eafa8986e0053edbc1e21deab4063b",
+  "normalized_terms": [
+    "LLM/LLMs",
+    "IPSM",
+    "SD/SDs",
+    "AUC",
+    "BS",
+    "ECE",
+    "AUPRC",
+    "AP",
+    "CI/CIs"
+  ],
+  "independent_scopes_verified": true,
+  "repeated_expansions_after_definition": 0,
+  "numerical_literals_unchanged": true,
+  "formulae_unchanged": true,
+  "citations_unchanged": true,
+  "calibration_table_data_unchanged": true,
+  "script_syntax_valid": true,
+  "pdf_pages": 21,
+  "build_errors": 0,
+  "undefined_references": 0,
+  "manuscript_sha256": "44d1119317dcfe25f1d4a6c8268573b29b39d5784fba2f079e566f31d7458e90",
+  "pdf_sha256": "77d449aa21e0d6283c5178b45e48f2efc9d8a760dd6d86769b11b5ca35c5be8a"
+}

@@ -1,0 +1,1204 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=Fuzzing+On+Benchmarking+Outcome+as+a+Function+of+Benchmark+Properties&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 3155325,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                17
+              ]
+            ],
+            "date-time": "2026-07-17T15:26:17Z",
+            "timestamp": 1784301977585,
+            "version": "3.55.0"
+          },
+          "reference-count": 63,
+          "publisher": "Association for Computing Machinery (ACM)",
+          "issue": "2",
+          "funder": [
+            {
+              "name": "National Research Foundation, Singapore, and Cyber Security Agency of Singapore",
+              "award": [
+                "NRF-NCR25-Fuzz-0001"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "NRF-NCR25-Fuzz-0001"
+                  ]
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100000780",
+              "name": "European Union",
+              "doi-asserted-by": "crossref",
+              "award": [
+                "Project AT_SCALE, 101179366"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "Project AT_SCALE, 101179366"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100000780",
+                  "id-type": "DOI",
+                  "asserted-by": "crossref"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "short-container-title": [
+            "ACM Trans. Softw. Eng. Methodol."
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2026,
+                2,
+                28
+              ]
+            ]
+          },
+          "abstract": "<jats:p>\n                    In a typical experimental design in fuzzing, we would run two or more fuzzers on an appropriate set of benchmark programs plus seed corpora and consider their ranking in terms of code coverage or bugs found as outcomes. However, the specific characteristics of the benchmark setup clearly can have some impact on the benchmark outcome. If the programs were larger, or these initial seeds were chosen differently, the same fuzzers may be ranked differently; the benchmark outcome would change. In this article, we explore two methodologies to\n                    <jats:italic toggle=\"yes\">quantify the impact of the specific properties on the benchmarking outcome</jats:italic>\n                    . This allows us to report the benchmarking outcome counter-factually, e.g., “If the benchmark had larger programs, this fuzzer would outperform all others.” Our first methodology is the\n                    <jats:italic toggle=\"yes\">controlled experiment</jats:italic>\n                    to identify a causal relationship between a single property in isolation and the benchmarking outcome. The controlled experiment requires manually altering the fuzzer or system under test to vary that property while holding all other variables constant. By repeating this controlled experiment for multiple fuzzer implementations, we can gain detailed insights into the different effects this property has on various fuzzers. However, due to the large number of properties and the difficulty of realistically manipulating one property exactly, control may not always be practical or possible. Hence, our second methodology is\n                    <jats:italic toggle=\"yes\">randomization</jats:italic>\n                    and non-parametric regression to identify the strength of the relationship between arbitrary benchmark properties (i.e., covariates) and outcome. Together, these two fundamental aspects of experimental design,\n                    <jats:italic toggle=\"yes\">control</jats:italic>\n                    and\n                    <jats:italic toggle=\"yes\">randomization</jats:italic>\n                    , can provide a comprehensive picture of the impact of various properties of the current benchmark on the fuzzer ranking. These analyses can be used to guide fuzzer developers towards areas of improvement in their tools and allow researchers to make more nuanced claims about fuzzer effectiveness. We instantiate each approach on a subset of properties suspected of impacting the relative effectiveness of fuzzers and quantify the effects of these properties on the evaluation outcome. In doing so, we identify multiple properties, such as the coverage of the initial seed-corpus and the program execution speed, which can have a statistically significant effect on the\n                    <jats:italic toggle=\"yes\">relative</jats:italic>\n                    effectiveness of fuzzers.\n                  </jats:p>",
+          "DOI": "10.1145/3732936",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                29
+              ]
+            ],
+            "date-time": "2025-04-29T11:37:17Z",
+            "timestamp": 1745926637000
+          },
+          "page": "1-26",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 1,
+          "title": [
+            "Fuzzing: On Benchmarking Outcome as a Function of Benchmark Properties"
+          ],
+          "prefix": "10.1145",
+          "volume": "35",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-6958-7159",
+              "authenticated-orcid": false,
+              "given": "Dylan",
+              "family": "Wolff",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "National University of Singapore, Singapore, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-4470-1824",
+              "authenticated-orcid": false,
+              "given": "Marcel",
+              "family": "Böhme",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Max Planck Institute for Security and Privacy, Bochum, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-7127-1137",
+              "authenticated-orcid": false,
+              "given": "Abhik",
+              "family": "Roychoudhury",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Singapore, Singapore, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                21
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_2_2",
+              "unstructured": "LibFuzzer. 2015. libFuzzer. Retrieved from https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_3_2",
+              "volume-title": "OSS-Fuzz: Google’s Continuous Fuzzing Service for Open-Source Software",
+              "author": "Kostya Serebryany",
+              "year": "2017",
+              "unstructured": "Kostya Serebryany. 2017. OSS-Fuzz: Google’s Continuous Fuzzing Service for Open-Source Software. USENIX Association."
+            },
+            {
+              "key": "e_1_3_2_4_2",
+              "unstructured": "Fuzzbench. 2021. Fuzzbench Paper Data. Retrieved January 23 2023 from https://www.fuzzbench.com/reports/2021-04-23-paper/index.html"
+            },
+            {
+              "key": "e_1_3_2_5_2",
+              "unstructured": "GitHub. 2022. AFLplusplus/readme.lto.md. Retrieved January 05 2023 from https://github.com/AFLplusplus/AFLplusplus/blob/stable/instrumentation/README.lto.md"
+            },
+            {
+              "key": "e_1_3_2_6_2",
+              "unstructured": "Readthedocs. 2022. More about AFL. Retrieved January 05 2023 from https://afl-1.readthedocs.io/en/latest/about_afl.html"
+            },
+            {
+              "key": "e_1_3_2_7_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1985793.1985795"
+            },
+            {
+              "key": "e_1_3_2_8_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/stvr.1486"
+            },
+            {
+              "key": "e_1_3_2_9_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MS.2020.3016773"
+            },
+            {
+              "key": "e_1_3_2_10_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409729"
+            },
+            {
+              "key": "e_1_3_2_11_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409748"
+            },
+            {
+              "key": "e_1_3_2_12_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "e_1_3_2_13_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2610384.2628058"
+            },
+            {
+              "key": "e_1_3_2_14_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510230"
+            },
+            {
+              "key": "e_1_3_2_15_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3433210.3453096"
+            },
+            {
+              "key": "e_1_3_2_16_2",
+              "first-page": "2531",
+              "volume-title": "Proceedings of the 31st USENIX Security Symposium (USENIX Security ’22)",
+              "author": "Chen Ju",
+              "unstructured": "Ju Chen, Wookhyun Han, Mingjun Yin, Haochen Zeng, Chengyu Song, Byoungyoung Lee, Heng Yin, and Insik Shin. 2022. \\(\\{\\) SYMSAN \\(\\}\\) : Time and space efficient concolic execution via dynamic data-flow analysis. In Proceedings of the 31st USENIX Security Symposium (USENIX Security ’22), 2531–2548."
+            },
+            {
+              "key": "e_1_3_2_17_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46214.2022.9833796"
+            },
+            {
+              "key": "e_1_3_2_18_2",
+              "first-page": "1967",
+              "volume-title": "Proceedings of the 28th USENIX Security Symposium (USENIX Security ’19)",
+              "author": "Chen Yuanliang",
+              "year": "2019",
+              "unstructured": "Yuanliang Chen, Yu Jiang, Fuchen Ma, Jie Liang, Mingzhe Wang, Chijin Zhou, Xun Jiao, and Zhuo Su. 2019. \\(\\{\\) EnFuzz \\(\\}\\) : Ensemble fuzzing with seed synchronization among diverse fuzzers. In Proceedings of the 28th USENIX Security Symposium (USENIX Security ’19), 1967–1983."
+            },
+            {
+              "key": "e_1_3_2_19_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00082"
+            },
+            {
+              "key": "e_1_3_2_20_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1080/00031305.1981.10479327"
+            },
+            {
+              "key": "e_1_3_2_21_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2016.15"
+            },
+            {
+              "key": "e_1_3_2_22_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3385412.3385972"
+            },
+            {
+              "issue": "1",
+              "key": "e_1_3_2_23_2",
+              "first-page": "1",
+              "article-title": "Testing for serial correlation in least squares regression",
+              "volume": "58",
+              "author": "Durbin J.",
+              "year": "1971",
+              "unstructured": "J. Durbin and G. S. Watson. 1971. Testing for serial correlation in least squares regression: III. Biometrika 58, 1 (1971), 1–19.",
+              "journal-title": "III. Biometrika"
+            },
+            {
+              "key": "e_1_3_2_24_2",
+              "first-page": "1",
+              "volume-title": "Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT ’20)",
+              "volume": "10",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++: Combining incremental steps of fuzzing research. In Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT ’20). USENIX Association, Article 10, 1 page."
+            },
+            {
+              "key": "e_1_3_2_25_2",
+              "first-page": "1901",
+              "volume-title": "Proceedings of the 32nd USENIX Security Symposium (USENIX Security ’23)",
+              "author": "Fu Fu Yu-",
+              "year": "2023",
+              "unstructured": "Yu-Fu Fu, Jaehyuk Lee, and Taesoo Kim. 2023. autofz: automated fuzzer composition at runtime. In Proceedings of the 32nd USENIX Security Symposium (USENIX Security ’23), 1901–1918."
+            },
+            {
+              "key": "e_1_3_2_26_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00040"
+            },
+            {
+              "key": "e_1_3_2_27_2",
+              "unstructured": "Sijia Geng Yuekang Li Yunlan Du Jun Xu Yang Liu and Bing Mao. 2020. An empirical study on benchmarks of artificial software vulnerabilities. arXiv:2003.09561. Retrieved from https://arxiv.org/abs/2003.09561"
+            },
+            {
+              "key": "e_1_3_2_28_2",
+              "unstructured": "Google. 2022. AFL Performance Tips. Retrieved January 05 2023 from https://github.com/google/AFL/blob/master/docs/perf_tips.txt"
+            },
+            {
+              "key": "e_1_3_2_29_2",
+              "unstructured": "Google. 2022. OSS-Fuzz: Continuous Fuzzing for Open Source Software. Retrieved August 12 2022 from https://github.com/google/oss-fuzz#trophies"
+            },
+            {
+              "key": "e_1_3_2_30_2",
+              "unstructured": "Rahul Gopinath and Andreas Zeller. 2019. Building fast fuzzers. arXiv:1911.07707. Retrieved from https://doi.org/10.48550/arXiv.1911.07707"
+            },
+            {
+              "key": "e_1_3_2_31_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3427228.3427266"
+            },
+            {
+              "key": "e_1_3_2_32_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST.2019.00019"
+            },
+            {
+              "key": "e_1_3_2_33_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "e_1_3_2_34_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/bimj.201700067"
+            },
+            {
+              "key": "e_1_3_2_35_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3464795"
+            },
+            {
+              "key": "e_1_3_2_36_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1201/b10451"
+            },
+            {
+              "key": "e_1_3_2_37_2",
+              "first-page": "65",
+              "article-title": "A simple sequentially rejective multiple test procedure",
+              "author": "Holm Sture",
+              "year": "1979",
+              "unstructured": "Sture Holm. 1979. A simple sequentially rejective multiple test procedure. Scandinavian Journal of Statistics (1979), 65–70.",
+              "journal-title": "Scandinavian Journal of Statistics"
+            },
+            {
+              "key": "e_1_3_2_38_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1080/00401706.1979.10489820"
+            },
+            {
+              "key": "e_1_3_2_39_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2568225.2568271"
+            },
+            {
+              "key": "e_1_3_2_40_2",
+              "volume-title": "Proceedings of the 2006 AAAI (Workshop in Evaluation Methods for Machine Learning)",
+              "author": "Japkowicz Nathalie",
+              "year": "2006",
+              "unstructured": "Nathalie Japkowicz. 2006. Why question machine learning evaluation methods. In Proceedings of the 2006 AAAI (Workshop in Evaluation Methods for Machine Learning)."
+            },
+            {
+              "key": "e_1_3_2_41_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2610384.2628055"
+            },
+            {
+              "key": "e_1_3_2_42_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_43_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "William H. Kruskal and W. Allen Wallis. 1952. Use of ranks in one-criterion variance analysis. Journal of the American Statistical Association 47 260 (1952) 583–621. DOI: 10.2307/2280779",
+              "DOI": "10.2307/2280779"
+            },
+            {
+              "key": "e_1_3_2_44_2",
+              "first-page": "1",
+              "article-title": "A critical problem in benchmarking and analysis of evolutionary computation methods",
+              "author": "Kudela Jakub",
+              "year": "2022",
+              "unstructured": "Jakub Kudela. 2022. A critical problem in benchmarking and analysis of evolutionary computation methods. Nature Machine Intelligence 4, 12 (2022), 1–8.",
+              "journal-title": "Nature Machine Intelligence"
+            },
+            {
+              "key": "e_1_3_2_45_2",
+              "first-page": "2777",
+              "volume-title": "Proceedings of the USENIX Security Symposium",
+              "author": "Li Yuwei",
+              "year": "2021",
+              "unstructured": "Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen, Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, et al. 2021. UNIFUZZ: A holistic and pragmatic metrics-driven platform for evaluating fuzzers. In Proceedings of the USENIX Security Symposium, 2777–2794."
+            },
+            {
+              "key": "e_1_3_2_46_2",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Dongge Liu Jonathan Metzman Marcel Böhme Oliver Chang and Abhishek Arya. 2023. SBFT tool competition 2023–Fuzzing track. In 2023 IEEE/ACM International Workshop on Search-Based and Fuzz Testing (SBFT). IEEE.",
+              "DOI": "10.1109/SBFT59156.2023.00016"
+            },
+            {
+              "key": "e_1_3_2_47_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1214/aos/1176351062"
+            },
+            {
+              "key": "e_1_3_2_48_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534385"
+            },
+            {
+              "key": "e_1_3_2_49_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1214/aoms/1177730491"
+            },
+            {
+              "key": "e_1_3_2_50_2",
+              "first-page": "1393",
+              "volume-title": "Proceedings of the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering",
+              "author": "Metzman Jonathan",
+              "unstructured": "Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya. 2021. FuzzBench: An open fuzzer benchmarking platform and service. In Proceedings of the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering, 1393–1403."
+            },
+            {
+              "key": "e_1_3_2_51_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00069"
+            },
+            {
+              "key": "e_1_3_2_52_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1093/beheco/arh107"
+            },
+            {
+              "key": "e_1_3_2_53_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3469077"
+            },
+            {
+              "key": "e_1_3_2_54_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/HPCA.2018.00032"
+            },
+            {
+              "key": "e_1_3_2_55_2",
+              "first-page": "275",
+              "volume-title": "Advances in Computers",
+              "author": "Papadakis Mike",
+              "year": "2019",
+              "unstructured": "Mike Papadakis, Marinos Kintis, Jie Zhang, Yue Jia, Yves Le Traon, and Mark Harman. 2019. Mutation testing advances: An analysis and survey. In Advances in Computers, Vol. 112. Elsevier, 275–378."
+            },
+            {
+              "key": "e_1_3_2_56_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3468623"
+            },
+            {
+              "key": "e_1_3_2_57_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1136/bmj.316.7139.1236"
+            },
+            {
+              "key": "e_1_3_2_58_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2991079.2991103"
+            },
+            {
+              "key": "e_1_3_2_59_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3236024.3236084"
+            },
+            {
+              "key": "e_1_3_2_60_2",
+              "first-page": "2597",
+              "volume-title": "Proceedings of the 30th USENIX Security Symposium (USENIX Security ’21)",
+              "author": "Schumilo Sergej",
+              "year": "2021",
+              "unstructured": "Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner, and Thorsten Holz. 2021. Nyx: Greybox hypervisor fuzzing using fast snapshots and affine types. In Proceedings of the 30th USENIX Security Symposium (USENIX Security ’21). 2597–2614."
+            },
+            {
+              "key": "e_1_3_2_61_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1049/sej.1988.0003"
+            },
+            {
+              "key": "e_1_3_2_62_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1214/aos/1176350142"
+            },
+            {
+              "key": "e_1_3_2_63_2",
+              "unstructured": "Michal Zalewski. 2013. American Fuzzy Lop (AFL). Retrieved from https://github.com/google/AFL"
+            },
+            {
+              "key": "e_1_3_2_64_2",
+              "first-page": "658",
+              "volume-title": "Proceedings of the 2019 ACM Asia Conference on Computer and Communications Security",
+              "author": "Zhu Xiaogang",
+              "unstructured": "Xiaogang Zhu, Xiaotao Feng, Tengyun Jiao, Sheng Wen, Yang Xiang, Seyit Camtepe, and Jingling Xue. 2019. A feature-oriented corpus for understanding, evaluating and improving fuzz testing. In Proceedings of the 2019 ACM Asia Conference on Computer and Communications Security, 658–663."
+            }
+          ],
+          "container-title": [
+            "ACM Transactions on Software Engineering and Methodology"
+          ],
+          "language": "en",
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3732936",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                21
+              ]
+            ],
+            "date-time": "2026-01-21T16:32:28Z",
+            "timestamp": 1769013148000
+          },
+          "score": 46.70678,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3732936"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                21
+              ]
+            ]
+          },
+          "references-count": 63,
+          "journal-issue": {
+            "issue": "2",
+            "published-print": {
+              "date-parts": [
+                [
+                  2026,
+                  2,
+                  28
+                ]
+              ]
+            }
+          },
+          "alternative-id": [
+            "10.1145/3732936"
+          ],
+          "URL": "https://doi.org/10.1145/3732936",
+          "ISSN": [
+            "1049-331X",
+            "1557-7392"
+          ],
+          "issn-type": [
+            {
+              "value": "1049-331X",
+              "type": "print"
+            },
+            {
+              "value": "1557-7392",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                21
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-04-26",
+              "order": 0,
+              "name": "received",
+              "label": "Received",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2025-04-06",
+              "order": 2,
+              "name": "accepted",
+              "label": "Accepted",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2026-01-21",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                14
+              ]
+            ],
+            "date-time": "2025-06-14T06:10:05Z",
+            "timestamp": 1749881405176,
+            "version": "3.41.0"
+          },
+          "reference-count": 11,
+          "publisher": "IEEE",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    27
+                  ]
+                ],
+                "date-time": "2025-04-27T00:00:00Z",
+                "timestamp": 1745712000000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-029"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    27
+                  ]
+                ],
+                "date-time": "2025-04-27T00:00:00Z",
+                "timestamp": 1745712000000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-037"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100000001",
+              "name": "NSF",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "CCF2008905,CCF-2047682"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CCF2008905,CCF-2047682"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                27
+              ]
+            ]
+          },
+          "DOI": "10.1109/icse-companion66252.2025.00074",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                13
+              ]
+            ],
+            "date-time": "2025-06-13T17:47:10Z",
+            "timestamp": 1749836830000
+          },
+          "page": "232-234",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Program Feature-Based Fuzzing Benchmarking"
+          ],
+          "prefix": "10.1109",
+          "author": [
+            {
+              "given": "Miao",
+              "family": "Miao",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "University of Texas at Dallas,Department of Computer Science,Richardson,TX,USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "key": "ref1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "ref2",
+              "first-page": "2307",
+              "article-title": "{EcoFuzz}: Adaptive {Energy-Saving} greybox fuzzing as a variant of the adversarial {Multi-Armed} bandit",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Yue",
+              "year": "2020"
+            },
+            {
+              "key": "ref3",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "ref4",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "ref5",
+              "first-page": "3699",
+              "article-title": "FIXREVERTER: A realistic bug injection methodology for benchmarking fuzz testing",
+              "volume-title": "31st USENIX Security Symposium (USENIX Security 22)",
+              "author": "Zhang"
+            },
+            {
+              "key": "ref6",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2016.15"
+            },
+            {
+              "volume-title": "Darpa cyber grand challenge (cgc)",
+              "year": "2018",
+              "author": "CGC",
+              "key": "ref7"
+            },
+            {
+              "key": "ref8",
+              "first-page": "2777",
+              "article-title": "{UNIFUZZ}: A holistic and pragmatic {Metrics-Driven} platform for evaluating fuzzers",
+              "volume-title": "30th USENIX Security Symposium (USENIX Security 21)",
+              "author": "Li",
+              "year": "2021"
+            },
+            {
+              "key": "ref9",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597926.3598144"
+            },
+            {
+              "key": "ref10",
+              "article-title": "Explainable fuzzer evaluation",
+              "author": "Wolff",
+              "year": "2022",
+              "journal-title": "arXiv preprint"
+            },
+            {
+              "key": "ref11",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3321705.3329845"
+            }
+          ],
+          "event": {
+            "name": "2025 IEEE/ACM 47th International Conference on Software Engineering: Companion Proceedings (ICSE-Companion)",
+            "start": {
+              "date-parts": [
+                [
+                  2025,
+                  4,
+                  27
+                ]
+              ]
+            },
+            "location": "Ottawa, ON, Canada",
+            "end": {
+              "date-parts": [
+                [
+                  2025,
+                  5,
+                  3
+                ]
+              ]
+            }
+          },
+          "container-title": [
+            "2025 IEEE/ACM 47th International Conference on Software Engineering: Companion Proceedings (ICSE-Companion)"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/11024222/11024244/11024492.pdf?arnumber=11024492",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                14
+              ]
+            ],
+            "date-time": "2025-06-14T05:28:20Z",
+            "timestamp": 1749878900000
+          },
+          "score": 25.681152,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/11024492/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                27
+              ]
+            ]
+          },
+          "references-count": 11,
+          "URL": "https://doi.org/10.1109/icse-companion66252.2025.00074",
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                27
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                28
+              ]
+            ],
+            "date-time": "2026-08-28T01:43:16Z",
+            "timestamp": 1787881396818,
+            "version": "build-2784847793"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 10,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2021,
+                    5,
+                    31
+                  ]
+                ],
+                "date-time": "2021-05-31T00:00:00Z",
+                "timestamp": 1622419200000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/501100000781",
+              "name": "European Research Council",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "850868"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "850868"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/501100000781",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                31
+              ]
+            ]
+          },
+          "DOI": "10.1145/3410220.3456276",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2021,
+                6,
+                6
+              ]
+            ],
+            "date-time": "2021-06-06T06:11:02Z",
+            "timestamp": 1622959862000
+          },
+          "page": "81-82",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 20,
+          "title": [
+            "Magma: A Ground-Truth Fuzzing Benchmark"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Ahmad",
+              "family": "Hazimeh",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "EPFL, Lausanne, Switzerland"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Adrian",
+              "family": "Herrera",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "ANU &amp; DST, Canberra, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Mathias",
+              "family": "Payer",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "EPFL, Lausanne, Switzerland"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2021,
+                6,
+                6
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_2_1_1",
+              "unstructured": "Mike Aizatsky Kostya Serebryany Oliver Chang Abhishek Arya and Meredith Whittaker. 2016.Announcing OSS-Fuzz: Continuous fuzzing for open source software. https://opensource.googleblog.com/2016/12/announcing-oss-fuzz-continuous-fuzzing.html. Accessed: 2019-09-09."
+            },
+            {
+              "key": "e_1_3_2_2_2_1",
+              "volume-title": "Adobe Reader and Acrobat Security Initiative",
+              "author": "Arkin Brad",
+              "unstructured": "Brad Arkin. 2009. Adobe Reader and Acrobat Security Initiative. http://blogs.adobe.com/security/2009/05/adobe_reader_and_acrobat_secur.html. Accessed:2019-09-09."
+            },
+            {
+              "key": "e_1_3_2_2_3_1",
+              "unstructured": "Abhishek Arya and Cris Neckar. 2012. Fuzzing for security. https://blog.chromium.org/2012/04/fuzzing-for-security.html. Accessed: 2019-09-09."
+            },
+            {
+              "key": "e_1_3_2_2_4_1",
+              "volume-title": "AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium(USENIX Security 20)",
+              "author": "Blazytko Tim",
+              "year": "2020",
+              "unstructured": "Tim Blazytko, Moritz Schlögel, Cornelius Aschermann, Ali Abbasi, Joel Frank, Simon Wörner, and Thorsten Holz. 2020. AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium(USENIX Security 20). USENIX Association, 235--252. https://www.usenix.org/conference/usenixsecurity20/presentation/blazytko"
+            },
+            {
+              "key": "e_1_3_2_2_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_2_6_1",
+              "volume-title": "IN-STRIM: Lightweight Instrumentation for Coverage-guided Fuzzing. In Workshop on Binary Analysis Research (BAR). The Internet Society.",
+              "author": "Hsu Chin-Chia",
+              "year": "2018",
+              "unstructured": "Chin-Chia Hsu, Che-Yu Wu, Hsu-Chun Hsiao, and Shih-Kun Huang. 2018. IN-STRIM: Lightweight Instrumentation for Coverage-guided Fuzzing. In Workshop on Binary Analysis Research (BAR). The Internet Society."
+            },
+            {
+              "key": "e_1_3_2_2_7_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_2_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2946563"
+            },
+            {
+              "key": "e_1_3_2_2_9_1",
+              "volume-title": "The Industrial Age of Hacking. In 29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Nosco Timothy",
+              "unstructured": "Timothy Nosco, Jared Ziegler, Zechariah Clark, Davy Marrero, Todd Finkler, Andrew Barbarello, and W. Michael Petullo. 2020. The Industrial Age of Hacking. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 1129--1146. https://www.usenix.org/conference/usenixsecurity20/presentation/nosco"
+            },
+            {
+              "key": "e_1_3_2_2_10_1",
+              "unstructured": "Tim Rains. 2012. Security Development Lifecycle: A Living Process. https://www.microsoft.com/security/blog/2012/02/01/security-development-lifecycle-a-living-process/. Accessed: 2019-09-09."
+            }
+          ],
+          "event": {
+            "name": "SIGMETRICS '21: ACM SIGMETRICS / International Conference on Measurement and Modeling of Computer Systems",
+            "location": "Virtual Event China",
+            "acronym": "SIGMETRICS '21",
+            "sponsor": [
+              "SIGMETRICS ACM Special Interest Group on Measurement and Evaluation"
+            ]
+          },
+          "container-title": [
+            "Abstract Proceedings of the 2021 ACM SIGMETRICS / International Conference on Measurement and Modeling of Computer Systems"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3410220.3456276",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3410220.3456276",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T18:40:59Z",
+            "timestamp": 1750185659000
+          },
+          "score": 24.548466,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3410220.3456276"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                31
+              ]
+            ]
+          },
+          "references-count": 10,
+          "alternative-id": [
+            "10.1145/3410220.3456276",
+            "10.1145/3410220"
+          ],
+          "URL": "https://doi.org/10.1145/3410220.3456276",
+          "relation": {
+            "is-identical-to": [
+              {
+                "id-type": "doi",
+                "id": "10.1145/3543516.3456276",
+                "asserted-by": "object"
+              }
+            ]
+          },
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                31
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2021-06-06",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

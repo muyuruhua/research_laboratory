@@ -1,0 +1,55 @@
+--- before Figure 2
++++ after Figure 2
+@@ -8,14 +8,14 @@
+   flow/.style={-{Latex[length=2.5mm,width=1.7mm]},
+     draw=black!85,line width=0.85pt,rounded corners=2pt,
+     shorten <=1pt,shorten >=1pt},
+-  failure/.style={flow,dashed},
+-  failbranch/.style={draw=black!70,line width=0.7pt,dashed},
++  failure/.style={flow,draw=black!65,line width=0.7pt,dash pattern=on 3pt off 2pt},
++  failbranch/.style={draw=black!65,line width=0.7pt,dash pattern=on 3pt off 2pt},
+   condition/.style={font=\fontsize{8.5}{10}\selectfont,
+     text=black,fill=white,inner sep=1.2pt,align=center}]
+-\node[box,fill=blue!5] (llm) at (0,3.4) {LLM\\proposal};
+-\node[box] (p) at (4.4,3.4) {Structural\\check $P$};
+-\node[box] (trial) at (8.8,3.4) {Bounded trial\\check $U,R$};
+-\node[box,fill=blue!5] (gain) at (13.2,3.4) {Separate\\$\gcode,\gstate$};
++\node[box,fill=blue!5] (llm) at (0,2.8) {LLM\\proposal};
++\node[box] (p) at (4.4,2.8) {Structural\\check $P$};
++\node[box] (trial) at (8.8,2.8) {Bounded trial\\check $U,R$};
++\node[box,fill=blue!5] (gain) at (13.2,2.8) {Separate\\$\gcode,\gstate$};
+ \node[box,fill=black!4] (rej) at (0,0) {Reject / expire\\retain evidence};
+ \node[box,fill=orange!12] (prov) at (4.4,0) {Provisional\\queue};
+ \node[box,fill=orange!5] (validation) at (8.8,0) {Descendant\\validation};
+@@ -25,18 +25,22 @@
+ \draw[flow] (p.east)--node[condition,above] (p_ok) {pass}(trial.west);
+ \draw[flow] (trial.east)--node[condition,above] (ur_ok) {pass}(gain.west);
+ \draw[flow] (gain.south)--node[condition,right] (code_gate) {$\gcode$}(dur.north);
+-\draw[flow] (gain.south)--node[condition,below,pos=.45] (state_gate) {$\gstate$ only}(prov.north);
++\draw[flow] ([xshift=-7mm]gain.south)--(12.5,1.4)--
++  node[condition,above] (state_gate) {$\gstate$ only}(4.4,1.4)--(prov.north);
+ \draw[flow] (prov.east)--(validation.west);
+ \draw[flow] (validation.east)--node[condition,below] (promotion) {Validated\\code gain}(dur.west);
+ 
+-\coordinate (reject_join) at (0,1.4);
+-\draw[failbranch] (p.south)--node[condition,above,pos=.35] (p_fail) {$\neg P$}(reject_join);
+-\draw[failbranch] (trial.south)--node[condition,above,pos=.33] (ur_fail) {$\neg U\lor\neg R$}(reject_join);
+-\draw[failbranch] (gain.south)--node[condition,above,pos=.36] (no_gain) {Neither gain}(reject_join);
+-\fill[black!75] (reject_join) circle[radius=1.1pt];
+-\draw[failure] (reject_join)--(rej.north);
+-\draw[failure] (validation.south)--(8.8,-1.5)--
+-  node[condition,above] (expiry) {Budget exhausted}(0,-1.5)--(rej.south);
++\coordinate (p_reject) at (4.4,4.2);
++\coordinate (trial_reject) at (8.8,4.2);
++\coordinate (gain_reject) at (13.2,4.2);
++\draw[failure] (gain_reject)--(-2.1,4.2)--(-2.1,0)--(rej.west);
++\draw[failbranch] (p.north)--node[condition,right] (p_fail) {$\neg P$}(p_reject);
++\draw[failbranch] (trial.north)--node[condition,right] (ur_fail) {$\neg U\lor\neg R$}(trial_reject);
++\draw[failbranch] (gain.north)--node[condition,left] (no_gain) {Neither gain}(gain_reject);
++\fill[black!65] (p_reject) circle[radius=1pt];
++\fill[black!65] (trial_reject) circle[radius=1pt];
++\draw[failure] (validation.south)--(8.8,-1.35)--
++  node[condition,above] (expiry) {Budget exhausted}(0,-1.35)--(rej.south);
+ \end{tikzpicture}
+ \caption{Evidence-gated admission with provisional and durable queues.}
+ \label{fig:architecture}

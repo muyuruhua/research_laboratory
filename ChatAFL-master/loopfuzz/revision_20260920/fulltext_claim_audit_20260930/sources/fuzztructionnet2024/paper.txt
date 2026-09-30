@@ -1,0 +1,984 @@
+                                        No Peer, no Cry: Network Application Fuzzing via Fault Injection
+                                                           Nils Bars                                  Moritz Schloegel                                      Nico Schiller
+                                                 CISPA Helmholtz Center for                      CISPA Helmholtz Center for                         CISPA Helmholtz Center for
+                                                    Information Security                            Information Security                                Information Security
+                                                          Germany                                          Germany                                            Germany
+                                                     nils.bars@cispa.de                           moritz.schloegel@cispa.de                            nico.schiller@cispa.de
+
+                                                                              Lukas Bernhard                                     Thorsten Holz
+                                                                         CISPA Helmholtz Center for                       CISPA Helmholtz Center for
+                                                                            Information Security                             Information Security
+arXiv:2409.01059v1 [cs.CR] 2 Sep 2024
+
+
+
+
+                                                                                  Germany                                         Germany
+                                                                          lukas.bernhard@cispa.de                               holz@cispa.de
+
+                                        ABSTRACT                                                                      ACM Reference Format:
+                                        Network-facing applications are commonly exposed to all kinds of              Nils Bars, Moritz Schloegel, Nico Schiller, Lukas Bernhard, and Thorsten
+                                                                                                                      Holz. 2024. No Peer, no Cry: Network Application Fuzzing via Fault Injection.
+                                        attacks, especially when connected to the internet. As a result, web
+                                                                                                                      In Proceedings of ACM Conference on Computer and Communications Security
+                                        servers like Nginx or client applications such as curl make every             (CCS ’24). ACM, New York, NY, USA, 15 pages. https://doi.org/10.1145/
+                                        effort to secure and harden their code to rule out memory safety              3658644.3690274
+                                        violations. One would expect this to include regular fuzz testing,
+                                        as fuzzing has proven to be one of the most successful approaches
+                                        to uncovering bugs in software. Yet, surprisingly little research
+                                                                                                                      1    INTRODUCTION
+                                        has focused on fuzzing network applications. When studying the                The internet has defined many aspects of modern life, including
+                                        underlying reasons, we find that the interactive nature of commu-             the unhindered exchange of information, real-time communication
+                                        nication, its statefulness, and the protection of exchanged messages          across the globe, and the ability to conduct business entirely online.
+                                        (e.g., via encryption or cryptographic signatures) render typical             The very same connectivity that provides numerous benefits also
+                                        fuzzers ineffective. Attempts to replay recorded messages or modify           introduces risks as internet traffic passes through multiple, poten-
+                                        them on the fly only work for specific targets and often lead to              tially untrusted nodes. In effect, remote attackers can potentially
+                                        early termination of communication.                                           exploit any bug or software fault to compromise systems, which
+                                           In this paper, we discuss these challenges in detail, highlighting         emphasizes the importance of network-facing applications as a
+                                        how the focus of existing work on protocol state space promises lit-          critical security boundary.
+                                        tle relief. We propose a fundamentally different approach that relies            Even a single memory corruption error in the web server or
+                                        on fault injection rather than modifying messages. Effectively, we            network client can have disastrous consequences, which demands
+                                        force one of the communication peers into a weird state where its             thorough testing of these applications. To this end, we first need to
+                                        output no longer matches the expectations of the target peer, poten-          understand the attack surface: Network applications receive and
+                                        tially uncovering bugs. Importantly, this weird peer can still properly       process messages that use a multitude of protocols to exchange
+                                        encrypt/sign the protocol message, overcoming a fundamental chal-             data, such as HTTP, SSH, SIP, or SMB. These protocols define the
+                                        lenge of current fuzzers. In effect, we leave the communication               rules and structures for communication and ensure that different
+                                        system intact but introduce small corruptions. Since we can turn              devices can interpret and exchange data coherently. Thus, auto-
+                                        either the server or the client into the weird peer, our approach is          mated testing must account for this structure, testing inputs that
+                                        the first that can effectively test client-side network applications.         are valid to some degree, such that the application’s parser does
+                                        In an extensive evaluation of 16 targets, we show that our proto-             not immediately discard them but exercises deeper functionality.
+                                        type Fuzztruction-Net significantly outperforms other fuzzers                 Cryptographic techniques are widely used to secure communica-
+                                        in terms of coverage and bugs found. Overall, Fuzztruction-Net                tion, making these testing efforts more difficult. Protocols like TLS
+                                        uncovered 23 new bugs in well-tested software, such as the web                (Transport Layer Security) provide secure communication over net-
+                                        servers Nginx and Apache HTTPd and the OpenSSH client.                        works that may not be inherently secure. The transition to HTTP/3
+                                                                                                                      underscores the importance of built-in encryption by incorporat-
+                                        This is the author’s version of the work. It is posted here for your          ing the QUIC transport layer, which mandates TLS 1.3. In addition
+                                        personal use. Not for redistribution. The definitive Version of Record        to encryption, compression is used in many network protocols
+                                        was published in ACM Conference on Computer and Communications                to reduce overhead and maintain efficiency, and checksums are
+                                        Security (CCS), https:// doi.org/ 10.1145/ 3658644.3690274.                   commonly employed to ensure a reliable data transfer. All these
+                                                                                                                      concepts complicate automated security testing, as these security
+                                                                                                                      measures make it difficult to generate valid messages.
+                                        CCS CONCEPTS                                                                     Interestingly, the field of fuzzing, otherwise renowned for effec-
+                                        • Security and privacy → Systems security; Network security;                  tive bug finding [19], shows a noticeable gap in testing network-
+                                        Software and application security.                                            facing applications. Despite the advent of AFL [43] sparking a
+                                                                                                                  1
+renaissance of fuzzing methods with hundreds of new fuzzers pro-               (rather than generated messages) while still preserving their se-
+posed [2, 6, 14, 15, 29, 42, 45], most of them are limited to a specific       mantics, effectively enabling us to explore deeper application logic.
+subset of software. Most benchmarks [20, 21, 30], academic papers              A compelling aspect of Fuzztruction-Net is its ability to handle
+in general [34], and public industry initiatives such as OSS-Fuzz [19]         common obstacles such as cryptographic operations, compression
+focus predominantly on comparably simple C/C++ Linux programs                  algorithms, and checksums, as faults can be injected before protocol
+that consume byte-oriented input. In contrast, network applications            messages are wrapped by these complex primitives. Moreover, our
+are significantly more complex but have attracted relatively little            approach enables the fuzzing of both client and server components
+attention in fuzzing research [10].                                            by switching the endpoint targeted for fault injection, a signifi-
+    Broadly speaking, existing work can be split into two types of             cant advantage over traditional methods focusing exclusively on
+approaches. First, replay-based fuzzers [3, 31, 33] record valid com-          server-side fuzzing.
+munication and use saved messages as seeds. By replaying (and                     We implemented a prototype of Fuzztruction-Net and found
+mutating) these messages, they do not require extensive protocol               that it significantly outperforms existing state-of-the-art fuzzers,
+knowledge. However, this approach is limited, mainly because most              finding on average 16% more coverage and uncovering 3x more
+protocols use ephemeral values, such as session identifiers that are           bugs than the second-best fuzzer, SGFuzz. Also, Fuzztruction-
+dynamically created during runtime. These values prevent replay-               Net finds bugs in Nginx, the OpenSSH client, and apache2 that
+ing old messages and lead to low input stability, i.e., executing the          previous fuzzing attempts failed to uncover despite existing fuzzing
+same input more than once will exercise entirely different code                harnesses and OSS-Fuzz integration.
+parts. To avoid this problem, a second type of approach [28] uses a
+Man-in-the-Middle (MitM) technique to modify messages in transit               Contributions. We make the following main contributions:
+rather than replaying old ones. This way, session identifiers are                    • We systematically analyze the shortcomings of state-of-the-
+implicitly adapted. However, this causes a state divergence between                    art network application fuzzers, finding that they address
+one peer sending the unmodified message and the other receiving a                      neither desynchronization nor input stability.
+modified one. This leads to desynchronization, where peers disagree                  • To address these challenges, we present Fuzztruction-Net,
+on the current protocol state. Additionally, ubiquitous integrity                      our approach that uses fault injection to turn one communi-
+checks or encryption prevent modification of messages in transit,                      cation partner into a weird peer that can be used for testing.
+as traditional fuzzer mutations immediately invalidate the integrity.                  Fuzztruction-Net is the first network application fuzzer
+The receiving peer then discards such invalidated messages before                      that can test both servers and clients, compared to existing
+any interesting functionality is exercised. These challenges limit                     methods that are limited to servers only.
+the effectiveness of existing work for many network applications,                    • We found 23 remotely triggerable bugs in popular network
+confining them to a small subset of applications that feature no in-                   applications, such as the Nginx web server, the OpenSSH
+tegrity protection or ephemeral values. Instead of addressing these                    client, and the popular QUIC library ngtcp2 used by curl.
+challenges, we find that state-of-the-art fuzzers focus on protocol               We release our prototype at https://github.com/fuzztruction/
+state coverage. This metric measures the extent to which the fuzzer            fuzztruction-net upon acceptance and intend to participate in the
+has explored the various states defined by the protocol’s state ma-            artifact evaluation process.
+chine as an additional feedback mechanism [31, 33, 44]. While this
+may be beneficial to navigate the intricacies of the protocol’s logic,         2     BACKGROUND & CHALLENGES
+it implicitly assumes that the fuzzer can successfully exchange mul-
+tiple messages without desynchronization and mutate messages                   Before diving into our approach towards fuzzing network applica-
+without invalidating them—to the best of our knowledge, this is                tions, we briefly discuss how network applications operate, enu-
+not the case for any state-of-the-art network application fuzzer.              merate the challenges they pose for fuzzing, and discuss how state-
+    In this paper, we present the design and implementation of                 of-the-art approaches attempt to tackle the problem.
+Fuzztruction-Net, a powerful and flexible approach to network
+application fuzzing. Instead of replacing any peer or the communica-           2.1     Network Applications
+tion channel, replaying observed messages, or modifying messages               When referring to network applications, we consider a scenario
+as MitM, our method uses one of the communication endpoints                    where multiple applications, called peers, exchange data. Typically,
+(i.e., either client or server) to generate protocol messages. This            one of these peers takes the role of a server, responsible for serving
+approach enables testing protocols that rely on continuous ex-                 the requests of one or multiple clients. The server continuously
+change and stateful interactions. Ephemeral values or encrypted                listens on a specified IP address and port, waiting for the clients to
+messages pose no problem, as our mutations reside within the                   initiate a connection. To process multiple requests in parallel, the
+communication system. More precisely, Fuzztruction-Net uses                    server-side software is either multithreaded or uses an event-driven
+high-level mutation strategies based on injecting faults, a method             design based on synchronous I/O multiplexing as provided by the
+previously explored in other contexts [4, 23, 27, 36], into the end-           select syscall and alike. Sometimes, as for WebRTC-based video
+point that does not represent the system under test. These strategies          calls, no peer takes a distinct role; instead, clients communicate
+include manipulating the application’s control flow, such as flip-             directly with each other. This work focuses on the more prevalent
+ping branching decisions or changing function call destinations                client-server architecture.
+to explore different execution paths and protocol states. This al-                 Regardless of the setup, (interactive) communication takes place
+lows our approach to mutate the generation process of messages                 across a network. To this end, a transport protocol based on the IP
+                                                                           2
+protocol is usually used to exchange messages. The most common               2.3    Modern Network Application Fuzzing
+protocols are TCP and UDP, which significantly differ in reliability,        Several approaches have been proposed to fuzz test network appli-
+logical connection type, and data flow properties. Notably, some             cations, and we will summarize the state-of-the-art work next.
+applications employ their own transport protocol, which can be
+based on existing ones or entirely independent of commonly used              AflNet [33]. AflNet is the first grey box fuzzer for network
+protocols. One example of such protocols is QUIC, which is based             protocol implementations based on AFL. It focuses on integrat-
+on UDP and is intended to replace TCP with better performance                ing protocol state feedback into AFL’s coverage-guided fuzzing
+properties and native support for encryption and authentication              approach. Central to AflNet’s approach is the isolation of proto-
+while providing the same reliability as TCP.                                 col data units (PDUs), i.e., messages as defined by the underlying
+   Generally speaking, network applications significantly contrast           protocol. Using these isolated messages as building blocks, AflNet
+traditional fuzzing targets, where we execute only a single applica-         navigates the protocol state space by permuting the order of mes-
+tion (e.g., a binary executable). Such targets usually do not interact       sages or by mutating their content. To infer the already covered
+with other applications, and their execution is—nondeterminism               protocol state space, AflNet uses manually crafted parsers to as-
+aside—mainly determined by the given input.                                  sign an identifier to received messages. In essence, the order of
+                                                                             received messages and their assigned identifier determines the path
+                                                                             exercised in the inferred state machine. Since AflNet is based on
+2.2    Fuzzing Challenges                                                    AFL, it inherits its limitations regarding ephemeral values (C1) and
+The differences between network applications and typical targets             any kind of integrity protection (C2). Also, a human expert is re-
+lead to three key challenges that must be addressed by any fuzzing           quired to create a parser for the target protocol to infer the protocol
+approach to effectively and efficiently test network applications.           state from messages.
+                                                                             SGFuzz [3]. SGFuzz is an in-process fuzzing tool based on Lib-
+C1. Session state To facilitate meaningful communication, the                Fuzzer and uses a library provided by Honggfuzz [18] to enable
+client and the server maintain state throughout their communi-               the fuzzing of network applications. The core design of SGFuzz
+cation. Crucially, some parts of the state are ephemeral, such as            assumes that the current state of the protocol is reflected in the
+session identifiers. This has a significant impact on the fuzzing            runtime values of enum variables. To monitor these variables, the
+process. An input that achieved high coverage in the first run may           source code of the target application is preprocessed. This involves
+fail in the second run unless the temporary identifier is updated            wrapping the assignment expressions of enum-typed variables (i.e.,
+to the new one. The server may send and expect to receive these              enum_t v = <enum_variant>), enabling observation of the as-
+identifiers at runtime, challenging the fuzzer’s ability to predict          signed values. A state transition tree is constructed from the values
+them in advance. One famous example of such behavior is HTTP                 observed during fuzzing. If new transitions in the protocol state are
+digest authentication [37], where a server-chosen nonce protects             discovered, SGFuzz can use this information to determine if a new
+communication against replay attacks. These dynamically chosen               protocol state has been encountered. Like AflNet, SGFuzz entirely
+ephemeral values lead to the problem of low input stability, as in-          relies on the fuzzing logic provided by its baseline, i.e., LibFuzzer,
+puts cannot be replayed. At the same time, failure to manage the             which features bit-level mutations incapable of overcoming more
+session state across roundtrips leads to desynchronization, where            complex fuzzing roadblocks (C1, C2). Furthermore, the Honggfuzz
+the peers disagree on the current protocol state.                            library used for network fuzzing does not support UDP, limiting
+                                                                             SGFuzz’ applicability to specific protocol implementations.
+C2. Integrity checks and encryption To protect messages,
+server and client use various integrity checks, including encodings,         StateAFL [31]. Based on AflNet, StateAFL uses a different
+checksums, and encryption. Modifying these messages is virtually             approach than its baseline to tackle the problem of protocol state
+impossible for typical fuzzer mutations, as local changes invali-            space exploration. To avoid manual effort, StateAFL uses the con-
+date the message integrity. Consequently, the recipient discards             tent of memory allocations to infer the current protocol state. By
+the message during parsing without executing more interesting                intercepting APIs related to networking, such as those creating
+code parts. Naively, testing can record live communication and               sockets or those reading or writing data to them, StateAFL infers
+replay these messages. However, modern cryptographic algorithms              possible points in time at which it checks if the content of tracked
+require the use of ephemeral values to protect against codebook              memory objects indicates that a new state has been covered. This
+attacks, mandating to solve challenge C1.                                    approach comes with the risk of introducing errors into the target
+                                                                             under test, e.g., if the memory tracking is unsound or incomplete,
+                                                                             the instrumentation may access a memory object that is not allo-
+C3. Network Application Setup Assuming a fuzzer can main-
+                                                                             cated. Since StateAFL is based on AflNet, it suffers from the same
+tain state across iterations and has found a way to deal with any
+                                                                             limitations regarding more complex targets that rely on session
+integrity checks or even encryption, it must still be tailored towards
+                                                                             state (C1) or cryptography (C2).
+the system under test (SUT). In particular, this includes aspects such
+as when to send fuzzing input—as a server may need to perform                Bleem [28]. The recently proposed approach called Bleem does
+initialization before accepting connections—or when to terminate             not replace the client with a fuzzer—contrasting previous approaches—
+the fuzzing session—as a server may wait for additional client mes-          but instead operates as MitM. It connects to both communication
+sages rather than terminating itself, contrasting file processing            parties and forwards messages between them. This setup uses pro-
+applications, which usually exit after having consumed all input.            tocol parsers to deduce the protocol’s current state, which helps
+                                                                         3
+construct a graph representing the system’s state. Using this graph,                                         ➌
+                                                                                   Weird Peer                                      Target Peer
+Bleem generates new packet sequences or mutates the transmit-
+ted data. While this MitM approach addresses the input stability                                           I. Client Hello
+problem of C1 and allows Bleem, for example, to perform a TLS                    ➋                                             ➍
+handshake by simply forwarding messages without modifications,                                             II. Server Hello
+this may still cause desynchronization, as the sent and received
+                                                                                             Fault                ...
+messages differ, causing different states in each peer. Also, Bleem
+lacks the ability to mutate encrypted or integrity-protected data
+                                                                                                            III. Request
+(C2) and requires hand-crafted protocol parsers to infer protocol                ➊                                             ➎
+state.                                                                                                      IV. Response
+
+   All state-of-the-art fuzzers using a replay-based approach fail
+to address C1 and C2. Only Bleem, with its MitM-based approach,
+overcomes C1 partly but still does not account for integrity protec-                                       FuzzMediator
+tion. All fuzzers tailor their approach towards network application
+fuzzing, addressing C3, and use different forms of protocol state
+                                                                             Figure 1: High-level overview of Fuzztruction-Net. Notably,
+as feedback for guiding the fuzzer. However, without solving C1
+                                                                             the role of weird and target peer is independent of which
+and C2, their approaches are severely limited and require patching
+                                                                             peer is acting as server or client.
+of targets (e.g., to remove integrity protection) for any meaningful
+exploration.
+                                                                             including the fuzzer in one peer itself, albeit without replacing it
+3     DESIGN                                                                 entirely. Fundamentally, we rely on fault injection [4, 23, 27] to
+To effectively and efficiently test network applications, we need a          achieve our goal. Rather than mutating specific input bytes, we
+design that maintains session state across exchanged messages (C1),          mutate the peer itself, causing its output to produce unexpected
+accounts for integrity protection mechanisms (C2), and is tailored           or—at times—incorrect messages. More specifically, we propose
+towards the needs of network applications (C3).                              injecting faults into the peer’s state-modifying operations, e.g., we
+                                                                             could inject a fault into the selection of an encryption algorithm,
+3.1    Idea & Rationale                                                      provoking an untypical choice the other peer may not expect. At the
+A fuzzer intending to address these challenges needs to adapt its            same time, we need to avoid injecting faults into the encryption al-
+machinery to take previously exchanged messages into account.                gorithm itself, as this would invalidate the produced output, which
+The complexity and diversity of network applications make this               is unlikely to pass the other peer’s decryption stage. In essence,
+problem hard to solve in the general case: Without re-implementing           our faults should neither invalidate the communication nor cause
+all protocols, a fuzzer’s heuristics will always fall short in some          an unsynchronized protocol state transition, leading to the peers’
+regard. We argue that replacing one peer with a fuzzer, as done              disagreeing on the current state and, thus, terminating communi-
+by AflNet, SGFuzz, or StateAFL, is not only unnecessary but                  cation. If we can achieve these design goals, our fuzzer can play off
+potentially limiting successful testing. The fuzzer taking the peer’s        one peer against the other. We stress that this enables us to fuzz
+place has no notion of state to preserve across exchanged mes-               one peer or the other, i.e., we could target the server, as all existing
+sages, nor does it know the underlying protocol or state machine.            work does, or the client, which existing tools largely neglect.
+Thus, discarding the original peer with all its domain knowledge
+potentially degrades the system’s quality regarding communication            3.2     Overview
+breadth and depth. Furthermore, we argue that placing the fuzzer             Figure 1 shows an overview of our proposed design and sketches
+as MitM, as done by Bleem, has similar shortcomings. In a sense,             the exemplary interaction of two peers. For the sake of this example,
+this approach replaces the communication channel with a fuzzer-              we assume our goal is fuzzing the server, i.e., the server is the target
+controlled one. While leveraging the domain knowledge inherent               peer, while we inject faults into the client, making it the weird peer
+in a peer, any communication protected by integrity checks or en-            (in reference to weird machine [5]). We stress that the inverse setup
+cryption is out of reach, limiting the applicability of this approach        is possible as well. Beyond these two communicating peers, we
+to specific network protocols. Even if messages are not protected,           use an external component called FuzzMediator that manages the
+any modifications made by the fuzzer will only be known to the               fuzzing loop by observing and controlling the other components of
+recipient and not the sender. This leads to peer desynchronization,          the system. The fuzzing loop starts with ➊ injecting some fault in
+as one peer’s internal state diverges from the other’s.                      the weird peer that leads to unexpected behavior, e.g., during the
+   In this work, we propose a method to introduce a fuzzer into this         preparation of a protocol message. Ideally, the fault corrupts the
+communication system while replacing neither any peer nor the                message slightly, but the subsequent logic still processes it normally,
+communication channel. This way, we can preserve the dynamic na-             e.g., encrypting it as expected by the communication protocol (➋).
+ture of the communication between peers and maintain synchronic-             Then, ➌ the client initiates communication with the server, e.g., by
+ity of the protocol state on both sides. Naturally, these requirements       sending a Client Hello message (I.). Upon receiving the message, the
+leave us with little room for where to place our fuzzer. Especially          server decodes it (➍) before further processing, potentially trigger-
+the second constraint, i.e., preventing desynchronization, mandates          ing a bug (➎) due to the corruption. If no bug leads to an abnormal
+                                                                         4
+termination, the communication (and thus the current fuzzing itera-             to the fuzzing spirit, where high performance has been shown to
+tion) continues as the server responds to the received message. The             trump informed but costly analyses [2], we focus on the second
+weird peer then processes this response (II.). At this point, we can            option.
+inject another fault to further alter the expected message flow or                 Consequently, we mark all the instructions mentioned above
+content of the following message (III.). Once the message is sent, the          during instrumentation at compile-time, leaving us with many po-
+server will again respond (IV.), continuing this communication loop             tential targets for fault injection. To improve our odds of injecting
+until one of the peers terminates (normally or abnormally). This                faults at “good” locations, our fuzzing campaign features a dedi-
+concludes one fuzzing iteration, after which we collect coverage                cated queue initialization, which we describe subsequently when
+information of the target peer. Collected code coverage is reported             presenting the details of our fuzzing loop.
+to the FuzzMediator, which can be used as feedback to decide if one                Despite our efforts, some fault locations will inevitably be less
+(or more) injected fault(s) lead to interesting behavior and schedule           effective due to the random nature of the injection process. For
+the next fuzzing iteration.                                                     example, faults could invalidate ephemeral value handling and en-
+                                                                                cryption or lead to protocol state desynchronization. In such cases,
+3.3       Fault Injection                                                       the communication between the weird and target peer cannot pro-
+Now that we have outlined our design goals and presented an                     ceed as desired, resulting in an early termination of the process.
+overview, we focus on the fault injection, the centerpiece that turns           This early exit automatically leads to less coverage being exercised,
+one of the peers into the weird peer. This step is the key ingredient           so the fuzzer quickly avoids scheduling these faults again. Con-
+towards introducing some error into the regular communication                   sequently, few computational resources are spent on these less
+flow that then, in turn, uncovers a bug in the target peer. In principle,       effective faults. The same principle applies to redundant fault lo-
+our goal is to corrupt message content to some minor extent without             cations. By leveraging coverage to filter out ineffective locations,
+modifying its later processing, such as calculating a checksum or               we can utilize the weird peer’s capabilities in handling ephemeral
+encrypting it. This may uncover incorrect or missing validation in              values and managing state throughout the communication without
+the other peer without the message being easily discarded due to                needing to identify or model these capabilities explicitly.
+violating the integrity protection mechanisms. In our design, this
+can be achieved easily if we know what part of the program to                   3.4     Fuzzing Loop
+mutate and in which way. However, we lack information on both                   Our fuzzing loop follows roughly those of regular fuzzing methods.
+where and how to mutate the program. To address either, we rely                 The major difference is that one queue entry consists of a list of
+on the inherent randomness in the fuzzing process.                              tuples [(loc, stream), ...]. loc denotes the fault injection
+                                                                                location at which we apply the byte stream to mutate the value,
+Fault Types. Before focusing on the where, let us discuss the faults
+                                                                                condition, or call destination.
+we can inject by mutating the weird peer. In particular, we target
+the following instructions to inject different fault types:                     Calibration. As typical AFL-based fuzzers do, we run a calibration
+      •   Load/stores: modify values loaded from/stored to memory.              phase for each new fuzzing queue entry. In our case, we measure
+      •   Switch case: change the case statement executed.                      how often each fault injection location is hit, allowing us to calculate
+      •   Conditions: invert conditional moves or branches.                     how much fuzzing input is needed during the execution of this
+      •   Calls: change the call destination or skip a call.                    queue entry. For example, a branch consumes 1 bit of fuzzing input
+    These faults operate at two levels: the value level, where we can           to decide if it should be flipped. Thus, we need one bit of input each
+modify data values, and the control-flow level, where we can invert a           time one specific branch is executed.
+conditional branch or even change the called functions. The former
+                                                                                Queue Initialization. Initially, our queue is empty. Due to the
+helps corrupt data values, while the latter may execute unexpected
+                                                                                high number of fault locations, we initialize the queue as follows:
+code, leading to weird data processing. For fine-grained control
+                                                                                We test a few mutations for each location and observe the target
+over the particular fault, each location receives a fuzzer-generated
+                                                                                peer. If any of the mutations lead to new coverage, we create a
+input stream, which we can use to inject a different fault each time
+                                                                                new queue entry consisting of the tuple [(loc, stream)]. On the
+this location is executed. The length of this stream must account
+                                                                                other hand, if the mutations repeatedly caused the weird peer to
+for the fault type, e.g., inverting a condition only requires one bit as
+                                                                                crash, we skip this location. This way, we automatically bias the
+opposed to modifying a 64-bit store, which requires eight bytes, and
+                                                                                fuzzer towards the initially successful fault locations, as the fuzzer’s
+it needs to account for the number of times the location is executed.
+                                                                                scheduler primarily picks entries from the queue.
+During each execution, we extract the necessary bytes from the
+input stream to XOR with the loaded/stored value, influence a                   Fuzzing Iteration & Mutations. From the fuzzer’s perspective,
+condition’s outcome, or affect which function is called.                        one fuzzing loop consists of the following steps: (1) Pick one queue
+Fault Locations. Now, as the instructions at which we can inject                entry, (2) mutate this queue entry, (3) execute the peers, and (4) col-
+a fault occur thousands of times in network applications, the core              lect exercised coverage. To mutate queue entries, we can:
+question is where to introduce our faults. Fundamentally, we can                      • Mutate the stream: We mutate the applied stream using
+address this by (1) trying to obtain more information using static                      typical fuzzer mutations, such as bitflips or havoc. This, for
+analysis or similar approaches or (2) randomly introducing faults,                      example, changes the value loaded at the fault location or
+pruning ineffective ones, and focusing on high throughput. Sticking                     leads to the inversion of the branch condition.
+                                                                            5
+      • Splice queue entries: We can append a tuple from a second              have extended the framework to suit our needs and made several
+        queue entry to the list of the current one. This effectively           key modifications, which we discuss in the following. We imple-
+        leads to combining two (or more) different faults.                     mented about 7, 900 lines of Rust and 800 lines of C/C++ code to
+      • Extend queue entry: We can also attempt to append a newly              build Fuzztruction-Net on top of Fuzztruction.
+        generated tuple to the current queue entry, i.e., we try to
+        find another interesting fault by selecting an unused fault            Fault Injection Mechanism. Despite being conceptually similar
+        location and generating a stream using the same mutation               in terms of injecting faults, we had to revamp Fuzztruction’s way
+        as in the first step.                                                  of mutating LLVM’s live values, which is used to apply faults at de-
+                                                                               sired locations. The existing framework uses a so-called stack map
+                                                                               to track values it wants to mutate. At runtime, it would then identify
+3.5     Network Application Specifics
+                                                                               the register holding this value and—using a JIT compiler—create a
+Given the nature of network communication, our design must ad-                 function to mutate this value. While effective for modifying “direct”
+dress its unique needs and requirements, as discussed next.                    values that are loaded or stored, this approach does not work for
+Temporal Input Channel. The server must be running to en-                      conditions, which are managed via the EFLAGS register: The com-
+sure that the client can perform any meaningful action. Therefore,             piler assumes that the function created by the JIT compiler clobbers
+ensuring the client and server have the correct startup order is               the register and will evaluate the condition only after our JIT-ed
+crucial. While for traditional fuzzing, it is sufficient to pass the           function call, making it impossible to modify the condition. There-
+fuzzing input via a file that is consumed as soon as the target is             fore, we implemented a completely new fault injection strategy
+ready, the process is slightly more involved for networked targets.            and replaced the existing one: (1) We spill values that we want to
+One common technique to determine whether the server is ready                  mutate onto the stack, (2) we track the spill locations in a stack
+to process input sent by a client is polling, e.g., as used by AflNet.         map, (3) and if mutating a condition, we spill the condition onto
+This is facilitated by consecutively trying to establish a connection          the stack before using a JIT-compiled function to mutate the value
+to the server’s port until it is successful or some timeout is hit. This       directly on the stack. (4) After the function mutated the value, we
+comes at the cost of wasting CPU cycles and cannot deal with “con-             read it back from the stack and use it, e.g., in the cmp instruction.
+nectionless” protocols such as UDP, where no handshake occurs                  Function Call Injection. We also incorporate a new method
+that would indicate whether the target port is active.                         of injecting faults that allows us to call another function from the
+   We rely on the server to tell us when it is ready to accept con-            entry of an executed function. To achieve this, for each function, we
+nections to avoid these shortcomings. We achieve this by hooking               generate a function pointer table during instrumentation that tracks
+two functions: listen and bind. When one of these functions is                 functions with the same signature (i.e., same argument number and
+called, the server can notify the FuzzMediator that it is ready to             types). Additionally, we insert a patch point at function entry points
+accept client requests. This requires no active waiting and works              that—when selected as a fault injection site—consumes one byte
+for all protocols.                                                             of fuzzing input that serves as an index into the function pointer
+Termination Point. Server applications typically run indefinitely              table and redirects the control flow to this function instead.
+while consecutively serving clients. Thus, when fuzzing a server,              Network Applications Support. The Fuzztruction framework
+the state is possibly carried over between multiple executions, i.e.,          is by design incompatible with network targets because it expects
+client connections. This shares the same downsides as in-process               its targets to be executed once and sequentially. We reworked the
+fuzzing (e.g., the observed behavior is not necessarily reproducible).         framework to support the concurrent and repetitive execution of
+Therefore, server applications are typically patched such that they            targets, mimicking the interactive nature of network communi-
+terminate after handling a single client connection. This approach             cation. Furthermore, we added support for network namespaces,
+works reliably for connection-oriented protocols since the fuzzing             which allow each application to have a distinct set of network in-
+iteration is terminated when the server closes the client connection           terfaces. This allows server applications to run on the same port
+and the client closes the connection, which the server can observe             in parallel, a necessary precondition for multiple parallel fuzzing
+due to its connection-oriented nature. Unfortunately, such patching            runs.
+mechanisms do not work well for targets based on connectionless                    Weird Peer. We use our LLVM pass and its runtime with the
+protocols since the server may wait for a client that already exited.          abovementioned changes to instrument the weird peer. In addition,
+Since the connection between client and server has no state, the               we implement logic to detect when the server is ready for client
+server cannot detect such a situation except by using timeouts as              connections. For this, we add support for hooking the functions
+an indicator. Similar to other approaches [31, 33], we tackle this             listen, bind, and connect. Hooking these functions allows us
+problem by terminating the target via a signal after each fuzzing              to determine when a server is ready to accept connections and
+iteration if the target peer has not terminated earlier.                       whether a client tried to connect to the server. The latter becomes
+                                                                               handy if a mutation causes a weird client to crash before being
+4     IMPLEMENTATION                                                           able to connect to the server. If a mutation leads to a client crash
+We implement a prototype of Fuzztruction-Net based on the                      before connecting, we discard that fuzzing run, as the crashed client
+fault injection framework offered by Fuzztruction [4]. In partic-              cannot impact the server’s operation.
+ular, we inherit its use of LLVM’s stack maps and patch points to                  Target Peer. For the target peer, we leverage AFL++ in version
+dynamically mutate store and load operations in a program. We                  v4.08 for its LLVM-based coverage instrumentation. Beyond that,
+                                                                           6
+we use the same hooking mechanism, modified LLVM pass and                          allocation tracking. As the fuzzer continues to access these
+runtime as for the weird peer. This is necessary as the server can                 already freed allocations to determine the protocol state,
+be either the weird peer or the target peer.                                       segmentation faults often occur (resulting in false positive
+                                                                                   crashes). Additionally, StateAFL does not support certain
+5     EVALUATION                                                                   functions, such as vectorized read and write operations, and
+We evaluate how our implementation Fuzztruction-Net performs                       initially refused to start if no network-related operations
+compared to other network application fuzzers and whether it is                    were detected, such as data written or read from a socket.
+capable of uncovering new bugs in real-world targets. To this end,                 To address these issues, we added support for multiple libc
+we conduct three different experiments. (1) We benchmark our ap-                   functions, including readv and writev. Despite these im-
+proach regarding code coverage and compare it to state-of-the-art                  provements, we encountered persistent issues with memory
+network fuzzers. (2) Based on the coverage benchmark data, we                      tracking for some targets, thereby limiting the overall ro-
+evaluate the bug-finding capabilities of each individual fuzzer by                 bustness of StateAFL on these targets.
+analyzing all bugs that have been found during the coverage exper-             Target Applications. For the comparative evaluation and the
+iment. (3) Then we study the capabilities of Fuzztruction-Net               real-world bug-finding experiment, we selected 16 targets from
+by testing additional widely deployed software projects, including          eleven software projects in total. We also selected a second appli-
+clients that no other network fuzzer is designed to fuzz.                   cation acting as weird peer for each target. In all cases, we used a
+                                                                            test client and server shipped by the software project, such that no
+5.1    Setup                                                                manual work was needed to derive the weird peer. In the following,
+Before discussing our experiments and their outcome in-depth, we            we indicate whether we refer to the client or server of a project
+outline our setup and present targets we use throughout our evalu-          by using superscripts, i.e., gnutlsC and gnutlsS refer to the client
+ation. Overall, we follow the recommendations by Klees et al. [25].         and server of the gnutls software suite, respectively.
+   Hardware Environment. To ensure fair experiments, we used                   When selecting suitable targets, we aimed to compile a set of
+the same hardware configuration for all our experiments: an Intel           applications that represent realistic targets for fuzzing network
+Xeon Gold 5320 CPU @ 2.20GHz (52 physical cores), 256 GB of RAM,            applications. While recommended, benchmarks [32] do not support
+and SSD memory as backing storage. To model realistic conditions,           our non-traditional way of fuzzing, making it impossible for us to
+we spawned 13 fuzzer worker processes per fuzzer and pinned                 use them. We selected targets according to the following criteria:
+these workers to 13 (physical) cores. This allowed us to perform               (1) Comparability with related work: The set of evaluated appli-
+four experiments in parallel.                                                      cations should intersect with the ones used by other network
+   Fuzzers. We compare Fuzztruction-Net against three state-of-                    application fuzzers.
+the-art fuzzers: AflNet [33], SGFuzz [3], and StateAFL [31]. We                (2) Active projects: The selected targets should be actively main-
+considered evaluating against other existing works like Bleem [28],                tained and relevant in practice.
+but their code is not publicly available, and the authors could not            (3) Optimally, the targets are thoroughly tested and have been
+share the code when we contacted them. Other protocol fuzzers,                     fuzzed before. This allows us to quantify our new approach’s
+such as BooFuzz [24] or Peach [12], are available, but they offer                  impact rather than attributing findings to the fact that a
+only a limited range of protocol specifications by default, which is               project is tested for the first time.
+insufficient for testing more complex or diverse targets. Addition-            To meet the first criterion, we selected a subset of the applica-
+ally, related work has found these tools to perform worse compared          tions tested as part of the evaluation of the other fuzzers. From the
+to fuzzers we included on our evaluation targets [28, 33]. In sum-          evaluations of AflNet and SGFuzz, we selected live555S , dcmtkS ,
+mary, we configured the tested fuzzers as follows:                          and opensslS . Since both fuzzers found over 90% of their bugs in
+    (1) AflNet [33] (62d63a5): We enabled its state-aware mode              live555S and dcmtkS , we expected these targets to be excellent
+        (-E) and the region-level mutation operators (-R) by default.       candidates for our evaluation.
+        In addition, we added a NOP protocol that does not provide             To ensure we meet criteria (2) and (3), we selected the remaining
+        any state feedback during fuzzing but allows for testing            targets based on whether they are shipped with fuzzing harnesses
+        targets that are not supported by AflNet. We used this              or are part of OSS-Fuzz [19] and if they seem to be actively main-
+        protocol for the targets mosquittoS , nginxS , and sambaS .         tained and do not have stale bugs in their respective bug trackers.
+    (2) SGFuzz [3] (00dbbd7): To use the distinct values of enum            Table 1 lists all targets we selected, outlining whether these targets
+        variables, SGFuzz needs to preprocess the target’s source           have fuzzing harnesses as part of their repository and if they are
+        code with a Python script that instruments assignments of           integrated into OSS-Fuzz. Out of the eleven applications, only two
+        enum variables. Unfortunately, this script crashes for some         are not integrated into OSS-Fuzz, dcmtk and live555. Interestingly,
+        source files, aborting instrumentation. We identified and           both have been the primary source of new bugs found by AflNet
+        removed offending files from preprocessing.                         and SGFuzz. Table 5 in the Appendix lists the exact configuration
+    (3) StateAFL [31] (d923e22): As this tool is based on AflNet            of each target.
+        (but uses memory allocations to deduce protocol state in-              Target Configuration. We compiled all targets using the com-
+        stead of handcrafted protocol parsers), we used it with the         piler pass provided by the respective fuzzer. Since most targets have
+        same flags as AflNet. StateAFL’s instrumentation some-              already been extensively tested, we deployed ASAN for each fuzzer
+        times misses free operations, compromising their memory             on all fuzzing targets to detect bugs that generally would not cause
+                                                                        7
+                                                                                 FT-Net             AflNet             StateAFL        SGFuzz
+                                                  dropbearS                                                   nginxS                                               sambaS
+                                                                                                                                       10,000
+                                                                                5,000
+                         2,000                                                                                                          8,000
+                                                                                4,000
+                         1,500                                                                                                          6,000
+                                                                                3,000
+                         1,000                                                                                                          4,000
+                                                                                2,000
+                          500                                                   1,000                                                   2,000
+
+                            0                                                      0                                                        0
+                                 00:00
+                                    03:00 06:00 09:00 12:00 15:00 18:00 21:00           00:00
+                                                                                           03:00 06:00 09:00 12:00 15:00 18:00 21:00            00:00
+                                                                                                                                                   03:00 06:00 09:00 12:00 15:00 18:00 21:00
+
+                                                    gnutlsS                                               libresslS                                               opensslS
+                         6,000                                                  8,000
+                                                                                                                                       15,000
+                         5,000
+     #Covered Branches
+
+
+
+
+                                                                                6,000
+                         4,000                                                                                                         10,000
+                         3,000                                                  4,000
+
+                         2,000                                                                                                          5,000
+                                                                                2,000
+                         1,000
+
+                            0                                                      0                                                       0
+                                 00:00
+                                    03:00 06:00 09:00 12:00 15:00 18:00 21:00           00:00
+                                                                                           03:00 06:00 09:00 12:00 15:00 18:00 21:00            00:00
+                                                                                                                                                   03:00 06:00 09:00 12:00 15:00 18:00 21:00
+                                                    mosquittoS                                                dcmtkS                                              live555S
+                         2,000                                                  4,000
+                                                                                                                                        1,500
+                         1,500                                                  3,000
+                                                                                                                                        1,000
+                         1,000                                                  2,000
+
+                                                                                                                                         500
+                          500                                                   1,000
+
+                            0                                                      0                                                       0
+                                 00:00
+                                    03:00 06:00 09:00 12:00 15:00 18:00 21:00           00:00
+                                                                                           03:00 06:00 09:00 12:00 15:00 18:00 21:00            00:00
+                                                                                                                                                   03:00 06:00 09:00 12:00 15:00 18:00 21:00
+                                                                                                      Time [hh:mm]
+
+
+Figure 2: The coverage (in llvm-cov branches) various fuzzers achieve over ten 24h runs on different targets. We display the
+median run and 66% intervals.
+
+
+a crash. Where applicable, we disabled custom allocators to avoid                                               at https://github.com/fuzztruction/fuzztruction-net-experiments.
+bugs being shadowed by ASAN’s inability to determine when a                                                     We stress that patching out randomness is required by the other
+memory chunk was freed.                                                                                         tested tools, not Fuzztruction-Net.
+    Since all other network application fuzzers rely on replay-based                                               For Fuzztruction-Net, we compiled the targets using a custom
+techniques, i.e., traffic of a real client/server communication must                                            version of AFL++ v4.08c, as detailed in Section 4. Furthermore, we
+be recorded and used as seed, their fuzzing efforts are impeded                                                 enabled laf-intel [26] via setting AFL_LLVM_LAF_ALL. We compiled
+by sources of randomness such as session identifiers or ephemeral                                               the weird peer applications using our compiler pass, allowing us to
+tokens. Notably, this limitation is shared by all publicly available                                            mutate the application during execution dynamically. Note that we
+network fuzzers and is not a result of our fuzzer selection. To ad-                                             disabled randomness as for the other approaches to ensure a fair
+dress this shortcoming, we attempted to disable sources of random-                                              evaluation, even though our approach does not necessarily require
+ness in all fuzzing targets. This includes the use of static session                                            this step.
+IDs as well as seeding random number generators with constant                                                      Seeds. Since Fuzztruction-Net uses a mutated client or server
+seeds. Furthermore, we removed functions typically used to reseed                                               application to produce fuzzing inputs for the SUT, it does not require
+the PRNGs during runtime. However, it is important to note that                                                 seed files but another peer. For the other fuzzers, we prepared seeds
+it is impossible to encompass all sources of randomness simply                                                  by recording the network traffic between each client/server pair
+due to the complexity of the tested targets. Furthermore, we only                                               (same pair as used by Fuzztruction-Net). Thus, each approach
+patched the target applications themselves and the libraries shipped                                            had the same initial conditions for its fuzzing campaign.
+alongside them. We did not patch libraries that are pulled from the                                                Coverage. To calculate coverage, we used a version of the target
+system as external dependencies, since this would have been infea-                                              compiled with LLVM’s Source-based Code Coverage, which enabled
+sible to accomplish. We provide the patches as part of our artifact                                             us to measure the coverage for each input processed by the target
+                                                                                                          8
+Table 1: Information on targets that are part of our evalua-                    Table 2: Statistical evaluation of coverage results. We use
+tion. A complexity (Cmpl.) of easy indicates the protocol is                    a bootstrap-based algorithm [34] to determine significance
+amenable to byte-oriented mutations, while we use hard to                       and Vargha and Delaney’s 𝐴ˆ12 test to measure effect size [41].
+indicate targets using checks and/or encryption to protect                      If the difference is significant, we print the effect size in bold.
+communication. We also survey whether the targets offer
+fuzzing harnesses (H) or are even included in OSS-Fuzz’ test-
+                                                                                          Target       Best Competitor        𝐴ˆ12 effect size
+ing (OF). The applications in the Weird Peer column are the
+ones used by Fuzztruction-Net as a peer for the target. The                            dropbearS       StateAFL                  +L(1.00)
+targets above the line were selected for our comparative eval-                         dcmtkS          SGFuzz                    -L(0.00)
+uation.                                                                                gnutlsS         AflNet                    +L(1.00)
+                                                                                       libresslS       StateAFL                  +L(0.94)
+                                                      Fuzzing Support                  live555S        SGFuzz                    +S(0.63)
+ Target        Protocol    Version      Weird Peer
+                                                      Cmpl. H OF                       mosquittoS      SGFuzz                    -L(0.00)
+ dropbearS     SSH         9925b00      dropbearC     hard     ✓    ✓                  nginxS          StateAFL                  +L(1.00)
+ dcmtkS        DICOM       1549d8c      dcmtkC        easy     ✘    ✘                  opensslS        SGFuzz                    +L(1.00)
+ gnutlsS       TLS         e840a07      gnutlsC       hard     ✓    ✓                  sambaS          AflNet                    +L(1.00)
+ libresslS     TLS         fbb21ed      libresslC     hard     ✓    ✓
+ live555S      RTP         2023.06.14   live555C      med.     ✘    ✘
+ mosquittoS    MQTT        3923526      mosquittoC    easy     ✘    ✓
+ nginxS        HTTP/3      6b1bb99      ngtcp2C       hard     ✓    ✓
+                                                                                and both SGFuzz and StateAFL showed better performance for
+ opensslS      TLS         7b649c7      opensshC      hard     ✓    ✓
+ sambaS        SMB         95474d8      sambaC        hard     ✓    ✓
+                                                                                the mosquittoS target.
+                                                                                   Statistical evaluation. We statistically evaluate our results in
+ apacheS       HTTP/2      a751ae5      curlC         hard     ✓    ✓
+                                                                                line with recommended best practices [25]. To this end, we use a
+ pjsipS        SIP         12d0468      pjsipC        easy     ✓    ✓
+                                                                                bootstrap-based two-sample t-test [34] and measure effect size via
+ curlC         HTTP/3      de7b3e8      nginxS        hard     ✓    ✓
+ dropbearC     SSH         9925b00      dropbearS     hard     ✓    ✓           Vargha’s and Delaney’s 𝐴ˆ12 test [41], comparing Fuzztruction-
+ libresslC     TLS         fbb21ed      libresslS     hard     ✓    ✓           Net to the best other tool (based on the coverage of the median run).
+ ngtcp2S       HTTP/3      f3f15b6      ngtcp2C       hard     ✓    ✓           As shown in Table 2, the effect size is large (>0.71 [41]) in all cases
+ opensshC      SSH         86bdd38      dropbearS     hard     ✓    ✓           with the exception of live555S , where we observe no statistically
+                                                                                significant difference. In two cases, dcmtkS and mosquittoS , we see
+                                                                                a negative effect size, as Fuzztruction-Net performed worse than
+being tested. LLVM-Cov specifically uses the branches in the source             SGFuzz. Overall, the statistical evaluation confirms our intuition
+code as the units for coverage measurement. This approach ensures               that Fuzztruction-Net is better on six out of nine targets, worse
+that the coverage results are independent of the machine code                   on two, and tied with SGFuzz on live555S .
+produced by the compiler. As a result, these findings are consistent               Next, we analyze these results in more detail, first focusing on
+across various compiler versions and even among binaries that                   cases where Fuzztruction-Net succeeded before then taking a
+have undergone different instrumentation processes.                             closer look at the targets where Fuzztruction-Net was not the
+                                                                                fuzzer with the best performance. We reference the challenges
+5.2    Coverage Experiments                                                     outlined in Section 2.2.
+While fuzzing primarily aims to identify bugs, coverage is a well-
+established and widely used proxy metric for comparing the effi-                Targets with good performance. For six targets, Fuzztruction-
+ciency and effectiveness of different fuzzers [7]. For our evaluation,          Net shows excellent performance characteristics, outperforming
+we selected nine different targets (cf. first half of Table 1) and fuzzed       the best competitor by at least 6% (on opensslS ) but up to 56%
+them for 24 hours. Given the stochastic nature of fuzzing, we re-               (nginxS ), with an average improvement of 16% over all nine tar-
+peated each experiment ten times to ensure reliability [25].                    gets. When analyzing the coverage achieved by various fuzzers, it
+   We encountered challenges in deploying SGFuzz on three targets:              becomes clear that other fuzzers encounter significant obstacles
+dropbearS , sambaS , and nginxS . For nginxS , the primary issue was            with certain targets such as sambaS , nginxS , and dropbearS . The
+the lack of UDP support in SGFuzz. The sambaS target refused to                 reason is that these targets use ephemeral values (challenge C1),
+compile when instrumented with the SGFuzz instrumentation. The                  such as session identifiers, or encryption (challenge C2).
+reason for SGFuzz failing on dropbearS was the lack of support                     For the TLS libraries gnutlsS , libresslS , and opensslS , the
+for targets using execve, which is mandatory if dropbearS is not                other fuzzers successfully replayed the initial seed provided by us.
+intended to be used in one-shot mode (i.e., it terminates after pro-            This was only possible because we modified these targets’ Pseudo
+cessing one connection), which is also not support by SGFuzz.                   Random Number Generators (PRNGs) to yield predictable outputs.
+   The results of the coverage experiment are shown in Figure 2.                However, the fuzzers still failed to initiate any new successful TLS
+Overall, our prototype Fuzztruction-Net outperforms all other                   handshakes beyond using the initial seed file. This failure occurs
+fuzzers in six out of nine cases. In one of the nine cases, namely              because any slight alteration in the seed file requires a recalculation
+for the target live555S , our performance is on par with SGFuzz.                of the message authentication codes used during the handshake
+However, Fuzztruction-Net underperforms SGFuzz for dcmtkS ,                     (C1, C2), due to the protocol’s inherent design. The situation is
+                                                                            9
+                                                      mosquittoS                                                                                         live555S
+                              Fuzzer                                TLS                                                        Fuzzer                               Authentication
+                                FT-Net         SGFuzz                 enabled    disabled                                        FT-Net         SGFuzz                enabled    disabled
+
+                      2,000
+                                                                                                                       1,500
+  #Covered Branches
+
+
+
+
+                                                                                                   #Covered Branches
+                      1,500
+
+                                                                                                                       1,000
+                      1,000
+
+
+                                                                                                                        500
+                       500
+
+
+
+                         0                                                                                                0
+                              00:00 03:00   06:00   09:00 12:00 15:00   18:00   21:00                                          00:00 03:00   06:00   09:00 12:00 15:00   18:00   21:00
+                                                       Time [hh:mm]                                                                                     Time [hh:mm]
+
+Figure 3: Coverage on mosquittoS when enabling TLS support                                       Figure 4: Coverage on live555S with HTTP Digest Access
+as typical for real-world use. We compute coverage computed                                      Authentication [37] enabled. We still provide replay-based
+only for the target, not the TLS library implementation. TLS                                     fuzzers with a recording of a successful authentication
+stalls SGFuzz but not Fuzztruction-Net.                                                          (HTTP plain text).
+
+
+even more complicated for SGFuzz because of its in-process ap-                                   require maintaining state across messages, this might have signifi-
+proach. Although the PRNGs produce predictable values, they are                                  cantly hindered the effectiveness of such basic fuzzing techniques.
+not reset by SGFuzz after processing a connection. Therefore, in                                 Another interesting effect that we observed is that SGFuzz was the
+subsequent fuzzing iterations, the random numbers used during                                    only fuzzer to cover code related to data persistence. The reason
+the TLS handshake differ from those in the seed file (C1), leading                               for that is that SGFuzz is the only tool using an in-memory fuzzing
+to earlier rejection of generated messages. This limitation impedes                              approach, which causes mosquittoS to persist the server data af-
+SGFuzz’s ability to explore as much error-handling code as the                                   ter a number of connections have been processed. This does not
+other fuzzers.                                                                                   happen for the other fuzzers, which terminate the target after each
+   Fuzztruction-Net, in contrast, does not suffer from any of                                    iteration.
+these limitations, leading to the observed outcome. Upon closer                                     However, depending on which features are enabled, our ap-
+inspection, we found that some of the other fuzzers covered more                                 proach can be beneficial even for targets with such a simple protocol
+error-handling code than Fuzztruction-Net, suggesting that us-                                   specification. To showcase this claim, we enabled TLS support for
+ing multiple fuzzers may yield a beneficial synergy.                                             mosquittoS , which is arguably a realistic scenario, and ran the
+Targets with bad performance. In the following, we analyze in                                    fuzzers again. As shown in Figure 3 (with full data for all fuzzers
+detail the targets where Fuzztruction-Net underperformed our                                     in Figure 5 in the Appendix), traditional bit-level mutation fuzzers
+expectations.                                                                                    then struggle with this target. The coverage (measured only for
+   mosquittoS . On this target, Fuzztruction-Net falls short com-                                the target, excluding the TLS library implementation itself) for
+pared to all other tools. When investigating this behavior, we found                             Fuzztruction-Net remains unimpeded, while other fuzzers are
+that the characteristics of the MQTT protocol are the root cause:                                less effective and can no longer fuzz the target thoroughly.
+MQTT handles a very limited set of message types, primarily                                         dcmtkS . For dcmtkS , SGFuzz outperforms Fuzztruction-Net.
+subscribe and unsubscribe messages. The MQTT protocol is                                         Similar to the situation with mosquittoS , the subset of the DCMTK
+straightforward and lightweight to be used on embedded devices,                                  protocol used by the target lacks complex primitives that challenge
+making it relatively easy for fuzzers to generate syntactically cor-                             traditional fuzzers. The main function of dcmtkS involves receiving
+rect messages purely by chance. We hypothesize that it is, hence,                                an x-ray image along with accompanying metadata sent by the
+less important to generate “good” inputs by faulting the peer than                               client. Analyzing the coverage differences of Fuzztruction-Net
+to generate as many (random) inputs as quickly as possible. Further,                             and SGFuzz, we found that the coverage advantage primarily stems
+our data shows that more than 55% of the inputs crafted by the                                   from parsing functions that, for example, convert integer or float
+fuzzers and sent to the mosquittoS were shorter than 32 bytes, in-                               values into strings or vice versa. For fuzzing these kinds of functions,
+dicating the simplicity of the protocol format. Such compact input                               approaches with a high throughput rate, like SGFuzz, are inherently
+sequences are ideal targets for bit-level mutational fuzzers, which                              better suited and, therefore, have an advantage.
+excel in enumerating through small variations of input data. If                                     live555S . The third case where Fuzztruction-Net did not
+MQTT used more complex mechanisms, such as session IDs that                                      perform better than all state-of-the-art tools, but was on par with
+                                                                                            10
+Table 3: Unique bugs found by the different fuzzers. We derive                    were identified across all targets. Out of these, Fuzztruction-
+this number by first bucketing found crashes via the last five                    Net successfully detected 9 bugs, missing only a single bug in
+functions on the call stack in the ASAN report and then                           live555S . In general, the effectiveness of each fuzzer in identi-
+deduplicating them manually.                                                      fying bugs aligns with its coverage performance. Targets where
+                                                                                  Fuzztruction-Net excelled in coverage also yielded a higher num-
+   Target     Fuzztruction-Net   AflNet   SGFuzz   StateAFL   #Unique Bugs        ber of detected bugs compared to other fuzzers. The only exception
+ dropbearS            0            0        0         0                  0        is mosquittoS , where SGFuzz achieved significantly higher cover-
+ dcmtkS               2            2        2         1                  2
+                                                                                  age than Fuzztruction-Net, yet none of the fuzzers found any
+ gnutlsS              2            0        0         0                  2
+ libresslS            0            0        0         0                  0        bugs. StateAFL, on the other hand, identified only a single bug. This
+ live555S             2            0        1         0                  3        limited detection capability can be attributed to frequent crashes
+ mosquittoS           0            0        0         0                  0
+ nginxS               3            0        0         0                  3
+                                                                                  caused by its memory allocation tracking instrumentation, which
+ opensslS             0            0        0         0                  0        often prevented the fuzzer from making meaningful progress.
+ sambaS               0            0        0         0                  0
+                                                                                  Real-World Applicability. To test the real-world applicability
+ Sum                  9            2        3         1                 10
+                                                                                  of Fuzztruction-Net, we fuzzed further targets, including many
+                                                                                  client applications that other network fuzzers cannot test. A list of
+                                                                                  reported bugs found by Fuzztruction-Net is shown in Table 4.
+SGFuzz, is live555S . Notably, we patched the target (as recom-                   Overall, Fuzztruction-Net found bugs in a variety of security-
+mended by the authors of SGFuzz [3]) such that it uses a constant                 relevant targets, including the OpenSSH client and the webservers
+value as session IDs, such that replayed messages are still accepted              HTTPd and Nginx (where two CVEs have been assigned). The
+by the server. In terms of source code coverage, both fuzzers covered             detected bugs cover the full spectrum of typical memory safety vio-
+mostly the same code. However, one notable area that neither fuzzer               lations, ranging from nullptr dereferences to out-of-bounds memory
+addressed is the server’s authentication functionality. This feature              accesses on the heap to use-after-frees.
+was intentionally disabled for our experiment. In a real-world appli-             Case Study: Nginx. One of the bugs Fuzztruction-Net found
+cation, similar to TLS in the mosquittoS scenario, authentication                 in Nginx allows for an 8-byte out-of-bounds write in the HTTP/3
+is likely enabled. The authentication system used by live555S in-                 dynamic table, a critical component used within the QPACK header
+corporates a server-selected nonce as part of HTTP authentication.                compression mechanism of QUIC. The HTTP/3 dynamic table stores
+Despite the simplicity, this renders traditional fuzzers ineffective              previously sent headers to optimize header compression over QUIC,
+as evident from Figure 4 (data for all fuzzers in Figure 6 in the Ap-             thereby reducing redundancy and enhancing the efficiency of subse-
+pendix). With this authentication enabled, the other fuzzers did not              quent requests. Fuzztruction-Net triggered the bug via two steps:
+manage to establish a single successful authentication, in contrast               First, the weird peer ngtcp2C adjusted the dynamic table size to a
+to Fuzztruction-Net, even though the provided seed contained                      new capacity by sending a “Set Dynamic Table Capacity” message.
+the exact HTTP plain text packets recorded during a successful                    Then, via a “Duplicate” message, it requested to duplicate an entry
+authentication.                                                                   in the dynamic table. Crucially, the size requested initially could not
+                                                                                  accommodate the duplication, leading to an overflow. This overflow
+5.3    Finding New Vulnerabilities                                                introduced the potential for memory corruption, posing a serious
+To measure the bug-finding capability of our approach, we con-                    security risk in the management of HTTP/3 headers in Nginx. It is
+ducted two experiments. First, we compared the number of unique                   noteworthy that none of the other fuzzers found this bug, as their
+bugs found by all fuzzers based on the deduplicated crashes found                 design did not allow them to access the key generated during the
+during the coverage evaluation. In the second experiment, we tested               TLS handshake.
+Fuzztruction-Net’s ability to find bugs in an additional set of
+targets, outlined in the bottom half of Table 1. In particular, these             6   DISCUSSION
+targets include several clients that no other network application                 In the following, we discuss potential limitations of our approach
+fuzzer can test. All selected targets were evaluated using the most               and explore directions for future research in the area of fault injec-
+recent versions available at the time of writing. Interestingly, most             tion in the context of network fuzzing.
+of the targets are integrated into OSS-Fuzz and provide, in addition,
+                                                                                  Access Requirement. Ideally, we have access to both peers so
+fuzzing harnesses for a variety of their interfaces. Therefore, it can
+                                                                                  that we can observe the behavior of the client and the server and
+be assumed that most bugs found during our evaluation eluded
+                                                                                  instrument one of them to turn it into a weird peer. As such, our
+previous fuzzing efforts.
+                                                                                  current setup cannot be used to test instant messenger clients such
+   To map found crashes to underlying bugs, we used a two-staged
+                                                                                  as WhatsApp or Apple’s iMessage, given that we cannot instrument
+schema for pre-filtering: (1) Crashes were bucketed according to
+                                                                                  the server to turn it into a weird peer. A related challenge is that
+the last five called functions of the ASAN stack traces that are
+                                                                                  our prototype implementation requires access to the weird peer’s
+generated when a crash is found. (2) The resulting buckets were
+                                                                                  source code so that we can instrument it, which may not be possible
+manually triaged and mapped to unique bugs.
+                                                                                  if the software is proprietary or closed-source.
+Comparative Evaluation. We present the results of our com-                        Timing-Related Vulnerabilities. Our instrumentation and the
+parison with other fuzzers in Table 3. A total of 10 unique bugs                  fuzzing setup (e.g., synchronization via the FuzzMediator) introduce
+                                                                             11
+Table 4: Overview of the 23 bugs we found in different targets. All bugs have been responsible disclosed. Weird Peer indicates
+the program in which we induced faults to generate the input uncovering the bug. The Status column links to the CVE or bug
+reports, unless a bug was reported via email. All CVEs have been fixed.
+
+ Target       Weird Peer Status             Type              Description
+ nginxS       ngtcp2C      fixed            Heap OOB read  ngx_quic_parse_transport_param uses user-controlled length value
+ nginxS       ngtcp2C      CVE-2024-32760   Heap OOB write Duplication of an entry in the HTTP3 dynamic table, while the table is too small
+ nginxS       ngtcp2C      CVE-2024-31079   Heap UAF       During an infinite recursion, the recurringly accessed memory pool is freed
+ nginxS       ngtcp2C      CVE-2024-3416    Info. leak.    QUIC packets can cause worker processes to leak previously freed memory
+ nginxS       ngtcp2C      CVE-2024-35200   Nullptr deref  Access to a variable holding the user-agent header value is unexpectedly null
+ curlC        nginxS       fixed            Nullptr deref  ngtcp2_ksl_begin in the ngtcp2 library tries to accesses the head of a list that is null
+ curlC        nginxS       fixed            Assertion      In the nghttp3 library, an assertion checking if enough data is remaining is triggered
+ apacheS      curlC        reported         Heap UAF       apr_file_write attempts to write error log after freeing its path
+ apacheS      curlC        reported         Assertion      While adding a key-value pair into an APR table, an assertion is triggered
+ opensshC     dropbearS    fixed            Heap UAF       The asynchronous callback verify_host_key accesses the previously freed host key
+ dropbearC    dropbearS    fixed (#285)     Assertion      signkey_type_from_signature tries to cast an invalid integer to an enum
+ gnutlsS      gnutlsC      fixed (#1529)    Nullptr deref  During a retry-handshake, _gnutls_cipher_auth dereferences a null pointer
+ gnutlsS      gnutlsC      fixed (#1534)    Nullptr deref  _gnutls_figure_common_ciphersuite dereferences a null ptr if a PSK cipher is used
+ libresslC    libresslS    fixed (#1037)    Nullptr deref  Attempting to print key material in ssl_print_tmp_key after it has been freed
+                                                           The wolfssl library returns a TLS session using the unauthenticated CTR AES mode,
+ ngtcp2S      ngtcp2C      fixed (#1529)    Assertion
+                                                           even though the CCM mode was negotiated
+ ngtcp2S      ngtcp2C      fixed (#7406)    Heap OOB write In wolfSSL_read_early_data, header bytes are written to a insufficiently sized buffer
+ pjsipS       pjsipC       fixed            Heap OOB read A timer object is deleted before it expires, causing an out-of-bound read
+ pjsipS       pjsipC       fixed            FP Exception   Proposing a clock rate of 0 for an audio stream causes a division by zero
+ pjsipS       pjsipC       fixed            Heap OOB write Dumped source address of an SDP message is copied into too small buffer
+ dcmtkS       dcmtkC       CVE-2024-34508   Nullptr deref  checkAndProcessSTORERequest accesses the value of an element pointing to null
+ dcmtkS       dcmtkC       CVE-2024-34509   Nullptr deref  DIMSE_parseCmdObject attempts to access a string that points to null
+ live555S     live555C     reported         Heap UAF       sendDataOverTCP sends MP3 bytes after freeing the RTSPClientConnection
+ live555S     live555C     reported         Heap UAF       During execution of handleHTTPCmd_TunnelingPOST, the processed input is freed
+
+
+
+some performance overhead. While this does not affect the testing            Weird Peer Configurations. Another interesting topic for future
+process per se (i.e., we have successfully detected many types of            work is the comprehensive enumeration of different client and
+memory safety violations), this overhead can affect the communica-           server configurations. At the moment, a particular fuzzing setup
+tion timing between the client and the server, potentially masking           uses a fixed, user-defined configuration of the peers. While some
+timing-related issues that Fuzztruction-Net might miss.                      protocol features can be unlocked by changing one of the peers,
+                                                                             others require a manual effort (e.g., configuring different types of
+Differential and Cross-Implementation Testing. Besides de-                   public keys or en-/disabling options could be beneficial when testing
+tecting classic memory safety violations, our approach could also            a TLS implementation to cover more code). Future work could
+be well-suited for testing differences in behavior between different         also adapt Fuzztruction-Net to support multi-threaded weird
+implementations of the same protocol. This aspect is particularly            peers. While supported in principle, scheduling introduced non-
+crucial for protocols requiring strict adherence to their specifica-         determinism that needs to be addressed. That said, most clients—
+tions to maintain strong security guarantees. Furthermore, this              that usually serve as weird peer—are single-threaded.
+approach could be particularly effective in uncovering implicit con-
+straints encoded within the program code (e.g., because the specifi-         7   RELATED WORK
+cation is ambiguous). Protocols such as TLS, with implementations
+                                                                             Our work combines techniques from network application fuzzing
+such as OpenSSL, GnuTLS, and LibreSSL, are particularly sensitive
+                                                                             and fault injection. As we test network applications that all speak
+to deviations from their defined standards that could potentially
+                                                                             specific protocols, our work is also related to protocol testing.
+introduce side-channel and other vulnerabilities. To implement
+differential testing, we could observe and compare the behavior
+of different implementations when interacting with a weird peer              Network Application Fuzzing. Closest to our work are net-
+application that has been mutated using our approach. By apply-              work fuzzers, including SGFuzz [3], StateAFL [31], AflNet [33],
+ing cross-implementation testing, where various clients are paired           Bleem [28], Peach [12], BooFuzz [24], Snipuzz [13], Snapfuzz [1],
+with different servers, we could expose and address hidden assump-           and Nyx-Net [35]. Beyond these tools, there is a Windows ver-
+tions, ensuring the protocol functions are robust and secure across          sion of AflNet called NetAFL [38]. Fundamentally, all of these
+diverse environments. This approach would allow us to systemati-             methods primarily use one of two strategies. First, replay-based
+cally investigate and identify inconsistencies in protocol execution,        fuzzers work by intercepting and replaying live network traffic,
+revealing potential security weaknesses.                                     performing mutations to produce server-compatible messages that
+                                                                        12
+respect the underlying message format. Second, MitM fuzzers ac-                 to overcome them. Injecting faults allows us to strike a balance
+tively intercept and modify live (plaintext) messages without the               between sending unexpected input that stresses the target and
+need for pre-recorded communication. Our method differs from                    adhering to the input structure to exercise deeper functionality.
+these paradigms by using fault injection, eliminating the depen-                Our evaluation shows that fault injection is a promising approach,
+dence on pre-recorded traffic or in-transit message changes. This               outperforming all state-of-the-art fuzzers regarding coverage and
+unique approach allows us to use either the client or the server                found bugs. Notably, our approach is the only network fuzzer to
+for fuzzing by taking advantage of the peer’s ability to synthe-                test both clients and servers.
+size messages on its own. This not only bypasses the complexity
+associated with understanding proprietary message structures or                 ACKNOWLEDGMENTS
+cryptographic roadblocks, but also improves the breadth and depth               We thank our anonymous reviewers for their valuable feedback. For
+of our fuzzing capabilities by testing the target in a more dynamic             their feedback on an earlier draft, we thank Tobias Scharnowski and
+and unpredictable way.                                                          Addison Crump. We would also like to express our gratitude to the
+Fault Injection. Several fuzzers that use fault injection to test               team maintaining DCMTK and the F5 security incident response
+regular applications exist [4, 23, 27, 36]. For example, Fuzztruc-              and development team at NGINX, particularly Jordan Zebor. Their
+tion [4] targets specific application pairs, such as in encryption or           quick and outgoing response during our responsible disclosure
+compression, to test the handling of data formats by generating and             process and their thoughtful feedback on how to test their products
+consuming data across applications. More recently, FuzzERR [36]                 have significantly helped us.
+strategically inserts faults into API calls to evaluate the robustness             This work was funded by the European Research Council (ERC)
+of error handling. These techniques have conceptual similarities                under the consolidator grant RS3 (101045669) and the German Fed-
+with our approach. However, they are narrowly tailored to the in-               eral Ministry of Education and Research (BMBF) under the grant
+teraction of data formats and cannot account for the complexity of              CPSec (16KIS1899).
+network applications. In contrast, our tool is specifically designed
+to control and exploit the nuanced dynamics of network protocols,               REFERENCES
+enabling effective testing of network applications beyond the scope              [1] Anastasios Andronidis and Cristian Cadar. Snapfuzz: High-throughput fuzzing
+                                                                                     of network applications. In International Symposium on Software Testing and
+of existing domain-specific fuzzers.                                                 Analysis (ISSTA), 2022.
+                                                                                 [2] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and
+Protocol Testing. Given that all of our targets use specific pro-                    Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In
+tocols, our work relates to the area of protocol testing [16, 17, 39],               Symposium on Network and Distributed System Security (NDSS), 2019.
+                                                                                 [3] Jinsheng Ba, Marcel Böhme, Zahra Mirzamomen, and Abhik Roychoudhury.
+which is essentially about verifying that protocols conform to their                 Stateful Greybox Fuzzing. In USENIX Security Symposium, 2022.
+specifications, maintain interoperability, and are robust against                [4] Nils Bars, Moritz Schloegel, Tobias Scharnowski, Nico Schiller, and Thorsten
+                                                                                     Holz. Fuzztruction: Using Fault Injection-based Fuzzing to Leverage Implicit
+various types of attacks [22]. For example, TLS-Attacker [39] is                     Domain Knowledge. In USENIX Security Symposium, 2023.
+a flexible framework for evaluating the security features of TLS                 [5] Sergej Bratus, Michael E. Locasto, Meredith L. Patterson, Len Sassaman, and Anna
+implementations based on a manual implementation of the TLS                          Shubina. Exploit Programming: From Buffer Overflows to “Weird Machines”’
+                                                                                     and Theory of Computation. Usenix; Login, 2011.
+specification. Crucially, our goal is not to test the protocol itself,           [6] Marcel Böhme, Valentin J. M. Manès, and Sang Kil Cha. Boosting Fuzzer Effi-
+i.e., the specification, or to find implementation flaws in the sense                ciency: An Information Theoretic Perspective. In ACM Joint European Software
+of protocol deviations. Instead, we focus on injecting faults in a                   Engineering Conference and Symposium on the Foundations of Software Engineering
+                                                                                     (ESEC/FSE), 2020.
+protocol-agnostic way to test the robustness of network applica-                 [7] Marcel Böhme, László Szekeres, and Jonathan Metzman. On the Reliability of
+tions. Fuzztruction-Net cannot detect specification errors or im-                    Coverage-Based Fuzzer Benchmarking. In ACM/IEEE International Conference on
+                                                                                     Automated Software Engineering (ASE), 2022.
+plementation deviations unless they manifest themselves in mem-                  [8] Merlin Chlosta, David Rupprecht, and Thorsten Holz. On the Challenges of
+ory corruption.                                                                      Automata Reconstruction in LTE Networks. In ACM Conference on Security and
+                                                                                     Privacy in Wireless and Mobile Networks (WiSec), 2021.
+State Machine Inference. Orthogonal research on automata                         [9] Lesly-Ann Daniel, Erik Poll, and Joeri de Ruiter. Inferring OpenVPN State Ma-
+learning [8–11, 33, 40] has focused on inferring the state machine                   chines Using Protocol State Fuzzing. In IEEE European Symposium on Security
+                                                                                     and Privacy Workshops (EuroS&PW), 2018.
+of network protocols based on observed behaviors, a generally hard              [10] Cristian Daniele, Seyed Behnam Andarzian, and Erik Poll. Fuzzers for Stateful
+task. These methods treat the application as a black box oracle                      Systems: Survey and Research Directions. ACM Computing Surveys (CSUR), 56(9),
+                                                                                     2024.
+and infer the structure of the state machine by analyzing the appli-            [11] Joeri De Ruiter and Erik Poll. Protocol State Fuzzing of TLS Implementations. In
+cation’s responses to various inputs. In contrast, our approach is                   USENIX Security Symposium, 2015.
+agnostic of the state machine, and we rely on the instrumentation               [12] Michael Eddington. Peach Fuzzer: Discover Unknown Vulnerabilities. https:
+                                                                                     //peachtech.gitlab.io/peach-fuzzer-community/, 2004.
+of one of the communication peers. Fuzztruction-Net could be                    [13] Xiaotao Feng, Ruoxi Sun, Xiaogang Zhu, Minhui Xue, Sheng Wen, Dongxi Liu,
+used together with existing state machine learning algorithms to                     Surya Nepal, and Yang Xiang. Snipuzz: Black-box Fuzzing of IoT Firmware via
+infer the current state or state transitions more efficiently.                       Message Snippet Inference. In ACM Conference on Computer and Communications
+                                                                                     Security (CCS), 2021.
+                                                                                [14] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. AFL++ :
+8   CONCLUSION                                                                       Combining Incremental Steps of Fuzzing Research. In USENIX Workshop on
+                                                                                     Offensive Technologies (WOOT), 2020.
+Despite being a critical security boundary, network applications                [15] Andrea Fioraldi, Dominik Christian Maier, Dongjia Zhang, and Davide Balzarotti.
+have enjoyed little attention in terms of fuzz testing. In this work, we             LibAFL: A Framework to Build Modular and Reusable Fuzzers. In ACM Conference
+                                                                                     on Computer and Communications Security (CCS), 2022.
+have analyzed challenges preventing fuzzers from effectively and                [16] Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri de Ruiter, Konstanti-
+efficiently doing so, then proposed a fault injection-based approach                 nos Sagonas, and Juraj Somorovsky. Analysis of DTLS Implementations Using
+                                                                           13
+     Protocol State Fuzzing. In USENIX Security Symposium, 2020.
+[17] Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri De Ruiter, Konstanti-                                                              mosquittoS
+     nos Sagonas, and Juraj Somorovsky. Analysis of DTLS Implementations Using                Fuzzer                                                             TLS
+     Protocol State Fuzzing. In USENIX Security Symposium, 2020.
+                                                                                                                   FT-Net        AflNet      StateAFL   SGFuzz       enabled    disabled
+[18] Google. Honggfuzz.
+[19] Google. OSS-Fuzz: Continuous Fuzzing for Open Source Software.
+[20] Google. Fuzzer-Test-Suite, 2016.                                                                              2,000
+[21] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. Magma: A Ground-Truth
+     Fuzzing Benchmark. ACM on Measurement and Analysis of Computing Systems
+     (POMACS), 4(3):49:1–49:29, 2020.
+
+
+
+
+                                                                                               #Covered Branches
+[22] Robert M Hierons, Kirill Bogdanov, Jonathan P Bowen, Rance Cleaveland, John                                   1,500
+     Derrick, Jeremy Dick, Marian Gheorghe, Mark Harman, Kalpesh Kapoor, Paul
+     Krause, et al. Using Formal Specifications to Support Testing. ACM Computing
+     Surveys (CSUR), 41(2), 2009.
+[23] Zu-Ming Jiang, Jia-Ju Bai, Kangjie Lu, and Shi-Min Hu. Fuzzing Error Handling                                 1,000
+     Code using Context-Sensitive Software Fault Injection. In USENIX Security
+     Symposium, 2020.
+[24] Joshua Pereyda et al. boofuzz: Network Protocol Fuzzing for Humans. https:
+     //github.com/jtpereyda/boofuzz.                                                                                500
+[25] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. Evaluat-
+     ing Fuzz Testing. In ACM Conference on Computer and Communications Security
+     (CCS), 2018.
+[26] lafintel. laf-intel - Circumventing Fuzzing Roadblocks with Compiler Transfor-                                   0
+     mations. https://lafintel.wordpress.com.                                                                              00:00 03:00   06:00   09:00 12:00 15:00     18:00   21:00
+[27] Peiyu Liu, Shouling Ji, Xuhong Zhang, Qinming Dai, Kangjie Lu, Lirong Fu,                                                                      Time [hh:mm]
+     Wenzhi Chen, Peng Cheng, Wenhai Wang, and Raheem Beyah. IFIZZ: Deep-State
+     and Efficient Fault-Scenario Generation to Test IoT Firmware. In ACM/IEEE
+     International Conference on Automated Software Engineering (ASE), 2021.
+[28] Zhengxiong Luo, Junze Yu, Feilong Zuo, Jianzhong Liu, Yu Jiang, Ting Chen,              Figure 5: Coverage results for all fuzzers when enabling TLS
+     Abhik Roychoudhury, and Jiaguang Sun. Bleem: Packet Sequence Oriented
+     Fuzzing for Protocol Implementations. In USENIX Security Symposium, 2023.               support, as is often the case in practice. We compute coverage
+[29] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and              only for the target but not the TLS implementation.
+     Raheem Beyah. MOPT: Optimized Mutation Scheduling for Fuzzers. In USENIX
+     Security Symposium, 2019.
+[30] Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek
+     Arya. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In
+     ACM Joint European Software Engineering Conference and Symposium on the
+     Foundations of Software Engineering (ESEC/FSE), 2021.                                                                                          live555S
+[31] Roberto Natella. StateAFL: Greybox Fuzzing for Stateful Network Servers. Em-             Fuzzer                                                             Authentication
+     pirical Software Engineering, 27(7):191, 2022.                                                                FT-Net       AflNet      StateAFL    SGFuzz       enabled   disabled
+[32] Roberto Natella and Van-Thuan Pham. ProFuzzBench: A Benchmark for Stateful
+     Protocol Fuzzing. In International Symposium on Software Testing and Analysis
+     (ISSTA), 2021.
+[33] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. AFLNet: A Greybox
+     Fuzzer for Network Protocols. In IEEE International Conference on Software                                    1,500
+     Testing, Validation and Verification (ICST), 2020.
+                                                                                               #Covered Branches
+
+
+
+
+[34] Moritz Schloegel, Nils Bars, Nico Schiller, Lukas Bernhard, Tobias Scharnowski,
+     Addison Crump, Arash Ale-Ebrahim, Nicolai Bissantz, Marius Muench, and
+     Thorsten Holz. SoK: Prudent Evaluation Practices for Fuzzing. In IEEE Symposium                               1,000
+     on Security and Privacy (S&P), 2024.
+[35] Sergej Schumilo, Cornelius Aschermann, Andrea Jemmett, Ali Abbasi, and
+     Thorsten Holz. Nyx-Net: Network Fuzzing with Incremental Snapshots. In
+     European Conference on Computer Systems (EuroSys), 2022.
+[36] Shashank Sharma, Sai Ritvik Tanksalkar, Sourag Cherupattamoolayil, and Ar-                                     500
+     avind Machiry. Fuzzing API Error Handling Behaviors using Coverage Guided
+     Fault Injection. In ACM Symposium on Information, Computer and Communica-
+     tions Security (ASIACCS), 2024.
+[37] Rifaat Shekh-Yusef. HTTP Digest Access Authentication, 2015.                                                     0
+[38] M. Shudrak. NetAFL: WinAFL Patch. https://github.com/intelpt/winafl-intelpt,                                          00:00 03:00   06:00   09:00 12:00 15:00     18:00   21:00
+     2018.
+[39] Juraj Somorovsky. Systematic Fuzzing and Testing of TLS Libraries. In ACM                                                                      Time [hh:mm]
+     Conference on Computer and Communications Security (CCS), 2016.
+[40] Bernhard Steffen, Falk Howar, and Maik Merten. Introduction to Active Automata
+     Learning from a Practical Perspective. 2011.
+[41] András Vargha and Harold D Delaney. A Critique and Improvement of the                   Figure 6: Coverage results when enabling HTTP Digest
+     CL Common Language Effect Size Statistics of McGraw and Wong. Journal of                Access Authentication [37] for live555S . We provided all
+     Educational and Behavioral Statistics, 25(2):101–132, 2000.
+[42] Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. QSYM: A                   fuzzers with a recording of one successful authentication
+     Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX              (HTTP plain-text).
+     Security Symposium, 2018.
+[43] Michał Zalewski. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/, 2013.
+[44] Bodong Zhao, Zheming Li, Shisong Qin, Zheyu Ma, Ming Yuan, Wenyu Zhu,
+     Zhihong Tian, and Chao Zhang. StateFuzz: System Call-Based State-Aware Linux
+     Driver Fuzzing. In USENIX Security Symposium, 2022.
+[45] Xiaogang Zhu, Sheng Wen, Seyit Camtepe, and Yang Xiang. Fuzzing: A Survey               A                     TARGET CONFIGURATION
+     for Roadmap. ACM Computing Surveys (CSUR), 54(11s):1–36, 2022.
+                                                                                             To enable reproducibility, we list the exact commandline parameters
+                                                                                             for our targets in Table 5.
+                                                                                        14
+                                   Table 5: Target configurations used during the evaluation.
+
+    Target        Configuration
+    dropbearS     dropbear -p <address> -a -F -r ed25519.key -E -B
+    dropbearC     dbclient user@<address> -yy -i ed25519.key pwd
+    dcmtkS        dcmrecv --config-file storescp.cfg Default -d <port>
+    dcmtkC        dcmsend -aet YOU_AET -aec DCM4CHEE -d <host> <port> image-00000.dcm
+    gnutlsS       gnutls-serv -a -d 1000 --earlydata --x509certfile=cert.pem --x509keyfile=key.pem -b -p <port>
+    gnutlsC       gnutls-cli <address> --rehandshake --starttls -d <port> -b
+    libresslS     openssl s_server -key key.pem -cert cert.pem -accept <port> -www -naccept 1
+    libresslC     openssl s_client -connect <address> -status
+    live555S      testOnDemandRTSPServer <port>
+    live555C      testRTSPClient rtsp://<address>/mp3AudioTest
+    mosquittoS    mosquitto -p <port>
+                  mosquitto_pub -h <address> -p <port> -t TOPIC -m m --will-topic wt --will-retain \
+    mosquittoC
+                  --will-payload wp --insecure --will-qos 1 --repeat 10 -r
+    nginxS        nginx -c nginx.conf
+    opensslS      openssl s_server -key key.pem -cert cert.pem -accept 44330 -www -naccept 1
+    opensslC      openssl s_client -connect localhost:44330 -reconnect
+    sambaS        smbd -s smb.conf -F -i
+    sambaC        smbclient -p <port> -L //<address>
+    apacheS       httpd -X -f httpd.conf
+    pjsipS        siprtp -p 5080 -r 4010 --auto-quit --call-report -i <address> <remote-address>
+    pjsipC        siprtp -p <port> -r 4000 -i <address>
+    curlC         curl -v --insecure --parallel <address>
+    ngtcp2S       wsslserver <address> <port> server.key server.cert
+    ngtcp2C       wsslclient --exit-on-all-streams-close <address> <port>
+    opensshS      sshd -f sshd_config -4 -D -d -r -p <port>
+                  ssh user@<address> -p<port> -o StrictHostKeyChecking=no -i rsa.key -g -A -R 127.0.0.1:18888 \
+    opensshC
+                  -R 127.0.0.1:18889 -vvvvv -X pwd
+
+
+B    MOSQUITTO AND LIVE555                                             we provide the full data in Figure 5. We observe similar results
+When enabling TLS support for mosquittoS , only Fuzztruction-          for live555S when using HTTP basic authentication, with the
+Net manages to effectively explore it. In Figure 3, we compared        comparison of Fuzztruction-Net and SGFuzz in Figure 4 and the
+Fuzztruction-Net only to SGFuzz for readability reasons, and           full data in Figure 6.
+
+
+
+
+                                                                  15
+

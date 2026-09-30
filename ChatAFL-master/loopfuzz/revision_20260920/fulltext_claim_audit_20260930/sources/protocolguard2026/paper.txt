@@ -1,0 +1,1239 @@
+                  ProtocolGuard: Detecting Protocol
+                Non-compliance Bugs via LLM-guided
+               Static Analysis and Dynamic Verification
+  Xiangpu Song1 , Longjia Pei1 , Jianliang Wu2* , Yingpei Zeng3 , Gaoshuo He1 , Chaoshun Zuo4 , Xiaofeng Liu1* ,
+                                     Qingchuan Zhao5 and Shanqing Guo167*
+                                   1
+                                      School of Cyber Science and Technology, Shandong University
+                               2
+                              Simon Fraser University 3 Hangzhou Dianzi University 4 Independent Researcher
+                    5
+                      City University of Hong Kong 6 Shandong Key Laboratory of Artificial Intelligence Security
+                      7
+                        State Key Laboratory of Cryptography and Digital Economy Security, Shandong University
+
+
+
+   Abstract—Network protocol implementations are expected                                    I. I NTRODUCTION
+to strictly comply with their specifications to ensure reliable
+and secure communications. However, the inherent ambiguity                 Network protocols are the backbone of digital communi-
+of natural-language specifications often leads to developers’           cation, enabling billions of devices to exchange data reli-
+misinterpretations, causing protocol implementations to deviate
+from standard behaviors. These deviations result in subtle non-         ably. Given their widespread deployment, even minor bugs
+compliance bugs that can cause interoperability issues and critical     in protocol implementations can cause serious security and
+security vulnerabilities. Unlike memory corruption bugs, these          interoperability issues. These implementations are expected to
+bugs typically do not exhibit explicit error behaviors, resulting       strictly conform to specifications (e.g., RFCs), which define
+in existing bug oracles being insufficient to thoroughly detect         precise behavioral rules such as state transitions and message
+them. Moreover, existing works require heavy manual effort to
+verify findings and analyze root causes, severely limiting their        formats. However, natural-language specifications are often
+scalability in practice.                                                lengthy and complex, which can lead to misunderstandings
+   In this paper, we present ProtocolGuard, a novel framework           and cause implementations to silently deviate from standard
+that systematically detects non-compliance bugs by combining            behaviors, thereby introducing non-compliance bugs.
+LLM-guided static analysis with fuzzing-based dynamic verifica-            Protocol non-compliance bugs are widespread in real-world
+tion. ProtocolGuard first extracts normative rules from protocol
+specifications using a hybrid method, and performs LLM-guided           implementations, causing incorrect behaviors, interoperability
+program slicing to extract code slices relevant to each rule. It then   failures, and severe security vulnerabilities [31, 32, 67]. For
+leverages LLMs to detect semantic inconsistencies between these         example, a high-risk vulnerability in MatrixSSL (CVE-2022-
+rules and code logic, and dynamically verify whether these bugs         46505 [8]) stemmed from flawed validation logic in its session
+can be triggered. To facilitate bug verification, ProtocolGuard         resumption handling, resulting from an incorrect implemen-
+first uses LLMs to automatically generate assertion statements
+and instrument the code to turn silent inconsistencies into             tation of RFC [20]. This seemingly minor implementation
+observable assertion failures. Then, it produces initial test cases     flaw allowed an attacker to use a malformed Session ID to
+that are more likely to trigger the bug with the help of LLMs           force the reuse of an empty master secret, leading to complete
+for dynamic verification. Lastly, ProtocolGuard dynamically tests       decryption of secure communications on thousands of devices
+the instrumented code to confirm bug identification and generate        worldwide [23]. However, unlike memory corruption bugs,
+proof-of-concept test cases. We implemented a prototype of
+ProtocolGuard and evaluated it on 11 widely-used protocol               non-compliance bugs typically manifest as silent logic errors
+implementations. ProtocolGuard successfully discovered 158 non-         without obvious signals, such as crashes, making them difficult
+compliance bugs with high accuracy, 70 of which have been con-          to detect using conventional methods like fuzzing [34, 49].
+firmed, and the majority of which can be converted into assertions         Recent research has proposed various approaches for de-
+and dynamically verified. The comparison with existing state-of-
+                                                                        tecting protocol non-compliance bugs, including static anal-
+the-art tools demonstrates that ProtocolGuard outperforms them
+in both precision and recall rates in bug detection capabilities.       ysis and differential testing, which have achieved significant
+                                                                        success. Unfortunately, existing bug oracles are insufficient
+  * Corresponding
+                                                                        for the comprehensive detection of these bugs. Traditional
+                    authors.
+                                                                        static approaches [31, 32] rely on heuristics that match rule-
+                                                                        like conditions to specific code patterns. However, their ef-
+                                                                        fectiveness is severely hindered by the diversity of implemen-
+                                                                        tation styles and the ambiguity inherent in natural language
+                                                                        specifications. Differential testing [54, 61, 65, 67] relies on
+Network and Distributed System Security (NDSS) Symposium 2026
+23-27 February 2026, San Diego, CA, USA                                 mutual reference oracles across multiple implementations to
+ISBN 979-8-9919276-8-0                                                  detect inconsistencies, but this approach becomes ineffective
+https://dx.doi.org/10.14722/ndss.2026.240521
+www.ndss-symposium.org
+when all compared implementations exhibit the same incorrect           1    struct client {
+behavior [64]. Moreover, existing approaches require substan-          2      ...
+tial manual effort to verify findings and analyze root causes,         3      char client_id[MQTT_CLIENT_ID_LEN];
+                                                                       4    }
+severely limiting their scalability in practice.
+                                                                       5    static int connect_handler(struct io_event *e) {
+   To address these challenges, we propose ProtocolGuard, a            6      struct mqtt_connect *c = &e->data.connect;
+novel approach that integrates static analysis with dynamic val-       7      struct client     *cc = e->client;
+idation to detect non-compliance bugs. To accurately identify          8
+
+these bugs, we first extract normative requirements from proto-        9        // BUG: Client ID truncation without validation
+                                                                       10       snprintf(cc->client_id, MQTT_CLIENT_ID_LEN, ”%s
+col specifications and transform them into rule sets that serve
+                                                                                    ”, c->payload.client_id);
+as detection standards. Leveraging the semantic understanding          11       ...
+capabilities of Large Language Models (LLMs), we integrate             12   }
+LLMs with program slicing to extract code slices relevant to
+each rule, and analyze the inconsistencies between the rules                     Listing 1: Simplified code of motivation example.
+and code implementations, thereby identifying potential non-
+compliance bugs and their root causes. To efficiently validate         A. Motivating Example
+these potential bugs, we first leverage LLMs to generate
+assertion statements for each bug and instrument them into                Listing 1 presents a simplified code snippet from Sol [14],
+the program, transforming silent logical errors into observable        an MQTTv3.1.1 protocol implementation, that contains a
+assertion failures. Then, we design a test case generation             critical non-compliance bug. This vulnerability enables at-
+method that produces high-quality initial test cases and employ        tackers to impersonate legitimate clients by exploiting the
+directed fuzzing to dynamically verify potential bugs and              silent truncation of oversized client identifiers, potentially
+generate proof-of-concept (PoC) test cases.                            leading to denial-of-service attacks against clients with iden-
+   We implemented a prototype of ProtocolGuard and con-                tical identifiers [1]. Specifically, when the broker receives a
+ducted a comprehensive evaluation across 11 widely-used                CONNECT packet containing a client identifier longer than
+implementations of 6 network protocols. ProtocolGuard dis-             MQTT_CLIENT_ID_LEN, the connect_handler func-
+covered 158 non-compliance bugs across these implementa-               tion processes the connection request normally. At line
+tions, including 156 previously unknown bugs, and achieved             10, the code copies the client ID from the network pay-
+an overall precision of 90.6%. We compared ProtocolGuard               load c->payload.client_id into a fixed-size buffer
+against state-of-the-art AI-powered code editors, including            cc->client_id using snprintf. However, due to the
+Cursor [7] integrated with Claude 3.7 Sonnet and DeepSeek              absence of prior length validation, the server silently truncates
+R1. ProtocolGuard significantly outperformed these baselines,          characters beyond the limit without generating any error or
+achieving 86.3% precision and 81.3% recall, compared to                warning. The root cause of this bug stems from an incomplete
+the best baseline performance of 71.7% precision and 76.8%             implementation of the specification rule. While the implemen-
+recall. Furthermore, our evaluation demonstrates the effec-            tation superficially adheres to the explicit rule that states: ’The
+tiveness of ProtocolGuard’s key components: the assertion              Server MUST allow ClientIds which are between 1 and 23
+generation successfully transforms a majority of silent logic          UTF-8 encoded bytes in length, and MAY allow ClientIds that
+errors into assertion failures, while the test case generation         contain more than 23 encoded bytes’ [17], it fails to preserve
+significantly improves fuzzer performance in confirming in-            the complete client identifier when processing oversized IDs.
+consistency assertions.                                                This silent truncation can result in multiple clients sharing
+   Overall, we make the following contributions in this paper:         the same truncated identifier, violating the protocol’s implicit
+   • We propose a novel hybrid approach that combines                  requirement that each client must have a distinct identifier for
+     LLM-guided static analysis with fuzzing-based dynamic             proper session management and message routing.
+     verification to systematically detect non-compliance bugs.           Existing protocol bug detection approaches face significant
+   • We design an automated assertion generation mechanism             challenges in identifying such bugs. Traditional fuzzers that
+     that transforms silent logic errors into observable asser-        rely on memory sanitizers fail to detect such bugs, as these
+     tion failures, enabling conventional fuzzers to detect non-       bugs typically manifest as silent logic errors without causing
+     compliance bugs.                                                  program crashes [34, 49]. Similarly, differential fuzzing ap-
+   • We implement a prototype ProtocolGuard, and evaluate it           proaches [54, 61, 67] prove ineffective for this issue, as both
+     across 11 real-world protocol implementations, success-           vulnerable and correct MQTT protocol implementations re-
+     fully revealing 158 non-compliance bugs.                          turn identical CONNACK success responses, rendering cross-
+                                                                       reference oracles unable to distinguish the underlying be-
+            II. M OTIVATION AND C HALLENGES                            havioral differences. Furthermore, conventional static analysis
+   In this section, we first present a real-world example to           approaches [31, 32] typically rely on predefined heuristic
+illustrate the motivation behind our work, then discuss the            rules derived from specifications. However, these approaches
+limitations of existing research as well as the challenges we          cannot assess whether the implementation logic is semantically
+address.                                                               correct and compliant with the specification, particularly when
+
+
+
+                                                                   2
+specifications lack detailed guidance on field processing re-           necessary to expose non-compliance bugs. While LLMs show
+quirements such as client identifier handling. These limitations        great potential in message generation [47], directly prompting
+highlight the need for a novel detection approach capable of            them to generate binary protocol messages yields poor results,
+accurately identifying protocol non-compliance bugs.                    as this requires them to perform precise calculations and
+                                                                        adhere to strict binary format specifications [40].
+B. Challenges and Our Solutions                                         Solution: To address this challenge, we first utilize LLMs
+   Recent advancements in LLMs have demonstrated remark-                to generate natural-language descriptions of counterexamples,
+able capabilities in understanding both source code and natural         specifying input message sequences and field values that
+language [33], presenting an intuitive solution to analyzing            would violate each identified rule. Then, based on these de-
+whether protocol implementations comply with their specifica-           scriptions, we employ LLM agents to synthesize Python scripts
+tions from a semantic perspective. However, directly applying           that programmatically construct the required inputs as initial
+LLMs to the entire source code is impractical, as LLMs’                 test cases, rather than directly generating raw message bytes.
+reasoning ability is inversely proportional to input context
+length [41]. This raises several key challenges.                                                 III. D ESIGN
+C1: How to provide LLMs with appropriate rule-relevant                     In this section, we present the design of ProtocolGuard,
+code implementations? A natural solution is to apply program            a hybrid framework that systematically detects protocol non-
+slicing to extract only rule-relevant code statements for LLM           compliance bugs. Figure 1 illustrates the overall framework
+analysis, as large code context would reduce LLM’s perfor-              of ProtocolGuard, which comprises four components: protocol
+mance [41]. However, traditional slicing approaches require             rule extraction, LLM-guided program slicing, LLM-based in-
+manual specification of slicing criteria (i.e., the variables and       consistency detection, and fuzzing-based dynamic verification.
+program points of interest from which slicing begins), limiting
+their application [56, 63]. Moreover, even with correct criteria,       A. Protocol Rule Extraction
+conventional slicing typically contains semantically unrelated             To determine whether a protocol implementation adheres to
+code fragments, leading to noisy inputs for LLMs.                       its specification, we first extract normative rules from spec-
+Solution: To address this challenge, we propose an LLM-                 ification documents (e.g., RFCs). This step is necessary be-
+guided program slicing approach that combines semantic                  cause original documents typically contain substantial content
+inference from LLMs with LLVM-based static analysis. We                 unrelated to implementation constraints, such as background
+first use LLMs to automatically identify rule-relevant variables        information and optional recommendations, which can reduce
+as slicing criteria. Based on this, we perform rule-oriented            the accuracy of LLM analysis [52]. Previous research [31, 32]
+forward slicing to extract relevant code, followed by a hybrid          indicates that RFCs employ a prescriptive tone to describe
+pruning strategy that removes semantically unrelated code.              protocol behavior, typically achieved by combining modal key-
+C2: How to effectively verify non-compliance bugs without               words from RFC 2119 (e.g., MUST, SHOULD), comparative
+explicit error signals? Once bugs are identified through static         keywords (e.g., greater or less than), and protocol-specific
+analysis, existing methods typically require manual construc-           keywords (e.g., message and field names) to strictly constrain
+tion of corresponding input messages for validation [32, 65],           how implementations process messages. Therefore, we define
+which is prohibitively time-consuming and does not scale                sentences as potential protocol rules if they contain at least
+to large codebases. A promising approach is hybrid testing,             one protocol-specific keyword and one modal or comparative
+which combines static analysis to detect vulnerabilities fol-           keyword. Although LLMs demonstrate strong semantic under-
+lowed by directed fuzzing for validation [53]. However, non-            standing capabilities [57], we found that directly using them
+compliance bugs often do not cause program crashes [54, 67],            to extract rules usually produces inaccurate results [42]. To
+rendering current memory sanitizer-based directed fuzzing               address this issue, we design a hybrid rule extraction method
+ineffective [34, 49].                                                   that leverages keyword matching to identify candidate rules
+Solution: To overcome this challenge, we propose using LLM              with high precision and employs LLMs to refine these rules.
+agents to automatically generate assertion statements that serve        This method consists of three main steps.
+as bug oracles for detecting non-compliance bugs. These as-             Candidate Rule Identification. We first strip irrelevant ele-
+sertions are instrumented to convert silent inconsistencies into        ments (e.g., directories and HTML tags) from the specification
+assertion failures. When programs fail to handle malformed              documents, segment the text into sentences, and then group
+requests as expected, these assertions actively abort program           them according to section hierarchy. To identify potential rules,
+execution, enabling existing fuzzing strategies to detect such          we automatically construct three categories of keyword lists
+bugs and generate PoC test cases.                                       for each specification using LLMs. We did not directly apply
+C3: How to provide high-quality initial test cases for                  existing work [32] because they rely on manual construction.
+fuzzing-based dynamic verification? The effectiveness of                For protocol-specific keywords, we employ a background-
+fuzzing campaigns heavily depends on the quality of initial test        augmented prompting [57], incorporating the corresponding
+cases [44]. Reusing existing test cases from the community is           Wireshark dissector code [13] as context. These dissectors
+ineffective because they typically focus on general functional-         are designed to parse protocol messages and contain detailed
+ity testing rather than targeting the specific malformed inputs         information about message structure, enabling LLMs to extract
+
+
+
+                                                                    3
+                                                                                    Inconsistency
+                                               Rule           LLM-based                Report
+                   Protocol Rule Extraction                                                          Test Case Generation
+                                                         Inconsistency Detection
+     Protocol
+                               Rule                                  SlicedCG
+   Specification                                                                                       Directed Protocol
+                                                                                                           Fuzzing
+                   Handler Identification ContextFuncs
+                                                           Slice Code Pruning                                               Report & PoC
+                   and Context Collection
+    Program                                                                                          Assertion Generation
+                    Handlers
+      Code                                                                                           and Instrumentation
+                   Rule-oriented Forward                 SlicedCG
+                          Slicing                                                                     Fuzzing-based
+                                              LLM-guided Program Slicing               Program      Dynamic Verification
+                                                                                        Code
+
+
+                                                 Fig. 1: Overview of ProtocolGuard.
+
+
+all message and field names comprehensively. For modal                  1   {
+keywords, we directly use keywords defined in RFC 2119,                 2       "rule": "The Server MUST allow ClientIds which
+excluding optional ones (e.g., MAY, OPTIONAL) as they                             are between 1 and 23 UTF-8 encoded bytes in
+                                                                                  length, and MAY allow ClientIds that contain
+lack strong obligatory force [51]. For numerical comparison
+                                                                                  more than 23 encoded bytes",
+keywords, we reuse existing keyword lists in [32]. To better            3       "req_type": "CONNECT",
+align with the specific terminology and phrasing conventions            4       "req_fields": ["Payload", "ClientId"],
+used in different specifications, we then expand these initial          5       "res_type": "CONNACK",
+keywords by leveraging LLMs to identify synonyms and                    6       "res_fields": []
+                                                                        7   }
+alternative expressions that occur in the document. Finally,
+we perform heuristic keyword matching on each sentence,                         Listing 2: Example of structured rule representation.
+retaining only sentences containing at least one protocol-
+specific keyword and one modal or numerical comparison
+keyword as candidate protocol rules.                                    nested within Payload). res_type indicates the expected
+                                                                        response type that the protocol implementation should return,
+Rule Contextualization. The rule sentences extracted through            while res_fields includes any referenced fields.
+heuristic matching often suffer from incomplete semantics and
+unresolved referential dependencies, as individual sentences            B. LLM-guided Program Slicing
+typically express only partial aspects of the complete rule.
+                                                                           With the structured rules extracted, we employ a hybrid
+For example, RFC 8446 [21] states that ’If this extension
+                                                                        program slicing method that combines LLM-based source
+is present in the ClientHello, servers MUST NOT use...’,
+                                                                        code analysis with LLVM-based program analysis to extract
+where this extension implicitly refers to a specific field (i.e.,
+                                                                        code slice relevant to each rule. Our key insight is that protocol
+Supported Version) mentioned in the surrounding context.
+                                                                        implementations typically follow an event-driven architecture,
+Such incomplete contexts can lead to misinterpretations during
+                                                                        dispatching various message handler functions based on in-
+inconsistency analysis. To address this, we employ LLMs
+                                                                        coming message types [28, 50]. This pattern implies that the
+to analyze the surrounding section of each candidate rule,
+                                                                        key processing logic related to a specific message is usually
+merging logically connected clauses (e.g., those linked by
+                                                                        encapsulated within the call subgraph of its handler function.
+causality or coreference) to construct semantically complete
+                                                                        To extract precise code slices, we use LLMs to analyze source
+and self-contained rules.
+                                                                        code and automatically locate the handler functions and field
+Structured Rule Representation. To facilitate efficient pro-            variables described in the rule, which serve as slicing targets.
+cessing by downstream components, we employ LLMs to                     We then perform forward slicing based on LLVM, leveraging
+convert rule descriptions into a structured JSON format. Each           its powerful infrastructure for precise static analysis [63].
+structured object contains the original textual rule, the con-          Since LLVM-based slicing tends to include code that is data-
+strained request message type, its related internal fields, and         dependent but semantically irrelevant, we further integrate
+the corresponding response message type and fields when                 LLMs and heuristic strategies to remove unrelated logic.
+applicable. Listing 2 presents an example corresponding to              Algorithm 1 outlines the overall workflow of this approach,
+the motivating example discussed in Section II-A. In this               which consists of three phases.
+structure, req_type specifies the request message type con-             Phase 1: Handler Identification and Context Collection. To
+strained by the rule, and req_fields lists the relevant                 identify the message handler functions that serve as starting
+fields mentioned in the rule, including both the target field           points for program slicing, we construct a specialized call
+and its parent fields in the message hierarchy (ClientId                graph focused on message processing, termed MessageCG
+
+
+
+                                                                    4
+Algorithm 1 Workflow of LLM-guided Program Slicing                           using LLMs to analyze whether the upstream functions contain
+Input: M (LLVM Module), Rule, LLM                                            connection and resource management logic (line 3 of Algo-
+Output: CodeSlice                                                            rithm 1). This contextual analysis is essential because mes-
+    // Phase 1: Handler Identification and Context Collection
+ 1: MessageCG ← E XTRACT M ESSAGE P ROCESSING S UBGRAPH(M)                   sage processing logic encompasses not only handler functions
+ 2: Handlers ← I DENTIFY M ESSAGE H ANDLERS(MessageCG, Rule, LLM)            but also broader contextual operations that typically occur
+ 3: ContextFuncs ← I DENTIFY C ONTEXT F UNCTIONS(MessageCG, Han-             upstream in the call chain before handler invocation. The
+    dlers, Rule, LLM)
+    // Phase 2: Rule-oriented Forward Slicing                                omission of these functions frequently leads to incomplete
+ 4: SlicingCriteria ← I DENTIFY S LICE C RITERION(Handlers, MessageCG,       semantic understanding and incorrect LLM analysis results.
+    Rule, LLM)                                                               Therefore, we collect such upstream contextual functions
+ 5: if SlicingCriteria ̸= ∅ then
+ 6:     InitialSlice ← F ORWARD S LICE(MessageCG, SlicingCriteria)           ContextFuncs and incorporate them into the final code slice
+ 7:     SlicedCG ← C OMPLETE S LICE C ODE(Handlers, InitialSlice, LLM)       after forward slicing (line 12), ensuring that the extracted code
+ 8: else                                                                     slice captures the complete message processing workflow.
+ 9:     SlicedCG ← MessageCG
+10: end if                                                                   Phase 2: Rule-oriented Forward Slicing. Given the handler
+    // Phase 3: Slice Code Pruning                                           functions identified for a specific rule, we perform slicing in
+11: PrunedCG ← P RUNE I RRELEVANT C ODE(Handlers, SlicedCG, Rule,            three steps: (1) identifying the rule-relevant variables in the
+    LLM)
+12: CodeSlice ← G ENERATE C ODE S LICE(M, PrunedCG, ContextFuncs)            source code and map them to their LLVM instructions; (2)
+                                                                             conducting forward data-flow analysis to extract all instruc-
+                                                                             tions that are transitively dependent on these target variables;
+                                                                             and (3) refining the resulting code slice to ensure both syntactic
+(line 1 of Algorithm 1). This approach is necessary because                  correctness and interpretable.
+complete program call graphs include numerous functions                         We begin by prompting LLMs to analyze the source code of
+irrelevant to message processing, and performing identification              handler functions and identify variables representing the fields
+on the entire graph would significantly expand the search                    mentioned in the rule (line 4 of Algorithm 1). We choose to an-
+space and increase the likelihood of false positives for LLMs.               alyze source code rather than LLVM intermediate representa-
+We begin by locating system calls used to receive network                    tion (IR) in this step, as its higher-level abstraction and human-
+data, such as recv and recvmsg, as these serve as the                        readable structure allow LLMs to better understand program
+network interfaces for receiving messages [50]. From these                   semantics [38]. Once the relevant variables are identified,
+points, we perform an inter-procedural backward data flow                    we utilize debug information preserved during compilation to
+analysis on the message buffer parameters of these system                    accurately map them to their LLVM instructions, particularly
+calls, tracking their propagation across functions until they                their definitions and first uses. In addition, we prompt LLMs
+reach the functions where the buffer parameter is first defined              to identify auxiliary variables involved in message processing
+or initialized. These originating functions are designated as                logic. These variables are not explicitly mentioned in the rules
+the root nodes for MessageCG. Finally, starting from the root                and may have no data dependencies with field variables, but
+nodes, we conduct a forward call graph traversal, including                  they are essential for preserving the contextual completeness
+any function that subsequently receives the message buffer or                of message processing logic. For example, variables used for
+its derived variables as an argument. The resulting MessageCG                message integrity check in Mosquitto [10] (e.g., pos for
+thereby captures the complete function tree involved in mes-                 tracking the parsing position and remaining_length for
+sage processing, providing a relevant subgraph for identifying               the bytes left to process) are critical for the slice, as their
+the handler functions.                                                       absence would prevent LLMs from correctly interpreting the
+   We next perform a breadth-first search on the MessageCG                   program logic and result in false positives. If LLMs fail to
+starting from the entry function, using an LLM to identify                   identify field variables, including the rules that do not involve
+the handler functions (line 2 of Algorithm 1). Specifically, at              any fields, we default to a conservative approach: the subgraph
+each step of the traversal, we prompt the LLM to analyze                     of MessageCG originating from the handler function is treated
+whether the current function contains handling logic for the                 as the slice code SlicedCG (line 9 of Algorithm 1).
+input message type specified in the rule. When the LLM                          With the target instructions identified, we generate the slice
+returns a positive response, we consider the function as the                 using a worklist-based forward data-flow analysis (line 6 of
+message handler for the corresponding message type and save                  Algorithm 1). We begin by initializing a worklist with the
+this mapping relationship to avoid redundant identification in               identified instruction set. At each iteration, we dequeue an
+future iterations. To ensure completeness, the traversal does                instruction from the worklist, analyze its def-use chains [15],
+not terminate upon finding a handler function, but continues                 and add any newly discovered dependent instructions back into
+exploring all remaining functions at the current depth level of              the worklist. This process continues until the worklist is empty.
+the breadth-first search. This is because the processing logic               To support inter-procedural slicing, we track parameter passing
+for a single message type may be distributed across multiple                 by adding the corresponding formal parameters in callees to
+sibling functions in the call graph, such as in libcoap [12].                the worklist when variables are used as function arguments.
+   After identifying handler functions, we further perform                   We also handle both direct assignments, such as the store
+contextual analysis by tracing their reverse call paths and                  instruction, and indirect assignments introduced by function
+
+
+
+                                                                         5
+calls with pointer or reference arguments to ensure continuous          evant response sending functions. For rules that specify ex-
+tracking of variable assignments. In these cases, we add the            pected response types, we remove the internal implementations
+target variables that depend on already tracked instructions to         of functions that send irrelevant responses, along with their
+the worklist. Once the traversal completes, the collection of all       callees. Notably, we retain the call sites to these response send-
+visited instructions constitutes the instruction-level code slice       ing functions to preserve the visibility of all response behaviors
+InitialSlice. For downstream LLM analysis, we maintain a                for analysis. Only their internal implementations are removed
+mapping from each instruction in the slice to its corresponding         to reduce slice length. This pruning is effective because most
+source code line number through debug information, enabling             protocols send only a few types of responses during single
+reconstruction of a human-readable code slice.                          message processing, making the detailed implementations of
+   However, the initial slice InitialSlice derived from                 functions sending other response types irrelevant to the current
+instruction-level data dependencies is insufficient for effective       rule analysis. To support this pruning, we trace backward
+LLM analysis due to two major limitations. Firstly, it is often         from network send system calls (e.g., send, sendto) and
+syntactically incorrect because the control flow dependencies           use LLMs to map each sending function to its corresponding
+of the code are ignored in the previous data-flow analysis              response type. This mapping enables us to discard functions
+process. For example, instructions within branch statement              that generate responses not required by the rule.
+bodies (e.g., if or switch) are included if they have data                 Secondly, we perform fine-grained semantic pruning to
+dependencies with the slicing targets. However, the conditional         address limitations of LLVM-based slicing. Traditional slicing
+expressions of these statements are often excluded from the             approaches tend to indiscriminately retain all code that ac-
+slice when they lack direct data flow dependencies with those           cesses the same field variables, regardless of whether the logic
+instructions. As a result, the slice includes body statements           is actually relevant to the rule. For instance, in Mosquitto, the
+without the condition that governs them, breaking the syntactic         variable topic_filter is used both for topic parsing and
+and control flow structure of the original code. Similarly,             for permission checking. For rules targeting only topic parsing,
+essential control-flow changing statements are frequently ex-           functions involved solely in access control are irrelevant and
+cluded, such as return, break, and goto statements. Sec-                should be removed. We address this issue by leveraging LLMs
+ondly, the slice may lack sufficient semantic context. Crucial          to evaluate the semantic relevance of each function to the rule
+statements for program understanding, such as logging calls             context and exclude rule-irrelevant functions from the slice. To
+or error-code assignments, are usually pruned for not being             preserve the structured integrity of the slice, we only prune a
+data-dependent on the target instructions. However, these               function if it does not serve as a critical intermediary in the
+statements contain vital clues about the program’s logic and            call paths.
+intent [39, 59], and their presence can enhance LLM analysis.              Finally, we combine the pruned code slice PrunedCG
+   To address these limitations, we perform slice comple-               with the collected contextual functions ContextFuncs that
+tion combining abstract syntax tree (AST)-based structure               reside along the upstream call paths before the handler
+reconstruction with semantic enrichment (line 7 of Algo-                function to construct the final code slice CodeSlice (line 12
+rithm 1). Firstly, we use ASTs to recover missing control               of Algorithm 1).
+flow structures. We analyze each function in the source code,
+mapping its LLVM instructions to their corresponding control            C. LLM-based Inconsistency Detection
+structures, including line numbers and scope boundaries for                After extracting the code slice for each rule, we employ
+branch statements. For each instruction in the slice, we check          LLMs to analyze inconsistencies between the rules and their
+whether it resides within the body of a control flow statement.         code implementations. Unlike heuristic-based approaches [31,
+If so, we include the associated condition and any required             32], LLMs can analyze the underlying semantics of code and
+control-flow changing statements to preserve the completeness           identify deeper semantic inconsistencies between the imple-
+of control flow dependencies. Secondly, to enrich the semantic          mented code and the prescribed rule.
+context, we prompt LLMs to analyze the original function                   We design a structured prompt that instructs the LLM to
+body and identify non-data-dependent but semantically neces-            act as a protocol compliance auditor, providing both the rule
+sary informative statements that were pruned during slicing.            description and the corresponding code slice as input. The
+These include logging calls and error-code assignments, which           prompt guides the LLM through a systematic analysis process:
+offer valuable clues about control logic and program intent. We         firstly, understanding the specific requirements of the rule;
+recover such statements to improve the interpretability of the          secondly, examining the control flow and data processing
+final code slice.                                                       logic of the code slice; and finally, determining whether the
+Phase 3: Slice Code Pruning. Although the generated slice               implementation satisfies the rule’s requirements or exhibits
+SlicedCG is significantly smaller than the original MessageCG,          inconsistencies. To ensure structured and machine-parsable
+we apply a pruning strategy that combines heuristic filtering           output, we require the LLM to respond in JSON format with
+with semantic analysis to further reduce the length of the slice        results indicating whether an inconsistency was detected, and
+(line 11 of Algorithm 1), which is beneficial for improving the         the specific location (function name and line numbers) of
+performance of LLM analysis [41].                                       any identified issues. Due to space constraints, the complete
+   Firstly, we apply coarse-grained heuristics to prune irrel-          prompt template is provided in the Appendix A. Listing 3
+
+
+
+                                                                    6
+presents an example of the LLM-based inconsistency detection          1    static int connect_handler(struct io_event *e) {
+results, corresponding to the motivating example described in         2      // ...
+Section II-A. To enhance the reliability of the analysis, we          3      // Generated assertion to validate client ID
+                                                                      4      assert(client_id_length_validation(c));
+query LLMs three times for each rule-slice pair and apply
+                                                                      5      snprintf(cc->client_id, MQTT_CLIENT_ID_LEN, ”%s
+a self-consistency strategy [58], where the LLM analyzes its                     ”, c->payload.client_id);
+previous outputs to converge on a conclusion.                         6    }
+                                                                      7    // Generated helper function
+                                                                      8    static int client_id_length_validation(struct
+1   {
+                                                                               mqtt_connect *c) {
+2    "result": "violation found!",
+                                                                      9      size_t original_len = strlen((char *)c->payload
+3    "reason": "..., the critical violation occurs in
+                                                                                 .client_id);
+         ‘connect_handler‘ where externally provided
+                                                                      10     return (original_len < MQTT_CLIENT_ID_LEN);
+        client IDs are truncated.",
+                                                                      11   }
+4    "violations": [
+5     {"function_name": "connect_handler", "filename                       Listing 4: Instrumented assertion for motivating example.
+        ": "/path/handlers.c", "code_lines": [394]}
+6    ]
+7   }                                                                 various programming tools, such as code search tools to gather
+Listing 3: Example of inconsistency analysis result for the           surrounding context and compilation tools to ensure code
+                                                                      correctness, thereby enhancing both the accuracy of assertion
+motivating example.
+                                                                      logic and the reliability of code generation [60].
+                                                                         Figure 4 shows an example of assertion generation corre-
+D. Fuzzing-based Dynamic Verification                                 sponding to the motivating example shown in Section II-A.
+   We employ fuzzing to automatically confirm the inconsis-           The LLM agent generates a validation helper function
+tencies identified by LLM-based static analysis and to generate       client_id_length_validation that checks whether
+corresponding PoCs. To achieve effective dynamical verifi-            the incoming client ID exceeds the buffer capacity. The
+cation, we design two complementary approaches: assertion             assertion statement is then instrumented at line 4 before the
+generation and instrumentation, and test case generation.             problematic snprintf operation. When fuzzers supply a
+Assertion Generation and Instrumentation. We automati-                client ID longer than MQTT_CLIENT_ID_LEN, the assertion
+cally generate assertion statements from inconsistency reports        triggers a program crash, transforming the silent bug into
+to serve as bug oracles for fuzzing-based dynamic verification.       assertion failures with explicit crash signals.
+Our key insight is that non-compliance bugs typically stem            Test Case Generation. To improve the effectiveness of
+from implementations failing to properly validate external            fuzzing-based dynamic verification, we use LLMs to generate
+inputs, leading to unexpected program behaviors that devi-            initial test cases that are both syntactically valid and inten-
+ate from specification requirements [30, 32, 65]. Based on            tionally violate specific protocol rules. These test cases are
+this observation, we can proactively synthesize the expected          designed to drive execution toward the code paths associated
+validation logic by analyzing both the protocol rules and their       with inconsistencies, thereby increasing the likelihood of trig-
+corresponding implementation, and instrument the synthesized          gering assertion failures.
+logic as assertions at points of inconsistency. When fuzzing             We design two structured prompts to guide LLMs in syn-
+inputs trigger unexpected behavior, these assertions detect the       thesizing executable scripts rather than raw message bytes.
+deviation from expected protocol semantics and intentionally          This approach ensures that the generated inputs conform to
+abort program execution, which enables detection of such bugs         protocol syntax, without requiring LLMs to reason about low-
+by mainstream fuzzers [34, 49].                                       level packet encodings or boundary constraints. Instead, LLMs
+   We employ an LLM agent to perform this complex genera-             only need to understand high-level APIs, which significantly
+tion and instrumentation task through an iterative process. We        improves the accuracy of test case generation [40]. Specifi-
+design a structured prompt based on multi-step instructions to        cally, we first provide an LLM with rule descriptions and in-
+guide the agent, which is primarily divided into four steps:          consistency analysis reports, prompting it to generate natural-
+(1) analyzing the inconsistency report and the protocol rule          language descriptions of structured message sequences that are
+to extract the expected validation constraints and conditions,        likely to trigger the identified inconsistencies as counterexam-
+(2) examining the code implementation to identify where the           ples. These counterexamples specify the message types, their
+validation is missing or incorrectly implemented, (3) gen-            ordering, and the key field values that intentionally violate
+erating assertion statements with appropriate help functions          the rule constraints. Subsequently, we use the counterexamples
+and instrumenting them at the identified locations, and (4)           as input to our second prompt, which guides an LLM agent
+invoking compilation tools to verify the correctness of the           to synthesize executable Python scripts capable of generating
+generated code. If compilation errors are detected, the agent         the corresponding packets in PCAP format. Additionally, the
+collects the error messages and performs iterative refinement         second prompt instructs the agent to automatically execute
+until syntactically correct code is produced. We employ LLM           the generated script and invoke traffic analysis tools to verify
+agents for this task because they can autonomously utilize            that the packet trace matches the expected messages. If the
+
+
+
+                                                                  7
+verification fails, the agent collects the feedback and iteratively                                  V. E VALUATION
+refines the script until it produces a correct test case.                    To evaluate the effectiveness of ProtocolGuard, we con-
+Directed Protocol Fuzzing. With the generated assertions                  ducted comprehensive experiments on real-world protocol
+and initial test cases, we perform directed protocol fuzzing              implementations and aim to answer the following questions:
+to confirm the identified inconsistencies and generate PoCs.              • RQ1. Can ProtocolGuard effectively detect non-compliance
+We collect the code locations of all instrumented assertions as              bugs in real-world protocol implementations? (Section V-A)
+directed targets for fuzzers. To enhance efficiency, we employ            • RQ2. How does ProtocolGuard compare to existing state-
+the path pruning strategy [37, 46], focusing the fuzzer’s explo-             of-the-art tools in detecting protocol inconsistencies? (Sec-
+ration on code paths related to inconsistencies while avoiding               tion V-B)
+unnecessary exploration of unrelated program regions.                     • RQ3. Can the generated assertions effectively serve as
+                                                                             oracles for fuzzing to verify non-compliance bugs? (Sec-
+                                                                             tion V-C)
+                    IV. I MPLEMENTATION                                   • RQ4. Can the generated test cases improve the efficiency
+                                                                             of dynamic verification? (Section V-D)
+   We implemented a prototype of ProtocolGuard comprising                 Dataset. We selected 11 open-source protocol implementa-
+approximately 9k lines of C++ and 2.9k lines of Python code.              tions written in the C language, covering six widely adopted
+The implementation consists of two primary components: a                  network protocols, as shown in Table I. Our selection criteria
+static analysis module for identifying protocol inconsisten-              were: (1) Protocol significance: We chose protocols critical to
+cies and a dynamic verification module for confirming them                modern network infrastructure, covering IoT communication
+through directed fuzzing.                                                 (MQTT, CoAP), secure transport (TLS 1.3), file transfer
+Static Analysis Component. The static analysis module                     (FTP), and network services (DHCPv6); (2) Implementation
+encompasses protocol rule extraction, LLM-guided program                  diversity: We selected implementations with varying scales
+slicing, and LLM-based inconsistency detection. We imple-                 (4.4K-1456.3K LoC), architectural approaches, and target de-
+mented the rule extraction component in Python using the                  ployment environments; (3) Community activity: All projects
+lxml library [16] for document parsing. The program slic-                 and their developers show active development with recent
+ing component is built on LLVM passes using C++. We                       community engagement. This diverse benchmark enables com-
+used GLLVM [27] to generate whole-program LLVM IR and                     prehensive evaluation of ProtocolGuard’s effectiveness across
+Clang’s AST library [3] to preserve control flow informa-                 different protocol complexities and implementation styles.
+tion for slice completion. Additionally, we used SVF [55]
+                                                                           Subject        Version       LoC         Protocol   Specification
+to address the challenge of indirect function calls in static              Sol             373d8        4.4K      MQTT 3.1.1   OASIS MQTT 3.1.1
+analysis. We employed DeepSeek series models for their state-              TinyMQTT       6226ad       11.5K      MQTT 3.1.1   OASIS MQTT 3.1.1
+                                                                           Mosquitto      849e0f       46.2K       MQTT 5.0    OASIS MQTT 5.0
+of-the-art performance and cost efficiency [18]. To optimize               libcoap        17c3fe       45.3K          CoAP     RFC 7252
+for different task requirements, we employed the powerful                  FreeCoAP       3adc2e       26.6K          CoAP     RFC 7252
+DeepSeek R1 [36] for inconsistency detection, while the more               pure-ftpd      381857       22.2K            FTP    RFC 959 et al.*
+                                                                           uFTP           646404        6.7K            FTP    RFC 959 et al.
+efficient DeepSeek V3 [45] was used for program slicing,                   TLSE           1af154       41.8K        TLS 1.3    RFC 8446
+where low latency is critical for an iterative workflow. Due               wolfSSL        7fb750     1456.3K        TLS 1.3    RFC 8446
+to space limitations, all complete prompt templates used in                Dnsmasq          2.91       33.4K        DHCPv6     RFC 8415
+                                                                           NDHS           4b2728        5.6K        DHCPv6     RFC 8415
+ProtocolGuard are included in our repository.
+                                                                            TABLE I: Protocol implementations used for evaluation.
+Dynamic Verification Component. The dynamic verification
+module integrates assertion generation and instrumentation,               Environment. We conducted all experiments in Docker im-
+test case generation, and directed protocol fuzzing. For as-              ages on a local machine with one Intel(R) Xeon(R) Gold
+sertion and test case generation, we used Cursor [7] as an                6226R CPU and 256 GB RAM, and a Ubuntu 22.04 LTS
+LLM agent platform, automated through cursorkleos [5] to                  system. We used default parameters for the DeepSeek model
+minimize manual intervention and enable batch processing.                 for our analysis.
+We selected Claude 3.7 Sonnet provided by Cursor for its
+superior performance in the code generation task compared                 A. Discovered Real-world Non-compliance Bugs
+to DeepSeek series models. For test case generation, we                     Table II shows the bug discovery effectiveness of Protocol-
+employed Scapy [22], a widely-used Python library for packet              Guard in 11 open-source protocol implementations. Overall,
+manipulation and generation, to synthesize executable test                ProtocolGuard extracted 420 rules from the official specifi-
+scripts. The generated packets are saved in PCAP format and               cations and systematically analyzed these implementations,
+validated using tshark [26] to verify message sequence correct-           detecting 181 inconsistencies with an overall precision rate
+ness. We built our fuzzing framework upon AFLNet [49], the                of 90.6%. After verification, we confirmed 158 unique non-
+state-of-the-art gray-box fuzzer for network protocols. We also           compliance bugs, of which 156 were previously undiscovered
+integrated SelectFuzz’s [46] selective instrumentation strategy
+to optimize directed fuzzing performance.                                   * RFC   959, 2228, 2389, 2428, 3659
+
+
+
+
+                                                                      8
+new bugs, and 2 were known but not yet fixed bugs. At the time           discuss three representative bugs as case studies.
+of writing, we reported all 158 bugs to the relevant vendors,            Case Study 1: TLS 1.3 Downgrade via Version Negotiation
+with 70 confirmed and 17 fixed.                                          Flaw in wolfSSL. This bug, identified as ID 61 in Table V,
+   The discrepancy between detected inconsistencies (181) and            demonstrates a critical flaw in wolfSSL’s TLS version negoti-
+bugs (158) stems from three factors. Firstly, some imple-                ation mechanism. Listing 5 presents the vulnerable code seg-
+mentations intentionally deviate from specifications to provide          ment. RFC 8446 [21] mandates that ’If a Supported Versions
+extended functionality (e.g., Mosquitto plugins), which we               extension is present in the ClientHello, servers MUST NOT
+classify as functional features rather than bugs. Secondly,              use the ClientHello.legacy version value for version negoti-
+multiple inconsistencies often point to the same underlying              ation and MUST use only the supported versions extension
+issue in the code. Thus, we merge these related findings into            to determine client preferences’. This rule ensures a reliable
+one single bug. Lastly, certain behaviors violate the RFC                mechanism for negotiating TLS 1.3, preventing inadvertent or
+specifications used in our evaluation but have been permitted            malicious downgrades. However, wolfSSL’s implementation
+in updated standard drafts, so we do not include them in the             violates this requirement by prematurely triggering a down-
+final bug statistics after discussing with the vendors.                  grade decision based solely on the legacy_version field
+                                                                         (lines 4-7) before processing the supported_versions
+                              Inconsistencies       Non-compliance       extension (line 11), ignoring the priority specified in the RFC.
+   Subject      Rules
+                        TP       FP     Precision        Bugs
+   Sol            83     39       2        95.1%                39       Specifically, in scenarios where both legacy_version
+   TinyMQTT       83     29       3        90.6%                27       and supported_versions are set to 0x0304 (TLS 1.3),
+   Mosquitto     118     15       2        88.2%                 4       wolfSSL erroneously forces a downgrade to TLS 1.2 (line 7)
+   libcoap        30      4       1        80.0%                 2
+   FreeCoAP       30      2       0       100.0%                 2       instead of proceeding with the TLS 1.3 handshake. This vio-
+   pure-ftpd      54     17       2        89.5%                13       lation eliminates TLS 1.3’s forward secrecy guarantees [24],
+   uFTP           54     18       1        94.7%                15       enabling attackers who later compromise the server’s private
+   TLSE           58     25       2        92.6%                25
+   wolfSSL        58      7       1        87.5%                 7       key to retroactively decrypt all previously captured communi-
+   Dnsmasq        77     12       2        85.7%                11       cations between the affected client and server.
+   NDHS           77     13       1        92.9%                13
+   Total         420    181      17        90.6%               158
+                                                                         1    int DoTls13ClientHello(...) {
+TABLE II: Bug discovery results of ProtocolGuard. The Rules              2      if (!ssl->options.dtls) {
+indicates the total number of valid rules identified by Protocol-        3        // RFC violation: checking legacy_version
+Guard, Inconsistencies indicates the total number of inconsis-                    first
+tencies found between rules and codes, Non-compliance Bugs               4        if (args->pv.major > SSLv3_MAJOR || (args->pv
+                                                                                  .major == SSLv3_MAJOR &&
+indicates the number of bugs after verification.
+                                                                         5            args->pv.minor >= TLSv1_3_MINOR)) {
+                                                                         6          // Downgrade to TLS 1.2
+   To better understand the diversity of these bugs, we clas-            7          wantDowngrade = 1;
+sified the 158 discovered non-compliance bugs by their root              8        }
+                                                                         9      }
+causes, as shown in Table V in Appendix B. The most common
+                                                                         10     if (!wantDowngrade)
+bug category is related to message parsing (labeled as Parsing),         11       ret = DoTls13SupportedVersions(ssl, ...);
+which accounts for approximately 37% of the total bugs.                  12     if (wantDowngrade)
+These bugs primarily result from the inappropriate validation            13       ret = DoClientHello(ssl, ...);
+of input messages. Protocol state violations (State) are the             14   }
+next most common and account for 22%, typically associ-
+                                                                                    Listing 5: Simplified code of case study 1.
+ated with improper maintenance of the state machine. The
+remaining bugs are distributed across error handling (Error,
+16%), session management (Session, 13%), and security mech-              Case Study 2: Missing Initial CONNECT Packet Check in
+anisms (Security, 12%). This distribution reveals an important           Sol. This bug, identified as ID 93 in Table V, reveals a critical
+insight: while network message parsers have been shown to                protocol state machine flaw in Sol. The MQTTv3.1.1 specifica-
+be prone to errors [65, 66], there are more bugs occurring               tion [17] explicitly requires that ’After a Network Connection
+in the deeper protocol processing logic, demonstrating the               is established by a Client to a Server, the first Packet sent
+necessity of comprehensive testing of protocol implementation            from the Client to the Server MUST be a CONNECT Packet’.
+compliance beyond parser-level validation.                               This rule is fundamental to the MQTT protocol’s security
+   These non-compliance bugs not only compromise program                 model, as the CONNECT packet contains key information for
+robustness but also pose severe security risks, enabling attack-         client authentication and session state management. However,
+ers to bypass access controls, launch denial-of-service attacks,         Sol’s packet processing logic lacks state verification that would
+or compromise communication integrity and confidentiality.               reject non-CONNECT packets in the initial state. This allows
+Together, these findings highlight the critical importance of            an attacker to bypass the server’s authorization policy by
+protocol compliance testing for software security [54]. To               directly sending a SUBSCRIBE packet with a specific topic
+further illustrate the security impact of these discoveries, we          filter without completing the required initial authentication
+
+
+
+                                                                     9
+                    Cursor (Claude 3.7)                      Cursor (DeepSeek R1)                       ProtocolGuard (DeepSeek R1)
+Project
+              TP/FP/FN     Precision        Recall      TP/FP/FN     Precision    Recall              TP/FP/FN     Precision    Recall
+Sol              37/3/7       92.5%         84.1%         16/5/28       76.2%     36.4%                  39/2/5       95.1%     88.6%
+pure-ftpd        16/9/4       64.0%         80.0%        10/14/10       41.7%     50.0%                  17/2/3       89.5%     85.0%
+libcoap           5/3/2       62.5%         71.4%           4/7/3       36.4%     57.1%                   4/1/3       80.0%     57.1%
+TLSE             21/5/7       80.8%         75.0%        18/11/10       62.1%     64.3%                  25/2/3       92.6%     89.3%
+Average          20/5/5       71.7%         76.8%        12/37/13       49.3%     52.0%                  21/2/4       86.3%     81.3%
+                   TABLE III: Comparison of inconsistency discovery results by ProtocolGuard and Cursor.
+
+
+step, thereby obtaining sensitive messages [54].                           models [25]. To ensure fairness, we manually provided Cursor
+Case Study 3: Missing Re-authorization after AUTH in                       with the same rules and prompts used by ProtocolGuard.
+uFTP. This bug, labeled as ID 55 in Table V, shows an authen-                 We manually analyzed the results produced by Protocol-
+tication state management flaw in uFTP’s handling of secure                Guard and Cursor to determine true positives (TP), false
+channel negotiation. RFC 2228 [19] requires that ’The AUTH                 positives (FP), and false negatives (FN), from which we
+command, if accepted, removes any state associated with prior              calculated precision and recall rates. To ensure the reliability
+FTP Security commands. The server must also require that the               of the evaluation, we invited two independent researchers
+user reauthorize...’. This rule defines a critical security control        with experience in protocol vulnerability analysis to manually
+strategy, as the AUTH command is responsible for negotiating               analyze each result. We then cross-validated the results from
+and initiating a security mechanism (e.g., TLS) to encrypt the             the two researchers, and any discrepancies were resolved by
+control channel, preventing attackers from leveraging creden-              a third researcher to eliminate potential bias. Due to the
+tials captured over insecure channels to hijack subsequently               time-intensive nature of manual analysis, we conducted this
+established secure sessions. However, uFTP lacks logic to clear            comprehensive evaluation on four programs: Sol, pure-ftpd,
+existing authentication state during AUTH command process-                 libcoap, and TLSE.
+ing, leading to a session hijacking vulnerability exploitable                 Table III shows the detailed results of ProtocolGuard and
+in Man-in-the-Middle (MitM) attacks. When a MitM attacker                  Cursor on these four programs. Overall, ProtocolGuard outper-
+observes plaintext authentication (USER/PASS commands),                    forms both Cursor configurations. On average, ProtocolGuard
+they can subsequently inject an AUTH command into the                      correctly identifies 21 inconsistencies (TP) with only 2 FP
+same TCP session. Due to uFTP’s failure to clear authen-                   results and 4 FN results, achieving a mean precision of 86.3%
+tication state during AUTH processing, the attacker inherits               and a recall of 81.3%. ProtocolGuard outperforms Cursor with
+the authenticated session context within the newly established             Claude 3.7 (71.7% precision, 76.8% recall) and is significantly
+TLS tunnel. Therefore, the attacker can execute arbitrary                  better than Cursor with DeepSeek R1 (49.3% precision, 52.0%
+high-risk commands within the encrypted channel without re-                recall). Notably, the substantial performance gap between
+authentication, effectively bypassing network-based intrusion              ProtocolGuard and Cursor when both use the same DeepSeek
+detection systems that rely on plaintext traffic analysis                  R1 model demonstrates the effectiveness of ProtocolGuard,
+                                                                           which achieves more accurate inconsistency detection than
+B. Comparison with Existing Tools                                          general-purpose AI code editors.
+                                                                              We conducted an investigation into the root causes of FPs
+   To evaluate the effectiveness of LLM-guided program slic-               and FNs listed in Table II and Table III produced by Protocol-
+ing and the inconsistency detection capability of Protocol-                Guard. The root causes can be categorized into four primary
+Guard, we conducted a comparative analysis against existing                types. Firstly, the program slicing strategy of ProtocolGuard
+state-of-the-art methods.                                                  may miss critical processing logic in protocol implementations
+   We initially considered several related works, but found                that use callback-based design patterns. For example, Sol
+them unsuitable for a direct comparison. The source code for               decouples message processing from response transmission and
+RIBDetector [32] is unavailable, while tools like Pardiff [65]             connection handling, resulting in these functions not residing
+and ParCleanse [66] are focused on inconsistency bugs within               on the same call path as the message handler functions.
+message parsers and are difficult to apply to entire protocol              Consequently, ProtocolGuard fails to capture the concrete
+implementations. Similarly, differential fuzzing lacks a general           implementations of cleanup functions, such as connection
+implementation supported for diverse protocols and requires                termination. For rules that depend on the correct handling of
+significant manual analysis. Therefore, we selected Cursor [7],            such cleanup logic, this omission may lead LLMs to perceive
+a state-of-the-art AI code editor, as the most relevant baseline.          missing behavior when analyzing inconsistencies, resulting in
+We chose Cursor for its advanced agentic capabilities, such                FPs and FNs. Secondly, certain protocol implementations (e.g.,
+as automated context collection, which are more powerful                   libcoap) support multiple transport layer protocols (e.g., UDP,
+than those in other tools like Github Copilot [2, 11]. For the             TCP, WebSocket), which involve numerous distinct processing
+evaluation, we employed two leading LLMs within Cursor:                    functions in the message handler functions. This makes Proto-
+DeepSeek R1, to maintain consistency with ProtocolGuard,                   colGuard simultaneously include parsing code from different
+and Claude 3.7 Sonnet, both of which are the top coding                    transport layer protocols within the same slice, resulting in an
+
+
+
+                                                                      10
+excessively large context and may even exceed the maximum                during fuzzing-based dynamic verification. Overall, the asser-
+context limitation of the LLM (DeepSeek R1’s 128K token                  tion generation module can accurately generate appropriate
+limit), degrading the LLM’s reasoning capabilities [41]. There-          assertion statements and can, in most scenarios, generate PoCs
+fore, compared to other subjects, ProtocolGuard exhibits lower           that violate protocol rules, effectively assisting analysts in
+precision and recall on libcoap. Thirdly, when rule-relevant             confirming inconsistencies detected by static analysis.
+variables are encapsulated within data structures and only
+accessed in deeply called functions, ProtocolGuard cannot                  Protocol     Total   Syntactic   Semantic (Rate)   Crash (Rate)
+                                                                           Sol            41          41        39 (95.1%)      32 (78.0%)
+trace across intermediate functions in the call chain when                 TinyMQTT       32          32        27 (84.4%)      24 (75.0%)
+performing data dependency analysis, resulting in code slices              Mosquitto      17          17        15 (88.2%)      12 (70.6%)
+that lack the concrete implementations of key processing                   libcoap          5           5        4 (80.0%)       2 (40.0%)
+                                                                           FreeCoAP         2           2       2 (100.0%)      2 (100.0%)
+functions. Lastly, some errors stem from the inherent reasoning            pure-ftpd      19          19       19 (100.0%)      17 (89.5%)
+limitations of LLMs. Even when provided with accurate code                 uFTP           19          19        18 (94.7%)      15 (78.9%)
+slices, LLMs sometimes fail to fully comprehend complex                    TLSE           27          27        22 (81.5%)      15 (55.6%)
+                                                                           wolfSSL          8           8        6 (75.0%)       4 (50.0%)
+logical relationships and intricate program semantics.                     Dnsmasq        14          14        13 (92.9%)       9 (64.3%)
+   We further analyzed the performance of the baseline tool,               NDHS           14          14        12 (85.7%)       7 (50.0%)
+                                                                           Average        18          18        16 (88.9%)      13 (68.4%)
+Cursor. When using DeepSeek R1, Cursor’s performance
+is significantly inferior to that of ProtocolGuard using the             TABLE IV: Results of assertion generation and instrumenta-
+same model. We observed that this disparity primarily stems              tion analysis. The Total indicates the total number of assertions
+from DeepSeek R1’s unstable function-calling capabilities [9],           generated, Syntactic indicates the number of assertions that
+which prevents Cursor from using tools to retrieve relevant              were successfully compiled, Semantic (Rate) indicates the
+code, resulting in severe hallucinations and errors. In contrast,        number and accuracy rate of semantically correct assertions
+Cursor using Claude 3.7 demonstrated better performance,                 generated, and Crash (Rate) indicates the number and rate of
+which we attribute to this model’s superior tool invocation              unique crashes triggered by the assertion failure.
+capabilities, combined with high-quality prompts identical                  We conducted a root cause analysis of failed assertion
+to those used in ProtocolGuard, significantly enhancing the              generation and observed three primary failure reasons. Firstly,
+completeness of its context collection [6]. Nevertheless, Cursor         due to the lack of a dynamic program execution context, LLMs
+relies on keyword extraction from user queries and vector                often make incorrect assumptions about variable states and
+similarity search from codebases to grep relevant code snip-             control flows. For example, we observed that some generated
+pets, which cannot systematically capture cross-function data            assertions use NULL checks to detect empty fields, while
+dependencies and control flow relationships, resulting in the            the actual protocol implementation treats empty strings as
+underperformance of Cursor in certain scenarios.                         indicators of missing values. As a result, such assertions are
+                                                                         never triggered during execution. Secondly, when protocol
+C. Effectiveness of Assertion Generation and Instrumentation             implementations lack explicit validation logic, LLMs must
+                                                                         independently understand the implementation context and pro-
+                                                                         tocol rules to synthesize missing validation code. However,
+   To evaluate whether the generated assertion statements                when multiple data structures contain members with similar
+are correct and can effectively guide fuzzing to verify non-             names, the LLM agent (i.e., Cursor) sometimes incorrectly
+compliance bugs, we conducted a comprehensive evaluation                 selects variables and types for logic generation, as it relies on a
+of the assertion generation and instrumentation component.               keyword-based tool (e.g., Grep) and vector similarity search to
+   We evaluated the effectiveness from three perspectives.               infer context [4]. This deviation in context understanding can
+Firstly, we used each project’s native compilation toolchain to          easily lead to hallucinations during code generation, resulting
+verify the syntactic correctness of the code instrumented with           in the synthesis of semantically invalid or even completely in-
+assertions. Secondly, for all assertions that passed compila-            correct validation logic. Moreover, in cases where the missing
+tion, we conducted a manual review to verify their semantic              logic is inherently complex, such as logic that spans multiple
+accuracy, confirming whether each assertion precisely reflected          functions or involves implicit control conditions, the LLM’s
+the constraints of the corresponding protocol rules and would            capabilities may be insufficient to accurately understand the
+abort programs upon receiving non-compliant input. Finally,              detailed necessary context, resulting in hallucinations or the
+for semantically correct assertions, we performed directed               generation of semantically invalid validation logic.
+protocol fuzzing with a 24-hour time budget to determine                    We also investigated the root causes of assertions that fail to
+whether these assertions could be triggered by the fuzzer,               trigger during dynamic verification. After excluding incorrect
+leading to program crashes, thereby validating their utility as          results of assertions, we found that the primary reason was
+effective bug oracles.                                                   that the fuzzing inputs failed to reach the execution paths
+   Table IV presents the detailed evaluation results. All asser-         of the assertions due to the following reasons. Firstly, many
+tions generated by ProtocolGuard successfully passed compi-              assertions are located in code modules that require specific
+lation verification, with an average implementation accuracy             configurations to be activated. If the configuration is not
+of 88.9% and an average crash-triggering rate of 68.4%                   enabled, these code paths are inaccessible to fuzzers. Secondly,
+
+
+
+                                                                    11
+the fuzzer (i.e., AFLNet) lacks awareness of protocol formats,                             35                                              AFLNet (Random)
+and its mutation strategy is prone to generating invalid inputs                                 3232                                       AFLNet (ProtocolGuard)
+                                                                                           30
+
+
+
+
+                                                                     Unique Crash Number
+that disrupt message structures, causing most test cases to
+be rejected during early validation. This has a particularly                               25          2324
+severe impact on highly complex and structured protocols,
+making it difficult to trigger assertion statements located deep                           20
+                                                                                                                               17
+within the protocol state path in DHCP and TLS protocol                                                                               15       15
+                                                                                           15                                14
+implementations. Lastly, it is challenging for AFLNet to                                                        12                  11
+                                                                                                              10
+trigger assertions in multi-party interaction logic because its                            10                                                                   9
+                                                                                                                                                                        7
+two-party fuzzing model limits exploration of assertions in
+                                                                                            5                                              4            4
+MQTT protocol implementations [54].                                                                                  12 22                          1       2       1
+                                                                                            0
+
+
+
+
+                                                                                                Mo QTT
+
+
+
+
+                                                                                                         asq
+                                                                                                Tin Sol
+
+
+                                                                                                   lib to
+                                                                                                Fre oap
+
+
+                                                                                                           d
+                                                                                                          TP
+
+                                                                                                  wo SE
+                                                                                                Dn SSL
+
+
+                                                                                                          HS
+                                                                                                 pu oAP
+                                                                                                        ftp
+                                                                                                       uit
+
+
+
+
+                                                                                                      uF
+                                                                                                      TL
+
+
+
+                                                                                                     ND
+                                                                                                    sm
+                                                                                                      lf
+                                                                                                      c
+                                                                                                    eC
+                                                                                                    yM
+
+
+
+
+                                                                                                    re-
+D. Effectiveness of Test Case Generation
+
+
+
+
+                                                                                                   sq
+                                                                           Fig. 2: Comparison of crash discovery results for different
+   To validate whether the test case generation component                  initial test case selections.
+improves the efficiency of fuzzing-based dynamic verification,
+we conducted a comparative experiment. Our hypothesis is                                          VI. D ISCUSSION AND L IMITATIONS
+that high-quality, rule-specific initial seeds should signifi-                ProtocolGuard has successfully identified many non-
+cantly outperform random seeds in guiding the fuzzer toward                compliance bugs across various protocol implementations.
+assertion-instrumented code paths. In this experiment, we                  However, it still has certain limitations. In this section, we
+compared the crash discovery performance of AFLNet using                   discuss these limitations and potential solutions for future
+two sets of initial seeds. The experimental group used seeds               improvements.
+from ProtocolGuard, which produces syntactically valid and                 Inaccuracy of LLM-guided Program Slicing. Due to the
+rule-violating message sequences. The control group, as a                  diversity of program design patterns and implementation styles
+baseline, used randomly generated messages for each protocol               in protocol software, our slicing approach faces several limita-
+message type. To ensure a fair comparison, all other fuzzing               tions that can affect its precision and completeness. Firstly, our
+configurations remained identical for both groups.                         slicing strategy relies on identifying handler-centric call paths.
+   Figure 2 summarizes the results of the comparative exper-               This design is less effective for protocol implementations that
+iment evaluating the impact of initial test case generation on             adopt decoupled, callback-based architectures, where critical
+dynamic verification effectiveness. Across all tested programs,            logic such as connection cleanup or response transmission
+AFLNet equipped with seeds generated by ProtocolGuard con-                 is implemented outside the direct call path of the message
+sistently outperformed its baseline counterpart using random               handler function. As a result, essential code may be excluded
+seeds, discovering on average 155.2% more assertion-triggered              from the slice, leading to an incomplete context for LLM
+unique crashes. Notably, this performance gain was partic-                 analysis and potential false negatives. Secondly, Protocol-
+ularly significant for complex protocols such as DHCP and                  Guard leverages SVF to resolve indirect function calls during
+TLS, where ProtocolGuard achieved improvements ranging                     slicing. However, SVF tends to be conservative, resolving
+from 275% to 600%, demonstrating the clear advantage of                    each indirect call to a broad set of possible targets. This
+semantically guided test case generation in exposing non-                  often introduces irrelevant functions into the slice process,
+compliance bugs.                                                           unnecessarily enlarging the context passed to the LLM and
+   To understand the underlying reasons for this improvement,              potentially degrading analysis quality. Thirdly, the current
+we further investigated why ProtocolGuard’s test case genera-              implementation of ProtocolGuard is limited to C language-
+tion approach is more effective than random seeds. We found                based protocol implementations. Extending support to the C++
+that ProtocolGuard can generate high-quality, syntactically                language requires heavy engineering challenges, primarily
+valid, and highly targeted initial seeds by leveraging proto-              due to the complexity introduced by object-oriented features,
+col specifications and known violation patterns. These high-               which complicate LLVM IR-based static analysis. In future
+quality seeds guide the fuzzer to directly explore deep and po-            work, we plan to enhance our framework with advanced anal-
+tentially flawed logic paths. In contrast, a fuzzer starting with          ysis techniques capable of accurately resolving virtual function
+random seeds must rely on its inefficient mutation strategies to           calls and recovering class hierarchies, thereby enabling robust
+generate inputs that can trigger bugs, a task that is exceedingly          support for C++-based protocol implementations.
+difficult for complex protocols. In summary, the test case                 Inaccuracy in Assertion Generation. ProtocolGuard employs
+generation module of ProtocolGuard significantly enhances the              LLM-generated assertion statements as bug oracles to vali-
+effectiveness of fuzzing, improving its capability to validate             date potential non-compliance bugs through directed fuzzing.
+potential non-compliance bugs in protocol implementations.                 While this approach effectively uncovers subtle logic viola-
+
+
+
+                                                                    12
+tions, it faces two primary limitations. Firstly, the accuracy          protocol implementations. Moreover, they require substantial
+of assertion generation relies heavily on sufficient contextual         manual effort to verify the numerous issues identified by static
+information and a precise understanding of the code. However,           analysis.
+the current LLM agent (e.g., Cursor) operates solely on static          Protocol Fuzzing. Fuzzing has been widely adopted for dis-
+code and lacks access to the program’s dynamic execution                covering bugs in protocol implementations. AFLNet [49] is the
+state. Thus, it may misinterpret control flow or variable state,        first gray-box protocol fuzzer that incorporates response codes
+leading to the generation of invalid or ineffective assertions.         as feedback. Recent work [47] has also explored incorporating
+In future work, we plan to incorporate dynamic execution                LLMs into protocol fuzzing to improve test case generation.
+information to help LLMs better understand program behavior             However, these approaches often rely on memory sanitizers
+and generate more precise assertions [35].                              to detect bugs, making them ineffective for identifying silent
+Ineffectiveness of Fuzzing-based Dynamic Verification. The              non-compliance bugs. Differential fuzzing is another prevalent
+effectiveness of dynamic validation depends on the perfor-              strategy, which detects inconsistencies by cross-executing the
+mance of fuzzing strategies. Although ProtocolGuard adopts              same input across multiple implementations. This strategy
+fuzzers like AFLNet and SelectFuzz, these strategies often              has been applied to various protocols, including TCP [67],
+generate syntactically invalid inputs that are rejected during          DNS [61], MQTT [54], and HTTP [48]. Despite its effective-
+early message parsing. These inputs may fail to exercise the            ness, differential fuzzing has inherent limitations. If all imple-
+intended logic paths, ultimately preventing the triggering of           mentations produce consistent outputs for a faulty behavior,
+assertion failures. To address this limitation, we plan to inte-        the inconsistency may be undetectable. Additionally, not all
+grate protocol-aware mutation strategies or symbolic execution          inconsistencies imply actual bugs; thus, manual analysis is still
+techniques to help fuzzers explore complex conditional paths            required to determine root causes, imposing a heavy burden on
+that are otherwise difficult to reach.                                  developers. In contrast, ProtocolGuard unifies LLM reasoning
+Manual Effort. While ProtocolGuard is designed to oper-                 capability, static analysis, and directed fuzzing to enhance
+ate with a high degree of automation, certain stages of its             detection accuracy for non-compliance bugs and minimize the
+workflow still require manual intervention. Firstly, during             need for manual validation.
+assertion and test case generation, a single LLM session                Directed Fuzzing. Directed fuzzing aims to efficiently validate
+may not always complete the entire task in one pass. This               known or potential bugs by guiding input mutations toward
+can cause the process to terminate prematurely, requiring the           specific program locations or paths. AFLGo [29] is the first
+user to manually prompt the agent to resume and complete                directed fuzzer that uses distance metrics to guide fuzzing
+the remaining steps. Secondly, the generated assertions can             toward target code locations. Subsequent approaches, such
+be mutually exclusive in practice. When one assertion is                as Beacon [37] and SelectFuzz [46], introduce path-pruning
+frequently triggered, it may dominate the fuzzing process and           techniques to improve guidance precision by avoiding paths
+prevent the exploration of other assertion-instrumented paths.          unrelated to the target. Dsfuzz [43] and SDFuzz [43] fur-
+To ensure broader coverage, users must manually comment out             ther enhance directed fuzzing by incorporating control and
+the already-triggered assertions and restart fuzzing to enable          data dependencies. However, existing directed fuzzers are
+discovery of the remaining ones. However, this limitation can           not designed for network protocols. To address this gap,
+be addressed by adopting a memory-based feedback, inspired              ProtocolGuard integrates SelectFuzz into AFLNet, leveraging
+by AFL++. Specifically, we can use a shared memory region to            SelectFuzz’s selected instrumentation strategy, which is readily
+track the triggering status of all assertions. Once an assertion        compatible with AFLNet’s protocol-aware execution model, to
+is triggered, its state is recorded in memory, and the assertion        improve directed fuzzing performance in the protocol context.
+is automatically disabled in subsequent executions.
+                    VII. R ELATED W ORK                                                      VIII. C ONCLUSION
+
+Static Analysis. Several static analysis techniques have been              In this paper, we proposed ProtocolGuard, a novel hybrid
+proposed to detect non-compliance bugs in protocol imple-               framework for detecting non-compliance bugs in protocol
+mentations. RIBDetector [32] extracts normative statements              implementations. ProtocolGuard automatically extracts proto-
+from RFCs as rules and uses heuristic patterns to deter-                col rules from specifications and uses LLM-guided program
+mine whether the corresponding condition checking logic is              slicing to generate rule-relevant code slices. It then analyzes
+present in the code. EBugDec [31] targets protocol bugs by              semantic inconsistencies between rules and codes with the
+analyzing inconsistencies introduced during the evolution of            help of LLMs to identify potential non-compliance bugs.
+RFC documents. ParDiff [65] applies differential testing in             To validate these findings, ProtocolGuard generates assertion
+static analysis to check for inconsistencies in network proto-          statements that convert the silent bugs into assertion failures
+col parsers. PARCLEANSE [66] leverages LLMs to extract                  and uses fuzzing to trigger them and generate concrete PoCs.
+message formats from protocol specifications and uses them              In addition, ProtocolGuard incorporates a rule-specific test
+as bug oracles to validate parser correctness. However, existing        case generation approach to further enhance dynamic verifica-
+work either relies on heuristic methods that suffer from low            tion efficiency. We implemented a prototype of ProtocolGuard
+precision or is limited to specific functional modules within           and evaluated it on 11 protocol implementations. The results
+
+
+
+                                                                   13
+demonstrate that ProtocolGuard effectively detected 158 non-                 49a92e0a368d39beb6022eff88f/src/coap net.c#L4383,
+compliance bugs with high precision, significantly reducing                  Accessed on 2025-7-12.
+the manual effort required for bug validation.                        [13]   Github repository: Wireshak dissectors. https://github
+                                                                             .com/wireshark/wireshark/tree/master/epan/dissectors,
+                   ACKNOWLEDGMENTS                                           Accessed on 2025-7-10.
+   We thank anonymous reviewers for their comprehensive               [14]   Lightweight mqtt broker, written from scratch. io is
+feedback. This work was supported by Key R&D Program                         handled by a super simple event loop based upon the
+of Shandong Province, China(No. 2024CXGC010114), Na-                         most common io multiplexing implementations. https:
+tional Natural Science Foundation of China under Grant(No.                   //github.com/codepr/sol, Accessed on 2025-7-19.
+62372268), Shandong Provincial Natural Science Foundation,            [15]   Llvm programmer’s manual. https://llvm.org/docs/Prog
+China (No. ZR2022LZH013, No. ZR2021LZH007). The work                         rammersManual.html#iterating-over-def-use-use-def-c
+was also supported in part by the Zhejiang Provincial Natural                hains, Accessed on 2025-7-12.
+Science Foundation of China (No. LY22F020022), in part                [16]   lxml - xml and html with python. https://lxml.de/,
+by the National Natural Science Foundation of China (No.                     Accessed on 2025-7-26.
+61902098).                                                            [17]   Mqtt version 3.1.1. https://docs.oasis-open.org/mqtt/mqt
+                                                                             t/v3.1.1/os/mqtt-v3.1.1-os.html, Accessed on 2025-7-19.
+                 E THICS C ONSIDERATIONS                              [18]   Nature: China’s cheap, open ai model deepseek thrills
+   We conducted this study by establishing ethical guide-                    scientists. https://www.nature.com/articles/d41586-025
+lines [62], and all findings were responsibly disclosed to the               -00229-6, Accessed on 2025-7-14.
+affected vendors. To prevent the discovered vulnerabilities           [19]   Rfc 2228: Ftp security extensions. https://www.rfc-edito
+from being exploited, all experiments were conducted in                      r.org/rfc/rfc2228.txt, Accessed on 2025-7-22.
+isolated local environments to ensure they did not affect any         [20]   Rfc 5246: The transport layer security (tls) protocol
+production systems.                                                          version 1.2. https://datatracker.ietf.org/doc/html/rfc5246,
+                                                                             Accessed on 2025-7-12.
+                        R EFERENCES                                   [21]   Rfc 8446: The transport layer security (tls) protocol
+ [1] Aws: Conflicting mqtt client ids. https://docs.aws.amazo                version 1.3. https://datatracker.ietf.org/doc/html/rfc8
+     n.com/iot-device-defender/latest/devguide/audit-chk-con                 446#page-39, Accessed on 2025-7-12.
+     flicting-client-ids.html, Accessed on 2025-7-19.                 [22]   Scapy: the python-based interactive packet manipulation
+ [2] Battle of the ai agents: Cursor vs. copilot. https://near               program & library. https://github.com/secdev/scapy,
+     form.com/digital-community/battle-of-the-ai-agents/,                    Accessed on 2025-7-13.
+     Accessed on 2025-7-20.                                           [23]   Shodan: Matrixssl. https://www.shodan.io/search?query
+ [3] Clang 21.0.0git documentation: Introduction to the clang                =MatrixSSL, Accessed on 2025-7-20.
+     ast. https://clang.llvm.org/docs/IntroductionToTheClang          [24]   Tls 1.3 in practice:how tls 1.3 contributes to the internet.
+     AST.html, Accessed on 2025-7-14.                                        https://dl.acm.org/doi/fullHtml/10.1145/3442381.345005
+ [4] Cursor docs: Agent tools. https://docs.cursor.com/en/age                7, Accessed on 2025-7-22.
+     nt/tools, Accessed on 2025-7-26.                                 [25]   Top 5 ai coding models of march 2025: A comparative
+ [5] Cursor ide: Unleash lightning-fast automation. https:                   review. https://kitemetric.com/blogs/top-5-ai-coding-m
+     //github.com/kleosr/cursorkleosr, Accessed on 2025-7-                   odels-of-march-2025-a-comparative-review, Accessed
+     14.                                                                     on 2025-7-22.
+ [6] Cursor prompt engineering best practices. https://forum.         [26]   tshark.dev capture lifecycle with tshark. https://tshark.d
+     cursor.com/t/cursor-prompt-engineering-best-practices/1                 ev/, Accessed on 2025-7-26.
+     592, Accessed on 2025-7-23.                                      [27]   Whole program llvm: wllvm ported to go. https://github
+ [7] Cursor: The ai code editor. https://cursor.com/, Accessed               .com/SRI-CSL/gllvm, Accessed on 2025-7-14.
+     on 2025-7-14.                                                    [28]   Csfuzzer: A grey-box fuzzer for network protocol using
+ [8] Cve-2022-46505 detail. https://nvd.nist.gov/vuln/detail                 context-aware state feedback. Computers & Security,
+     /CVE-2022-46505, Accessed on 2025-7-20.                                 157:104581, 2025.
+ [9] Discussion abount deepseek r1’ function calling. https:          [29]   Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen,
+     //github.com/deepseek- ai/DeepSeek- R1/issues/9,                        and Abhik Roychoudhury. Directed greybox fuzzing.
+     Accessed on 2025-7-23.                                                  In Proceedings of the 2017 ACM SIGSAC conference
+[10] Eclipse mosquitto an open source mqtt broker. https:                    on computer and communications security, pages 2329–
+     //github.com/eclipse-mosquitto/mosquitto, Accessed on                   2344, 2017.
+     2025-7-11.                                                       [30]   Larissa Braz, Enrico Fregnan, Gül Çalikli, and Alberto
+[11] Github copilot · your ai pair programmer. https://github                Bacchelli. Why don’t developers detect improper input
+     .com/features/copilot, Accessed on 2025-7-26.                           validation? In 2021 IEEE/ACM 43rd International Con-
+[12] Github repository: A coap (rfc 7252) implementation in                  ference on Software Engineering (ICSE), pages 499–511.
+     c. https://github.com/obgm/libcoap/blob/433f483f2c29b                   IEEE, 2021.
+
+
+
+                                                                 14
+[31] Jingting Chen, Feng Li, Qingfang Chen, Ping Li, Lili Xu,        [42] Hui Li, Zhen Dong, Siao Wang, Hui Zhang, Liwei
+     and Wei Huo. Ebugdec: Detecting inconsistency bugs                   Shen, Xin Peng, and Dongdong She. Extracting formal
+     caused by rfc evolution in protocol implementations.                 specifications from documents using llms for automated
+     In Proceedings of the 26th International Symposium on                testing. arXiv preprint arXiv:2504.01294, 2025.
+     Research in Attacks, Intrusions and Defenses, pages 412–        [43] Penghui Li, Wei Meng, and Chao Zhang. Sdfuzz: Target
+     425, 2023.                                                           states driven directed fuzzing. In 33rd USENIX Security
+[32] Jingting Chen, Feng Li, Mingjie Xu, Jianhua Zhou, and                Symposium (USENIX Security 24), pages 2441–2457,
+     Wei Huo. Ribdetector: an rfc-guided inconsistency bug                2024.
+     detecting approach for protocol implementations. In 2022        [44] Yang Li, Yingpei Zeng, Xiangpu Song, and Shanqing
+     IEEE International Conference on Software Analysis,                  Guo. Improving seed quality with historical fuzzing re-
+     Evolution and Reengineering (SANER), pages 641–651.                  sults. Information and Software Technology, 179:107651,
+     IEEE, 2022.                                                          2025.
+[33] Angela Fan, Beliz Gokkaya, Mark Harman, Mitya                   [45] Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao
+     Lyubarskiy, Shubho Sengupta, Shin Yoo, and Jie M                     Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng,
+     Zhang. Large language models for software engineering:               Chenyu Zhang, Chong Ruan, et al. Deepseek-v3 techni-
+     Survey and open problems. In 2023 IEEE/ACM Inter-                    cal report. arXiv preprint arXiv:2412.19437, 2024.
+     national Conference on Software Engineering: Future of          [46] Changhua Luo, Wei Meng, and Penghui Li. Selectfuzz:
+     Software Engineering (ICSE-FoSE), pages 31–53. IEEE,                 Efficient directed fuzzing with selective path exploration.
+     2023.                                                                In 2023 IEEE Symposium on Security and Privacy (SP),
+[34] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and                  pages 2693–2707. IEEE, 2023.
+     Marc Heuse. {AFL++}: Combining incremental steps of             [47] Ruijie Meng, Martin Mirchev, Marcel Böhme, and Abhik
+     fuzzing research. In 14th USENIX workshop on offensive               Roychoudhury. Large language model guided protocol
+     technologies (WOOT 20), 2020.                                        fuzzing. In Proceedings of the 31st Annual Network and
+[35] Sijia Gu, Noor Nashid, and Ali Mesbah. Llm test                      Distributed System Security Symposium (NDSS), volume
+     generation via iterative hybrid program analysis. arXiv              2024, 2024.
+     preprint arXiv:2503.13580, 2025.                                [48] Keran Mu, Jianjun Chen, Jianwei Zhuge, Qi Li, Haixin
+[36] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song,                   Duan, and Nick Feamster. The silent danger in http:
+     Ruoyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma,                       Identifying http desync vulnerabilities with gray-box
+     Peiyi Wang, Xiao Bi, et al. Deepseek-r1: Incentivizing               testing. 2025.
+     reasoning capability in llms via reinforcement learning.        [49] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoud-
+     arXiv preprint arXiv:2501.12948, 2025.                               hury. Aflnet: A greybox fuzzer for network protocols. In
+[37] Heqing Huang, Yiyuan Guo, Qingkai Shi, Peisen Yao,                   2020 IEEE 13th International Conference on Software
+     Rongxin Wu, and Charles Zhang. Beacon: Directed grey-                Testing, Validation and Verification (ICST), pages 460–
+     box fuzzing with provable path pruning. In 2022 IEEE                 465. IEEE, 2020.
+     Symposium on Security and Privacy (SP), pages 36–50.            [50] Shisong Qin, Fan Hu, Zheyu Ma, Bodong Zhao, Tingting
+     IEEE, 2022.                                                          Yin, and Chao Zhang. Nsfuzz: Towards efficient and
+[38] Hailong Jiang, Jianfeng Zhu, Yao Wan, Bo Fang, Hongyu                state-aware network service fuzzing. ACM Transactions
+     Zhang, Ruoming Jin, and Qiang Guan. Can large lan-                   on Software Engineering and Methodology, 32(6):1–26,
+     guage models understand intermediate representations?                2023.
+     arXiv preprint arXiv:2502.06854, 2025.                          [51] Jannis Rautenstrauch and Ben Stock. Who’s breaking
+[39] Peiling Jiang, Fuling Sun, and Haijun Xia. Log-it: Sup-              the rules? studying conformance to the http specifications
+     porting programming with interactive, contextual, struc-             and its security impact. In Proceedings of the 19th ACM
+     tured, and visual logs. In Proceedings of the 2023 CHI               Asia Conference on Computer and Communications Se-
+     Conference on Human Factors in Computing Systems,                    curity, pages 843–855, 2024.
+     pages 1–16, 2023.                                               [52] Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales,
+[40] Yu Jiang, Jie Liang, Fuchen Ma, Yuanliang Chen, Chijin               David Dohan, Ed H Chi, Nathanael Schärli, and Denny
+     Zhou, Yuheng Shen, Zhiyong Wu, Jingzhou Fu, Mingzhe                  Zhou. Large language models can be easily distracted
+     Wang, Shanshan Li, et al. When fuzzing meets llms:                   by irrelevant context. In International Conference on
+     Challenges and opportunities. In Companion Proceed-                  Machine Learning, pages 31210–31227. PMLR, 2023.
+     ings of the 32nd ACM International Conference on the            [53] Peyton Shields. Hybrid testing: Combining static anal-
+     Foundations of Software Engineering, pages 492–496,                  ysis and directed fuzzing. PhD thesis, Massachusetts
+     2024.                                                                Institute of Technology, 2023.
+[41] Mosh Levy, Alon Jacoby, and Yoav Goldberg. Same task,           [54] Xiangpu Song, Jianliang Wu, Yingpei Zeng, Hao Pan,
+     more tokens: the impact of input length on the reasoning             Chaoshun Zuo, Qingchuan Zhao, and Shanqing Guo.
+     performance of large language models. arXiv preprint                 Mbfuzzer: A multi-party protocol fuzzer for mqtt bro-
+     arXiv:2402.14848, 2024.                                              kers. In Proceedings of the 34th USENIX Security
+
+
+
+                                                                15
+     Symposium, 2025.                                                        Chenggang Qin, and Shi-Min Hu. TCP-Fuzz: Detecting
+[55] Yulei Sui and Jingling Xue. Svf: interprocedural static                 memory and semantic bugs in TCP stacks with fuzzing.
+     value-flow analysis in llvm. In Proceedings of the 25th                 In 2021 USENIX Annual Technical Conference (USENIX
+     international conference on compiler construction, pages                ATC 21), pages 489–502, 2021.
+     265–266, 2016.
+[56] Frank Tip. A survey of program slicing techniques. Cen-
+                                                                                                          A PPENDIX
+     trum voor Wiskunde en Informatica Amsterdam, 1994.
+[57] Jincheng Wang, Le Yu, and Xiapu Luo. Llmif: Aug-                  A. Prompt for LLM-based Inconsistency Detection
+     mented large language model for fuzzing iot devices. In
+     2024 IEEE Symposium on Security and Privacy (SP),                     Figure 3 shows the prompt template used by ProtocolGuard
+     pages 881–896. IEEE, 2024.                                        for LLM-based inconsistency detection between protocol rules
+[58] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc                     and code slices. The fields highlighted in red are automatically
+     Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery,                   filled by ProtocolGuard: protocol name and protocol version
+     and Denny Zhou. Self-consistency improves chain of                specify the name and version of the protocol corresponding to
+     thought reasoning in language models. arXiv preprint              the current rule under analysis, rule desc contains the textual
+     arXiv:2203.11171, 2022.                                           description of the protocol rule, and code snippet contains the
+[59] Feifan Wu, Zhengxiong Luo, Yanyang Zhao, Qingpeng                 extracted code slice relevant to the rule.
+     Du, Junze Yu, Ruikang Peng, Heyuan Shi, and Yu Jiang.
+     Logos: Log guided fuzzing for protocol implementations.           #Instruction
+     In Proceedings of the 33rd ACM SIGSOFT International              Your task is to analyze the provided code slice (#SliceCode) to determine whether it
+                                                                       violates the constraints or behaviors specified in the rule description (#Rule) for
+     Symposium on Software Testing and Analysis, pages                 {protocol_name} {protocol_version}, i.e., whether the developer's implementation
+     1720–1732, 2024.                                                  adheres to the prescribed standards.
+[60] Kechi Zhang, Jia Li, Ge Li, Xianjie Shi, and Zhi                  Please follow these steps for the analysis:
+     Jin. Codeagent: Enhancing code generation with tool-              1. Carefully review the specific requirements and constraints described in #Rule.
+     integrated agent systems for real-world repo-level coding         2. Examine the key logic and behavior in the code slice (#SliceCode). Note: the
+                                                                       numbers in the first column of each line in #SliceCode are line numbers, used to
+     challenges. arXiv preprint arXiv:2401.07339, 2024.                identify the code's position in the file.
+[61] Qifan Zhang, Xuesong Bai, Xiang Li, Haixin Duan,                  3. Determine whether the code slice violates any requirements in the rule description.
+                                                                       Strictly adhere to #Rule without referencing any external content.
+     Qi Li, and Zhou Li. Resolverfuzz: Automated discov-               4. If a violation is found, provide a detailed explanation, including the reason for the
+     ery of dns resolver vulnerabilities with query-response           violation, the relevant code lines, and their associated filenames and function names.
+     fuzzing. In 33rd USENIX Security Symposium (USENIX                5. If no violation is found, explain why the code correctly complies with the rule.
+                                                                       6. Follow the response template below:
+     Security 24), pages 4729–4746, 2024.                               If a violation is found, return the following JSON response:
+[62] Yiming Zhang, Mingxuan Liu, Mingming Zhang, Chaoyi                 {
+                                                                          "result": "violation found!",
+     Lu, and Haixin Duan. Ethics in security research:                    "reason": "detailed reasons for violations",
+     Visions, reality, and paths forward. In 2022 IEEE Eu-                "violations": [{
+     ropean Symposium on Security and Privacy Workshops                      "function_name": "function name",
+                                                                             "filename": "/path/filename",
+     (EuroS&PW), pages 538–545. IEEE, 2022.                                  "code_lines": [line_number, ...]},...]
+[63] Ying-Zhou Zhang. Sympas: symbolic program slic-                    }
+                                                                        If no violation is found, return the following JSON response:
+     ing. Journal of Computer Science and Technology,                   {
+     36(2):397–418, 2021.                                                 "result": "no violation found!",
+[64] Zhen Zhao, Xiangpu Song, Qiuyu Zhong, Yingpei Zeng,                  "reason": "why the code correctly follows to the rule"
+                                                                        }
+     Chengyu Hu, and Shanqing Guo. Tls-deepdiffer: mes-                #Rule
+     sage tuples-based deep differential fuzzing for tls proto-        {rule_desc}
+                                                                       #SliceCode
+     col implementations. In 2024 IEEE International Confer-           {code_snippet}
+     ence on Software Analysis, Evolution and Reengineering
+     (SANER), pages 918–928. IEEE, 2024.                               Fig. 3: Prompt for LLM-based inconsistency detection in
+[65] Mingwei Zheng, Qingkai Shi, Xuwei Liu, Xiangzhe Xu,               ProtocolGuard.
+     Le Yu, Congyu Liu, Guannan Wei, and Xiangyu Zhang.
+     Pardiff: Practical static differential analysis of network
+     protocol parsers. Proceedings of the ACM on Program-
+                                                                       B. Details of Non-compliance Bugs Found by ProtocolGuard
+     ming Languages, 8(OOPSLA1):1208–1234, 2024.
+[66] Mingwei Zheng, Danning Xie, Qingkai Shi, Chengpeng                   Table V shows the detailed results of 158 non-compliance
+     Wang, and Xiangyu Zhang. Validating network pro-                  bugs discovered by ProtocolGuard, with 70 confirmed and 17
+     tocol parsers with traceable rfc document interpreta-             fixed. Most developers promise to fix the remaining unfixed
+     tion. Proceedings of the ACM on Software Engineering,             bugs in the future. Due to space constraints, we omit some of
+     2(ISSTA):1772–1794, 2025.                                         the detailed descriptions of bugs. The complete table will be
+[67] Yong-Hao Zou, Jia-Ju Bai, Jielong Zhou, Jianfeng Tan,             presented in our artifact.
+
+
+
+                                                                  16
+C. Artifact Appendix                                                    during this process are automatically parsed and recorded in
+   The ProtocolGuard artifact comprises three major compo-              an internal database. This produces the final output: a set of
+nents, each directly mirroring a core contribution of our paper:        validated inconsistency results, which are then used as targets
+Protocol Rule Extraction, LLM-guided Program Slicing, and               for dynamic verification.
+Fuzzing-based Dynamic Verification. The setup proceeds as                     d) Step 4. Fuzzing-based Dynamic Verification: This
+follows.                                                                final step uses dynamic analysis to confirm the findings. For
+   1) Description & Requirements: In this section, we intro-            each violation detected by the LLM, the framework auto-
+duce how to obtain the artifact, including static analysis and          matically generates corresponding test inputs and assertions.
+fuzzers, along with the software and hardware requirements              These are then fed into a directed protocol fuzzing campaign,
+to run it.                                                              which we conduct using AFLNet enhanced with our selective
+      a) How to access: We provide public access to our code            instrumentation.
+and experiment setups through the following Zenodo link: ht
+tps://doi.org/10.5281/zenodo.17933922. You can also access
+it in Github: https://github.com/songxpu/ProtocolGuard. The
+artifact is licensed under the Apache License 2.0.
+      b) Hardware dependencies: ProtocolGuard can run on
+standard commercial servers or workstations without requiring
+specialized hardware. We recommend a minimum configura-
+tion of a 4-core CPU, 16 GB of RAM, and 128 GB of storage.
+It is important to note that resource-intensive tasks, such as
+those performed by code generation agents (e.g., Cursor) or
+large-scale fuzzing processes, can significantly increase system
+load.
+      c) Software dependencies: ProtocolGuard is installed
+and runs in a standalone Docker container based on Ubuntu
+22.04, though it can also be deployed directly on a host
+operating system. To ensure proper operation, the environment
+must have LLVM 14, Python 3.10, and Go 1.18 installed.
+      d) Benchmarks: None.
+   2) Artifact Installation & Configuration: The Protocol-
+Guard artifact consists of four major components, each cor-
+responding to a core contribution of the paper: Protocol Rule
+Extraction, LLM-guided Program Slicing, LLM-based Incon-
+sistency Detection, and Fuzzing-based Dynamic Verification.
+The setup follows the following steps.
+      a) Step 1. Environment and Dependencies Setup: Install
+required system tools and third-party libraries on Ubuntu
+22.04.3 LTS. Once installed, no additional system configu-
+ration is required.
+      b) Step 2. Static Analysis Initialization: This step in-
+volves preparing the target implementation for the subsequent
+LLM-guided slicing. We first compile the protocol’s source
+code using LLVM to generate several intermediate artifacts,
+including the Control Flow Graph, SVF results, and AST
+metadata. Concurrently, the config/config.toml template must
+be properly filled in. The final output of this stage is the
+slicing-ready LLVM Intermediate Representation (IR) and an
+executable, which are used as the primary inputs for the next
+stage of LLM processing.
+      c) Step 3. LLM-based Inconsistency Detection: With
+the static analysis artifacts prepared, this step performs the
+core automated analysis. First, an LLM API key must be
+exported as an environment variable to authenticate requests.
+Then, the analysis is launched by executing a single script,
+which instructs the LLM to compare the extracted protocol
+rules against the program’s behavior. Any violations found
+
+
+
+                                                                   17
+ ID    Project     Category   Bug Description                                                                               New   Status
+ 1     Dnsmasq     Parsing    Missing Multicast Destination Check in dhcp6 packet Allows Unicast Message Processing         Yes   Confirmed
+ 2     Dnsmasq     State      Missing Rapid Commit Check in dhcp6 no relay Allows Unauthorized Rebind Bindings              Yes   Confirmed
+ 3     Dnsmasq     State      Unconditional Lease Creation in dhcp6 no relay for Rebind Messages                            Yes   Confirmed
+ 4     Dnsmasq     Parsing    Missing Zero Link-Address Check in dhcp6 maybe relay                                          Yes   Confirmed
+ 5     Dnsmasq     Parsing    Incorrect Hop-Count Check in relay upstream6 Allows HOP COUNT LIMIT Messages                  Yes   Confirmed
+ 6     Dnsmasq     State      Missing Interface-Id Option in relay upstream6 for Unusable Link-Address                      Yes   Confirmed
+ 7     Dnsmasq     Parsing    Improper Interface-Id Option Inclusion in dhcp6 no relay Non-Relay Messages                   Yes   Confirmed
+ 8     Dnsmasq     Error      Incorrect NoAddrsAvail Status Placement in dhcp6 no relay Reply Messages                      Yes   Confirmed
+ 9     Dnsmasq     State      Missing Requested Options in dhcp6 no relay Advertise Messages                                Yes   Confirmed
+ 10    Dnsmasq     State      Missing IA PD Handling in check ia and dhcp6 no relay for Solicit Messages                    Yes   Confirmed
+ 11    Dnsmasq     Parsing    Missing Required Options in dhcp6 no relay for Solicit Message ORO                            Yes   Confirmed
+ 12    NDHS        Parsing    Missing Unicast Destination Check in process receive Allows Invalid Message Processing        Yes   Reported
+ 13    NDHS        Error      Improper Reply Sending in process receive for Invalid CONFIRM Conditions                      Yes   Confirmed
+ 14    NDHS        Parsing    Missing ORO Content Validation in process receive for Required DHCPv6 Options                 Yes   Confirmed
+ 15    NDHS        State      Missing Information Refresh Time Option in process receive for Information-request Replies    Yes   Confirmed
+ 16    NDHS        State      Unrequested Rapid Commit Option in process receive Responses                                  Yes   Reported
+ 17    NDHS        Parsing    Missing IA Content Validation in process receive for Rebind Messages                          Yes   Fixed
+                                                                      ...
+ 25    libcoap     Parsing    Missing ETag Validation in handle request and coap send * for Multicast GET Requests          Yes   Confirmed
+ 26    libcoap     State      Improper Option Retention in coap add data large response lkd for Error Responses             Yes   Confirmed
+ 27    freecoap    Parsing    Missing Context-Based Option Validation in coap msg check critical ops                        Yes   Reported
+ 28    freecoap    Error      Missing 4.05 Response in coap server exchange for Unrecognized Method Codes                   Yes   Reported
+ 29    PureFTPD    State      Missing EPSV ALL Check for PASV in parser Allows Unauthorized Connection Setup                Yes   Reported
+                                                                      ...
+ 39    PureFTPD    State      Missing PBSZ Check Before PROT in parser                                                      Yes   Reported
+ 40    PureFTPD    State      Missing REST Command Sequence Validation in parser                                            Yes   Reported
+ 41    PureFTPD    State      Missing RNFR-RNTO Sequence Enforcement in parser and dornto                                   Yes   Reported
+ 42    uFTP        Security   Missing Security Exchange Check for CCC in parseCommandCcc                                    Yes   Fixed
+                                                                      ...
+ 49    uFTP        Security   Missing Security Exchange and Argument Validation for PBSZ in parseCommandPbsz                Yes   Fixed
+ 50    uFTP        Security   Missing PBSZ State Tracking for PROT in parseCommandPbsz                                      Yes   Fixed
+ 51    uFTP        Security   Missing PBSZ Negotiation Check for PROT in parseCommandProt                                   Yes   Fixed
+ 52    uFTP        State      Missing REST Sequence Enforcement in parseCommandRest and processCommand                      Yes   Fixed
+ 53    uFTP        Error      Missing Partial Transfer Handling in parseCommandRest and parseCommandRetr                    Yes   Fixed
+ 54    uFTP        State      Missing RNFR-RNTO Sequence Enforcement in parseCommandRnfr                                    Yes   Fixed
+ 55    uFTP        Security   Missing Reauthorization Enforcement in parseCommandAuth After AUTH Command                    Yes   Fixed
+ 56    uFTP        State      Missing USERNAME-PASSWORD Sequence Enforcement in parseCommandPass                            Yes   Fixed
+ 57    wolfSSL     Parsing    Missing OID Value Validation in SendTls13Certificate for Client Certificates                  Yes   Confirmed
+ 58    wolfSSL     Parsing    Missing Extension Correspondence Check in SendTls13Certificate and ProcessPeerCerts           Yes   Confirmed
+ 59    wolfSSL     Parsing    Missing Signature Algorithm Validation in DoTls13CertificateVerify                            Yes   Confirmed
+ 60    wolfSSL     Security   Incorrect Version Downgrade in DoTls13ClientHello Without supported versions                  Yes   Confirmed
+ 61    wolfSSL     Security   Improper Use of legacy version in DoTls13ClientHello                                          Yes   Fixed
+ 62    wolfSSL     Security   Missing Startup Time Check for 0-RTT in DoClientTicketCheck                                   Yes   Confirmed
+ 63    wolfSSL     Parsing    Missing Duplicate Extension Detection in TLSX Push and TLSX Parse                             Yes   Confirmed
+ 64    TLSE        Parsing    Missing OID Value Validation in tls parse certificate for Client Certificates                 Yes   Confirmed
+ 65    TLSE        Parsing    Missing Extension Correspondence Check in tls parse certificate and tls certificate request   Yes   Confirmed
+ 66    TLSE        Parsing    Incorrect Signature Parameter Validation in tls parse * Functions                             Yes   Confirmed
+ 67    TLSE        Parsing    Missing Signature Algorithm Validation in tls parse verify tls13 and tls parse payload        Yes   Confirmed
+ 68    TLSE        Security   Missing psk key exchange modes Validation in tls parse hello                                  Yes   Confirmed
+ 69    TLSE        Error      Missing Handshake Abort for Group Mismatch in tls parse hello                                 Yes   Confirmed
+ 70    TLSE        Security   Incorrect Version Negotiation in tls parse hello Without supported versions                   Yes   Confirmed
+ 71    TLSE        Security   Missing KeyShareEntry Validation in tls parse hello and private tls parse key share           Yes   Confirmed
+ 72    TLSE        Security   Missing PSK Key Exchange Mode Validation in tls parse hello                                   Yes   Confirmed
+                                                                      ...
+ 89    Sol         Session    Missing Will Message Removal in read callback After Publication                               Yes   Reported
+ 90    Sol         Parsing    Missing Will QoS Validation in connect handler and unpack mqtt connect                        Yes   Reported
+ 91    Sol         Parsing    Missing Validation for Will Fields in unpack mqtt connect When Will Flag is 0                 Yes   Reported
+ 92    Sol         Parsing    Missing Prohibition of Will QoS 3 in connect handler                                          Yes   Reported
+ 93    Sol         State      Missing CONNECT Packet Enforcement in process message and read callback                       Yes   Reported
+ 94    Sol         Session    Missing Retain Flag in Will Message PUBLISH in connect handler                                Yes   Reported
+ 95    Sol         Parsing    Incorrect Client ID Length Restriction in connect handler                                     Yes   Reported
+                                                                      ...
+ 128   TinyMQTT    Parsing    Missing Will Retain Flag Validation in parse connect packet                                   Yes   Reported
+ 129   TinyMQTT    State      Missing CONNACK Timeout Enforcement in parse connect packet and mqtt connect                  Yes   Reported
+ 130   TinyMQTT    Error      Missing Rejection of Subsequent CONNECT Packets in decode tcp message                         Yes   Reported
+                                                                      ...
+ 155   Mosquitto   Parsing    Missing ShareName Character Validation in sub topic tokenise and sub add                      No    Confirmed
+ 156   Mosquitto   Parsing    Missing Subscription Identifier Validation in mosquitto property check command                No    Confirmed
+ 157   Mosquitto   State      Incorrect QoS for Overlapping Subscriptions in subs send                                      Yes   Confirmed
+ 158   Mosquitto   State      Incorrect Topic Alias Handling in send real publish                                           Yes   Confirmed
+TABLE V: Detail description of non-compliance bugs discovered by ProtocolGuard. The Category indicates the functional
+module where the bug occurred, New indicates whether the bug is a new finding, and Status represents the current status of
+the bug.
+
+
+                                                                    18
+

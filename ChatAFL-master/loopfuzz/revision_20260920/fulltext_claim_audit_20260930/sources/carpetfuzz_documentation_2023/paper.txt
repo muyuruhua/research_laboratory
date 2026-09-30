@@ -1,0 +1,1339 @@
+ CarpetFuzz: Automatic Program Option Constraint
+    Extraction from Documentation for Fuzzing
+Dawei Wang, Ying Li, and Zhiyu Zhang, SKLOIS, Institute of Information Engineering,
+ Chinese Academy of Sciences, China; School of Cyber Security, University of Chinese
+Academy of Sciences, China; Kai Chen, SKLOIS, Institute of Information Engineering,
+ Chinese Academy of Sciences, China; School of Cyber Security, University of Chinese
+    Academy of Sciences, China; Beijing Academy of Artificial Intelligence, China
+       https://www.usenix.org/conference/usenixsecurity23/presentation/wang-dawei
+
+
+
+          This paper is included in the Proceedings of the
+                32nd USENIX Security Symposium.
+                      August 9–11, 2023 • Anaheim, CA, USA
+                                   978-1-939133-37-3
+
+
+
+
+                                          Open access to the Proceedings of the
+                                           32nd USENIX Security Symposium
+                                                is sponsored by USENIX.
+            CarpetFuzz: Automatic Program Option Constraint Extraction from
+                              Documentation for Fuzzing
+
+                                                                                                       ∗
+                                 Dawei Wang1,2 , Ying Li1,2 , Zhiyu Zhang1,2 , and Kai Chen1,2,3
+              1 SKLOIS,         Institute of Information Engineering, Chinese Academy of Sciences, China
+                      2 School   of Cyber Security, University of Chinese Academy of Sciences, China
+                                        3 Beijing Academy of Artificial Intelligence, China
+
+                                  {wangdawei,liying1998,zhangzhiyu1999,chenkai}@iie.ac.cn
+
+                                Abstract                          and increases the difficulty of finding potential vulnerabilities,
+                                                                  bringing higher security risks and defense costs.
+The large-scale code in software supports the rich and di-
+                                                                     Coverage-guided fuzzing is one of the most successful vul-
+verse functionalities, and at the same time contains potential
+                                                                  nerability discovery techniques [69], which keeps mutating
+vulnerabilities. Fuzzing, as one of the most popular vulnera-
+                                                                  the input to increase code coverage to trigger a potential se-
+bility detection methods, continues evolving in both industry
+                                                                  curity violation in the software (e.g., write access violations).
+and academy, aiming to find more vulnerabilities by covering
+                                                                  Most previous studies have focused on optimizing strategies
+more code. However, we find that even with the state-of-
+                                                                  in the fuzzing process to increase coverage, such as seed selec-
+the-art fuzzers, there is still some unexplored code that can
+                                                                  tion [20,41], seed schedule [3,4,40,54,61,67], mutation [8,32],
+only be triggered using a specific combination of program op-
+                                                                  and feedback strategies [1,6,15,16,30,33,44]. These improve-
+tions. Simply mutating the options may generate many invalid
+                                                                  ments have significantly enhanced the capability of fuzzers
+combinations due to the lack of consideration of constraints
+                                                                  to discover vulnerabilities. As of January 2022, more than
+(or called relationships) among options. In this paper, we
+                                                                  36,000 bugs have been discovered by Google’s continuous
+leverage natural language processing (NLP) to automatically
+                                                                  fuzzing service, OSS-Fuzz, alone [19]. However, although
+extract option descriptions from program documents and an-
+                                                                  the latest fuzzers use different strategies to choose various
+alyze the relationship (e.g., conflicts, dependencies) among
+                                                                  seeds and mutate inputs and already have a strong program
+the options before filtering out invalid combinations and only
+                                                                  exploration capability, some code remains unexplored.
+leaving the valid ones for fuzzing. We implemented a tool
+                                                                     The main reason is that these latest fuzzers did not fuzz
+called CarpetFuzz and evaluated its performance. The results
+                                                                  the programs with some specific command-line options. A
+show that CarpetFuzz accurately extracts the relationships
+                                                                  command-line option (or simply option) tells the program
+from documents with 96.10% precision and 88.85% recall.
+                                                                  which operation to be modified. Some options correspond to
+Based on these relationships, CarpetFuzz reduced the 67.91%
+                                                                  different program branches, meaning that some code can only
+option combinations to be tested. It helps AFL find 45.97%
+                                                                  be reached by specifying certain options instead of changing
+more paths that other fuzzers cannot discover. After analyz-
+                                                                  the input file. However, in previously exposed vulnerabili-
+ing 20 popular open-source programs, CarpetFuzz discovered
+                                                                  ties, only small parts of options were specified. For exam-
+57 vulnerabilities, including 43 undisclosed ones. We also
+                                                                  ple, Libtiff’s 103 CVEs from 2014 to 2020 specified only 20
+successfully obtained CVE IDs for 30 vulnerabilities.
+                                                                  different options, accounting for 9.8% of the total options,
+                                                                  implying that many option-dependent codes may remain un-
+1     Introduction                                                explored. Since the number of combinations may be large, it’s
+                                                                  unrealistic to iterate over them all. For example, the popular
+As software complexity grows, the scale of code in software       image processing program ImageMagick has 242 different
+increases rapidly. For example, according to OpenHub’s anal-      options [23], with 7.1 × 1072 possible combinations.
+ysis report [36, 37], lines of code of popular software Apache       Some researchers [5, 9, 29, 45, 55, 66] attempted to address
+HTTP Server and MySQL have reached 1.6 million and 2.9            this limitation by mutating option combinations. However,
+million, respectively. The large-scale code supports the rich     many mutated combinations may be invalid due to the lack of
+and diverse functions of the software, satisfying the various     considering the relationships among options, such as conflicts
+needs of users. However, it also expands the attack surfaces      (i.e., cannot be used together) and dependencies (i.e., must
+                                                                  use together). For example, only 11% of the combinations of
+    ∗ Corresponding   author.                                     openssl-rsa generated with the mutation algorithm of prior
+
+
+
+USENIX Association                                                                   32nd USENIX Security Symposium           1919
+ research are valid. This paper aims to extract relationships         features of implicit declarations and leverages NLP to find
+ among options but it is challenging for the following reasons.       all sentence pairs satisfying these features. After identifying
+ Challenge - C1. Relationships among options are usually              relationships among options in the program, CarpetFuzz lever-
+ declared in natural language in the documentation and can be         ages a mixing forward and backward traversal method to find
+ declared in entirely different ways, greatly increasing identifi-    the relationship-related node from the dependency tree (ob-
+ cation difficulty. For example, the conflict between the -a and      tained from the dependency parsing). Furthermore, based on
+-b options can be declared in several ways like, “-a cannot be        linguistics, CarpetFuzz leverages a polarity-based finite state
+ used with -b,” “-a is mutually exclusive with -b,” and “no more      machine to determine concrete relationship. At last, Carpet-
+ than one of these options may be given.” Simple approaches           Fuzz filters out combinations not satisfying these relationships
+ like template matching do not work well on this problem.             to reduce the number of combinations for fuzzing.
+Additionally, some relationships are declared implicitly and             We evaluated CarpetFuzz on 20 popular real-world open-
+ can only be identified by comparing multiple sentences. For          source programs. According to their documents, CarpetFuzz
+ example, the tiffcp document describes the -B and -L options         extracted 282 relationships from the documents which in-
+ as “Force output to be written with Big-Endian byte order”           clude 2952 sentences in 260.8 seconds with 96.10% precision
+ and “Force output to be written with Little-Endian byte or-          and 88.85% recall. Among these relationships, 218 were im-
+ der.” Although not explicitly declared, the conflict between         plicitly declared, with 95.87% precision and 90.09% recall.
+-B and -L can be inferred by comparing the two sentences,             Based on these relationships, we reduced the 67.91% op-
+which depict two diametrically opposite behaviors. An accu-           tion combinations, significantly reducing the search space of
+ rate and straightforward way to identify these relationships is      combinations, which demonstrated the necessity of extract-
+ manual inspection, but it is labor-intensive and unrealistic for     ing option relationships. With the valid option combinations,
+ large-scale identification. How to find out relationships among      CarpetFuzz helped AFL find 45.97% more paths that other
+ options from documents automatically becomes necessary.              fuzzers cannot discover. Also, CarpetFuzz found 57 crashes.
+ Challenge - C2. After relationships in natural language form         After our analysis, 30 crashes were related to specific option
+ have been identified from documentation, it is still hard to         combinations, proving the importance of fuzzing with valid
+ automatically extract concrete relationships (e.g., conflicts or     option combinations. So far, 30 crashes have been assigned
+ dependencies). First, it is challenging to locate a relationship’s   with CVE IDs. We also compared the fuzzing performance
+ related options automatically. For example, the sentence, “Ei-       of CarpetFuzz with the state-of-the-art option configuration
+ ther -f or -b must be used with -C, and -C cannot be used with       fuzzing tool POWER on its benchmark. CarpetFuzz found 94
+-F or -d,” declares a dependency among the -f, -b, and -C op-         unique crashes, 1.71 times that of POWER.
+ tions, along with a conflict among the -C, -F, and -d options.       Responsible disclosure. We immediately disclosed all these
+These relationships’ related options cannot be automatically          vulnerabilities to the software developers as soon as we
+ determined without an accurate analysis of the grammati-             discovered them. Moreover, we have proactively provided
+ cal structure. Second, as mentioned before, the relationship         patches to them. Till now, 45 vulnerabilities have been fixed,
+ among options can be declared in entirely different ways. So         nine of which were fixed by our patches.
+ simple methods like keyword matching cannot be used to               Contributions. The contributions of this paper are summa-
+ determine the kind of relationship declared automatically.           rized as follows:
+    In this paper, we addressed the above challenges and pro-            • New technique. We proposed a novel technique for identi-
+ posed CarpetFuzz, an NLP-based fuzzing assistance tool for           fying and extracting constraints among program options from
+ extracting program option constraints. The basic idea of Car-        the documentation. To the best of our knowledge, this is the
+ petFuzz is to use natural language processing (NLP) to iden-         first study that tries to use NLP to automatically figure out the
+ tify and extract the relationships (e.g., conflicts or dependen-     relationships among program options from the documenta-
+ cies) among program options from the description of each             tion. With the help of this technique, AFL finds 45.97% more
+ option in the documentation and filter out invalid combina-          paths that other fuzzers cannot discover.
+ tions to reduce the option combinations that need to be fuzzed.         • Implementation and discoveries. We implemented the
+ Given a program’s document, CarpetFuzz first extracts all its        prototype tool, CarpetFuzz, and evaluated it on 20 popular
+ options and corresponding descriptions by parsing the OP-            real-world open-source programs. CarpetFuzz accurately ex-
+TIONS section. Then CarpetFuzz uses a machine learning                tracted 88.85% of the relationships from their documents.
+ model to determine whether a relationship is declared in the         Through fuzzing these programs with the valid option combi-
+ descriptions. Since such sentences account for very little in        nations obtained by CarpetFuzz, 57 unique crashes have been
+ the document (e.g., 3.4% in the tiffcp document), we use the         found, 30 of which have been assigned with CVE IDs.
+ entropy-based uncertainty sampling [11], an effective active            • Releasing code and data. We open-sourced our prototype
+ learning methodology, to reduce human effort in labeling             tool and dataset to promote research in this domain1 .
+ training data. To identify relationships implicitly declared
+ by multiple sentences, CarpetFuzz summarizes a series of                1 Available   in https://github.com/waugustus/CarpetFuzz
+
+
+
+
+1920    32nd USENIX Security Symposium                                                                            USENIX Association
+2     Background and Related Work                                       options, which follow the program name in the command line
+                                                                        and are separated by spaces. For example, tiffcp and pdftops
+2.1    Coverage-Guided Fuzzing                                          have 20 and 34 options, respectively. With the help of these
+                                                                        options, users can pass their demands to the program so that
+The coverage-guided fuzzing is a technique that leverages the           it can do what they want.
+code coverage information obtained from the program instru-                 When the demands become complex, users need to spec-
+mentation to guide the fuzzing process. Like the traditional            ify multiple options simultaneously instead of using a few
+black-box fuzzing technique, the coverage-guided fuzzing                options. However, not all combinations are valid due to the
+technique tries to trigger an exception in the target program           relationships (e.g., conflicts and dependencies) among op-
+by keeping mutating the input, but it has a more effective mu-          tions. An invalid combination may make the program throw
+tation process due to the coverage information. The process             an exception and exit at an early stage. To prevent users from
+of coverage-guided fuzzing is shown in Figure 1. To start a             using invalid combinations, developers usually note the re-
+coverage-guided fuzzing, users need to specify the options (in          lationships among options in a natural language form in the
+the command line) and the seed file (step 1). The options are           documentation, such as “make sense only when -p option
+stored in the configuration as a constant and will not change           is specified,” and “The -level1 option cannot be used with
+in the whole fuzzing process. The seed file is passed into the          -form.”
+input queue and then sent into the mutation engine to change
+                                                                            To this end, some studies have sought unreachable paths
+its content (step 2). After mutation, the execution engine reads
+                                                                        by combining options (or called option configurations).
+the execution command from the configuration and replaces
+                                                                        AFLargv [5] mutates option configurations within the lower
+the input with the mutated file to check its coverage (step 3).
+                                                                        and upper bounds of the number and size of command-line
+If the mutated file activates new coverage (i.e., interesting),
+                                                                        options. Wang et al. [55] applied option-aware fuzzing to
+this mutated file will be added to the input queue for further
+                                                                        directed grey-box fuzzing to reach unreachable target loca-
+mutation (step 4).
+                                                                        tions through option configuration search. Song et al. [45]
+                                                                        proposed a new coverage feedback metric, validity pair, to
+                                        Execution                       predict whether the parser rejects an input to check the validity
+                       ①         ③                      ③
+                                                                        of execution. Zeller et al. [64] designed a tool to automati-
+            Options    Configuration
+                                        ④    if interesting             cally infer option configuration from source code based on
+                       ①                            ②                   specific option parsing modules (e.g., the getopt function
+                                                                        in C). POWER [29] utilized three mutation operations to
+           Seed File                   Input Queue      Mutation        explore option configurations. However, due to the lack of
+          User Input                          Fuzzing                   considering the constraint among options, many combinations
+                                                                        generated by most works may be invalid, reducing the search
+       Figure 1: Process of Coverage-guided Fuzzing.                    efficiency. ConfigFuzz [66] considered such constraints but
+                                                                        relied on manual inspection. Although extracting constraints
+   Many studies have focused on improving coverage-based                among options may be a one-time job, it requires testers to
+fuzzing by modifying the seed selection [20, 41], seed sched-           understand target programs in-depth, which is unaffordable,
+ule [3, 4, 8, 32, 40, 54, 61, 67], and feedback strategies [1, 6, 15,   especially when performing large-scale testing (e.g., thou-
+16, 30, 33, 44]. Among them, Rebert et al. [41] suggested six           sands of applications). Inspired by this finding, we studied
+seed selection approaches and formalized the problem as set             automatic constraint extraction from the documentation to
+cover and integer linear programming. Böhme et al. [4] for-             filter out invalid option combinations.
+malized the coverage-guided fuzzing process with a Markov
+Chain model and sped it up by increasing the number of mu-              2.3    NLP-based vulnerability discovery.
+tations of seeds with low-frequency paths. Chen et al. [6]
+proposed a fine-grained feedback metric leveraging byte-level           There are also previous works trying to discover vulnerabili-
+taint tracking to determine the branch-related byte. These              ties based on NLP, which mainly found programs’ constraints
+works significantly improved the fuzzing efficiency and in-             from the code comments [17, 48–50, 59, 65] and documenta-
+creased the coverage in the fuzzing process. However, in our            tion [31,38,68] to assist with static analysis. Furthermore, Xie
+tests, these fuzzers cannot reach the option-related paths.             et al. [60] tried to extract information from the documentation
+                                                                        to guide fuzzing the deep learning (DL) libraries. However,
+2.2    Option and Combination                                           this work only applied to API libraries, not executable pro-
+                                                                        grams. Moreover, it relied on strictly formatted documents
+A command-line option is an item of information that the user           (i.e., DL documents) and cannot be used to parse loosely for-
+specifies when the program starts to tell it which operation            matted documents such as manpages. Different from previous
+to enable or disable [58]. A program usually has multiple               works, we tried to leverage NLP to parse loosely formatted
+
+
+
+USENIX Association                                                                         32nd USENIX Security Symposium          1921
+documents and extract constraints from the documents to filter                                           3.2 Explicitly Declared Relationship Identifi-
+out invalid option combinations to assist with fuzzing.                                                      cation
+                                                                                                         After analyzing a large number of documents, we find that the
+                                                                                                         explicitly declared relationships between options can mainly
+3     Design                                                                                             be divided into five categories, including conflict, dependency,
+                                                                                                         implication, similarity, and supersedence (Appendix A). The
+In this section, we describe the design of CarpetFuzz, an                                                conflict among options represents that these options must not
+NLP-based fuzzing assistance tool for extracting program                                                 be used together, and the dependency among options repre-
+option constraints. The core idea is to use NLP to identify                                              sents that these options must be used together. Implication
+and extract the relationships (e.g., conflicts or dependencies)                                          indicates that the function of one option includes another op-
+among program options from the description of each option                                                tion. Similarity and supersedence indicate that the options’
+in the documentation and filter out invalid combinations to                                              functions are, respectively, roughly the same and replaceable.
+reduce the option combinations that need to be fuzzed. We                                                All these three relationships indicate an overlap exists in mul-
+first introduce a general overview of the whole design and                                               tiple options’ functions. Although the combination of options
+then show how each component works.                                                                      with these three relationships may not cause an exception, it
+                                                                                                         makes some options overwritten. Fuzzing with the combina-
+                                                                                                         tions of these options may have the same effect as fuzzing
+                                                           Relation-           Valid option
+                                                                                                         with each and may be useless for discovering new paths. To
+            Sentences       EDR        R-sentences          ships              Combinations
+                ①
+                        Identification
+                                            ②                  ③                      ④
+                                                                                                         avoid such useless combinations and reduce the search space,
+Documentation                                   Relationship        Combination           Fuzzing with   we treat these three relationships as conflicts in this paper.
+                                                 Extraction        & Prioritization       Combinations
+                                                                                                            We collect extensive documentation from the internet and
+                            IDR                                                                          extract the sentences in all options’ descriptions as the unla-
+                        Identification
+                                                                                                         beled dataset. To reduce the labeling cost, we use an active
+                                                                                                         learning algorithm to manually label part of the samples in the
+                                                                                                         unlabeled dataset and add them to the labeled dataset. Specifi-
+Figure 2: Overview of CarpetFuzz. EDR: explicitly declared
+                                                                                                         cally, we first read a small set of the documents and manually
+relationships, IDR: implicitly declared relationships.
+                                                                                                         collected multiple keywords (about 20) in R-sentences (e.g.,
+                                                                                                         “combine with,” “imply,” “like,” “ignore”), which was a small
+                                                                                                         one-time job (about 5 minutes). Note that although these key-
+3.1        Overview                                                                                      words were from a few documents, they also applied to other
+                                                                                                         documents and could be systematically augmented through
+Figure 2 shows the overview of CarpetFuzz. Given a docu-                                                 data labeling in active learning. Then we sample a subset of
+ment of the target program, CarpetFuzz first extracts all its                                            the sentences containing these keywords for manual labeling,
+options and corresponding descriptions by parsing the OP-                                                which is the initial training dataset of our model. Sentences
+TIONS section, and splits these descriptions into sentences                                              with the above five relationships are labeled as positive, and
+with NLP tools (step 1). Then CarpetFuzz identifies sentences                                            other sentences are labeled as negative. Generally, hundreds
+containing relationships (called R-sentences 2 ) among these                                             of labeled data are enough to train the initial model, indepen-
+options (step 2). Specifically, with active learning algorithm,                                          dent of the dataset’s size. We utilize the word2vec model [42]
+CarpetFuzz builds a dataset from Linux manpages and trains                                               to map words into vectors as the input features because of
+a machine learning model to identify explicitly declared rela-                                           its simplicity and low-cost. We have also evaluated more
+tionships. To find the implicitly declared relationships, Car-                                           advanced models (e.g., BERT [13]) and obtained a similar
+petFuzz combines the NLP parsing technique (dependency                                                   performance. In each iteration of the active learning algorithm,
+parsing and constituency parsing) with our heuristic rules.                                              the prediction of all samples in the unlabeled dataset is ob-
+After identifying R-sentences, CarpetFuzz builds the depen-                                              tained using the machine learning model, and the samples are
+dency trees of these R-sentences with the dependency parsing                                             selected for manual labeling according to the entropy-based
+and traverses the dependency tree from the node where the op-                                            uncertainty sampling algorithm [11],
+tion is located to extract the concrete relationships and objects
+(step 3). With the extracted relationships, CarpetFuzz builds                                                                     1
+                                                                                                                       ei = − ∑ j=0 P(y j |xi ) · log P(y j |xi )      (1)
+valid option combinations and prioritize them by coverage
+(step 4). At last, CarpetFuzz passes these prioritized valid                                                where ei is the entropy of the i-th unlabeled sample,
+option combinations to the fuzzer.                                                                       P(y1 |xi ) represents the predicted probability that xi belongs to
+                                                                                                         class 1 (is an R-sentence), and P(y0 |xi ) represents the pre-
+    2 Inthe rest of this paper, we use R-sentences to refer to sentences con-                            dicted probability that xi belongs to class 0 (is not an R-
+taining relationships                                                                                    sentence). Higher entropy represents higher uncertainty when
+
+
+
+1922       32nd USENIX Security Symposium                                                                                                              USENIX Association
+the model predicts the sample. Thus labeling those samples           order” of the -B option in tiffcp will be modified as “It forces
+helps update the model more effectively. K samples with the          output to be written with Big-Endian byte order.”
+highest entropies are manually labeled and added to the train-
+ing set, and the model is retrained using the updated training                Force output           It forces
+set (Appendix B). After T iterations, the final model will be                 to be written          output to
+                                                                              with Big-              be written                    Object: output
+used for explicitly declared relationship identification. In par-             Endian byte            with Big-                     Predicate: force
+ticular, we manually labeled 1,381 sentences (557 positive                    order. This            Endian
+                                                                              option ...             byte order.
+and 824 negative sentences) in the active learning process,
+                                                                                              ①                    ②
+which only account for 0.46% of all the unlabeled sentences.                                                              Dependency     Object &
+                                                                                                                            Parsing      Predicate
+Note that data labeling is a one-time effort (only performed
+                                                                              Description         Preprocessing
+in the training process, about 5 hours), and later testing does
+                                                                                                                         Constituency      Parse
+not require human effort. We randomly sampled 1,000 data                                                                   Parsing         Tree
+from the remaining unlabeled dataset for evaluation, and the
+accuracy, false-positive rate, and recall of the final model were    Figure 3: Process of extracting the features for identifying
+92.90%, 11.49%, and 98.42%, respectively.                            implicit R-sentences.
+
+ 3.3 Implicitly Declared Relationship Identifi-                         After the preprocessing, sentences will be analyzed with
+     cation                                                          dependency parsing to find predicates and direct objects. (step
+                                                                     2). Specifically, we use NLP tools to label each word’s de-
+ As mentioned in the introduction, it is challenging to identify     pendency tag and find the words with the tag “dobj” (i.e.,
+ implicitly declared relationships. These relationships involve      the direct object) and “ROOT” (i.e., the predicate). To de-
+ multiple options whose behaviors are different but related and      termine if these two sentences have parallel structures, we
+ can only be identified when the association is found. After an-     use constituency parsing to build their parse trees and remove
+ alyzing the documentation of a large number of programs, we         their leaf nodes since leaf nodes represent the specific words
+ have only found implicitly declared conflicts (implicitly de-       instead of grammar structures. If their lengths are the same,
+ clared dependency has not been found yet). In this paper, we        we judge them as parallel when their remaining trees are iden-
+ only discuss the identification of implicitly declared conflicts.   tical. If their lengths are different, we first traverse the shorter
+ We find that the sentences implicitly declaring a conflict (i.e.    tree from its last node to find its nearest branch node and then
+ implicit R-sentences) among different options usually have          remove this branch node and all of its children nodes. If the
+ the same objects and same/antonyms verbs, implying that             remaining tree is a subtree of the longer tree, we regard these
+ these options do the same (or opposite) things on the same          two trees are in parallel structures. Finally, several sentences
+ object. Their grammatical structures usually satisfy parallel       are considered as implicit R-sentences when they have the
+ structures (i.e., repetition of the same grammatical form in        same object, the same or mutually antonymous predicates,
+ several parts), which may be because the document’s authors         and parse trees with parallel structures.
+ copied the description for each conflict option for convenience.
+                                                                        Moreover, in some documents, multiple options are written
+ For example, the descriptions of the -B and -L options are
+                                                                     together in the same position, which is another kind of implic-
+“Force output to be written with Big-Endian byte order,” and
+                                                                     itly declared conflict. For example, the -des, -des3, and -idea
+“Force output to be written with Little-Endian byte order.” Since
+                                                                     options in openssl-ec are written together as “-des|-des3|-idea,”
+ these two sentences have the same predicate (i.e., force), ob-
+                                                                     as shown in Figure 4. However, options written together are
+ ject (i.e., output), and grammatical structure (parse trees), we
+                                                                     not necessarily conflicting - they may be aliases for the same
+ can determine that they are implicit R-sentences.
+                                                                     option. For example, although the -s and –silent options are
+    To determine whether several sentences are implicit R-
+                                                                     written together as “-s, –silent,” they are not conflicting but
+ sentences, we need to extract the objects, predicates, and the
+                                                                     the same option. We can determine whether a topic sentence
+ parse trees of their descriptions. Figure 3 shows the process of
+                                                                     shared by multiple options is an implicit R-sentence by check-
+ extracting these features. We first preprocess the descriptions
+                                                                     ing its subject. When the subject is plural (e.g., “they” or
+ (step 1) by extracting the first sentence of each description for
+                                                                     “these options”), it means that this sentence is an implicit
+ analysis because such a sentence is usually the topic sentence
+                                                                     R-sentence.
+ introducing what the option does. We find that some topic
+ sentences for options may have no subject (begins with a
+                                                                                               -des|-des3|-idea
+ verb), causing mistakes in the NLP parser, such as misjudging             openssl-ec                These options encrypt the private key with the
+ the verb “force” as a noun. Therefore, for a sentence that                document           DES, triple DES, IDEA or any other cipher supported
+                                                                                              by OpenSSL before outputting it. …
+ begins with a verb, we restore its subject (i.e., it) and modify
+ the verb’s person to avoid parsing errors. For example, the
+ description “Force output to be written with Big-Endian byte         Figure 4: Example of options written in the same position.
+
+
+
+ USENIX Association                                                                            32nd USENIX Security Symposium                         1923
+    Altogether, we discovered 218 implicitly declared conflict                 As mentioned above, relationships can be declared in en-
+ pairs from 20 popular program documents. The precision and                 tirely different ways. For one thing, the same relationship can
+ recall were 95.87% and 90.09%, respectively.                               be declared by various keywords. For another thing, the rela-
+                                                                            tionship described by the same keyword may vary in different
+                                                                            contexts. For example, the keyword "use" describes the depen-
+ 3.4    Relationship Extraction                                             dency, neutrality (no relationship), and conflict, respectively,
+ After finding out the R-sentences from the documentation,                  in “must be used,” “be used,” and “must not be used.”
+ we need to extract the specific relationships from these sen-                 Based on linguistics [25], conflict and dependency can be
+ tences, including conflicts and dependencies (As mentioned                 regarded as a pair of polar opposite items, and neutrality is
+ in Section 3.2, implication, similarity, and supersedence are              the intermediate (i.e., neither conflict nor dependency) be-
+ also treated as conflicts).                                                tween the two polarities. These three items can be transitioned
+ Extracting explicitly declared relationships. For R-                       according to specific sentence components, like keywords,
+ sentences of explicitly declared relationships, we first divide            deontic modals (i.e., modals indicating obligation and permis-
+ complex sentences into multiple clauses with constituency                  sion, like “must,” “should,” and “have to”), and negations.
+ parsing. If a clause contains options, we replace their names              We use two finite state machines (FSMs) to describe the
+ with custom symbols (e.g., option_A) to avoid the minus sign               state transition process, as shown in Figure 6. The choice of
+ interfering with parsing. We then use dependency parsing                   FSM is related to the semantic-based classification of key-
+ to obtain the parse tree of this clause. Figure 5 shows the                words, including conflicting and dependency keywords (Ap-
+ extraction process of explicitly declared relationships based              pendix C). Each FSM contains three states, SD , SN , and SC
+ on the parse tree. First, we locate where the first option occurs          (i.e., dependency, neutrality, and conflict), and two possible
+ and traverse the parse tree forward to see if any other op-                initial states. The initial state of FSM is the default relation-
+ tion has co-dependencies with the first option (i.e., the “conj”           ship of the keyword (Appendix C), which is expressed without
+ tag). Since R-sentences may contain other programs’ options,               deontic modals and negations. For example, since “be used”
+ we check if the located option belongs to the target program               expressed neutrality, the default relationship of the keyword
+ before analyzing. We treat options with co-dependencies as                “use” is neutrality. After determining the initial state, we can
+ a single option and confirm the conjunctions (i.e., the “cc”               infer the final state based on the deontic modals and negations
+ tag). For options without co-dependencies, we perform the                  in the sentence, which is the relationship expressed. Note that,
+ relationship extraction process for them separately. Second,               based on linguistics [22], deontic modals take scope under
+ we traverse the parse tree from the option’s position back-                negations, which means that only negations have an effect
+ ward to find the verb or adjective related to the option (i.e.,            when both are present 3 . We take the sentence, “-A must not
+ the “pobj” and “prep” tags). We then compare this word to                  be used with -B and -C,” as an example. Since the keyword
+ our keywords, which are collected from many documents and                 “use” is a dependency keyword, the bottom FSM is chosen,
+ augmented based on synonyms, to confirm if it is a keyword.                and the initial state is neutrality. Since the sentence has both
+ If not, we search for all its synonyms and compare them to the             deontic modal and negation, only the negation will have an
+ keywords. Third, we traverse the parse tree from the verb’s                effect. From the FSM for dependency keywords, the state will
+ position backward to find the negations and modals (i.e., the              be transitioned from neutrality to conflict.
+“aux” tag) related to this verb for determining the concrete
+ relationships.                                                                                                       Deontic          Deontic
+                                                                                     FSM for                          modality         modality
+                                                                                      conflict                   SC              SN               SD
+                                                                                     keywords    Initial state
+                    nsubjpass                                                                                         Negation         Negation
+
+        Dep. Tree           aux
+                                  neg                                                                                 Deontic          Deontic
+                                                                    conj
+                                        aux- prep          cc                      FSM for                            modality         modality
+                                                    pobj
+                                        pass                                      dependency                     SD              SN               SC
+                                                                                   keywords      Initial state
+            Option_A must not be used with option_B and option_C                                                      Negation         Negation
+
+                                             ②      ②           ①
+                                  ③                                   ①     Figure 6: FSMs for conflict and dependency keywords. The
+        Process             ④
+                                                                            dotted lines point to possible initial states.
+
+ Figure 5: Example of dependency parsing and extraction pro-                Extracting implicitly declared relationships. For implicit R-
+ cess of explicitly declared relationships. The part above the              sentences, they are determined to be declarations of conflicts,
+ dotted line is the parse tree from dependency parsing, the text            and we only need to map these sentences to the corresponding
+ on the bold line represents the dependency tag, and the arrow              options, which is already done in step 1 in Figure 2. For exam-
+ represents the dependency relationship. The part below the                 ple, based on the method in Section 3.3, we can know that the
+ dotted line shows the relationship extraction process, where
+ the arrow indicates the traversal direction.                                 3 An   even number of negations will cancel each out.
+
+
+
+
+ 1924    32nd USENIX Security Symposium                                                                                               USENIX Association
+sentences “Force output to be written with Big-Endian byte            generating a new test case. Then we use the corresponding
+order” and “Force output to be written with Little-Endian             combination to mutate each test case in the queue.
+byte order” are implicit R-sentences. According to the cor-
+respondence between the options and the sentences, we can
+                                                                      4   Implementation
+know that these two sentences belong to the -B and -L op-
+tions, respectively. Finally, we extract the conflict relationship    This section introduces the implementation of the prototype
+between the -B and -L options.                                        of CarpetFuzz in our research, including dataset collection,
+   Finally, with our relationship extraction method, we suc-          model training, NLP analysis, prioritization, and fuzzing.
+cessfully extracted 282 relationships from 20 popular program         Dataset collection. We collected the training dataset by crawl-
+documents with a precision and recall of 96.10% and 88.85%.           ing the manpages of all command-line programs (37,672)
+                                                                      from the Debian Manpages Project [12], the complete reposi-
+3.5    Combination and Prioritization                                 tory of all manpages contained in Debian. Note that documen-
+                                                                      tation exists in three forms, manpages, online documentation,
+Based on the extracted relationships between options, we              and help command. Considering that online documentation is
+could filter out all invalid option combinations. Specifically,       usually generated from manpages, and the output of help com-
+we combine all options with length n (0 ≤ n ≤ k, where k is           mands is generally brief and does not have the information
+the number of options) and perform a validity check on the            we need due to space limitations, we selected the manpages to
+generated combinations against the extracted relationships. A         parse. After crawling these manpages, we extracted the con-
+combination is considered valid only if it satisfies all depen-       tent of the options sections based on the GNU roff language
+dencies and has no conflicts. For options that can have values,       (i.e., Groff) [56] and mapped each option to its description.
+we manually collected reasonable values for each option from          Specifically, we removed all format tags defined in Groff and
+the documentation and randomly picked one value for each              distinguished different options by paragraph separators (the
+option in each combination.                                          “.TP” and “.IP” tag). We treat the content between multiple
+   Although the invalid combinations are filtered, which make         options as their descriptions. Then we used spaCy [47] for sen-
+up most of the total combinations (e.g., 99.84% in openssl-           tence segmentation. Finally, we collected 302,875 sentences
+rsa), the number of the left valid combinations may still be          related to options (228,827 after deduplication).
+large (e.g., millions), and it is impractical to test all these       Model training. We utilized the Word2Vec model in the Gen-
+combinations, which would require enormous computing re-              sim library [42] to map words into vectors, trained with the fol-
+sources. In this paper, we leveraged N-wise testing [57] to           lowing parameters: size = 300, window = 5, and other default
+further prune the combinations that need to be tested. This           settings. Since the description of an option may contain itself,
+testing is an effective method for combinatorial interaction          we convert the option names in the sentence to option_itself
+testing which greatly reduces the combinations that need to           and option_other during preprocessing. We used XGBoost
+be tested by focusing on defects caused by the interaction            to classify sentences related to options as we experimentally
+of N factors. According to the research, almost all flaws are         found that XGBoost [7] had a better performance than other
+caused by the interaction of no more than six factors [27].           machine learning models (e.g., SVM [10] and RF [21]). We
+So we used 6-wise (N = 6) testing to prune the valid option           utilized the default hyper-parameters for training the initial
+combinations.                                                         model on the initial dataset (297 positive and 139 negative
+   After pruning the combinations, we prioritize each combi-          sentences). At every iteration of the active learning process,
+nation based on its coverage in the dry run on the same seed          we selected 20 (K = 20) sentences with the highest entropy
+file. Specifically, combinations with higher coverage will have       for manual labeling and retrained our model with the opti-
+a higher priority. We use this prioritization technique for two       mal hyper-parameters from the grid search [28]. We stopped
+primary considerations. First, fuzzing with combinations with         training after 70 consecutive iterations (i.e., T = 70). The
+higher coverage in the dry run is more likely to discover new         hyper-parameters of the final model were: max_depth = 6,
+paths during the fuzzing process. Second, for some invalid            n_estimators = 200, colsample_bytree = 0.8, subsample =
+combinations not identified in previous steps, our prioritiza-        0.8, learning_rate = 0.1, and other default settings.
+tion technique can lower their priority, reducing their chances       NLP analysis. We used NLTK [39] to output all parts of
+of being tested.                                                      speech for a word and LemmInflect [2] to convert a verb to
+Fuzzing with combinations. Finally, we fuzzed each pro-               third-person singular after adding the subject. We utilized
+gram with all the prioritized pruned option combinations.             spaCy for sentence segmentation to extract the first sentence
+Specifically, we instrument the target program to allow it to         and dependency parsing to label each word’s dependency tag.
+read options from a file and let the fuzzer modify the file on        For constituency parsing, we used the AllenNLP library [24]
+the fly to switch the combinations in use. At the beginning           to build the parse trees and extracted clauses based on the
+of fuzzing, we use all the given combinations to mutate the          “SBAR” tag. In the analysis, we found that different numbers
+seed files and record the corresponding combination when              lead to different dependency parsing results, which is a flaw of
+
+
+
+USENIX Association                                                                      32nd USENIX Security Symposium           1925
+ the NLP model. As a fix, we removed all non-option numbers.                        RQ6. Can CarpetFuzz discover real-world vulnerabilities?
+ Prioritization and Fuzzing. We used the PICT tool [34]
+ to implement the 6-wise testing and automatically generate                         5.1    Performance of CarpetFuzz (RQ1)
+ model files based on the extracted relationships to specify lim-
+ itations on combinations. We used afl-showmap [62] to count                        In this experiment, we aimed to evaluate the performance of
+ edge coverage information for a dry-run as a sorting criterion                     CarpetFuzz. To highlight the improvement of the performance
+ and LLVM pass [53] to instrument the target program.                               of AFL by CarpetFuzz, we defined the evaluation metrics as
+                                                                                    the number of edges only covered by CarpetFuzz.
+                                                                                        From the 20 programs’ manpages, CarpetFuzz extracted
+ 5    Evaluation                                                                    282 relationships and filtered out 67.91% of the option com-
+                                                                                    binations on average (Appendix E). With the relationships,
+ This section describes our evaluation of CarpetFuzz, includ-
+                                                                                    CarpetFuzz reduced the option combination to be tested in
+ ing the effectiveness of both its end-to-end operation and
+                                                                                    the 20 programs by 25.00% to 99.85%. It can be seen that
+ individual components.
+                                                                                    for programs with complex relationships among options (e.g.,
+ Real World Dataset. In this evaluation, we evaluated the ef-
+                                                                                    openssl-rsa and eu-elfclassify), CarpetFuzz can greatly reduce
+ fectiveness of CarpetFuzz on the latest versions of 20 popular
+                                                                                    the number of combinations to be tested. We manually labeled
+ real-world programs (Appendix D). These programs handle
+                                                                                    the relationships in these programs to evaluate the process of
+ 11 different types of input files, including image (TIFF and
+                                                                                    filtering out invalid option combinations. The precision and re-
+ JPG), certificate (PEM), text (MD and JSON), traffic packet
+                                                                                    call ranged from 68.46% to 100% and from 70.00% to 100%,
+ (PCAP), executable file (ELF), archive (LRZ), audio (OGG
+                                                                                    respectively, and the average values were 98.01% and 94.19%,
+ and SPX), and document (PDF). We chose these programs
+                                                                                    demonstrating that CarpetFuzz could accurately identify and
+ because they were widely used programs with more than
+                                                                                    filter out invalid option combinations. Note that only a few
+ ten options and were continuously maintained. We collected
+                                                                                    misjudgments occurred in pdftotext and tiffcp (Section 5.3)
+ their latest manpages from the compilation directory (i.e.,
+                                                                                    but accounted for a large proportion of all relationships ex-
+“share/man/man1/”) and manually extracted all R-sentences
+                                                                                    tracted due to a small number of total relationships, which led
+ and relationships for evaluation. The number of options and
+                                                                                    to a low precision/recall (68.48%/70.00%).
+ relationships 4 for each program 5 are shown in Appendix D.
+                                                                                        After filtering the invalid option combinations, we used the
+ Experimental Setup. We used CarpetFuzz to augment
+                                                                                    6-wise testing mentioned in Section 3.5 to prune the remain-
+ AFL [63] and compared it to the original AFL to demon-
+                                                                                    ing combinations further. To evaluate whether pruning would
+ strate how CarpetFuzz could help with it. In order to highlight
+                                                                                    cause a loss of coverage, we randomly sampled 100,000 valid
+ the effect of CarpetFuzz, we also selected the latest versions
+                                                                                    combinations for each program for comparison (Appendix F).
+ of AFLfast [4], MOPT-AFL [32], and AFLplusplus [14] for
+                                                                                    The results showed that our pruning technique could reduce
+ comparison, which were among the most popular improved
+                                                                                    much more combinations (98.91%) compared to random sam-
+ fuzzers based on AFL. Each fuzzer started with the same sin-
+                                                                                    pling while only slightly losing edges (2.54%).
+ gle seed file collected from AFL directory, test directory (for
+                                                                                        We then used AFL, AFLfast, MOPT-AFL, and AFL++ to
+ PEM and MD format), or online corpus [35] (for OGG and
+                                                                                    fuzz each program without options (or with the minimum
+ SPX formats). We continuously fuzzed our test programs for
+                                                                                    options to make it work) and used CarpetFuzz to fuzz with the
+ 48 CPU hours and repeated the experiment five times to avoid
+                                                                                    pruned option combinations in order of priority. The growth
+ the effects of the inherent uncertainty of fuzzers mentioned
+                                                                                    curves of the code coverage of each fuzzer converged within
+ in [26]. Our experiments were performed on a machine of
+                                                                                    48 hours , representing that the coverage of these fuzzers was
+ Intel Xeon Platinum 8268 with 24 CPU cores and 188GB
+                                                                                    eventually stabilized, and using 48 hours of coverage basically
+ RAM, which runs Ubuntu 20.04.5 LTS.
+                                                                                    represents the coverage capability of these fuzzers per run.
+ Research Questions. In the following sections, we aim to
+                                                                                        We used the edges that AFL could reach as the baseline
+ answer the following research questions:
+                                                                                    to evaluate CarpetFuzz’s performance. Due to the inherent
+ RQ1. What is the performance of CarpetFuzz?
+                                                                                    uncertainty, the coverage of each run of the same fuzzer may
+ RQ2. What is the accuracy of relationship identification?
+                                                                                    be very different, so the single coverage cannot represent the
+ RQ3. What is the accuracy of relationship extraction?
+                                                                                    coverage capability of the fuzzer. Instead, we took the union
+ RQ4. What is the effectiveness of CarpetFuzz’s prioritization
+                                                                                    of the coverage of the five runs to represent the edges that
+ technique?
+                                                                                    the fuzzer is capable of reaching. We defined the number of
+ RQ5. What is the fuzzing performance of CarpetFuzz com-
+                                                                                    unique edges (edges unreachable for the baseline) of the test
+ pared to the state-of-the-art techniques?
+                                                                                    fuzzer n and the ratio of unique edges r as
+    4 In order to facilitate comparison, we split the relationship among multiple
+
+ options into multiple relationships between every two options.                                             \               |E f − E f Eb |
+                                                                                                                                     T
+    5We have removed all help, version options, and options requiring specific
+                                                                                           n = |E f − E f       Eb |   r=                       (2)
+ support that we cannot satisfy (e.g., exceptional file support and OPI support).                                                 |Eb |
+
+
+
+ 1926      32nd USENIX Security Symposium                                                                                    USENIX Association
+   where E f represents the union of the fuzzer’s edge cover-       the accuracy of this dataset was higher, its F1 score was lower
+age in five runs, and Eb represents the union of the baseline’s     (0.89) than the former evaluation dataset (0.92). The main
+edge coverage in five runs. Then we counted the number and          reason may be that this dataset was imbalanced. Note that
+ratio of unique edges for each fuzzer, as shown in the first 14     eight of the nine false positives were judged as neutrality and
+columns of Table 1. With the AFL as the baseline, AFLfast           ignored in the relationship extraction process (described in
+found the fewest unique edges, and the ratio of unique edges        Section 3.4), which did not affect the extraction results.
+on these 20 programs was 1.31% on average, which may be             Accuracy of identifying implicitly declared conflicts. From
+because AFLfast mainly improved AFL’s seed schedule strat-          these documents, we found 232 unique conflict pairs declared
+egy to speed up the convergence of the coverage curve. MOPT         implicitly. We performed an identification with the method in
+and AFL++ found much more unique edges than AFLfast, and            Section 3.2 and found 218 such conflict pairs, among which
+the ratios of unique edges of these two fuzzers were 4.47%          the false positives and false negatives were 9 and 23, respec-
+and 5.39%, respectively. We thought that MOPT and AFL++             tively. The precision was 95.87%, and the recall was 90.09%,
+performed much better than AFLfast, probably because they           implying that our method had a good performance in identi-
+improved the mutation strategies of AFL. However, even with-        fying implicitly declared conflicts. After our analysis, these
+out optimizing any strategy of AFL, CarpetFuzz found the            nine false positives were all due to a lack of relevant common
+most unique edges, and the average ratio of unique edges            sense. For example, the topic sentences of -X and -Y options
+was 47.23%. On all these 20 programs, the ratio of Carpet-          in tiffcrop were “Set the horizontal/vertical dimension of a
+Fuzz was higher than other fuzzers and was 336.20% at most          region to extract relative to the specified origin reference.” Al-
+(lrzip), which was at least 293.33 times (AFL++) the ratio          though both options were to “set the dimension,” our tool did
+of other fuzzers. The results showed that for some programs,        not know that horizontal and vertical dimensions were differ-
+such as eu-elfclassify and jpegotim, few unique edges might         ent, requiring human common sense. Seven false negatives
+be discovered by improving the fuzzing strategy, but this can       were also due to a lack of relevant common sense. In the topic
+be alleviated by specifying certain valid option combinations.      sentence of the -s option in jpegoptim, “Strip all markers
+   We also took the union of the edges of the first four fuzzers    from output file,” our tool did not know that the “all marker”
+to investigate how many edges of CarpetFuzzcould not be             referred to all kinds of markers rather than a specific marker.
+discovered by other fuzzers, as shown in the last three columns     So it missed the implicitly declared conflicts between the -
+of Table 1. The results showed that an average of 94.59% of         s option and options to strip single kinds of markers. Seven
+the unique edges of CarpetFuzz were not discovered by other         false negatives came from the inaccurate parsing results of the
+fuzzers, and CarpetFuzz could help AFL find 45.97% more             NLP parser underlying our implementation (e.g., SpaCy). For
+edges that other fuzzers cannot discover on average.                example, in two topic sentences with the same structure, “out-
+                                                                    put monochrome sixel image” and “output 15bpp sixel image,”
+                                                                    the parser judged the word “monochrome” as a noun while
+5.2 Accuracy of Relationship Identification                         regarding “15bpp” as a number, leading these sentences to be
+    (RQ2)                                                           mistaken as non-parallel and thus identified as non-conflicting.
+Accuracy of identifying explicitly declared relationships.          Nine false negatives were due to slight differences in topic
+During the active learning process, we performed 70 iterations      sentences. For example, the topic sentences of -pvk-strong
+and collected 1,817 manually labeled data as the training set.      and -pvk-none options were “Enable Strong PVK encoding
+We used the final model to predict all sentences in the dataset     level” and “Don’t enforce PVK encoding.” Since both the
+(except the training and validation sets), with 7,483 sentences     verbs (enable versus enforce) and objects (level versus encod-
+predicted as positive and 221,344 sentences predicted as nega-      ing) differed, our tool cannot identify the implicitly declared
+tive. We randomly sampled 500 sentences from each category          conflict from these sentences. Interestingly, we found that
+and manually labeled them for evaluation. The model’s ac-           such missing conflicts were identifiable from their names.
+curacy on the evaluation dataset was 92.90%, indicating that
+it has high accuracy. The false-positive rate and recall were       5.3 Accuracy of Relationship Extraction
+11.49% and 98.42%, implying that our method had a lower                 (RQ3)
+risk of identifying R-sentences as non-R-sentences and, thus,
+may avoid missing some relationships.                               After manual labeling, we found 305 relationships from the
+   We then evaluated our model on the sentences of the 20           20 programs, including 284 conflicts and 22 dependencies.
+programs’ manpages. According to the results of manual              Our tool found 282 relationships, of which 264 were conflicts
+labeling, 75 sentences were explicit R-sentences among the          and 18 were dependencies. The precision and recall of con-
+2,952 sentences from the documents. Our model predicted 76          flict were 95.83% and 89.40%, and those of dependency were
+sentences to be positive, including 9 false positives and 8 false   100% and 81.82%. The precision and recall of all relationships
+negatives. The accuracy is 98.80%, and the false-positive rate      were 96.10% and 88.85%, implying that our tool performed
+and recall were 0.67% and 89.33%, respectively. Although            well in extracting relationships. We found that dependencies
+
+
+
+USENIX Association                                                                     32nd USENIX Security Symposium          1927
+Table 1: Results of each fuzzer with 48 hours. Eb : the union of the baseline’s edge coverage in five runs, E f : the union of the
+fuzzer’s edge coverage in five runs, n: the number of unique edges, r: the ratio of unique edges.
+                                                     Baseline                                                        CarpetFuzz
+  Program      AFL              AFLfast                  MOPT                   AFL++                   Compare to AFL          Compare to ALL
+                                                                                               |E f |
+               |Eb |   |E f |     n        r    |E f |     n      r    |E f |    n        r              n         r       nall     rall       Pct.
+     cmark     6308    6229      106    1.68%   6608     372   5.90%   6860     552    8.75%   7080     960    15.22%      876    13.89%     91.25%
+    editcap    3340    3201      140    4.19%   3749     465  13.92%   3755     464   13.89%   3800     635    19.01%      550    16.47%     86.61%
+     eu-elf
+               140     134        0    0.00%    140     0     0.00%    140       0    0.00%    194          54    38.57%    54      38.57%   100.0%
+    classify
+  img2sixel    1584    1635      84    5.30%    1981   440   27.78%    2055     494   31.19%   2172     710       44.82%    685    43.24%    96.48%
+ jpegoptim      165    158        0    0.00%     165    0     0.00%     165      0     0.00%    284     120       72.73%    120    72.73%    100.0%
+   jpegtran    4695    4708      49    1.04%    4845   155    3.30%    4995     301    6.41%   4339     898       19.13%    875    18.64%    97.44%
+        jq     1910    1900      14    0.73%    1895    9     0.47%    1935     25     1.31%   2255     374       19.58%    365    19.11%    97.59%
+      lrzip    1047    1029       2    0.19%    1051    4     0.38%    1057     12     1.15%   4559     3520      336.20%   3518   336.01%   99.94%
+    ogg123      321    321        0    0.00%     320    0     0.00%     325      5     1.56%    363      42       13.08%     41    12.77%    97.62%
+   openssl-
+               2109    2109       0    0.00%    2111    2     0.09%    2111      2    0.09%    2599         490   23.23%    489     23.19%   99.80%
+  asn1parse
+ openssl-ec    5015    5036      37    0.74%    5029   29     0.58%    5058     57    1.14%    7578     2601      51.86%    2561    51.07%   98.46%
+ openssl-rsa   5350    5337      27    0.50%    4994   33     0.62%    5441     95    1.78%    6291     1135      21.21%    1106    20.67%   97.44%
+    pdftops     984    999       17    1.73%    1002   19     1.93%    1005     21    2.13%    1059      76        7.72%     68      6.91%   89.47%
+   pdftotext    969    975        8    0.83%     974    5     0.52%     977      8    0.83%    1026      62        6.40%     60      6.19%   96.77%
+    podofo
+               236     239        3    1.27%    239     3     1.27%    239       3    1.27%    248          12    5.08%     12      5.08%    100.0%
+    encrypt
+   speexdec     495    495        0    0.00%     548   53    10.71%     497      2     0.40%    594      99       20.00%    99     20.00%    100.0%
+    tcpprep     442    435        0    0.00%     454   12     2.71%     441      0     0.00%    883     454       102.71%   453    102.49%   99.78%
+  tcpreplay     369    364        3    0.81%     373    9     2.44%     400     39    10.57%    657     315       85.37%    298    80.76%    94.60%
+     tiffcp    4570    4348      140   3.06%    4930   474   10.37%    5057     721   15.78%   5544     1048      22.93%    724    15.84%    69.08%
+    tiffcrop   5152    5049      211   4.10%    5309   327    6.35%    5522     489    9.49%   5814     1018      19.76%    809    15.70%    79.47%
+   Average                             1.31%                  4.47%                    5.39%                      47.23%           45.97%    94.59%
+
+
+
+may be more challenging to extract, resulting in a lower recall                 grams from our real-world dataset and provided each program
+and higher precision. Among the four false negatives of de-                     with five shuffled pruned valid combination lists (CarpetFuzz-
+pendencies, two were due to the false negatives of the model,                   Rand) to compare with the prioritized combinations. Each
+and two were due to the inability to find the corresponding                     combination list was fuzzed for 48 hours. We then took the
+options. For example, our model identified the R-sentence in                    average number of unique paths n̄ as the evaluation criterion,
+pdftotext, “This is ignored in all other modes,” but our tool                   defined as,
+cannot find the options corresponding to “all other modes.”
+                                                                                                        ∑5i=1 |E fi − E fi Eb |
+                                                                                                                            T
+In fact, even humans could hardly find out the options cor-
+                                                                                                     n̄ =                                    (3)
+responding to these “modes.” For example, we could find                                                             5
+that the -layout option corresponded to the physical layout                        where Eb represents the union of the baseline’s (AFL,
+mode only when we combined its name with the description                        AFLfast, MOPT, and AFL++) edge coverage in five runs
+of the -table option, “Table mode is similar to physical layout                 in Section 5.1, which stands for their coverage capability. E fi
+mode.” Among the 11 false positives and 30 false negatives of                   represents the edge coverage of CarpetFuzz and CarpetFuzz-
+conflicts, 5 and 32 were due to failure to identify R-sentences                 Rand in the i-th run. The results are shown in Table 2. With
+and implicitly declared conflicts, respectively (mentioned in                   our prioritization technique, CarpetFuzz found more edges on
+Section 5.2). Two were due to the inability to find the cor-                    each program that other fuzzers could not discover (7% more
+responding options. Another two were due to the incorrect                       on average), proving that this technique was effective in find-
+extraction because of a lack of human common sense. The                         ing more unique edges. In three programs, the improvement
+-RSAPublicKey_in and -RSAPublicKey_out options were put                         was more evident (more than 10%). Especially in openssl-ec,
+together, sharing the description “Like -pubin and -pubout                      CarpetFuzz found 20% more unique edges than CarpetFuzz-
+except RSAPublicKey format is used instead.” Since the sub-                     RAND. In seven programs, the capability of finding unique
+ject of the description was not plural, our tool mistakenly                     edges was slightly improved (within 5%).
+treated these two options as the same option, resulting in a                    Interesting findings When analyzing those combinations
+false positive (i.e., -RSAPublicKey_in versus -pubout) and a                    with the lowest priority, we found that some conflicts were
+false negative (i.e., -RSAPublicKey_out versus -pubout).                        only declared at runtime. For example, there were four con-
+                                                                                flicts in img2sixel (-P versus -8, -p versus -e, -p versus -I,
+5.4 Effectiveness of Prioritization Technique                                   and -p versus -b) not declared in any online documentation,
+    (RQ4)                                                                       manpage, or help command. We could get a hint only when
+                                                                                running the program with any of these combinations, like “op-
+To evaluate the effectiveness of our prioritization technique                   tion -p, –colors conflicts with -I, –high-color.” We also found
+mentioned in Section 3.5, we randomly selected ten pro-                         that two dependencies in tiffcrop were declared conflicts at
+
+
+
+1928     32nd USENIX Security Symposium                                                                                         USENIX Association
+Table 2: Unique edges of CarpetFuzz with and without pri-                 Table 3: Vulnerabilities discovered on the POWER’s dataset.
+oritization. ALL: the union of AFL, AFLfast, MOPT, and                    Exclusive crash: crash only found by the specific fuzzer. Av-
+AFL++. Ranked: CarpetFuzz. Random: CarpetFuzz-RAND.                       erage edge: average number of edges across all test cases.
+                     Compare to AFL               Compare to ALL                                 CarpetFuzz                      POWER
+   Program
+                Ranked   Random       Rate   Ranked   Random       Rate     Program     #Uniq.     #Excl.      Avg.     #Uniq.    #Excl.    Avg.
+      cmark      920.8    916.6       1.00    871.6     867        1.01                  crash     crash       edge      crash    crash     edge
+     editcap     480.8     480        1.00    480.4    479.4       1.00      avconv         3         3       2623.73       0        0     2209.15
+   img2sixel     492.8     485        1.02    484.6    427.4       1.13        bison        5         3       1365.97       4        2     1148.31
+  jpegoptiom     117.4    114.4       1.03    117.4    114.4       1.03        cflow        3         1       479.10        3        1     642.79
+    openssl-                                                                   cjpeg        0         0       115.58        0        0      73.46
+                480.8      480        1.00   480.4     479.4       1.00
+   asn1parse                                                                   djpeg        0         0       132.33        0        0      52.97
+   openssl-ec    1847     1541.2      1.20   1823.6    1521.2      1.20    dwarfdump        1         0       1857.72       2        1     1376.34
+    pdftotext    60.8      60.2       1.01     60        60        1.00        exiv2        2         1       1078.32       1        0     1402.15
+    speexdec     98.8      98.2       1.01    98.8      98.2       1.01      ffmpeg         1         0       2134.40       2        1     2768.37
+      tiffcp    660.6       534       1.24     485     376.8       1.29         gm          0         0       1172.00       0        0     566.98
+     tiffcrop     838      811.2      1.03    739.2    727.8       1.02          gs         0         0       9306.35       0        0     9447.74
+    Average     599.78    552.08      1.05    564.1    515.16      1.07       jasper        0         0       741.13        0        0     524.47
+                                                                             mpg123         4         4       921.51        0        0     421.19
+                                                                             mutool         0         0        52.44        0        0      48.33
+                                                                               nasm         4         4       936.64        9        9     898.18
+runtime (-K versus -S, -J versus -S). We could find a com-                  objdump        10         9       1111.69       2        1     1012.09
+ment left by the author in the source code, “Maybe someday                  pdftohtml       0         0       1672.19       0        0     1536.17
+                                                                            pdftopng        4         1       1683.99       5        2     1592.40
+but not for now,”, which implied that the dependencies in the                pdftops        6         1       1552.22       6        1     1528.50
+documentation exist but were not implemented yet. Although                    pngfix        0         0       205.91        0        0     210.00
+                                                                               pspp        28        21       1080.37      12        5     1021.12
+these invalid combinations were missed in the previous steps,                readelf        3         3       464.49        0        0     460.36
+our prioritization technique still found them by ranking the                    size        0         0       309.68        0        0     428.10
+dry run’s coverage and gave them the lowest priority.                        tiff2pdf       0         0       684.29        0        0     661.90
+                                                                              tiff2ps       0         0       377.32        0        0     376.28
+                                                                             tiffinfo       0         0       367.90        0        0     331.87
+                                                                                vim         1         0       4733.48       2        1     4279.16
+5.5 Fuzzing performance compared to the                                    xmlcatalog       0         0       768.18        4        4     748.26
+    state-of-the-art techniques (RQ5)                                        xmllint
+                                                                              xmlwf
+                                                                                           14
+                                                                                            0
+                                                                                                     14
+                                                                                                      0
+                                                                                                              1155.51
+                                                                                                              134.90
+                                                                                                                            3
+                                                                                                                            0
+                                                                                                                                     3
+                                                                                                                                     0
+                                                                                                                                           1467.75
+                                                                                                                                           160.57
+                                                                                yara        5         5       434.81        0        0     407.62
+In order to evaluate whether extracting the relationships                      Total       94        70                    55       31
+among options could improve the fuzzing performance,
+we selected the SOTA option configuration fuzzing tool,
+POWER [29], for comparison. POWER is also a fuzzer sup-                   tation may be more effective in finding unexpected behaviors
+porting switching option combinations on the fly. Still, the              caused by some invalid combinations. However, CarpetFuzz
+combinations it used were generated from random mutation                  aims to explore the deep code related to option combinations,
+(insert, remove, replace), unlike CarpetFuzz. We evaluated                which requires the tested combination to be valid. We an-
+CarpetFuzz 6 and POWER on the POWER’s benchmark                           alyzed the average unique edges triggered by all test cases
+(same programs, same versions, same seeds). Each program                  generated by CarpetFuzz and POWER, as shown in columns
+in the benchmark was fuzzed by CarpetFuzz and POWER                       3 and 6 of Table 3. In 22 programs, the average number of
+for 24 hours, repeated 5 times. For crashes reported during               edges of CarpetFuzz was greater than that of POWER. In 8
+fuzzing, we used the top three entries of the stack traces from           programs, CarpetFuzz performed worse than POWER. The
+AddressSanitizer [43] for deduplication, as suggested in [26].            results for seven programs (except ffmpeg) were caused by
+From these programs, CarpetFuzz extracted 225 relationships               treating the strings inserted in the command line by POWER
+with a precision of 90.67% and found 94 unique crashes after              as input file names, which brought in more edges. Note that
+deduplication, 1.71 times POWER (55), as shown in Table 3.                these “new” input files would not be mutated as fuzzers only
+Among the 94 unique crashes, 70 were not discovered by                    mutates files symbolized as “@@.” So the new edges they
+POWER, demonstrating the advantage of CarpetFuzz in find-                 brought would not be used to find new bugs, which is why
+ing vulnerabilities. Although it is also possible for POWER               CarpetFuzz still found more bugs in these programs even with
+to generate corresponding combinations through mutation,                  fewer average edges (19 versus 7). The result for the rest one
+the time required may be very long due to randomness. In                  (i.e., ffmpeg) was due to a lack of supporting position-specific
+contrast, CarpetFuzz can generate these combinations quickly              options, which only take effect in a specific position. Since
+based on the extracted relationship, demonstrating the impor-             CarpetFuzz currently does not support constraints related to
+tance of considering relationships.                                       option positions, it cannot generate combinations that allow
+   Note that POWER also found 31 unique crashes that Car-                 these options to take effect and thus found fewer edges and
+petFuzz did not discover. We acknowledged that random mu-                 bugs (1 versus 2) in this program. Note that programs with
+  6 Since POWER is based on AFL++, we used the AFL++-based Carpet-        such options are rare (less than 5%). More detailed analyses
+Fuzz for comparison, to be fair.                                          of these eight programs’ results are presented in Appendix G.
+
+
+
+USENIX Association                                                                           32nd USENIX Security Symposium                  1929
+The results showed that the average unique edges of test cases     that parsing errors usually occur when dealing with complex
+generated by CarpetFuzz were 1.16 times that of POWER on           sentences or computer terms, causing seven false negatives in
+average, up to 2.50 times in djpeg, proving that CarpetFuzz is     Section 5.2. Note that a few false negatives will only affect
+more effective in exploring option-related deep code.              the number of combinations (i.e., more invalid combinations)
+                                                                   to test but not the final fuzzing results since our prioritiza-
+5.6 Real-world Vulnerabilities Discovered                          tion technique will give these missed invalid combinations
+                                                                   the lowest priority (Section 3.5). Our performance will be
+    (RQ6)                                                          further improved with NLP’s development. Another reason is
+We have continuously run the CarpetFuzz-assisted fuzzer on         a lack of human common sense, as mentioned in Section 5.2.
+our real world dataset to discover new vulnerabilities. So far,    Some conflicts can only be determined with certain common
+we have found 57 unique crashes, of which 43 are 0-days,           sense, such as “horizontal dimension” and “vertical dimen-
+as shown in Table 4. These vulnerabilities cover a variety         sion.” Although they are both “dimensions,” humans know
+of vulnerability types, including double free, use after free,     that “vertical” and “horizontal” are two non-interfering with
+buffer overflow, floating point exception, and assertion fail-     each other. In future work, we consider adding a common-
+ures. In these 43 0-days, we have obtained 30 CVE IDs, and         sense knowledge graph to assist CarpetFuzz in identifying
+the other 13 are still under request. We analyzed the trig-        such relationships. In addition to being found from descrip-
+gering conditions of these vulnerabilities and calculated the      tions, relationships can also be determined by comparing
+minimum number of options required to trigger them (i.e.,          option names, as mentioned in Section 5.2. CarpetFuzz cur-
+the shortest combination). Among these vulnerabilities, 47         rently identifies relationships based on descriptions and may
+require at least one option to be triggered (82.46%), and 30       perform better by combining description and option name.
+of them require at least two options (52.63%), proving the            Since CarpetFuzz is implemented based on AFL, it also
+importance of options in vulnerability discovery. We found         has the limitations of AFL itself. For example, CarpetFuzz
+that for these vulnerabilities, combining all of the options may   only detects vulnerabilities that crash the programs. How-
+not be helpful due to conflicts among options. For example,        ever, by compiling the target programs with LLVM Sanitizers,
+the shortest combination to trigger the heap buffer overflow in    such as TSan [51] and UBSan [52], the fuzzer in CarpetFuzz
+tiffcp.c:1373 (CVE-2022-0924) is “-i -s -p separate.” Since        can also detect non-crash vulnerabilities. Additionally, Car-
+the -s option conflicts with the -t option, any combination        petFuzz only runs on Linux systems. This limitation can be
+containing both these two options will not trigger this vulner-    solved by implementing CarpetFuzz to fuzzers supporting
+ability, including the combination of all options. Similarly,      other systems, such as WINAFL [18]. Since other systems
+the -Z option in tiffcrop conflicts with the -X, -Y, and -z op-    may use different identifiers to represent options (e.g., “/” in
+tions, and the -p option in img2sixel conflicts with -e, -I, and   Windows), the code for parsing documents in CarpetFuzz
+-b options, so combining all options would not trigger these       must also be changed accordingly.
+programs’ vulnerabilities, such as CVE-2022-2058 and CVE-          Importance of considering a large number of combina-
+2022-29978. We analyzed the longest combinations of these          tions. Considering a large number of combinations is im-
+three vulnerabilities, which were 14 (18 in total), 25 (33 in      portant for finding potential option-related vulnerabilities. In
+total), and 23 (28 in total), respectively, demonstrating that     Section 5.6, more than half of vulnerabilities require spe-
+these vulnerabilities could not be triggered by combining all      cific combinations to be triggered, which only accounts for a
+options. It is worth noting that most of the programs have         small proportion of all combinations (e.g., 1.56% for CVE-
+been integrated into the OSS-Fuzz project [19] and have been       2022-3626). Moreover, due to the conflicts among options,
+extensive continuous fuzzing in recent years. However, we          combining all options would cause the programs to throw
+can still find new vulnerabilities in these programs, proving      exceptions and thus not help discover these vulnerabilities.
+that fuzzing with valid option combinations is still a novel       Without considering a large number of combinations, these
+and effective method for discovering vulnerabilities at this       very few specific combinations will be missed, causing these
+stage.                                                             vulnerabilities to be missed.
+                                                                   Importance of filtering invalid option combinations. Fil-
+6    Discussion                                                    tering the invalid option combinations is important for saving
+                                                                   time in finding vulnerability-related combinations. In Sec-
+Limitation and future work. Although CarpetFuzz achieved           tion 5.6, CarpetFuzz found 18 vulnerabilities that require four
+good results in relationship identification and exraction, there   or more options to be triggered, accounting for 31.57% of all
+were still some false negatives and false positives. One rea-      discovered vulnerabilities. CarpetFuzz can save 85.06% of the
+son is the limitations of the NLP model (spaCy, NLTK, and          time by filtering invalid combinations for vulnerabilities with
+AllenNLP) that CarpetFuzz relies on, which mainly comes            four or more options. Although most vulnerabilities (68.43%)
+from the dependency parser’s accuracy. Although the accu-          in Table 4 have fewer than four options, the number of combi-
+racy has reached 97% [46] and is enough for fuzzing, we find       nations is still large (e.g., 6850 for jpegoptim) due to the large
+
+
+
+1930    32nd USENIX Security Symposium                                                                        USENIX Association
+    Table 4: Vulnerabilities discovered by CarpetFuzz. #Options: minimum number of options to trigger the vulnerability.
+                                                                                      0-day or 1-day?            Options
+                 Program          Vulnerability Type            Location                                                         Fixed?
+                                                                                 0-day?          CVE       Require?   #Options
+                                 segmentation violation         fromgif.c:283      NO            N/A         YES         1        NO
+                                    assertion failure        stb_image.h:1894     YES     CVE-2022-29977     NO          0        NO
+                img2sixel                                       encoder.c:633     YES     CVE-2022-29978     YES         1        NO
+                                 floating point exception
+                                                                encoder.c:636     YES         Requesting     YES         1        NO
+                                  heap-buffer-overflow            quant.c:876     YES         Requesting     YES         2        NO
+                                                              jpegoptim.c:711      NO            N/A         YES         2        YES
+                                                              jpegoptim.c:906     YES         Requesting     YES         1        YES
+                jpegoptim        segmentation violation
+                                                              jpegoptim.c:632     YES         Requesting     NO          0        YES
+                                                             jpegoptim.c:1055     YES         Requesting     YES         1        YES
+                                                               transupp.c:157     YES         Requesting     YES         2        YES
+                 jpegtran        floating point exception
+                                                               transupp.c:161     YES         Requesting     YES         2        YES
+                                   heap-use-after-free               jv.c:31       NO            N/A         YES         4        YES
+                    jq
+                                     assertion failure         jv_parse.c:305      NO            N/A         YES         1        NO
+             openssl-asn1parse         double-free                mem.c:277       YES      CVE-2022-4450     YES         1        YES
+                openssl-rsa          assertion failure           packet.c:387     YES         Requesting     NO          0        YES
+                                 segmentation violation         gmem.cc:356       YES         Requesting     YES         1        NO
+                 pdftops
+                                  stack-buffer-overflow         gmem.cc:148        NO            N/A         NO          0        NO
+                                 segmentation violation         gmem.cc:356       YES         Requesting     NO          0        NO
+                 pdftotext
+                                  stack-buffer-overflow            Dict.cc:98      NO            N/A         NO          0        NO
+                                                                   tree.c:746      NO            N/A         YES         1        YES
+                 tcpprep            assertion failure
+                                                                   tree.c:746     YES         Requesting     YES         1        YES
+                 tcpreplay          assertion failure       send_packets.c:116    YES         Requesting     YES         5        NO
+                                                                 tiffcp.c:1373    YES      CVE-2022-0924     YES         3        YES
+                                  heap-buffer-overflow
+                                                                  tiffcp.c:948    YES      CVE-2022-4645     NO          0        YES
+                   tiffcp           assertion failure            tif_read.c:99    YES      CVE-2022-0865     NO          0        YES
+                                                                 tif_lzw.c:619    YES      CVE-2022-1622     YES         1        YES
+                                 segmentation violation
+                                                                 tif_lzw.c:624    YES      CVE-2022-1623     YES         1        YES
+                                                                tif_unix.c:340    YES      CVE-2022-3626     YES         6        YES
+                                                                tif_unix.c:346    YES      CVE-2022-1056     YES         1        YES
+                                                                tif_unix.c:346    YES      CVE-2022-3597     YES         4        YES
+                                                                tif_unix.c:346    YES      CVE-2022-3627     YES         4        YES
+                                                                tif_unix.c:368    YES      CVE-2023-0801     YES         3        YES
+                                                               tiffcrop.c:3414     NO            N/A         YES         6        YES
+                                                               tiffcrop.c:3502    YES      CVE-2023-0800     YES         2        YES
+                                  heap-buffer-overflow         tiffcrop.c:3516    YES      CVE-2023-0803     YES         4        YES
+                                                               tiffcrop.c:3604    YES      CVE-2022-3598     YES         1        YES
+                                                               tiffcrop.c:3609    YES      CVE-2023-0804     YES         4        YES
+                                                               tiffcrop.c:3724    YES      CVE-2023-0802     YES         3        YES
+                                                               tiffcrop.c:6905    YES      CVE-2022-2953     YES         5        YES
+                                                               tiffcrop.c:7345    YES      CVE-2022-3599     YES         1        YES
+                                                               tiffcrop.c:8023     NO            N/A         NO          0        YES
+                                                               tiffcrop.c:8903     NO            N/A         YES         3        YES
+                  tiffcrop
+                                                                tif_unix.c:340    YES      CVE-2022-0907     YES         1        YES
+                                                                tif_unix.c:368    YES      CVE-2023-0797     YES         4        YES
+                                                               tiffcrop.c:3400    YES      CVE-2023-0798     YES         4        YES
+                                 segmentation violation
+                                                               tiffcrop.c:3488    YES      CVE-2023-0795     YES         4        YES
+                                                               tiffcrop.c:3592    YES      CVE-2023-0796     YES         4        YES
+                                                               tiffcrop.c:6247    YES         Requesting     YES         6        NO
+                                                               tiffcrop.c:5801     NO            N/A         YES         1        YES
+                                                               tiffcrop.c:5802    YES      CVE-2022-0909     NO          0        YES
+                                                               tiffcrop.c:5807     NO            N/A         YES         4        YES
+                                                               tiffcrop.c:5808     NO            N/A         YES         4        YES
+                                 floating point exception
+                                                               tiffcrop.c:5817    YES      CVE-2022-2056     YES         3        YES
+                                                               tiffcrop.c:5818     NO            N/A         YES         3        YES
+                                                               tiffcrop.c:5936    YES      CVE-2022-2057     YES         2        YES
+                                                               tiffcrop.c:5941    YES      CVE-2022-2058     YES         5        YES
+                                   heap-use-after-free         tiffcrop.c:3701    YES      CVE-2023-0799     YES         4        YES
+                   Total                                                57         43             30          47                   45
+
+
+
+number of options, and CarpetFuzz can save 20.71% of the                          this paper is based on the research that almost all flaws are
+time. Additionally, CarpetFuzz found 1.71 times more unique                       caused by the interaction of no more than six factors [27].
+crashes than POWER (Section 5.5), which generates com-                            Moreover, three of the 57 crashes need at least 6 options to be
+binations through random mutation without filtering invalid                       triggered, which would be missed with N < 6, demonstrating
+combinations, proving that filtering invalid option combina-                      the necessity of considering 6-wise combinations. We are
+tions is important in new vulnerability discovery.                                unsure if crashes requiring more options exist. Considering
+                                                                                  the effect of increasing the value of N on the number of
+Optimal number of options. CarpetFuzz used the N-wise
+                                                                                  combinations (e.g., 679 for N = 6 and 1658 for N = 7 in
+method to prune valid option combinations. The smaller the
+                                                                                  tiffcrop), we think N = 6 is an appropriate choice in practice.
+value of N, the better the effect of pruning, but the interaction
+of more than N options will be ignored. The choice of 6 in
+
+
+
+USENIX Association                                                                                   32nd USENIX Security Symposium        1931
+7   Conclusion                                                   [7] Tianqi Chen and Carlos Guestrin. Xgboost: A scalable
+                                                                     tree boosting system. In Proceedings of the 22nd acm
+We designed and implemented CarpetFuzz, an NLP-based                 sigkdd international conference on knowledge discovery
+fuzzing assistance technique for extracting program option           and data mining, pages 785–794, 2016.
+constraints. Benefitting from active learning, machine learn-
+ing, and NLP techniques, CarpetFuzz accurately extracted         [8] Yuting Chen, Ting Su, Chengnian Sun, Zhendong Su,
+relationships among options from documents and filtered out          and Jianjun Zhao. Coverage-directed differential testing
+67.91% of option combinations. With the pruned valid combi-          of jvm implementations. In proceedings of the 37th
+nations, CarpetFuzz helped AFL find 45.97% more paths that           ACM SIGPLAN Conference on Programming Language
+other fuzzers cannot discover on 20 popular programs and             Design and Implementation, pages 85–99, 2016.
+found 57 unique crashes, of which 30 were assigned CVE IDs.      [9] Jaeseung Choi, Joonun Jang, Choongwoo Han, and
+Also, CarpetFuzz found 94 unique crashes on the previous             Sang Kil Cha. Grey-box concolic testing on binary
+work’s benchmark, 1.71 times that of the previous work.              code. In 2019 IEEE/ACM 41st International Confer-
+                                                                     ence on Software Engineering (ICSE), pages 736–747.
+Acknowledgement                                                      IEEE, 2019.
+                                                                [10] Corinna Cortes and Vladimir Vapnik. Support-vector
+We are grateful to our shepherd for his valuable guidance            networks. Machine learning, 20(3):273–297, 1995.
+and assistance, and thank all the anonymous reviewers for
+their insightful comments. The authors are supported in part    [11] Ido Dagan and Sean P Engelson. Committee-based sam-
+by NSFC (U1836211, 92270204), Beijing Natural Science                pling for training probabilistic classifiers. In Machine
+Foundation (No.M22004), Youth Innovation Promotion As-               Learning Proceedings 1995, pages 150–157. Elsevier,
+sociation CAS, Beijing Academy of Artificial Intelligence            1995.
+(BAAI) and a research grant from Huawei.
+                                                                [12] Debian. Debian manpages. https://manpages.deb
+                                                                     ian.org, 2022.
+References
+                                                                [13] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+ [1] Cornelius Aschermann, Sergej Schumilo, Ali Abbasi,              Kristina Toutanova. Bert: Pre-training of deep bidirec-
+     and Thorsten Holz. Ijon: Exploring deep state spaces            tional transformers for language understanding. arXiv
+     via fuzzing. In 2020 IEEE Symposium on Security and             preprint arXiv:1810.04805, 2018.
+     Privacy (SP), pages 1597–1612. IEEE, 2020.                 [14] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and
+                                                                     Marc Heuse. AFL++: Combining incremental steps of
+ [2] bjascob. bjascob/lemminflect: A python module for
+                                                                     fuzzing research. In 14th USENIX Workshop on Offen-
+     english lemmatization and inflection. https://gith
+                                                                     sive Technologies (WOOT 20). USENIX Association,
+     ub.com/bjascob/LemmInflect, 2022.
+                                                                     August 2020.
+ [3] Marcel Böhme, Valentin JM Manès, and Sang Kil Cha.
+                                                                [15] Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xi-
+     Boosting fuzzer efficiency: An information theoretic
+                                                                     aojun Qin, Dong Wu, and Zuoning Chen. {GREYONE}:
+     perspective. In Proceedings of the 28th ACM Joint Meet-
+                                                                     Data flow sensitive fuzzing. In 29th USENIX Security
+     ing on European Software Engineering Conference and
+                                                                     Symposium (USENIX Security 20), pages 2577–2594,
+     Symposium on the Foundations of Software Engineering,
+                                                                     2020.
+     pages 678–689, 2020.
+                                                                [16] Shuitao Gan, Chao Zhang, Xiaojun Qin, Xuwen Tu,
+ [4] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-               Kang Li, Zhongyu Pei, and Zuoning Chen. Collafl: Path
+     hury. Coverage-based greybox fuzzing as markov chain.           sensitive fuzzing. In 2018 IEEE Symposium on Security
+     IEEE Transactions on Software Engineering, 45(5):489–           and Privacy (SP), pages 679–696. IEEE, 2018.
+     506, 2017.
+                                                                [17] Alberto Goffi, Alessandra Gorla, Michael D Ernst, and
+ [5] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-               Mauro Pezzè. Automatic generation of oracles for ex-
+     hury. Coverage-based greybox fuzzing as markov chain.           ceptional behaviors. In Proceedings of the 25th inter-
+     IEEE Transactions on Software Engineering, 45(5):489–           national symposium on software testing and analysis,
+     506, 2017.                                                      pages 213–224, 2016.
+ [6] Peng Chen and Hao Chen. Angora: Efficient fuzzing by       [18] Google. A fork of afl for fuzzing windows bina-
+     principled search. In 2018 IEEE Symposium on Security           ries. https://github.com/googleprojectzero/w
+     and Privacy (SP), pages 711–725. IEEE, 2018.                    inafl, 2022.
+
+
+
+1932   32nd USENIX Security Symposium                                                                  USENIX Association
+[19] Google. Oss-fuzz.      https://google.github.io/o                 Proceedings of the 2020 ACM SIGSAC Conference on
+     ss-fuzz/, 2022.                                                   Computer and Communications Security, pages 1837–
+                                                                       1852, 2020.
+[20] Adrian Herrera, Hendra Gunadi, Shane Magrath,
+     Michael Norrish, Mathias Payer, and Antony L Hosking.        [32] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-
+     Seed selection for successful fuzzing. In Proceedings             Han Lee, Yu Song, and Raheem Beyah. {MOPT}: Opti-
+     of the 30th ACM SIGSOFT International Symposium on                mized mutation scheduling for fuzzers. In 28th USENIX
+     Software Testing and Analysis, pages 230–243, 2021.               Security Symposium (USENIX Security 19), pages 1949–
+                                                                       1966, 2019.
+[21] Tin Kam Ho. Random decision forests. In Proceedings
+     of 3rd international conference on document analysis         [33] Valentin JM Manès, Soomin Kim, and Sang Kil Cha.
+     and recognition, volume 1, pages 278–282. IEEE, 1995.             Ankou: guiding grey-box fuzzing towards combinatorial
+[22] Sabine Iatridou and Hedde Zeijlstra. Negation, polarity,          difference. In Proceedings of the ACM/IEEE 42nd In-
+     and deontic modals. Linguistic inquiry, 44(4):529–568,            ternational Conference on Software Engineering, pages
+     2013.                                                             1024–1036, 2020.
+
+[23] ImageMagick. Imagemagick - command-line tools:               [34] Microsoft. Pict.   https://github.com/microsoft
+     Magick. https://imagemagick.org/script/mag                        /pict, 2022.
+     ick.php, 2022.
+                                                                  [35] MozillaSecurity. Fuzzing resources for feeding various
+[24] Allen Institute. Allennlp - allen institute for ai. https:        fuzzers with input. https://github.com/Mozilla
+     //allenai.org/allennlp, 2022.                                     Security/fuzzdata, 2022.
+
+[25] Michael Israel. The pragmatics of polarity. The hand-        [36] openhub. The apache http server open source project on
+     book of pragmatics, 16:701–723, 2004.                             open hub. https://www.openhub.net/p/apache,
+                                                                       2022.
+[26] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei,
+     and Michael Hicks. Evaluating fuzz testing. In Proceed-      [37] openhub. The mysql open source project on open hub.
+     ings of the 2018 ACM SIGSAC Conference on Computer                https://www.openhub.net/p/mysql, 2022.
+     and Communications Security, pages 2123–2138, 2018.
+                                                                  [38] Rahul Pandita, Xusheng Xiao, Hao Zhong, Tao Xie,
+[27] Rick Kuhn. Practical applications of combinatorial test-          Stephen Oney, and Amit Paradkar. Inferring method
+     ing, 2012.                                                        specifications from natural language api descriptions.
+[28] Steven M LaValle, Michael S Branicky, and Stephen R               In 2012 34th international conference on software engi-
+     Lindemann. On the relationship between classical grid             neering (ICSE), pages 815–825. IEEE, 2012.
+     search and probabilistic roadmaps. The International
+                                                                  [39] NLTK Project. Nltk: Natural language toolkit. https:
+     Journal of Robotics Research, 23(7-8):673–692, 2004.
+                                                                       //www.nltk.org/index.html, 2022.
+[29] Ahcheong Lee, Irfan Ariq, Yunho Kim, and Moonzoo
+     Kim. Power: Program option-aware fuzzer for high bug         [40] Sanjay Rawat, Vivek Jain, Ashish Kumar, Lucian Co-
+     detection ability. In the 15th IEEE International Con-            jocar, Cristiano Giuffrida, and Herbert Bos. Vuzzer:
+     ference on Software Testing, Verification and Validation          Application-aware evolutionary fuzzing. In NDSS, vol-
+     (ICST), 2022.                                                     ume 17, pages 1–14, 2017.
+
+[30] Yuekang Li, Yinxing Xue, Hongxu Chen, Xiuheng Wu,            [41] Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos,
+     Cen Zhang, Xiaofei Xie, Haijun Wang, and Yang Liu.                Jonathan Foote, David Warren, Gustavo Grieco, and
+     Cerebro: context-aware adaptive fuzzing for effective             David Brumley. Optimizing seed selection for fuzzing.
+     vulnerability detection. In Proceedings of the 2019 27th          In 23rd USENIX Security Symposium (USENIX Security
+     ACM Joint Meeting on European Software Engineer-                  14), pages 861–875, 2014.
+     ing Conference and Symposium on the Foundations of
+     Software Engineering, pages 533–544, 2019.                   [42] Radim Řehůřek and Petr Sojka. Software Framework for
+                                                                       Topic Modelling with Large Corpora. In Proceedings
+[31] Tao Lv, Ruishi Li, Yi Yang, Kai Chen, Xiaojing Liao,              of the LREC 2010 Workshop on New Challenges for
+     XiaoFeng Wang, Peiwei Hu, and Luyi Xing. Rtfm!                    NLP Frameworks, pages 45–50, Valletta, Malta, May
+     automatic assumption discovery and verification deriva-           2010. ELRA. http://is.muni.cz/publication
+     tion from library document for api misuse detection. In           /884893/en.
+
+
+
+USENIX Association                                                                 32nd USENIX Security Symposium       1933
+[43] Konstantin Serebryany, Derek Bruening, Alexander           [56] Bernd Warken. groff - debian bullseye - debian man-
+     Potapenko, and Dmitriy Vyukov. {AddressSanitizer}:              pages. https://manpages.debian.org/bullseye
+     A fast address sanity checker. In 2012 USENIX An-               /groff/groff.7.en.html, 2021.
+     nual Technical Conference (USENIX ATC 12), pages
+                                                                [57] Wikipedia. N-wise testing. https://en.wikipedia
+     309–318, 2012.
+                                                                     .org/wiki/All-pairs_testing#N-wise_testing,
+[44] Dongdong She, Rahul Krishna, Lu Yan, Suman Jana,                2021.
+     and Baishakhi Ray. Mtfuzz: fuzzing with a multi-task
+                                                                [58] Wikipedia. Command-line interface. https://en
+     neural network. In Proceedings of the 28th ACM Joint
+                                                                     .wikipedia.org/wiki/Command-line_interface,
+     Meeting on European Software Engineering Conference
+                                                                     2022.
+     and Symposium on the Foundations of Software Engi-
+     neering, pages 737–749, 2020.                              [59] Edmund Wong, Lei Zhang, Song Wang, Taiyue Liu,
+                                                                     and Lin Tan. Dase: Document-assisted symbolic ex-
+[45] Suhwan Song, Chengyu Song, Yeongjin Jang, and By-
+                                                                     ecution for improving automated software testing. In
+     oungyoung Lee. Crfuzz: Fuzzing multi-purpose pro-
+                                                                     2015 IEEE/ACM 37th IEEE International Conference
+     grams through input validation. In Proceedings of the
+                                                                     on Software Engineering, volume 1, pages 620–631.
+     28th ACM Joint Meeting on European Software Engi-
+                                                                     IEEE, 2015.
+     neering Conference and Symposium on the Foundations
+     of Software Engineering, pages 690–700, 2020.              [60] Danning Xie, Yitong Li, Mijung Kim, Hung Viet Pham,
+                                                                     Lin Tan, Xiangyu Zhang, and Michael Godfrey. Leverag-
+[46] spaCy. Facts & figures. https://spacy.io/usage
+                                                                     ing documentation to test deep learning library functions.
+     /facts-figures, 2022.
+                                                                     arXiv preprint arXiv:2109.01002, 2021.
+[47] spaCy. Industrial-strength natural language processing
+                                                                [61] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu,
+     in python. https://spacy.io, 2022.
+                                                                     Kai Lu, and Xu Zhou. {EcoFuzz}: Adaptive {Energy-
+[48] Lin Tan, Ding Yuan, Gopal Krishna, and Yuanyuan Zhou.           Saving} greybox fuzzing as a variant of the adversarial
+     /* icomment: Bugs or bad comments?*. In Proceedings             {Multi-Armed} bandit. In 29th USENIX Security Sym-
+     of twenty-first ACM SIGOPS symposium on Operating               posium (USENIX Security 20), pages 2307–2324, 2020.
+     systems principles, pages 145–158, 2007.                   [62] Michal Zalewski.     afl-showmap.     https:
+[49] Lin Tan, Yuanyuan Zhou, and Yoann Padioleau. acom-              //manpages.debian.org/unstable/afl++/afl
+     ment: mining annotations from comments and code                -showmap.8.en.html, 2022.
+     to detect interrupt related concurrency bugs. In 2011      [63] Michal Zalewski. american fuzzy lop. https://lcam
+     33rd International Conference on Software Engineering           tuf.coredump.cx/afl/, 2022.
+     (ICSE), pages 11–20. IEEE, 2011.
+                                                                [64] Andreas Zeller, Rahul Gopinath, Marcel Böhme, Gor-
+[50] Shin Hwei Tan, Darko Marinov, Lin Tan, and Gary T               don Fraser, and Christian Holler. Testing configura-
+     Leavens. @ tcomment: Testing javadoc comments to                tions. In The Fuzzing Book. CISPA Helmholtz Center
+     detect comment-code inconsistencies. In 2012 IEEE               for Information Security, 2022. Retrieved 2022-05-18
+     Fifth International Conference on Software Testing, Ver-        12:31:52+02:00.
+     ification and Validation, pages 260–269. IEEE, 2012.
+                                                                [65] Juan Zhai, Yu Shi, Minxue Pan, Guian Zhou, Yongxiang
+[51] The Clang Team. Threadsanitizer. https://clang.                 Liu, Chunrong Fang, Shiqing Ma, Lin Tan, and Xiangyu
+     llvm.org/docs/ThreadSanitizer.html, 2022.                       Zhang. C2s: translating natural language comments to
+[52] The Clang Team. Undefinedbehaviorsanitizer.                     formal program specifications. In Proceedings of the
+     https://clang.llvm.org/docs/UndefinedBehav                      28th ACM Joint Meeting on European Software Engi-
+     iorSanitizer.html, 2022.                                        neering Conference and Symposium on the Foundations
+                                                                     of Software Engineering, pages 25–37, 2020.
+[53] The Clang Team. Writing an llvm pass. https://ll
+     vm.org/docs/WritingAnLLVMPass.html, 2022.                  [66] Zenong Zhang, George Klees, Eric Wang, Michael
+                                                                     Hicks, and Shiyi Wei. Registered report: Fuzzing con-
+[54] Jinghan Wang, Chengyu Song, and Heng Yin. Rein-                 figurations of program options. In 1st International
+     forcement learning-based hierarchical seed scheduling           Fuzzing Workshop (FUZZING’22), 2022.
+     for greybox fuzzing. In NDSS, 2021.
+                                                                [67] Lei Zhao, Yue Duan, Heng Yin, and Jifeng Xuan. Send
+[55] Zi Wang, Ben Liblit, and Thomas Reps. Tofu: Target-             hardest problems my way: Probabilistic path prioritiza-
+     oriented fuzzer. arXiv preprint arXiv:2004.14375, 2020.         tion for hybrid fuzzing. In NDSS, 2019.
+
+
+
+1934   32nd USENIX Security Symposium                                                                    USENIX Association
+[68] Hao Zhong, Lu Zhang, Tao Xie, and Hong Mei. In-
+                                                                                   Table 6: Keywords for relationship extraction.
+     ferring resource specifications from natural language                    Category     Initial state                         Keywords
+     api documentation. In 2009 IEEE/ACM International                                                       implicit, conflict, discard, exclude, cancel, dis-
+                                                                                                            courage, disregard, alias, terminate, imply, over-
+     Conference on Automated Software Engineering, pages                      Conflict           SC          ride, equivalent, ignore, similar, include, iden-
+     307–318. IEEE, 2009.                                                                                    tical, better, exclusive, supersede, superfluous,
+                                                                                                                           same, replace, obsolete
+                                                                                                              disable, unspecified, unprovide, unavailable,
+[69] Xiaogang Zhu, Sheng Wen, Seyit Camtepe, and Yang Xi-                     Conflict           SN
+                                                                                                                                  separate
+     ang. Fuzzing: A survey for roadmap. ACM Computing                     Dependency            SD
+                                                                                                             support, match, require, need, valid, active, af-
+                                                                                                                                fect, assume
+     Surveys (CSUR), 2022.                                                                                   use, enable, specify, give, provide, meaningful,
+                                                                           Dependency            SN
+                                                                                                                        available, combine, appear
+
+
+Appendix
+                                                                          D      Real world dataset
+A    Category of the explicitly declared relation-                        Table 7 shows the 20 programs in our real world dataset.
+     ships in this paper
+Table 5 shows the categories of the explicitly declared rela-             Table 7: Target programs evaluated in our experiments. OPT.:
+tionships in this paper.                                                  option, REL.: relationship.
+                                                                                  Program                Package         Format        #OPT.      #REL.
+                                                                                      cmark         cmark-git-9c8e8        md            9          3
+                                                                                     editcap        wireshark-4.0.1       pcap          31          4
+Table 5: Category of the explicitly declared relationships in                   eu-elfclassify        elfutils-0.188       elf          22          71
+this paper.                                                                       img2sixel        libsixel-git-6a5be      jpg          28          6
+          Category                        Example                                 jpegoptim         jpegoptim-1.5.0        jpg          34          29
+           Conflict    The -level1 option cannot be used with -form.                jpegtran      libjpeg-turbo-2.1.4      jpg          21          1
+        Dependency     Make sense only when -p option is specified.                      jq               jq-1.6          json          24          4
+         Implication   This flag implies (and is incompatible with) -e.                lrzip           lrzip-0.651         lrz          22          10
+          Similarity   Like -a but write only the image dimensions.                 ogg123         vorbis-tools-1.4.2      ogg          13          1
+        Supersedence   -G supersedes usage of any -l or -m options.                 openssl-
+                                                                                                  openSSL-git-31ff3        pem           12          2
+                                                                                  asn1parse
+                                                                                  openssl-ec      openSSL-git-31ff3        pem           16          3
+                                                                                 openssl-rsa      openSSL-git-31ff3        pem           28          71
+                                                                                    pdftops            xpdf-4.0.3           pdf          30          30
+B    Algorithm of the active learning                                              pdftotext
+                                                                                podofoencrypt
+                                                                                                       xpdf-4.0.3
+                                                                                                     podofo-0.9.8
+                                                                                                                            pdf
+                                                                                                                            pdf
+                                                                                                                                         24
+                                                                                                                                         11
+                                                                                                                                                     5
+                                                                                                                                                     1
+                                                                                   speexdec           speex-1.2.1          spx           12          18
+Algorithm 1 shows the active learning algorithm framework.                          tcpprep         tcpreplay-4.4.2        pcap          19          17
+                                                                                   tcpreplay        tcpreplay-4.4.2        pcap          29          20
+                                                                                      tiffcp       libtiff-git-b51bb        tiff         18          4
+Algorithm 1 The active learning algorithm framework.                                 tiffcrop      libtiff-git-b51bb        tiff         33          6
+Input: An unlabeled dataset, U = {x1 , x2 , ..., xn }, n denotes the
+  number of samples in U;
+  A small labeled dataset based on keywords, L = {x1 , x2 , ..., xm },
+  m denotes the number of samples in L;                                   E     Filtered option combinations
+  Oracle f : X ← Y
+  The number of samples to select, k;
+                                                                          The result of filtering invalid option combinations is shown
+Output: Final classifier C                                                in Table 8.
+  Initialization: Unlabeled data U := U, labeled data L := L, Clas-
+  sifier C based on L ;                                                   F     Comparison between 6-wise and random
+  for t = 1 →T do
+       Entropy(x(i) ) ← calculate entropy on U using classifier C ;
+                                                                                sampling
+       Select top k x(i) ← arg maxx∈U Entropy(x)                          Table 9 shows the result of pruning.
+       Evaluate y(i) ← f (x(i) )
+       Update U ← U \x(i)
+       Update L ← L ∪ (x(i) , y(i) )                                      G In-depth analysis of the performance in Sec-
+       Update C ← C (L )                                                    tion 5.5
+  return C
+                                                                          We have analyzed these eight programs and their manuals
+                                                                          manually. The results for seven programs (except ffmpeg)
+                                                                          were caused by treating the strings inserted in the command
+C    Keywords used in this paper                                          line by POWER as input file names. The result for the rest one
+                                                                          (i.e., ffmpeg) was due to a lack of supporting position-specific
+The keywords used in this paper is shown in Table 6.                      options. We also found that two programs’ documents did not
+
+
+
+USENIX Association                                                                               32nd USENIX Security Symposium                           1935
+                                                                         new edges. For example, POWER can replace the command
+Table 8: Filtered option combinations based on the extracted
+                                                                        “cflow -T @@ -o /tmp/foo” with “cflow -a -T @@ -o abc,”
+relationships. REL.: number of relationships extracted by
+                                                                         which generates the file named “abc.” By parsing the file, the
+CarpetFuzz , PRC.: precision, PCT.: percentage of the filtered
+                                                                         command “cflow -a -T abc @@ -o /tmp/foo” will have 62
+option combinations.
+                                           Invalid Combination
+                                                                         new edges (even more with more such files), but no new bug
+           Program         #REL.
+                                       PCT.        PRC.      Recall      was generated.
+              cmark          2        43.75%     100.00%     82.35%
+             editcap         4        62.50%     100.00%    100.00%
+                                                                            Additionally, sometimes, POWER could insert options be-
+         eu-elfclassify      66       99.68%     100.00%     99.80%      fore the program, like “-a -T cflow @@ -o /tmp/foo.” Due
+           img2sixel         5        69.24%     100.00%     87.10%      to POWER’s implementation, argv[0] would not be changed,
+          jpegoptim          22       94.99%     100.00%     97.54%
+            jpegtran         1        25.00%     100.00%    100.00%      and the command would be parsed as “cflow -T cflow @@
+                 jq          4        68.36%     100.00%    100.00%     -o /tmp/foo” (ignoring the first option “-a”). The program
+               lrzip         6        68.75%     100.00%     84.62%
+             ogg123          1        25.00%     100.00%    100.00%
+                                                                         would treat the second “cflow” as an input and parse itself. If
+       openssl-asn1parse     2        43.75%     100.00%    100.00%      the input type of the program happened to be ELF (e.g., size),
+          openssl-ec         3        50.00%     100.00%    100.00%
+          openssl-rsa        69       99.85%      99.99%     99.93%
+                                                                         the new edges could be a lot (e.g., 92).
+             pdftops         31       98.10%      99.35%    100.00%         Second, we found some options in ffmpeg only take effect
+            pdftotext        9        85.35%      68.46%     90.12%      in a specific position. For example, the “-f” option would
+        podofoencrypt        1        25.00%     100.00%    100.00%
+            speexdec         12       88.28%     100.00%     93.39%      specify the output format only between the input and output
+             tcpprep         17       98.85%     100.00%    100.00%      in the command line. Since CarpetFuzz currently does not
+           tcpreplay         21       99.62%      99.71%    100.00%
+              tiffcp         2        43.75%     100.00%     70.00%
+                                                                         support constraints related to option positions, it cannot gen-
+             tiffcrop        4        68.36%      92.77%     79.05%      erate combinations that allow -f to take effect, resulting in
+            Average                   67.91%      98.01%     94.19%
+                                                                         1208 fewer edges.
+                                                                            Third, after analyzing those combinations with the lowest
+    Table 9: Result of pruning. OC: option combination.                  priority, we found two programs’ documents do not mention
+                                  6-wise               Sampling          some conflicts. Specifically, the cflow’s document missed the
+           Program
+                            #OC        #Edge       #OC        #Edge      conflict between -format=posix and –emacs, and the exiv2’s
+              cmark          150        1,086       288        1,086
+             editcap         704         991      100,000       993      document missed the conflicts among -D, -P, -t, -p, -t, and -d
+         eu-elfclassify     1,110        111      26,624        111      options. Since our prioritization technique gave the missed
+           img2sixel         610        1,211     100,000      1,244
+          jpegoptim          988         208      100,000       213
+                                                                         invalid combinations the lowest priority, as mentioned in Sec-
+            jpegtran         414        1,833     100,000      2,076     tion 3.5, the impact was little.
+                 jq          558        1,232     100,000      1,354
+               lrzip         645         113      100,000       114
+             ogg123          257         351       6,144        351
+       openssl-asn1parse     249        2,212      2,304       2,212
+          openssl-ec         385        6,266     32,768       6,266
+          openssl-rsa       2,042       5,592     100,000      5,595
+             pdftops        1,494        608      100,000       609
+            pdftotext        786         562      100,000       562
+        podofoencrypt        203         237       1,536        237
+            speexdec         271         573        480         577
+             tcpprep         710         573       6,048        573
+           tcpreplay        1,327        565      100,000       570
+              tiffcp         384        1,246     100,000      1,291
+             tiffcrop        679        1,351     100,000      1,589
+            Average        698.30     1,346.05   63809.60    1,381.15
+
+
+
+clearly write all the relationships. We described the details as
+follows.
+   First, we found seven of these programs treated all non-
+option-related strings in the command line as input files. Since
+POWER randomly inserted strings into the command line dur-
+ing the mutation, these newly inserted strings were recognized
+as part of input files. For example, both the “abc” and “@@”
+in the command, “cflow -a -T abc @@ -o /tmp/foo,” will
+be recognized as input files and processed. If the files repre-
+sented by the new strings do not exist, the new edges would
+be only a little bit (less than five). However, POWER often
+replaces the output file names with the above strings during
+the mutation process, causing such files to exist and more
+
+
+
+1936     32nd USENIX Security Symposium                                                                           USENIX Association
+

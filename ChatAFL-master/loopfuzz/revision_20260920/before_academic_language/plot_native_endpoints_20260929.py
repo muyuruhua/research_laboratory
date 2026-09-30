@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Plot audited descriptive native endpoints, with sample SD (not CI).
+
+Input: filled_experiment_data_20260929.json; all available benchmark A/D runs.
+All supplied summary rows contribute to each mean/SD, including interrupted runs.
+No arm matching, duration correction, hypothesis test, or interval estimation occurs.
+"""
+import json
+import os
+from pathlib import Path
+import tempfile
+
+# Keep Matplotlib cache writes in an explicitly writable temporary directory.
+os.environ.setdefault('MPLCONFIGDIR', tempfile.mkdtemp(prefix='loopfuzz-mpl-'))
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
+
+OUT = Path(__file__).resolve().parent
+SOURCE = OUT / 'filled_experiment_data_20260929.json'
+FIGDIR = OUT / 'figures_updated_20260929'
+FIGDIR.mkdir(exist_ok=True)
+TARGETS = [('forked-daapd', 'Forked-daapd'), ('lighttpd1', 'Lighttpd1'), ('lightftp', 'LightFTP')]
+METRICS = [('branches', 'Code branches'),
+           ('ipsm_edges', 'IPSM state edges')]
+ARMS = [('A', 'AFLNet', '#0072B2', 'o'),
+        ('D', 'LoopFuzz (D)', '#D55E00', 's')]
+
+
+def main():
+    data = json.loads(SOURCE.read_text())
+    indexed = {(row['target'], row['arm']): row for row in data['aggregate'].values()}
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 9,
+                         'axes.titlesize': 10, 'axes.labelsize': 9,
+                         'xtick.labelsize': 8, 'ytick.labelsize': 8,
+                         'axes.linewidth': .7, 'pdf.fonttype': 42,
+                         'ps.fonttype': 42, 'svg.fonttype': 'none'})
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.65), sharex='col')
+    fig.subplots_adjust(left=.105, right=.985, top=.80, bottom=.19,
+                        wspace=.36, hspace=.38)
+    for col, (target, title) in enumerate(TARGETS):
+        for row, (metric, ylabel) in enumerate(METRICS):
+            ax = axes[row, col]
+            endpoints = []
+            for x, (arm, _, color, marker) in enumerate(ARMS):
+                stats = indexed[target, arm][metric]
+                if stats['n'] < 2 or stats['sd'] is None:
+                    raise ValueError('Need at least two observations and a sample SD for each group')
+                mean, sd = stats['mean'], stats['sd']
+                endpoints.extend([mean-sd, mean+sd])
+                ax.errorbar(x, mean, yerr=sd, fmt=marker, color=color,
+                            markersize=6, linewidth=1.5, capsize=4,
+                            markeredgecolor='white', markeredgewidth=.6,
+                            zorder=3)
+            span = max(endpoints)-min(endpoints)
+            pad = max(.22*span, .5)
+            ax.set_ylim(min(endpoints)-pad, max(endpoints)+pad)
+            ax.set_xlim(-.50, 1.50)
+            ax.set_xticks([0, 1], [f"AFLNet\nn={indexed[target, 'A'][metric]['n']}", f"LoopFuzz (D)\nn={indexed[target, 'D'][metric]['n']}"])
+            ax.tick_params(axis='x', length=0, pad=5)
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=4, integer=True))
+            ax.ticklabel_format(axis='y', style='plain', useOffset=False)
+            ax.grid(axis='y', linewidth=.5, alpha=.3, zorder=0)
+            ax.spines[['top', 'right']].set_visible(False)
+            if row == 0:
+                ax.set_title(title, pad=10)
+            if col == 0:
+                ax.set_ylabel(ylabel, labelpad=7)
+    handles = [Line2D([0], [0], color=color, marker=marker, linestyle='none',
+                      markersize=6, label=label) for _, label, color, marker in ARMS]
+    fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(.54, .925),
+               ncol=2, frameon=False, fontsize=9, handletextpad=.5, columnspacing=2)
+    fig.suptitle('Descriptive native endpoints', x=.54, y=.988, fontsize=12)
+    fig.text(.5, .065,
+             'Unequal runtimes; all supplied observations retained; nominal N=10.\n'
+             'Dots: mean. Error bars: sample SD. Target-specific y-axis scales.',
+             ha='center', va='center', fontsize=8, color='#333333', linespacing=1.5)
+    metadata = {'Title': 'Descriptive native endpoints from the supplied Key_Experiment archive',
+                'Creator': f'plot_native_endpoints_20260929.py; Matplotlib {matplotlib.__version__}'}
+    for extension in ['pdf', 'svg']:
+        destination = FIGDIR / f'native_endpoints.{extension}'
+        options = {'dpi': 300, 'facecolor': 'white', 'bbox_inches': 'tight', 'pad_inches': .05}
+        if extension == 'pdf':
+            options['metadata'] = metadata
+        fig.savefig(destination, **options)
+        print(destination)
+    import hashlib
+    evidence = {'source': SOURCE.name, 'source_sha256': hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
+                'error_bars': 'sample SD; observed runs only',
+                'values': [dict(target=t, arm=a, metric=m, **indexed[t, a][m])
+                           for t, _ in TARGETS for a, *_ in ARMS for m, _ in METRICS]}
+    (FIGDIR / 'native_endpoints_evidence.json').write_text(json.dumps(evidence, indent=2) + chr(10))
+    plt.close(fig)
+    print(f'Source: {SOURCE}; Matplotlib {matplotlib.__version__}; error bars are sample SD.')
+
+
+if __name__ == '__main__':
+    main()

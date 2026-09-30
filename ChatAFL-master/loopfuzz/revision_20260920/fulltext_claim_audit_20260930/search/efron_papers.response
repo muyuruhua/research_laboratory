@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<!--[if IE 7]> <html lang="en" class="ie7"> <![endif]-->
+<!--[if IE 8]> <html lang="en" class="ie8"> <![endif]-->
+<!--[if IE 9]> <html lang="en" class="ie9"> <![endif]-->
+<!--[if !IE]><!-->
+<html lang="en"><!-- InstanceBegin template="/Templates/no-sidebars.dwt" codeOutsideHTMLIsLocked="false" -->
+<!--<![endif]-->
+
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Brad Efron's Site</title>
+<!-- InstanceEndEditable -->
+
+<!-- Meta -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- InstanceBeginEditable name="MetaTags" -->
+<meta name="description" content="Bradley Efron, Professor of Statistics, Stanford University" />
+<meta name="author" content="Brad Efron" />
+<!-- These meta tags are used when someone shares a link to this page on Facebook,
+     Twitter or other social media sites. All tags are optional, but including them
+     and customizing the content for specific sites can help the visibility of your
+     content.
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Bradley Efron, Stanford University" />
+<meta property="og:description" content="Brad Efron's publications and talks" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="" />
+<meta name="twitter:title" content="Title for Twitter" />
+<meta name="twitter:description" content="Snippet when tweet is expanded." />
+<meta name="twitter:image" content="http://stanford.edu/about/images/intro_about.jpg" />
+<link rel="publisher" href="" />
+-->
+<!-- InstanceEndEditable -->
+
+<!-- CSS -->
+<link rel="stylesheet" href="bootstrap.min.css" type="text/css" />
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" type="text/css" />
+<link rel="stylesheet" href="base.min.css?v=0.1" type="text/css" />
+<link rel="stylesheet" href="http://statweb.stanford.edu/~ckirby/lagunita/css/custom.css?v=0.1" type="text/css"/>
+<!--[if lt IE 9]>
+  <script src="//html5shim.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<!--[if IE 8]>
+  <link rel="stylesheet" type="text/css" href="//www.stanford.edu/assets/css/ie/ie8.css" />
+<![endif]-->
+<!--[if IE 7]>
+  <link rel="stylesheet" type="text/css" href="//www.stanford.edu/assets/css/ie/ie7.css" />
+<![endif]-->
+<!-- JS and jQuery -->
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<script src="http://statweb.stanford.edu/~ckirby/lagunita/js/modernizr.custom.17475.js"></script>
+<script src="http://statweb.stanford.edu/~ckirby/lagunita/js/bootstrap.min.js"></script>
+
+<!--[if lt IE 9]>
+	<script src="//www.stanford.edu/assets/js/respond.js"></script>
+<![endif]-->
+
+<!-- custom JS -->
+<script src="http://statweb.stanford.edu/~ckirby/lagunita/js/base.js?v=1.0"></script>
+<script src="http://statweb.stanford.edu/~ckirby/lagunita/js/custom.js"></script>
+<!-- InstanceBeginEditable name="head" -->
+<!-- InstanceEndEditable -->
+<!-- InstanceParam name="site_name_1" type="text" value="Lagunita Theme" -->
+<!-- InstanceParam name="site_slogan" type="text" value="A Dreamweaver-enabled HTML theme for Stanford websites" -->
+<!-- InstanceParam name="site_url" type="text" value="/" -->
+<!-- InstanceParam name="body_class" type="text" value="nav-1 site-slogan" -->
+<!-- InstanceParam name="h1" type="text" value="" -->
+<!-- InstanceParam name="logo" type="text" value="" -->
+<!-- InstanceParam name="logo_img_src" type="URL" value="http://statweb.stanford.edu/~ckirby/lagunita/images/block-s-logo@2x.png" -->
+</head>
+<!-- Stanford Lagunita Templates Version 1.0 -->
+<!-- Template Property Options:                       
+     body_class:   "home", "nav-1", "nav-2", etc. - specifies which item in the top nav to underline
+                   "site-slogan" - display a site slogan in the header signature
+     logo, h1  :   "hide" - hides the logo or H1 element, eg <h1 class="hide">
+ -->
+
+<body class="nav-1 site-slogan">
+<div id="su-wrap"> <!-- used to force footer to bottom of short pages -->
+  <div id="su-content"> <!-- used to force footer to bottom of short pages --> 
+    
+    <!--=== Top ===-->
+    <div id="top">
+      <div class="container"> 
+        <!--=== Skip links ===-->
+        <div id="skip"> <a href="#content" onClick="$('#content').focus()">Skip to content</a> </div>
+        <!-- /Skip links --> 
+      </div>
+    </div>
+    <!--/top--> 
+    <!-- Brandbar snippet start -->
+    <div id="brandbar">
+      <div class="container"> <a href="http://www.stanford.edu"> <img src="../images/brandbar-stanford-logo@2x.png" alt="This way to Stanford University" width="152" height="23"> </a> </div>
+      <!-- .container end --> 
+    </div>
+    <!-- #brandbar end --> 
+    <!-- Brandbar snippet end --> 
+    
+    <!--=== Header ===-->
+    <div id="header" class="clearfix" role="banner">
+      <div class="container">
+        <div class="row">
+          <div class="col-md-8">
+            <div id="logo" class=" clearfix"><a href="http://www.stanford.edu/">
+						<img class="img-responsive" src="http://web.stanford.edu/~ckirby/images/SU_New_BlockStree_2color.png" alt="Stanford University" /></a>
+						</div>
+            <div id="signature">
+              <div id="site-name">
+							<a href="/~ckirby/brad/">
+							<span id="site-name-1">Bradley Efron</span></a> </div>
+              <div id="site-slogan">
+							<a href="/~ckirby/brad/">
+							<span id="site_slogan">Professor Emeritus of Statistics and Biomedical Data Science</span></a> </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+				
+    <!-- Menu -->
+    <div id="mainmenu" class="clearfix" role="navigation">
+      <div class="container">
+        <div class="navbar navbar-default"> 
+          
+          <!-- main navigation -->
+          <button type="button" class="navbar-toggle btn-navbar" data-toggle="collapse" data-target=".navbar-collapse"> <span class="icon-bar"></span> <span class="icon-bar"></span> <span class="icon-bar"></span> <span class="menu-text">Menu</span></button>
+          <!-- /nav-collapse -->
+          
+          <div class="navbar-collapse collapse"> 
+            <!--search box-->
+            <div id="nav-search" role="search">
+              <form action="http://www.stanford.edu/search" method="get" id="search-form" accept-charset="UTF-8">
+                <h2 class="hidden">Search form</h2>
+                <label class="hidden" for="search-field">Search term</label>
+                <input name="cx" type="hidden" value="003265255082301896483:sq5n7qoyfh8">
+                <input name="cof" type="hidden" value="FORID:9">
+                <input name="ie" type="hidden" value="UTF-8">
+                <!-- replace value in next line with your site URL -->
+                <input name="as_sitesearch" type="hidden" value="https://efron.ckirby.su.domains">
+                <input title="Search string" class="input-medium" placeholder="Search this site&hellip;" type="text" id="search-field" name="q" value="" size="15" maxlength="128" />
+                <button id="search-btn" type="submit" name="submit"  aria-label="Search" formmethod="get"><i class="fa fa-search"></i></button>
+              </form>
+            </div>
+            <div  role="navigation">
+              <div id="primary-nav">
+                <ul class="nav navbar-nav" aria-label="primary navigation">
+                  <li id="nav-home"> <a href="../">Home</a></li>
+                  <li id="nav-1"> <a href="../papers">Papers</a> </li>
+                  <li id="nav-2"> <a href="../talks">Talks</a> </li>
+                  <li id="nav-3"> <a href="../other">Other Works</a> </li>
+                  <li id="nav-4"> <a href="../interviews">Interviews</a> </li>
+                  <!--<li id="nav-5"> <a href="wide">Wide</a> </li>-->
+                </ul>
+              </div>
+            </div>
+          </div>
+          <!-- /nav-collapse --> 
+        </div>
+        <!-- /navbar --> 
+        
+      </div>
+      <!-- /container --> 
+    </div>
+    <!-- /mainmenu --> 
+    
+    <!-- Content -->
+    <div id="content" class="container" role="main" tabindex="0">
+      <h1 class=""><!-- InstanceBeginEditable name="Page Title" -->Selected Papers and Datasets<!-- InstanceEndEditable --></h1>
+      <div class="row"> 
+        
+        <!--  #main-content (Center) -->
+        <div id="main-content" class="col-md-8 col-lg-7" role="main"> <!-- InstanceBeginEditable name="content_main" -->
+
+<ul>
+    <li><b>2026</b>&nbsp; <a href="2026Fisherian-statistics.pdf">Fisherian statistics in the 21st century</a>
+    <li><b>2025</b>&nbsp; <a href="https://arxiv.org/abs/2606.28621">A bootstrap approach to prediction-powered inference</a>
+    <li><b>2023</b>&nbsp; <a href="https://link.springer.com/article/10.1007/s42081-023-00209-y">Machine learning and the James&ndash;Stein estimator</a>
+    <li><b>2023</b>&nbsp; <a href="2023Diagnostic-Function.pdf">A diagnostic function for the accuracy of bootstrap confidence intervals</a>
+
+<li><b>2021</b>&nbsp; <a href="2021Resampling-Plans.pdf">Resampling plans and the estimation of prediction error</a>
+<li><b>2021</b>&nbsp; <a href="2021EB-concepts-methods.pdf">Empirical Bayes: Concepts and methods</a>
+
+<li><b>2020</b>&nbsp; <a href="2019PredictEstimatAttribut.pdf">Prediction, estimation, and attribution</a>
+      <li><b>2020</b>&nbsp; <a href="2018Automatic-Construction-BCIs.pdf">The automatic construction of bootstrap confidence intervals</a>, with <a href="https://sites.stanford.edu/statistics2/people/Balasubramanian-Narasimhan">B. Narasimhan</a>
+      <li><b>2018</b>&nbsp; <a href="2018BayesOBayesEBayes.pdf">Bayes, oracle Bayes, and empirical Bayes</a>
+      <li><b>2016</b>&nbsp; <a href="2016G-ModelingProgram.pdf">A <em>g</em>-modeling program for deconvolution and empirical Bayes estimation</a>, with <a href="https://sites.stanford.edu/statistics2/people/Balasubramanian-Narasimhan">B. Narasimhan</a>
+      <li><b>2016</b>&nbsp; <a href="2016CurvatureInferenceMLEs.pdf">Curvature and inference for maximum likelihood estimates</a>
+
+      <li><b>2015</b>&nbsp; <a href="2015BayesDeconvolutionProblem.pdf">The Bayes deconvolution problem</a>
+      <li><b>2014</b>&nbsp; <a href="2014EBModelingRevised.pdf">Two modeling strategies for empirical Bayes estimation</a>
+
+      <li><b>2013</b>&nbsp; <a href="2014FrequentistAccuracyRevised.pdf">Frequentist accuracy of Bayesian estimates</a>
+			<ul>
+			<li><a href="./jrss">Supplemental material</a>
+			</ul>
+			<li><b>2013</b>&nbsp; <a href="2013ModelSelection.pdf">Estimation and accuracy after model selection</a>
+      <li><b>2013</b>&nbsp; <a href="2013EBModeling.pdf">Empirical Bayes modeling, computation, and accuracy</a>
+
+      <li><b>2012</b>&nbsp; <a href="2012BayesianInference.pdf">Bayesian inference and the parametric bootstrap</a>
+      <li><b>2012</b>&nbsp; <a href="2012250-YearArgument.pdf">A 250-year argument: Belief, behavior, and the bootstrap</a>
+      <li><b>2012</b>&nbsp; <a href="2012ModelSelection.pdf">Model selection, estimation, and bootstrap smoothing</a>
+      <li><b>2011</b>&nbsp; <a href="2011TweediesFormula.pdf">Tweedie's formula and selection bias</a>
+      <li><b>2011</b>&nbsp; <a href="2011BootstrapMCMC.pdf">The bootstrap and Markov chain Monte Carlo</a>
+
+   <li><b>2010</b>&nbsp; <a href="2010FDRsandCNV.pdf">False discovery rates and copy number variation</a>, with N. Zhang
+   <li><b>2009</b>&nbsp; <a href="2009Future.pdf">The future of indirect evidence</a> and a <a href="2009Future_Rejoinder.pdf">Rejoinder</a>
+   <li><b>2009</b>&nbsp; <a href="2009CorrelatedzValues.pdf">Correlated <em>z</em>-values and the accuracy of large-scale statistical estimates</a>
+
+   <li><b>2008</b>&nbsp; <a href="2008EBestimates.pdf">Empirical Bayes estimates for large-scale prediction problems</a></li>   
+       <ul>
+           <li><a href="./ebay">Supplemental material</a></li>           
+       </ul>    
+   <li><b>2008</b>&nbsp; <a href="2008RowColumn.pdf">Row and column correlations (Are a set of microarrays independent of each other?)</a> (March)</li>
+       <ul>
+           <li><a href="2008ASetofMicroarrays.pdf">Are a set of microarrays independent of each other?</a> (revised October)</li>
+       </ul>
+
+   <li><b>2007</b>&nbsp; <a href="2007SimultaneousRev.pdf">Simultaneous inference: When should hypothesis testing problems be combined?</a>
+   <li><b>2007</b>&nbsp; <a href="2007DoingThousands.pdf">Doing thousands of hypothesis tests at the same time</a>
+
+   <li><b>2006</b>&nbsp; <a href="2006TwoGroupsModel.pdf">Microarrays, empirical Bayes, and the two-groups model</a> 
+   <li><b>2006</b>&nbsp; <a href="2006Genes.pdf">Testing the significance of sets of genes</a> 
+   <li><b>2006</b>&nbsp; <a href="2006Size.pdf">Size, power, and false discovery rates</a> 
+   <li><b>2006</b>&nbsp; Correlation and large-scale simultaneous significance testing 
+   <ul>  
+      <li>Read <a href="2006CorrelationRev_June.pdf">the final version</a>;
+      <li>or <a href="2006Correlation_Jan.pdf">an earlier version</a>.
+   </ul>
+</ul>
+
+        <!-- InstanceEndEditable --> </div>
+        <!--  End #main-content (Center) -->
+				
+        <!-- Right sidebar -->	
+        <div  id="sidebar-second" class="col-md-3" role="complementary">
+				
+				<div id="hero-image">
+        <img src="../images/2014_Efron-indoors.jpg" alt="photo of Brad taken in Girshick Library in June 2014"/>
+        </div>
+
+				<!-- InstanceBeginEditable name="sidebar_supplementary" --> 
+          
+          <div class="info-box">
+            <div class="icon-container"> <i class="fa fa-arrow-circle-right fa-4x"></i> </div>
+            <div class="text-container">
+              <h2>See Also</h2>
+              <ul>
+                <li><a href="http://www.jstor.org/">JStor</a></li>
+                <li><a href="http://projecteuclid.org/">Project Euclid</a></li>
+                <li><a href="http://apps.webofknowledge.com/">Web of Science</a></li>
+                <li></li>
+              </ul>
+            </div>
+          </div>
+          <!-- InstanceEndEditable --> </div>		
+					<!-- End Right sidebar -->							
+
+      </div>
+    </div>
+    <!-- #content--> 
+    
+  </div>
+  <!-- #su-content --> 
+</div>
+<!-- #su-wrap --> 
+
+<!-- BEGIN footer -->
+<div id="footer" class="clearfix footer" role="contentinfo"> 
+  <!-- Fat footer start -->
+  <div class="container">
+    <div id="footer-content" class="row">
+		
+      <div class="col-xs-12 col-sm-12 col-md-7">
+        <h3>More about Brad Efron</h3>
+        <p>Brad is Professor Emeritus of Statistics in the School of Humanities and Sciences and Professor Emeritus of Biostatistics with the Department of Biomedical Data Science in the School of Medicine; he serves as Co-director of the Mathematical and Computational Sciences Program. A recipient of a 2005 National Medal of Science for his contributions to theoretical and applied statistics, especially the bootstrap sampling technique, in 2014 he was awarded the Guy Medal in Gold by the Royal Statistical Society. He was most recently honored with the 2018 International Prize in Statistics.</p>
+      </div>
+      <div class="col-xs-12 col-sm-6 col-md-3">
+        <h3>Related Links</h3>
+        <ul>
+          <li><a href="https://profiles.stanford.edu/bradley-efron">Stanford University Profile</a></li>
+          <li><a href="https://sites.stanford.edu/statistics2/people/bradley-efron">Statistics Department Profile</a></li>
+          <li><a href="http://sites.stanford.edu/statistics2/">Statistics Department Home</a></li>
+          <li><a href="http://mcs.stanford.edu">MCS Home</a></li>
+					<li>&nbsp;</li>
+
+					<li><em><a href="mailto:ckirby@stanford.edu">Contact the Webmaster</a></em></li>
+        </ul>
+      </div>
+
+				<div id="bottom-logo" class="col-xs-12 col-sm-6 col-md-2"> 
+				<a href="http://www.stanford.edu"> <img src="../images/SU_Seal_Red.png" alt="Stanford Seal" width="110" height="110" align="left"/> </a>
+      </div>
+    </div>
+  </div>
+  <!-- Fat footer end -->
+
+  <!-- Global footer snippet start -->
+  <div id="global-footer">
+    <div class="container">
+      <div class="row">
+        <div id="bottom-logo" class="col-xs-6 col-sm-2"> <a href="http://www.stanford.edu"> <img src="../images/footer-stanford-logo@2x.png" alt="Stanford University" width="105" height="49"/> </a> </div>
+        <!-- #bottom-logo end -->
+        <div id="bottom-text" class="col-xs-6 col-sm-10">
+          <ul>
+            <li class="home"><a href="http://www.stanford.edu">SU Home</a></li>
+            
+            <li class="search-stanford"><a href="http://stanford.edu/search/">Search Stanford</a></li>
+            <li class="terms alt"><a href="http://www.stanford.edu/site/terms.html">Terms of Use</a></li>
+            <li class="emergency-info"><a href="http://emergency.stanford.edu/" class="su-link" data-ua-label="global-footer">Emergency Info</a></li>
+          </ul>
+        </div>
+        <!-- .bottom-text end -->
+        <div class="clear"></div>
+        <p class="copyright vcard col-sm-10">&copy; <span class="fn org">Stanford University</span>.&nbsp; <span class="adr"> <span class="locality">Stanford</span>, <span class="region">California</span> <span class="postal-code">94305</span></span>. <span id="termsofuse"><a href="http://www.stanford.edu/group/security/dmca.html" class="su-link" data-ua-action="copyright-complaints" data-ua-label="global-footer">Copyright Complaints</a>&nbsp;&nbsp;&nbsp;<a href="https://adminguide.stanford.edu/chapter-1/subchapter-5/policy-1-5-4" class="su-link" data-ua-action="trademark-notice" data-ua-label="global-footer">Trademark Notice</a></span></p>
+      </div>
+      <!-- .row end --> 
+    </div>
+    <!-- .container end --> 
+  </div>
+  <!-- Global footer snippet end --> 
+  
+</div>
+<!-- END footer --> 
+</body>
+<!-- InstanceEnd --></html>

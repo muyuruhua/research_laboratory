@@ -1,0 +1,43 @@
+\begin{figure*}[!tbp]
+\centering
+\begin{tikzpicture}[
+  font=\fontsize{9}{11}\selectfont,
+  box/.style={draw=black!75,line width=0.6pt,rounded corners=2pt,
+    align=center,text width=23mm,minimum width=26mm,
+    minimum height=13mm,inner sep=3pt},
+  flow/.style={-{Latex[length=2.5mm,width=1.7mm]},
+    draw=black!85,line width=0.85pt,rounded corners=2pt,
+    shorten <=1pt,shorten >=1pt},
+  failure/.style={flow,dashed},
+  failbranch/.style={draw=black!70,line width=0.7pt,dashed},
+  condition/.style={font=\fontsize{8.5}{10}\selectfont,
+    text=black,fill=white,inner sep=1.2pt,align=center}]
+\node[box,fill=blue!5] (llm) at (0,3.4) {LLM\\proposal};
+\node[box] (p) at (4.4,3.4) {Structural\\check $P$};
+\node[box] (trial) at (8.8,3.4) {Bounded trial\\check $U,R$};
+\node[box,fill=blue!5] (gain) at (13.2,3.4) {Separate\\$\gcode,\gstate$};
+\node[box,fill=black!4] (rej) at (0,0) {Reject / expire\\retain evidence};
+\node[box,fill=orange!12] (prov) at (4.4,0) {Provisional\\queue};
+\node[box,fill=orange!5] (validation) at (8.8,0) {Descendant\\validation};
+\node[box,fill=blue!8] (dur) at (13.2,0) {Durable\\queue};
+
+\draw[flow] (llm.east)--(p.west);
+\draw[flow] (p.east)--node[condition,above] (p_ok) {pass}(trial.west);
+\draw[flow] (trial.east)--node[condition,above] (ur_ok) {pass}(gain.west);
+\draw[flow] (gain.south)--node[condition,right] (code_gate) {$\gcode$}(dur.north);
+\draw[flow] (gain.south)--node[condition,below,pos=.45] (state_gate) {$\gstate$ only}(prov.north);
+\draw[flow] (prov.east)--(validation.west);
+\draw[flow] (validation.east)--node[condition,below] (promotion) {Validated\\code gain}(dur.west);
+
+\coordinate (reject_join) at (0,1.4);
+\draw[failbranch] (p.south)--node[condition,above,pos=.35] (p_fail) {$\neg P$}(reject_join);
+\draw[failbranch] (trial.south)--node[condition,above,pos=.33] (ur_fail) {$\neg U\lor\neg R$}(reject_join);
+\draw[failbranch] (gain.south)--node[condition,above,pos=.36] (no_gain) {Neither gain}(reject_join);
+\fill[black!75] (reject_join) circle[radius=1.1pt];
+\draw[failure] (reject_join)--(rej.north);
+\draw[failure] (validation.south)--(8.8,-1.5)--
+  node[condition,above] (expiry) {Budget exhausted}(0,-1.5)--(rej.south);
+\end{tikzpicture}
+\caption{Evidence-gated admission with provisional and durable queues.}
+\label{fig:architecture}
+\end{figure*}

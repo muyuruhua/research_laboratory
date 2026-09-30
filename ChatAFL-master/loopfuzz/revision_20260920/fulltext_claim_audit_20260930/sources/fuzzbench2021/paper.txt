@@ -1,0 +1,853 @@
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service
+              Jonathan Metzman                                      László Szekeres                                       Laurent Simon
+                  Google, USA                                         Google, USA                                           Google, USA
+              metzman@google.com                                 lszekeres@google.com                                laurentsimon@google.com
+
+                                               Read Sprabery                                     Abhishek Arya
+                                               Google, USA                                         Google, USA
+                                           sprabery@google.com                                  aarya@google.com
+
+ABSTRACT                                                                               1    INTRODUCTION
+Fuzzing is a key tool used to reduce bugs in production software. At                   Fuzzing has attracted the attention of both industry and academia
+Google, fuzzing has uncovered tens of thousands of bugs. Fuzzing                       because it is effective at finding bugs in real-world software, not
+is also a popular subject of academic research. In 2020 alone, over                    just in experiments. Today, fuzzing has seen high adoption among
+120 papers were published on the topic of improving, developing,                       developers [34] and is used to find bugs in widely used production
+and evaluating fuzzers and fuzzing techniques. Yet, proper evalu-                      software [26, 27, 40, 42]. At Google we have found tens of thou-
+ation of fuzzing techniques remains elusive. The community has                         sands of bugs [1] with fuzzers like AFL [45], libFuzzer [37] and
+struggled to converge on methodology and standard tools for fuzzer                     Honggfuzz [43]. Academic research on fuzzing has driven many
+evaluation.                                                                            improvements since the inception of coverage-guided fuzzing [45]
+    To address this problem, we introduce FuzzBench as an open-                        ś Google Scholar reports several thousand published papers since
+source turnkey platform and free service for evaluating fuzzers.                       2014 [28].
+It aims to be easy to use, fast, reliable, and provides reproducible                       While fuzzing efforts have been successful in improving software
+experiments. Since its release in March 2020, FuzzBench has been                       quality, proper evaluation of fuzzing techniques is still a challenge.
+widely used both in industry and academia, carrying out more than                      There is no consensus on which tools and techniques are effective
+150 experiments for external users. It has been used by several                        and generalize well for fuzzer comparison. This is in part due to the
+published and in-the-work papers from academic groups, and has                         lack of standard benchmarking tools, metrics, and representative
+had real impact on the most widely used fuzzing tools in industry.                     program datasets, all of which have hampered reproducibility [48].
+The presented case studies suggest that FuzzBench is on its way                            Klees et al. [31] were the first to study the current state of fuzzing
+to becoming a standard fuzzer benchmarking platform.                                   evaluations. They analyzed 32 fuzzing research papers and found
+                                                                                       that none provided enough “evidence to justify general claims of
+CCS CONCEPTS                                                                           effectivenessž. More specifically, some papers do not use a large
+· Software and its engineering → Application specific develop-                         and diverse set of real-world benchmarks, have too few trials, use
+ment environments; Software testing and debugging; · Security                          short trials, or lack statistical tests. Furthermore, it is hard to cross-
+and privacy → Software security engineering; · Mathemat-                               compare between all papers as they typically use different evalu-
+ics of computing → Hypothesis testing and confidence interval                          ation setup and configuration (e.g., how experiments are run and
+computation; · General and reference → Evaluation; Experi-                             measured), different subjects (benchmark programs) or even differ-
+mentation.                                                                             ent coverage metrics [41].
+                                                                                           Another common challenge is that sound fuzzer evaluation has
+                                                                                       a high cost, both in researcher time and computational resources. A
+KEYWORDS
+                                                                                       typical evaluation compares a large number of tools on a large num-
+fuzzing, fuzz testing, benchmarking, testing, software security                        ber of subjects (benchmark programs). Setting up all these tools and
+ACM Reference Format:                                                                  subjects and making sure that each tool-subject pair works together
+Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Ab-               (i.e., compiles, runs) takes significant effort. Some researchers we
+hishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform                     talked to described spending several months working on evaluation.
+and Service. In Proceedings of the 29th ACM Joint European Software Engineer-          A sound evaluation also needs massive computation time (on the
+ing Conference and Symposium on the Foundations of Software Engineering                order of CPU-years) and resources, as each tool-subject pair needs
+(ESEC/FSE ’21), August 23ś28, 2021, Athens, Greece. ACM, New York, NY,                 to run multiple times for statistical significance. In practice, it can
+USA, 11 pages. https://doi.org/10.1145/3468264.3473932                                 take up to ∼ 11 CPU-years to run a well-conducted experiment
+                                                                                       (e.g., 24 hours × 20 trials × 10 fuzzers × 20 subjects). On Google
+                                                                                       Cloud, this experiment could cost over $2,000. Considering the re-
+                                                                                       peated evaluations necessary during the development of a fuzzing
+This work is licensed under a Creative Commons Attribution-                            tool, research can require CPU-centuries and tens of thousands of
+NoDerivatives 4.0 International License.                                               dollars.
+ESEC/FSE ’21, August 23ś28, 2021, Athens, Greece
+                                                                                           FuzzBench aims to alleviate these problems by providing an
+© 2021 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-8562-6/21/08.                                                      open-source fuzzer benchmarking service. We designed it following
+https://doi.org/10.1145/3468264.3473932
+
+
+
+
+                                                                                1393
+ESEC/FSE ’21, August 23–28, 2021, Athens, Greece                          Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya
+
+
+proven best practices [2, 47], with the goal of making fuzzing evalu-                • We evaluate our choices of the default experiment parame-
+ation easy, fast, rigorous, and reproducible (Section 2). FuzzBench                    ters (duration, set of benchmarks, seed corpus, etc.).
+is modular and extensible, so integrating a fuzzer is easy and re-                   • We report on case studies, from across academia and industry,
+quires about 100 LoC on average (Section 3). Even complex fuzzers                      on how FuzzBench was used to drive fuzzer development.
+such as SymCC can be integrated into FuzzBench in 100 LoC [7].
+   The FuzzBench service uses Google’s compute resources. Re-                  2     BENCHMARK METHODOLOGY
+searchers can request a new evaluation experiment for free (Sec-               The benchmarking methodology of FuzzBench follows best prac-
+tion 4). By default, the service runs a large-scale experiment with            tices gathered over many years at Google through evaluation of
+20 trials of 23 hours each, on (> 20) real-world benchmarks (Sec-              fuzzing tools we develop and use [37, 43, 45], and best practices
+tion 2). FuzzBench generates reports with statistical confidence               from academic research [2, 31, 47].
+intervals and makes the raw data available for further analysis if
+needed. FuzzBench allows researchers to focus more of their time               2.1     Real-World Benchmark Programs
+on perfecting techniques and less time on setting up evaluations
+                                                                               To evaluate how a tool works on real-world software, we need to use
+and troubleshooting other fuzzers they want to compare against.
+                                                                               real-world software as benchmark programs. FuzzBench uses OSS-
+   There is prior work on designing fuzzing benchmarks, most no-
+                                                                               Fuzz [3] projects and their fuzz targets as benchmarks. OSS-Fuzz is
+tably Google’s fuzzer-test-suite [38], LAVA [20], Magma [30] and
+                                                                               a community fuzzing service that continuously fuzzes open source
+UNIFUZZ [32]. Google’s fuzzer-test-suite can be considered the
+                                                                               projects. Today there are approximately 400 open source projects
+precursor of FuzzBench as FuzzBench initially used many of the
+                                                                               fuzzed by OSS-Fuzz. Any OSS-Fuzz fuzz target can be easily added
+same benchmark programs. LAVA and Magma provide a set of pro-
+                                                                               to FuzzBench as a benchmark. We picked a large, diverse, and
+grams containing bugs (artificial and real-world, respectively). They
+                                                                               representative set of fuzz targets from OSS-Fuzz (shown in Table 1)
+measure only the number of bugs found, without measuring code
+                                                                               as a default set of benchmarks in FuzzBench. We recommend using
+coverage. FuzzBench can use either code coverage or bug discovery
+                                                                               this default set for a fair evaluation as these programs span a wide
+for evaluation. Many fuzzing papers follow this practice [6, 9].
+                                                                               range of applications and coding styles.
+   To the best of our knowledge, FuzzBench is the only fuzzer
+                                                                                  The default set of benchmarks was chosen with a particular
+benchmarking service. FuzzBench’s ease of use and techniques
+                                                                               challenge in mind: how to ensure researchers don’t optimize their
+such as statistical tests have helped numerous researchers raise the
+                                                                               tools in ways that won’t be broadly applicable beyond the particular
+bar for state-of-the-art fuzzing. Since we released it in 2020 [35],
+                                                                               evaluation. The set contains 22 different benchmarks that process a
+it has been actively used at Google and by the broader fuzzing
+                                                                               wide variety of input formats, and are some of the most commonly
+community both in industry and academia [9, 36]. The two main
+                                                                               used open source projects. We believe that even if a tool is optimized
+use cases of FuzzBench today are (1) comparing different fuzzing
+                                                                               to do well on this set of benchmarks, it will likely do well in general
+tools, and (2) determining the effect of a potential improvement or
+                                                                               due to the size and diversity of the benchmarks.
+feature (i.e., comparing to a prior version of the same tool). Fuzzer
+comparison is used both by researchers and by fuzzer users to de-
+                                                                                                     Table 1: Benchmark programs.
+termine which tool might be best for them. For example, OSS-Fuzz
+decided to replace AFL with AFL++ based on AFL++’s [22] perfor-
+                                                                                               Benchmark             Dictionary         Format         Seeds   Edges
+mance on FuzzBench. In the second use case, developers iterate on
+                                                                                              bloaty_fuzz_target         ✗        ELF/DWARF/Mach-O      94     89530
+their tools by carrying out A/B tests with FuzzBench for a given                            curl_curl_fuzzer_http        ✗          HTTP response       31     62523
+                                                                                                 freetype2-2017          ✗          TTF, OTF, WOFF       2     19056
+change and determine the change’s impact on fuzzing effectiveness.                               harfbuzz-1.3.2          ✗           TTF, OTF, TTC      58     10021
+                                                                                          jsoncpp_jsoncpp_fuzzer         ✓                JSON           0      5536
+Popular fuzzing tools in industry ś such as libFuzzer, AFL++ and                                lcms-2017-03-21          ✓             ICC profile      1      6959
+Honggfuzzś use FuzzBench continuously to drive development                                  libjpeg-turbo-07-2017
+                                                                                              libpcap_fuzz_both
+                                                                                                                         ✗
+                                                                                                                         ✗
+                                                                                                                                          JPEG
+                                                                                                                                          PCAP
+                                                                                                                                                         1
+                                                                                                                                                         0
+                                                                                                                                                                9586
+                                                                                                                                                                8149
+this way.                                                                                          libpng-1.2.56         ✓                PNG           1      2991
+                                                                                                  libxml2-v2.9.2         ✓                XML           0      50461
+   As an example of the first use case, FuzzBench periodically                            mbedtls_fuzz_dtlsclient        ✗               custom          1     10942
+                                                                                                   openssl_x509          ✓           DER certificate   2241    45989
+evaluates and compares the latest versions of the most commonly                            openthread-2019-12-23         ✗               custom          0     17932
+                                                                                            php_php-fuzz-parser          ✓                 PHP         2782    12376
+used fuzzing tools. We discuss the latest result of this experiment                            proj4-2017-08-14          ✓               custom         44      6156
+                                                                                                 re2-2014-12-09          ✓               custom          0      6547
+in Section 5. We also evaluate our choices of the parameters used                                sqlite3_ossfuzz         ✓               custom        1258    45136
+for this main experiment (such as experiment length and other                            systemd_fuzz-link-parser
+                                                                                              vorbis-2017-12-11
+                                                                                                                         ✗
+                                                                                                                         ✗
+                                                                                                                                         custom
+                                                                                                                                          OGG
+                                                                                                                                                         6
+                                                                                                                                                         1
+                                                                                                                                                               53453
+                                                                                                                                                                5022
+configurations) in Section 6, and share the insights we have gained.                           woff2-2016-05-06          ✗               WOFF           62     10923
+                                                                                       zlib_zlib_uncompress_fuzzer       ✗          Zlib compressed      0       875
+We present several case studies for the second use case as well,
+showing how FuzzBench is being used to successfully improve
+fuzzing tools (Section 7), and discuss lessons we have learned.
+   In summary, we make the following contributions:                            2.2     Metrics
+                                                                                  Code and bug coverage. FuzzBench measures both code cover-
+     • We describe the design and implementation of FuzzBench:                 age and bug coverage (unique bugs found). However, FuzzBench
+       the first scalable, modular, fuzzer benchmarking-as-a-service           uses code coverage as its primary evaluation metric for two rea-
+       platform.                                                               sons. A fuzzer can only detect a bug if first it manages to cover the
+     • We present the results of our large-scale experiment on                 code where the bug is located. The primary challenge fuzzers try
+       widely-used fuzzers.                                                    to solve is creating inputs that exercise new program states. In fact,
+
+
+
+
+                                                                        1394
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service                                                ESEC/FSE ’21, August 23–28, 2021, Athens, Greece
+
+
+most coverage-guided fuzzers do not even implement any specific                 2.4    Reporting and Statistical Tests
+“bug detectionž capabilities, but rely on independent sanitizers [39],          To help researchers analyze experiment results, FuzzBench offers
+such as ASAN, MSAN, UBSAN. Second, comparing fuzzers based on                   several options for experiment reports. The automatically gener-
+bug coverage can be misleading since real-world bugs in programs                ated default report is easy to understand and provides readers with
+are sparse. Even Magma benchmarks where bugs were manually                      insight into fuzzer performance across all benchmarks and on indi-
+“forward-portedž have between 7-22 bugs each [30]. This is a small              vidual benchmarks. FuzzBench can also provide alternative, more
+number compared to the many thousands of code locations (e.g.,                  detailed reports that are easy to customize. All reports make the raw
+lines/branches) where bugs can be introduced in real-world pro-                 data available so researchers can do their own custom analysis. For
+grams (Table 1). Therefore, if we reported only number of bugs                  custom analyses, researchers can use FuzzBench’s analysis library
+found, without reporting code coverage, it might lead to biased                 for generating their own plots, tables, and statistical tests [23]. In
+results that do not generalize. This is why we advocate for using               the following section, we discuss the default report. Past experiment
+the combination of code and bug coverage. Note that beyond code                 reports are available online at fuzzbench.com and more information
+and bug coverage, we allow tool integrators to export their own                 about experiment reports is available in the documentation.
+custom metrics (e.g., number of executions, RAM usage).                            To get statistically sound results, we run each fuzzer 20 times
+                                                                                for each benchmark. Each of these runs is a “trialž, which is 23
+                                                                                hours long by default. We selected these parameters based on prior
+    Independent code coverage metric. One approach to measuring
+                                                                                research guidelines [31]. We show in Section 6 that these default
+code coverage is using the coverage reported by each fuzzer be-
+                                                                                settings are sufficient in practice. The reports show results for each
+ing benchmarked. However, this approach is flawed as different
+                                                                                benchmark and “experiment levelž results which compare fuzzers
+fuzzers use different coverage metrics (e.g., basic block, edge, line,
+                                                                                across all benchmarks. We run the same types of analyses and
+etc.). Even if they use the same metric, say edge coverage, different
+                                                                                generate the same types of plots for code and bug coverage. In the
+implementations will give different results. For example, AFL uses
+                                                                                text below, “coveragež means both code or bug coverage, as we
+a fixed size edge counter map, which means that certain edges may
+                                                                                generate the same plots/tables for both.
+be missed due to hash collisions. Another approach is to pick the
+coverage metric and implementation of one of the fuzzers (e.g., Sani-
+tizerCoverage used by libFuzzer) and measure the corpus generated                  Benchmark-level results. The benchmark-level results in the re-
+by each fuzzers with that. However this is biased towards the fuzzer            port show multiple plots, tables and statistical test results for each
+whose coverage metric is used. Thus, FuzzBench uses Clang’s                     benchmark. For each benchmark, they contain a plot of the growth
+source-based coverage, an independent coverage implementation                   of code coverage or bugs discovered over time (aggregated over
+that is not used by any fuzzer. Clang’s source-based coverage is                individual trials), and a box plot of the final coverage distribution
+collision-free, provides easy-to-read coverage reports, and is part             (including min, 25%, median, 75%, max). They also contain differen-
+of Clang’s tooling suite.                                                       tial coverage plots mentioned earlier, showing pairwise and globally
+                                                                                unique coverage numbers. Finally, they link to a browsable code
+                                                                                coverage report for each fuzzer on each benchmark.
+   Differential coverage. Not only does FuzzBench measure the                      As for benchmark-level statistical tests, by default, the report
+number of code locations covered and its growth over time, FuzzBench            includes pairwise fuzzer tests of effect size and null hypothesis
+is aware of which parts of the code (e.g., lines) each fuzzer covers.           significance. The effect size is determined using the Vargha-Delaney
+FuzzBench uses this information to generate “differential coveragež             A12 measure and the null hypothesis is rejected with the two-
+which it presents in reports. FuzzBench presents this information               tailed Mann-Whitney U test (example provided in Figure 1), as
+through coverage reports and graphs that show how many unique                   recommended by Arcuri et al. [4].
+regions are found by each fuzzer. The plots show how much code
+was covered by one fuzzer relative to any other fuzzer (e.g., how
+                                                                                   Experiment-level results. The report includes “top levelž exper-
+much code was covered by libFuzzer and not AFL). They also show
+                                                                                iment results, comparing fuzzers on all benchmarks. The most
+how much code was covered by each fuzzer that no other fuzzer
+                                                                                important of these is a “critical difference diagramž. An example is
+covered. This is useful information e.g., to determine how to better
+                                                                                shown in Figure 3. This diagram was introduced by Demsar [14],
+combine fuzzers to improve results [29].
+                                                                                and is often used in the field of machine learning to compare algo-
+                                                                                rithms over multiple benchmarks (data sets). The diagram compares
+                                                                                fuzzers across all benchmarks by visualizing both their average rank
+2.3    Reproducibility and Version Tracking                                     and the statistical significance between them. The average ranks
+Reproducibility is important for a benchmarking platform so that                are computed based on the medians of the reached coverage of
+results can be validated. In the FuzzBench source code, fuzzers                 each fuzzer on each benchmark. First it ranks each fuzzer on each
+and benchmarks are pinned to specific versions of that software.                benchmark, then averages these rankings across all benchmarks.
+FuzzBench reports include the version (the git commit hash) of the              The groups of fuzzers that are connected with bold lines are not
+FuzzBench source code that was used to produce the experiment.                  significantly different from each other. The statistical significance
+Thus, it is possible to reproduce an experiment by checking out                 is computed using a post-hoc Nemenyi test performed after the
+the FuzzBench commit and using the same experiment parameters                   Friedman test. To the best of our knowledge, FuzzBench is the only
+(e.g., trial duration).                                                         platform that provides holistic “experiment-levelž statistical tests.
+
+
+
+
+                                                                         1395
+ESEC/FSE ’21, August 23–28, 2021, Athens, Greece                             Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya
+
+
+
+                                                                                                     Push tasks /              Job Queue                Pop task /
+                                                                                                    Monitor progress          (e.g., Redis)            Return results
+
+
+
+                                                                                                               Logical host              Logical host (1 CPU)
+
+                                                                                                      Write     Docker                        Docker
+                                                                                       Database      results                                                                   File Store
+                                                                                                                     Main                         Builder
+                                                                                         (e.g.,                                                                               (e.g., Cloud
+                                                                                                                  dispatcher
+                                                                                      PostgreSQL)                                                                               Storage)
+                                                                                                                                                  Runner
+                                                                                                                                                                           Write / read
+                                                                                                                                                 Measurer               corpus snapshots
+
+
+
+
+                                                                                                        Figure 2: High level-architecture.
+
+
+Figure 1: Mann-Whitney U-test result for libxml in                                snapshots. The dispatcher is the most important part of the backend
+fuzzbench.com/reports/paper/Main Experiment. Green cells                          as it is the “brainž of an experiment. When an experiment is started,
+indicate that the reached coverage distribution of a given                        a dispatcher instance is created, by default, on Google Compute
+fuzzer pair is significantly different.                                           Engine. The dispatcher first spawns jobs to build the docker image
+                                                                                  for each fuzzer-benchmark pair (by default using Google Cloud
+                                                                                  Build). During the build stage, the dispatcher also builds a Clang-
+    Our analysis library offers several alternative cross-benchmark               coverage build of each benchmark that it will use for measuring
+ranking methods. In addition to an “average rankž result, the default             coverage.
+report also includes a “top levelž result based on “average scorež.                  Next, the dispatcher starts Google Compute Engine instances to
+The “average scorež defines a fuzzer’s score on a given benchmark                 run trials. In a typical experiment, tens of thousands of Google Com-
+as the percentage of the highest reached median code-coverage                     pute Engine instances called “runnersž are started, which makes
+on that benchmark. In the cross-benchmark ranking we take the                     experimentation scalable. These instances have one core and 3.75
+averages of these scores. While it is unclear which ranking system                GB of RAM available. This ensures each fuzzer gets access to the
+is “betterž, we have found both rankings useful in developing and                 same amount of resources. Each trial runs the docker container of
+debugging fuzzers (see Section 7).                                                a given fuzzer-benchmark pair, using the fuzz() function defined
+                                                                                  by fuzzer.py. While running the fuzzer on the benchmark target,
+3    PLATFORM DESIGN                                                              the runner saves the corpus of the fuzzer to Google Cloud Storage
+The FuzzBench platform design is divided into two major parts: a                  at a specific interval (fifteen minutes, by default ). The coverage
+user-facing frontend for adding benchmarks and fuzzers, and a back-               of these corpus “snapshotsž is measured by measurer workers to
+end for running experiments. The frontend provides the interface                  provide results in real-time and provide data on coverage growth
+for benchmark integrations and fuzzer integrations. An important                  throughout the experiment.
+goal of the fronted is to make these integrations easy. Benchmark                    The dispatcher starts the measurer workers to measure the cov-
+integrations consist of a Dockerfile and bash script (build.sh)                   erage of each trial throughout the experiment. Each time a corpus
+for each benchmark. Each of these is used to build fuzz targets using             snapshot is saved, a measurer measures its coverage and stores the
+the compiler and compiler flags specified by the fuzzer-specific in-              result in a central SQL database. The dispatcher also periodically
+tegration. The fuzzer integrations consist of separate Dockerfiles                regenerates the report based on the results measured so far. This
+for building and running a fuzzer, as well as a fuzzer.py script.                 means that a somewhat real-time view of an experiment is available
+The fuzzer.py uses FuzzBench’s API to specify which compiler                      while it is in-progress.
+and compiler flags to use when building benchmarks. In addition,                     We designed FuzzBench to be as platform independent as pos-
+the fuzzer.py implements a fuzz() function that runs the fuzzer                   sible. This means that not only can users run it on Google Cloud,
+on a specified binary and saves the corpus to a specified directory.              which some users choose to do, but they can also run experiments
+Fuzzer integrations consist of modular Python code instead of bash                locally on their own machines. Local support allows researchers test
+scripts as is common in other platforms. This means integrations                  their tool/benchmark integrations and run small-scale experiments.
+can often be reused by similar fuzzers. For example, all AFL-based                We are planning to improve support for other cloud platforms and
+fuzzers import functionality from AFL’s fuzzer.py rather than                     local clusters.
+reimplement the same functionality. A typical fuzzer integration
+can be done in less than 100 lines of code. Once a fuzzer is integrated,          4      THE FUZZBENCH SERVICE
+it can run any OSS-Fuzz target out of the box.                                    The FuzzBench service works as follows: first a user integrates a
+    Important goals of the backend are (1) scalability, (2) fair re-              fuzzer with the FuzzBench API. This enables the fuzzer to build
+source allocation, and (3) platform independence. The high-level                  and fuzz FuzzBench benchmarks (i.e., any OSS-Fuzz target). When
+architectural design of the backend is shown in Figure 2.                         submitting a pull request with this integration, the developer also
+    The backend of FuzzBench consists of a dispatcher, and workers                submits an experiment request specifying which fuzzers and bench-
+for building docker images, running trials, and measuring corpus                  marks to benchmark via a YAML file. While the pull request is
+
+
+
+
+                                                                           1396
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service                                                  ESEC/FSE ’21, August 23–28, 2021, Athens, Greece
+
+
+reviewed by the FuzzBench maintainers, FuzzBench’s continuous
+integration tests that the fuzzer can build and run every benchmark.
+Once the pull request is merged, FuzzBench automatically runs
+the experiment requested by the user. FuzzBench then publishes a
+report comparing the performance of the fuzzer to other fuzzers.
+This service-like process is well liked and is used frequently by
+fuzzer developers, e.g., to improve Honggfuzz [44], libFuzzer [19],
+and AFL++ [22].
+   However, public experiment requests present a problem for aca-
+demic research or other research that cannot be conducted in the
+open. Academic researchers typically want evaluations of their
+fuzzer and its source code to be kept private until publication. There-         Figure 3: Critical difference diagram from Main Experiment.
+fore we also support private experiments where researchers can
+send a request to the FuzzBench mailing list (fuzzbench@google.com).            on the statistical test results that the diagram depicts, there’s no sta-
+In this case, the source code of the fuzzer is kept private, as are             tistically significant difference between the seven highest ranking
+the results, which are shared only with the researchers. We store               fuzzers. This is indicated by the bold line connecting these fuzzers.
+all experiment data in our internal database so that we can make                AFL++, however, is significantly better than the last four fuzzers,
+the results public at the time of paper publication to then allow               Honggfuzz is better than the last three, and so on.
+independent analysis and reproduction. Several research groups                     RQ: Do different fuzzers cover different parts of the bench-
+have used this private service, and some of this research has been              marks?
+published [9, 36].                                                                 FuzzBench keeps track of which code region was covered by
+                                                                                each fuzzer. This allows users to answer questions such as whether
+5    EVALUATION OF POPULAR FUZZERS                                              anything is lost switching from one fuzzer to another, or whether
+In this section we evaluate commonly used fuzzers with FuzzBench.               one fuzzer complements another by covering code that the other
+The full results from this experiment (ID: Main Experiment) can                 does not. For each benchmark in the reports, FuzzBench provides
+be viewed online.1 In general, the report, data and all details of              a unique coverage plot (such as Figure 4) and a table of pairwise
+any experiment referenced in this paper can be viewed by going                  comparisons of the coverage covered by one fuzzer but not another
+to fuzzbench.com/reports/paper/<experiment_ID>. For this exper-                 (example provided in Figure 5). Of the 2,182,118 regions covered by
+iment we benchmarked 11 fuzzers that are important academic                     any fuzzer, just 3,566 regions, or .163% were covered by only one
+works and/or are popular in industry, and are commonly used                     fuzzer. No fuzzer found many regions that other fuzzers couldn’t
+for comparison in academic papers. Namely, we evaluated AFL,                    find.
+AFLFast AFL++, AFLSmart, Eclipser, Entropic, FairFuzz, Hongg-
+fuzz, libFuzzer, MOpt-AFL, and lafintel. Although FuzzBench can
+benchmark other fuzzers, we have chosen this set to highlight the
+features of the platform.
+   We benchmarked the fuzzers on our default benchmark set, con-
+taining 22 different open source projects and their fuzz targets
+from OSS-Fuzz. Table 1 lists the benchmarks and describe some of
+their characteristics, including dictionary presence, input format,
+number of seed inputs, and the number of program edges. These
+benchmarks represent a wide range of userspace programs com-
+monly fuzzed today. They take a variety of input formats, such as
+XML, JPEG and ELF. There is also variety in whether they come                   Figure 4: Unique coverage plot from freetype2-2017 in Main
+with seed inputs and/or dictionaries. This is useful because not                Experiment.
+every target that is fuzzed in the real world has dictionaries or seed
+inputs, as we have learned through OSS-Fuzz [3]. We ran 20 trials
+for each fuzzer-benchmark pair. Each trial lasted approximately 23                 Fuzzers that did well in general (see Figure 3) tended to cover
+hours. The total runtime was approximately 111, 320 CPU hours                   more unique regions. Table 2 shows the ranking of each fuzzer
+or a little less than 13 CPU years. We answer a number of research              based on their unique regions covered per benchmark, as well as
+questions (RQ) based on the results.                                            the total number of unique regions covered by each fuzzer (across
+   RQ: Are the evaluated fuzzers significantly different from                   all benchmarks). The average benchmark rank based on unique
+each other?                                                                     regions covered follows the same trend as the average benchmark
+   The experiment level critical difference diagram is shown in Fig-            rank based on median regions covered. These two rankings have a
+ure 3. AFL++ came out to be the best, having the highest average                Pearson correlation of .660 with a p-value of .026.
+rank (3.68), followed by Honggfuzz, Entropic, and Eclipser. Based                  Comparisons of different fuzzers also produced interesting find-
+                                                                                ings. For example, Entropic, an academic improvement on libFuzzer,
+1 fuzzbench.com/reports/paper/Main   Experiment                                 discovers almost a superset of the regions discovered by libFuzzer.
+
+
+
+
+                                                                         1397
+ESEC/FSE ’21, August 23–28, 2021, Athens, Greece                         Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya
+
+
+                                                                              fuzzers in 2020. The following fuzzers are benchmarked by both
+                                                                              FuzzBench and UNIFUZZ: AFL, AFLFast, Honggfuzz, and MOpt-
+                                                                              AFL. The ranking of these fuzzers according to either metric offered
+                                                                              by FuzzBench is Honggfuzz, AFL, MOpt-AFL, AFLFast. Li et al.
+                                                                              evaluates fuzzer performance using number of unique bugs, bug
+                                                                              severity, bug rareness, speed of finding bugs, and coverage. Table 3
+                                                                              compares the fuzzer rankings according to FuzzBench and UNI-
+                                                                              FUZZ. UNIFUZZ doesn’t provide a ready-made aggregate result
+                                                                              for number of unique bugs; instead, they do qualitative analysis of
+                                                                              results on each benchmark. Their analysis is that (1) no fuzzer does
+                                                                              better on every benchmark, (2) Honggfuzz, MOpt-AFL, AFL, and
+Figure 5: Pairwise coverage comparison plot from freetype2-                   AFLFast perform best on 3, 3, 1, and 0 benchmarks, respectively.
+2017 in Main Experiment.                                                      They also find that Honggfuzz, MOpt-AFL and AFLFast perform
+                                                                              better than AFL on 11, 17, and 4 benchmarks, respectively. This
+                                                                              seems to align with FuzzBench’s ranking of Honggfuzz over AFL
+      Table 2: Fuzzer Rankings Based on Unique Regions.                       over AFLFast. However, UNIFUZZ’s ranking of MOpt-AFL as best
+                                                                              or second best contradicts FuzzBench’s findings that it performs
+             Average Rank           Total Unique Regions                      worse than AFL. This could be for a variety of reasons.
+             honggfuzz: 1.73               honggfuzz: 1121
+                                                                                          Table 3: Comparison of benchmark suites.
+             aflplusplus: 2.14               entropic: 1119
+             entropic: 2.77                 aflplusplus: 870
+             mopt: 3.41                         fairfuzz: 113                          Suite       Trials     Duration       Benchmarks          Fuzzers
+             eclipser: 3.45                     libfuzzer: 69                       FuzzBench         20       23 hours             22              11
+             fairfuzz: 3.5                       eclipser: 65                       UNIFUZZ           30       24 hours             24               8
+             libfuzzer: 3.59                         mopt: 49                        Magma            20        7 days              26              7
+             afl: 3.64                                 afl: 47
+             aflsmart: 3.73                        aflfast: 46
+             lafintel: 3.77                       lafintel: 38
+             aflfast: 3.82                       aflsmart: 29                    Table 4: Fuzzers ranked by FuzzBench and UNIFUZZ.
+
+                                                                                    FuzzBench   UNIFUZZ (unique bugs)   UNIFUZZ (rare)   UNIFUZZ (rare bugs)
+
+Based on the experiment results, we already know that Entropic is                   Honggfuzz   Honggfuzz- MOpt-AFL         MOpt-AFL              MOpt-AFL
+                                                                                    AFL                                     Honggfuzz             Honggfuzz
+better than libFuzzer. But do we know if switching to Entropic from                 MOpt-AFL                    AFL           AFLFast                  AFL
+                                                                                    AFLFast                  AFLFast             AFL                AFLFast
+libFuzzer causes us to lose coverage? Initially on ClusterFuzz [5] Ð
+the system behind OSS-Fuzz Ð both Entropic and vanilla libFuzzer
+were used, with similar amount of resources provided for them.                   One likely reason for this different ranking is how FuzzBench
+The reason for this approach was to increase diversity, even if it            invokes AFL-based fuzzers. As described in Section 7.1, FuzzBench
+meant using fuzzer configurations considered less than optimal.               uses AFL-based fuzzers with the -d option to skip deterministic
+Diversity might improve results compared to when only “optimalž               steps. In early experiments, such as AFL Deterministic Experiment,
+configurations were used, as other configurations may be beneficial           FuzzBench did not use this option to invoke AFL. When this was
+in particular scenarios. According to the coverage data from this             changed in AFL non-Deterministic Experiment, AFL started doing
+experiment, however, Entropic covered more unique regions than                better than MOpt-AFL. We think using -d is the right choice for
+libFuzzer on 18 benchmarks and covered 10,964 regions not covered             benchmarking AFL, and we justify this more in Section 7.1.
+by libFuzzer; libFuzzer covered more unique regions than Entropic
+on just one benchmark and covered only 446 regions not covered by             5.2      Magma Comparison
+Entropic. This implies the approach ClusterFuzz initially took for            We also compare our results with Magma’s [30], reported in 2020.
+Entropic and libFuzzer was incorrect. There is almost no coverage             The following fuzzers are benchmarked by both FuzzBench and
+missed when using Entropic instead of libFuzzer (446 regions is just          Magma: AFL, AFL++, AFLFast, FairFuzz, Honggfuzz, and MOpt-
+over 1 region per trial run in this experiment). Entropic covered             AFL. Magma uses unique bug discovery as the metric for evaluating
+almost everything covered by libFuzzer and much more.                         fuzzer performance. They found that Honggfuzz and MOpt-AFL did
+                                                                              far better than other fuzzers. Honggfuzz and MOpt-AFL did better
+5.1     UNIFUZZ Comparison                                                    on 4 and 3 benchmarks, respectively. They also found that AFL,
+It’s worth comparing these results to those found by other pa-                AFLFast, and AFL++ “performed similarly against most targetsž.
+pers that evaluate fuzzers. Table 3 compares the experiments used             The findings of Hazimeh et al. regarding AFL++ and MOpt-AFL
+by papers introducing FuzzBench and other benchmark suites:                   appear to contradict ours. We found that AFL++ does better than
+UNIFUZZ and Magma. Li et al. used UNIFUZZ [32] to benchmark                   most fuzzers that we both evaluated, while MOpt-AFL does not
+
+
+
+
+                                                                       1398
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service                                                              ESEC/FSE ’21, August 23–28, 2021, Athens, Greece
+
+
+Table 5: Ranking by average score on reproduced experi-
+ments.
+
+         Main Experiment       Reproduce Experiment 1      Reproduce Experiment 2
+         Honggfuzz: 97.76            Honggfuzz: 97.05                AFL++: 97.35
+             AFL++: 96.53                AFL++: 96.47            Honggfuzz: 97.30
+            Eclipser: 95.79             Eclipser: 96.13             Eclipser: 96.02
+           Entropic: 95.47             Entropic: 95.51             Entropic: 95.63
+          libFuzzer: 91.10            libFuzzer: 90.88            libFuzzer: 91.26
+         AFLSmart: 90.73             AFLSmart: 90.76                 lafintel: 90.85
+             lafintel: 90.59             lafintel: 90.51                 AFL: 90.47
+                 AFL: 90.59                  AFL: 90.30          AFLSmart: 90.33
+         MOpt-AFL: 90.48             MOpt-AFL: 90.23             MOpt-AFL: 90.17
+           AFLFast: 88.25              AFLFast: 88.32              AFLFast: 88.41
+           FairFuzz: 85.86             FairFuzz: 86.24             FairFuzz: 85.70            Figure 6: Critical difference diagram from No Seed Experi-
+                                                                                              ment.
+
+do much better than the fuzzers we both evaluated. We found this
+                                                                                              the results of an experiment with 7-day (168-hour) trials: 7 Day
+with both code and bug coverage (see Bug Experiment). There are
+                                                                                              Experiment. As can be seen in Table 6 the average ranks are mostly
+several potential reasons for these differences. First, we evaluated
+                                                                                              similar. In fact, average rank in Main Experiment and average rank
+slightly different versions of these tools. Second, FuzzBench uses
+                                                                                              in 7 Day Experiment has a Pearson correlation of .927, meaning
+AFL-based fuzzers with the -d flag to skip deterministic steps. As
+                                                                                              they are strongly correlated. However, there are some differences
+we discussed earlier in this section and address more in Section
+                                                                                              in ranking and some greater differences on individual benchmarks.
+7, removing this flag can significantly improve performance of
+                                                                                              Because of the strong correlation between the two rankings, we
+AFL-based fuzzers other than MOpt-AFL. This includes AFL++.
+                                                                                              think this confirms prior work [31] and mostly validates that 23-
+Third, AFL++ did not use the cmplog feature in Hazimeh et al.,
+                                                                                              hour trials strikes a good balance between result accuracy and the
+yet it did use the feature in our evaluation. We found improved
+                                                                                              price of the experiments. However, more research is needed here.
+performance in AFL++ relative to MOpt-AFL when this feature
+                                                                                                 RQ: Should example inputs be used as seed corpus?
+was enabled (compare AFL++ non-Cmplog Experiment to AFL++
+                                                                                                 Another experimental parameter we evaluate is the impact of the
+Cmplog Experiment).
+                                                                                              seed corpus. In the main experiment we use a mix of benchmarks
+                                                                                              with and without seed corpora. This makes sense because in real-
+6    EVALUATION OF METHODOLOGY AND                                                            world settings, such as on OSS-Fuzz, some fuzz targets do not come
+     EXPERIMENT PARAMETERS                                                                    with a seed corpus, while some do. Previous research has found that
+This section evaluates whether FuzzBench experiments give sound                               observed fuzzer performance can vary significantly based on the
+and reproducible results. In FuzzBench, different parameters of an                            seed corpus [31]. To see how this impacts our evaluation of fuzzers,
+experiment (such as the number of benchmarks, number of trials,                               we did an experiment where no seed corpora were used, even for
+length of trials, use of seed inputs, dictionaries, etc.) can be easily                       benchmarks that provide them: No Seed Experiment. As can be
+configured. However, beyond flexibility, it is important to provide                           seen in Table 6, Honggfuzz, Entropic, and AFL++ still perform at the
+good defaults. In this section, we look at the impact of different                            top in this experiment. However libFuzzer does much better in this
+parameter choices.                                                                            experiment. In fact, it ranks higher than Eclipser, which is the fifth
+   RQ: Are FuzzBench experiments reproducible?                                                ranked fuzzer in this experiment. Every one of the fuzzers that rely
+   First we look at whether running an experiment again gives                                 on AFL’s traditional instrumentation (AFL, MOpt-AFL, FairFuzz,
+us the same results. We ran two experiments, Reproduce Experi-                                AFLFast, lafintel, Eclipser, and AFLSmart) ranks below the fuzzers
+ment 1 and Reproduce Experiment 2, with the same parameters                                   that use different instrumentation (Entropic, Honggfuzz, AFL++,
+used in the previous section (Main Experiment). Rankings based                                libFuzzer). As Figure 6 shows, Entropic, Honggfuzz and AFL++
+on average score (Table 5) and average rank (Table 6) are similar                             perform statistically significantly better than all of the AFL-based
+across all experiments. Note that the slight changes in order are                             fuzzers (including AFL) except Eclipser.
+expected, as they are due to the closeness of average score/rank                                 To understand the underlying reason for the change in ranking,
+values. Considering the clusters of statistically significantly dif-                          we examined results at the benchmarks level. In the benchmarks:
+ferent (or similar) fuzzers, reported in Figure 3, we get the same                            bloaty_fuzz_target, freetype2-2017, libpcap_fuzz_both, proj4-2017-
+results every time. Therefore, we can conclude that the results are                           08-14, systemd_fuzz-link-parser, and vorbis-2017-12-11, the fuzzers:
+consistent and reproducible.                                                                  MOpt-AFL, FairFuzz, AFLSmart, AFLFast, and AFL make little
+   RQ: Is 23 hours enough?                                                                    progress in covering code throughout the experiment. In some of
+   The first experimental parameter we look at is the duration of                             these benchmarks, Eclipser and lafintel can make progress, but in
+the experiment. Klees et al. [31] suggest running trials for 24 hours.                        others, they cannot. A similar pattern can be seen in the benchmark
+The FuzzBench service by default uses 23-hour trials so we can                                libpcap_fuzz_both (which has no seeds) in Main Experiment. We
+use Google Compute Engine’s preemptible instances, which cannot                               believe the cause of this pattern is likely the same. All fuzzers that
+run for longer than 24 hours, but are 5 times cheaper than standard                           can make progress in the above benchmarks add special instrumen-
+instances. To validate our default 23-hour choice, we compared the                            tation for comparisons, with the exception of Eclipser. AFL++, lib-
+result from our Main Experiment, which had 23-hour trials, with                               Fuzzer, Entropic, and Honggfuzz instrument functions like strcmp
+
+
+
+
+                                                                                       1399
+ESEC/FSE ’21, August 23–28, 2021, Athens, Greece                                                   Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya
+
+
+                                                           Table 6: Average rank from various experiments.
+
+        Main Experiment       7 Day Experiment      No Seed Experiment      OSS-Fuzz Corpus Experiment          No Dictionary Experiment      Reproduce Experiment 1      Reproduce Experiment 2
+             AFL++: 3.68         Entropic: 3.84          Entropic: 2.43                    AFL++: 4.10                       AFL++: 3.18                 AFL++: 3.55                 AFL++: 3.43
+         Honggfuzz: 4.45           AFL++: 3.93         Honggfuzz: 3.23                         AFL: 4.78                 Honggfuzz: 4.07                Eclipser: 4.25              Eclipser: 4.30
+           Entropic: 4.50         Eclipser: 4.09           AFL++: 3.70                 AFLSmart: 4.88                      Entropic: 4.64              Entropic: 4.41            Honggfuzz: 4.50
+            Eclipser: 4.77     AFLSmart: 4.80           libFuzzer: 4.61                   Eclipser: 4.88                    Eclipser: 4.70           Honggfuzz: 4.82               Entropic: 4.73
+                 AFL: 4.82     Honggfuzz: 5.05            Eclipser: 5.48                 Entropic: 5.60                          AFL: 5.16           AFLSmart: 5.07                      AFL: 5.09
+         AFLSmart: 5.34                AFL: 5.34           lafintel: 7.05              MOpt-AFL: 5.72                    AFLSmart: 5.41                      AFL: 5.32           AFLSmart: 5.27
+         MOpt-AFL: 5.98        MOpt-AFL: 6.32                  AFL: 7.30               Honggfuzz: 5.98                   MOpt-AFL: 6.59              MOpt-AFL: 6.73              MOpt-AFL: 6.64
+          libFuzzer: 7.86          lafintel: 6.91      AFLSmart: 7.43                    AFLFast: 6.70                    libFuzzer: 7.30              FairFuzz: 7.68             libFuzzer: 7.61
+           FairFuzz: 8.00       libFuzzer: 7.89        MOpt-AFL: 7.64                   libFuzzer: 7.00                    FairFuzz: 8.11             libFuzzer: 7.68              FairFuzz: 7.77
+             lafintel: 8.27      AFLFast: 8.80           FairFuzz: 7.70                    lafintel: 7.68                    lafintel: 8.39              lafintel: 8.11            AFLFast: 8.32
+           AFLFast: 8.32         FairFuzz: 9.05          AFLFast: 9.43                   FairFuzz: 8.70                    AFLFast: 8.45               AFLFast: 8.39                 lafintel: 8.34
+
+
+
+and add compared string constants to a dictionary. Lafintel instru-                                     chance. Another reason to be skeptical of this difference is bias in
+ments comparisons by breaking down multi-byte comparisons into                                          the experiment. Because the seed corpora were generated by spend-
+multiple basic blocks so the fuzzer can tell when it gets further into                                  ing multiple CPU-centuries running AFL, AFL++ (which OSS-Fuzz
+a comparison than before. Eclipser does not instrument compar-                                          switched to in January 2021), libFuzzer, and Honggfuzz, the experi-
+isons but tries to solve for them using symbolic execution, and its                                     ment is biased against them and favors fuzzers such as AFLSmart
+ability to outperform fuzzers which do not instrument comparisons                                       which are not run on OSS-Fuzz. In summary, we do not think a
+has been noted by its authors [12]. The fuzzers that do not make                                        saturated corpus should be used for a first evaluation, because it is
+progress here do not instrument comparison functions. Results                                           very hard for fuzzers to augment it. However, if a fuzzer is found
+from other experiments confirm that comparison instrumentation                                          to perform well, that result is quite useful, since real-word fuzzing
+is responsible for progress in libpcap_fuzz_both. In AFL++ non-                                         (e.g., OSS-Fuzz) does run fuzzers with saturated corpora.
+Cmplog Experiment and every experiment before it, AFL++ made                                               RQ: Should dictionaries be used?
+no progress on libpcap_fuzz_both. But, in AFL++ Cmplog Experi-                                             Dictionaries are a feature supported by most coverage guided
+ment it made progress on covering the benchmark. What changed                                           fuzzers. They allow someone using a fuzzer to provide the fuzzer
+is that AFL++’s “cmplogž feature, which instruments comparison                                          with tokens to insert during fuzzing. Like seed corpora, these are
+functions, was enabled. FuzzBench highlights effective techniques                                       optional for fuzzing and in OSS-Fuzz, there is a mix of fuzz tar-
+by allowing these types of comparisons across a large number of                                         gets with and without dictionaries. Thus, FuzzBench has a mix
+fuzzers.                                                                                                of benchmarks with and without dictionaries. To explore how dic-
+    In summary, we can confirm that results will be different with                                      tionaries affect our results, we ran an experiment (No Dictionary
+and without seeds. Evaluating without seeds can be useful, as it                                        Experiment) without dictionaries. As can be seen in Table 6, the
+brings out the differences between fuzzers that can or cannot break                                     rankings of fuzzers relative to one another is only slightly impacted
+through some comparisons/branches. On the other hand, fuzzer                                            by removing this parameter. In summary, the choice of whether to
+users who typically use seed inputs might be more interested in                                         enable dictionaries does not have a significant impact on our overall
+results from Main Experiment, since it used seeds.                                                      results. Note that researchers are free to adjust all of the parameters
+    RQ: Should an existing, well-established, saturated corpus                                          discussed above, if needed over the course of their research. But
+be used as seed corpus?                                                                                 overall, based on these experiments, FuzzBench’s default configu-
+    After realizing that the starting corpus significantly affects re-                                  ration appears to provide a reliable standard for most evaluations.
+sults, we wanted to perform another experiment that reflects a
+common real-world scenario. In the real world, it is actually rare                                          7     CASE STUDIES OF TOOL DEVELOPMENT
+that a fuzzer is started from no corpus. Most of the time when
+fuzzing a target in OSS-Fuzz, a fuzzer is starting from a corpus
+                                                                                                                  WITH FUZZBENCH
+that was created by many CPU years of fuzzing effort by AFL(++),                                        This section discusses specific case studies where FuzzBench was
+libFuzzer and Honggfuzz.                                                                                used to improve fuzzers.
+    We conducted an experiment OSS-Fuzz Corpora Experiment
+using corpora from OSS-Fuzz to explore this scenario. As one might                                          7.1      AFL Configuration Insights
+expect, most fuzzers performed similarly to one another, and made                                       AFL’s default behavior is to start with “deterministic fuzzing stepsž,
+only minimal progress relative to the well-established existing cor-                                    which includes mutations such as flipping bits to trigger integer
+pus. The worst performing fuzzer in this experiment on average                                          arithmetic errors. These steps can be skipped with the -d flag. The
+found 97.11% of the regions found by the best performing fuzzer                                         downside is that the deterministic stage “can take several daysž [46]
+on each benchmark. In contrast, in Main Experiment the worst                                            and may not show coverage improvements right away. The upside
+performing fuzzer found 85.86% of the regions found by the best                                         is that with this stage, coverage overall is supposed to better even
+fuzzer on each benchmark. On most benchmarks, fuzzers performed                                         if it is initially less broad. After this step is complete, AFL moves
+virtually identically. No fuzzer appears a lot better at finding more                                   on to its ordinary mode of fuzzing that randomly mutates inputs
+coverage than others when starting from OSS-Fuzz corpora. AFLS-                                         (splicing, bitflips, insertions, etc.). Most evaluations of fuzzers [31]
+mart ranks noticeably better than it did in Main Experiment. How-                                       (including most in this paper) evaluate them for only 24 hours
+ever the difference is non-significant, and is likely due to random                                     or less. This violates an underlying assumption of deterministic
+
+
+
+
+                                                                                              1400
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service                                                  ESEC/FSE ’21, August 23–28, 2021, Athens, Greece
+
+
+                                                                                    A second example is related to seed pruning, the process of delet-
+                                                                                 ing seeds which produce the same coverage as other, smaller seeds,
+                                                                                 allowing fuzzers to ignore what were previously considered useless
+                                                                                 inputs and reducing storage space. FuzzBench demonstrated that
+                                                                                 initial seeds, which in many cases are handpicked by users because
+                                                                                 they are interesting, can still be useful in helping drive new cover-
+Figure 7: Critical difference diagram from experiment with                       age. Thus, an option for keeping these seeds was changed to reflect
+AFL with -d (afl) and AFL without -d (afl_deterministic).                        this finding [15].
+                                                                                    A third example is related to the run time replacement of memory-
+                                                                                 related functions. This is common practice in the fuzzing commu-
+                                                                                 nity, with the compiler injecting calls to sanitizer runtimes when
+steps: that a lot of time can be spent up front so that fuzzing is
+                                                                                 invoking functions like memcmp and strcmp. Previously, libFuzzer
+more efficient later on. Another reason to skip deterministic steps
+                                                                                 required the AddressSanitizer be linked in to provide these func-
+is because it isn’t used very often when fuzzing in the real world.
+                                                                                 tions, but FuzzBench identified the need for libFuzzer to have a
+For example, in OSS-Fuzz, a heuristic was used so that fuzzing
+                                                                                 dedicated runtime when no LLVM sanitizer was being used [18].
+with -d was done only once, right after the fuzzer was added to
+                                                                                 FuzzBench results showed an issue with coverage, leading to the
+OSS-Fuzz. Similarly, when using AFL in parallel, only the primary
+                                                                                 discovery and remediation of this flaw.
+instance runs the deterministic stage, while secondary instances do
+                                                                                    A final example highlights how FuzzBench can be used to
+not. These facts raise the question of whether it makes more sense
+                                                                                 drive optimal defaults, improving coverage for non-experts who
+to benchmark AFL with -d or not. In many ways, using -d is more
+                                                                                 may not know how to tune the behavior of libFuzzer. FuzzBench
+likely to represent real-world settings where AFL is used. We ran
+                                                                                 showed that the entropic seed-scheduler in libFuzzer outperforms
+an experiment (AFL non-Deterministic Experiment) to investigate
+                                                                                 the vanilla scheduler [9]; thus, the entropic seed-scheduler was
+differences in performance between AFL with and without using
+                                                                                 made the default [16].
+the deterministic steps (by using the -d command line option). As
+can be seen in Figure 7, skipping the deterministic stage caused
+AFL to perform statistically significantly better than AFL with the              7.3    AFL++ Improvements
+deterministic stage (afl_deterministic). This suggests that if runs are
+                                                                                 AFL++ is another popular production-ready fuzzer (1,604 stars on
+short (e.g., 24 hours), deterministic steps should be disabled. Thus,
+                                                                                 Github). The authors of AFL++ not only used FuzzBench to evalu-
+in the experiments above FuzzBench uses the -d option when in-
+                                                                                 ate their tool in their published paper [22], they have also been us-
+voking AFL-based fuzzers. However, this is not what most other
+                                                                                 ing FuzzBench extensively to evaluate features and improvements
+research papers do. For example, we found that MOpt-AFL does
+                                                                                 and thus drive the tool’s development. Part of AFL++’s success is
+no better than AFL without deterministic steps even though it per-
+                                                                                 due to complex integrations of code bases and fuzzing concepts
+forms statistically significantly better than AFL with deterministic
+                                                                                 from the literature. One such integration ported the concept of
+steps. This may be explained by the fact that MOpt-AFL imple-
+                                                                                 “power schedulesž from AFLFast [10] by integrating parts of the
+ments a “pacemaker fuzzing mode which selectively avoids the
+                                                                                 AFLFast code base, which inadvertently introduced a performance
+time-consuming deterministic stagež [33]. Based on FuzzBench’s
+                                                                                 regression when using non-AFLFast enhanced runs. FuzzBench
+findings on deterministic steps, AFL++ skips them by default, which
+                                                                                 helped identify the discrepancy between regular AFL and AFL++
+improves fuzzing in many real-world scenarios.
+                                                                                 after this code change, indicating a regression. Without this insight,
+                                                                                 this subtle bug would have gone unnoticed. Having adopted power
+7.2    Libfuzzer Improvements                                                    schedules in AFL++, Boehme et al. [10] focused their efforts on
+LLVM’s libFuzzer is one of the most widely-used fuzzing engines.                 power schedule improvements on the AFL++ version and used
+It is run on tens of thousands of cores continuously by ClusterFuzz              FuzzBench to verify the improvements.
+and OSS-Fuzz [5]. Because of libFuzzer’s widespread use, improve-                   FuzzBench is also driving better defaults, helping to reduce the
+ments to libFuzzer have a large positive impact on software security,            barrier to entry and improve results for those who adopt AFL++.
+while regressions have a large negative impact. FuzzBench has                    As mentioned earlier in this section, data from FuzzBench led to
+detected weaknesses in libFuzzer, driven improvements, and veri-                 AFL++ disabling deterministic steps by default in AFL++ 3.0.
+fied the lack of regressions. Furthermore, FuzzBench has improved                   AFL++ also developed and tested an improved seed selection
+fuzzing effectiveness by non-expert users, since making the default              schedule in version 3.0 which was benchmarked against vanilla AFL
+settings better improves fuzzing for users that don’t change them.               over many FuzzBench runs. For example, when the discovery of
+We highlight select examples of these improvements here.                         new coverage-increasing inputs decreases, more splicing mutations
+    A first example is related to libFuzzer’s CrossOver mutation,                can improve coverage. Additionally, it is better not to trim newly
+which mixes two test cases. When libFuzzer developers noticed                    found inputs. It can be hard to quantify these improvements and
+libFuzzer performed worse on FuzzBench’s sqlite3_ossfuzz bench-                  understand the impact against different types of software without
+mark they investigated and determined that libFuzzer was produc-                 a comprehensive test suite.
+ing considerably larger test cases than AFL. They determined that                   FuzzBench also helped AFL++ researchers avoid dead ends by
+this was caused by a bug in the CrossOver implementation, which                  providing an easy way to test proposed improvements. For ex-
+they fixed [17].                                                                 ample, weight havoc mutations in AFL++ appeared to have little
+
+
+
+
+                                                                          1401
+ESEC/FSE ’21, August 23–28, 2021, Athens, Greece                            Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Abhishek Arya
+
+
+benefit in practice. This early identification of limitations has en-               Magma [30] is a collection of widely used open-source programs
+abled the research community to focus on fuzzing mechanisms that                 with a long history of security-critical bugs. Like FuzzBench, the
+can meaningfully improve fuzzing effectiveness.                                  authors target real-world software but they focus on bug finding
+                                                                                 as the only metric. FuzzBench provides both code coverage and
+7.4     Honggfuzz Improvements                                                   bug finding as metrics out of the box. This is important because
+                                                                                 bugs are sparse, so a fuzzer’s ability to cover more of the code
+The author of Honggfuzz published a series of these improvements
+                                                                                 where bugs exist may go unnoticed [32]. UNIFUZZ [32] is a recent
+on the groups.google.com/g/fuzzing-discuss mailing list. These im-
+                                                                                 benchmarking work that uses real-world software, considers both
+provements included things such as adding strings/memory passed
+                                                                                 bugs and coverage as metrics and suggests additional metrics such
+to comparison functions to the dynamic dictionary, or adding a mu-
+                                                                                 as the speed to find bugs. Although FuzzBench does not provide all
+tation to change ASCII integers. An interesting thing about some
+                                                                                 the metrics used by UNIFUZZ by default, there is support for them
+of these improvements is that many of these features were initially
+                                                                                 and we have enabled them for certain academic groups already.
+implemented by libFuzzer. Thanks to FuzzBench, the developer
+                                                                                 A major difference between FuzzBench and UNIFUZZ, and the
+of Honggfuzz was able to find features from other fuzzers, prove
+                                                                                 previously mentioned benchmark suites, is that FuzzBench was
+they were useful, and then add the features to Honggfuzz. Not
+                                                                                 designed primarily with users in mind: the focus is on running
+only does this have the benefit of improving Honggfuzz, it also
+                                                                                 experiments as easily as possible.
+demonstrates the validity of techniques used by libFuzzer and thus
+                                                                                    To the best of our knowledge, FuzzBench is the only fuzzer
+benefits libFuzzer as well.
+                                                                                 benchmarking service. Due to the scalability of the FuzzBench
+                                                                                 service, it can provide results within a day, and thus reduce the
+8     RELATED WORK                                                               barrier to entry for researchers and help them quickly iterate over
+Klees et al. [31] studied the evaluations of recent academic fuzzing             ideas. Since we released FuzzBench in 2020 [35], it has been actively
+papers. They found a lack of scientific rigor which made results                 used at Google and by the broader fuzzing community both in
+unreproducible, leading to “wrong or misleading assessmentsž. As                 industry and academia [9, 36].
+a result of their work, they released guidelines for the fuzzing com-
+munity. FuzzBench follows these guidelines to provide statistically              9    CONCLUSION
+sound, reproducible results: run multiple trials, deduplicate bugs,
+supports flexible parameter selections, and provide a diverse set of             We created FuzzBench with the goal of facilitating open science,
+real-world programs.                                                             rigorous evaluation, and reproducibility. The service not only makes
+    FuzzBench is not the first attempt to create a benchmarking                  unbiased, large-scale evaluations easy, it also makes these evalua-
+platform for fuzzers. The Competition on Software Testing [8] is an              tions free for researchers. Since its release in the past year, FuzzBench
+annual competition to test software techniques. The benchmarks                   has already been used by dozens of researchers from academia and
+are small (a few 100 LoC) and are intended to test the ability of tools          industry to run more than 150 experiments. Further, FuzzBench
+to adapt to specific code patterns (e.g., arrays, loops, etc.). Their            is a fully open, community driven platform. It has also already re-
+work and ours are complementary, as it is useful to consider both                ceived many great contributions, and we continue to encourage the
+micro and macro behavior of tools to understand their character-                 community to continue to improve the platform and the techniques
+istics. Another benchmark suite is Google Fuzzer Test Suite [25],                used to evaluate testing tools. With the success stories described in
+which was an early prototype by Google. It was primarily a carefully             this paper behind it, FuzzBench is in our opinion poised to become
+selected set of real-world software for fuzzer evaluation. However,              the gold standard for fuzzer evaluation. We hope that better evalu-
+it did not have the advanced features of the FuzzBench platform                  ations leads to better science, more adoption, and greater impact
+and service that reduce the cost of integration and evaluation.                  for fuzzing research and tools.
+    There are also several benchmark suites that use artificially in-
+troduced bugs. LAVA [20] is an automated bug injection technique,                ACKNOWLEDGMENTS
+and also set of benchmark programs containing synthetic bugs                     FuzzBench would not be possible without the help of many contrib-
+injected with the technique. Rode0day [21] is another service that               utors. We would like to thank coworkers who implemented features
+uses the LAVA technology to create artificially buggy binaries. The              and contributed ideas: Oliver Chang, Franjo Ivančić, Kostya Sere-
+DARPA CGC [13] benchmark suite also uses artificial vulnerabil-                  bryany, Matt Morehouse, Martin Barbella, Ammar Askar, Zhicheng
+ities. All of these benchmarks, however, are much smaller than                   Cai, Dokyung Song, Ruikang Shi, and Tanishq Rupal. We would
+the real-world programs used in FuzzBench. Further, it has been                  also like to thank community members who have contributed valu-
+shown that generalizing from synthetic bug benchmarks to real-                   able ideas and features, particularly: Marc Heuse, Marcel Böhme,
+world programs seems to be hard. Geng et al. [24] and Bundt et                   and Josh Bundt. Thank you to Kara Olive who provided important
+al. [11] studied artificially injected bug benchmarks. They found                editing of this paper. Lastly, we would like to thank our reviewers
+that the bugs “significantly differ from real bugsž, and that fuzzers            for their feedback.
+performing well on synthetic benchmarks do not “find any organic
+bugsž. This implies fuzzing techniques benchmarked with these
+datasets may not generalize to real-world software. To mitigate
+                                                                                 REFERENCES
+                                                                                  [1] 2021. OSS-Fuzz Bugs. https://bugs.chromium.org/p/oss-fuzz/issues/list?q=-
+these problems, FuzzBench uses real-word benchmarks containing                        status%3Aduplicate%2Cwontfix%20label%3Aclusterfuzz%20opened%3C2021-
+real bugs from OSS-Fuzz, the largest open-source fuzzing initiative.                  04-06&can=1
+
+
+
+
+                                                                          1402
+FuzzBench: An Open Fuzzer Benchmarking Platform and Service                                                                          ESEC/FSE ’21, August 23–28, 2021, Athens, Greece
+
+
+ [2] ACM SIGPLAN. 2018. Empirical Evaluation Guidelines. http://www.sigplan.                       [25] Google. 2017. Fuzzer Test Suite. Google. https://github.com/google/fuzzer-test-
+     org/Resources/EmpiricalEvaluation/                                                                 suite
+ [3] Mike Aizatsky, Kostya Serebryany, Oliver Chang, Abhishek Arya, and Meredith                   [26] Google. 2021. Automate your workflow from idea to production. https://github.
+     Whittaker. 2016. Announcing OSS-Fuzz: Continuous Fuzzing for Open Source                           com/google/fuzzing/actions
+     Software. Google Testing Blog. (Dec. 2016). https://testing.googleblog.com/                   [27] Google. 2021. Coverage Guided Fuzz Testing. https://docs.gitlab.com/ee/user/
+     2016/12/announcing-oss-fuzz-continuous-fuzzing.html                                                application_security/coverage_fuzzing/
+ [4] Andrea Arcuri, Muhammad Zohaib Iqbal, and Lionel Briand. 2011. Random                         [28] Google. 2021. fuzzing - Google Scholar. https://scholar.google.com/scholar?q=
+     testing: Theoretical results and practical implications. IEEE Transactions on                      fuzzing&hl=en&as_sdt=0%2C5&as_ylo=2014&as_yhi=
+     Software Engineering 38, 2 (2011), 258ś277.                                                   [29] Emre Güler, Philipp Görz, Elia Geretto, Andrea Jemmett, Sebastian Österlund, Her-
+ [5] Abhishek Arya and Chang Oliver. 2019.                 ClusterFuzz: ClusterFuzz.                    bert Bos, Cristiano Giuffrida, and Thorsten Holz. 2020. Cupid : Automatic Fuzzer
+     https://www.blackhat.com/eu-19/briefings/schedule/index.html#clusterfuzz-                          Selection for Collaborative Fuzzing. In Annual Computer Security Applications
+     fuzzing-at-google-scale-17505 Black Hat Europe.                                                    Conference. ACM, Austin USA, 360ś372. https://doi.org/10.1145/3427228.3427266
+ [6] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and                       [30] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-
+     Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence..                        Truth Fuzzing Benchmark. Proceedings of the ACM on Measurement and Analysis of
+     In NDSS, Vol. 19. 1ś15.                                                                            Computing Systems 4, 3 (Nov. 2020), 49:1ś49:29. https://doi.org/10.1145/3428334
+ [7] FuzzBench Authors. 2021. FuzzBench. https://github.com/google/fuzzbench/                      [31] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+     tree/d51da57c211af226dd7854085d9fc80070205738/fuzzers/symcc_afl.                                   Evaluating Fuzz Testing. In Proceedings of the 2018 ACM SIGSAC Conference
+ [8] Dirk Beyer. 2020. Competition on Software Testing. https://test-comp.sosy-                         on Computer and Communications Security. ACM, Toronto Canada, 2123ś2138.
+     lab.org/2020/                                                                                      https://doi.org/10.1145/3243734.3243804
+ [9] Marcel Böhme, Valentin J. M. Manès, and Sang Kil Cha. 2020. Boosting Fuzzer                   [32] Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen,
+     Efficiency: An Information Theoretic Perspective. In Proceedings of the 28th                       Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, Kangjie Lu, and
+     ACM Joint Meeting on European Software Engineering Conference and Symposium                        Ting Wang. 2020. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform
+     on the Foundations of Software Engineering (ESEC/FSE 2020). Association for                        for Evaluating Fuzzers. arXiv:2010.01785 [cs] (Oct. 2020). arXiv:2010.01785 [cs]
+     Computing Machinery, New York, NY, USA, 678ś689. https://doi.org/10.1145/                          http://arxiv.org/abs/2010.01785
+     3368089.3409748                                                                               [33] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and
+[10] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2017. Coverage-                              Raheem Beyah. 2019. {MOPT }: Optimized mutation scheduling for fuzzers. In
+     based greybox fuzzing as markov chain. IEEE Transactions on Software Engineering                   28th {USENIX } Security Symposium ( {USENIX } Security 19). 1949ś1966.
+     45, 5 (2017), 489ś506.                                                                        [34] Jonathan Metzman and Asra Ali. 2021. Developers are Buzzing on Fuzzing.
+[11] Joshua Bundt, Andrew Fasano, Brendan Dolan-Gavitt, William Robertson, and                          https://thenewstack.io/developers-are-buzzing-on-fuzzing/
+     Tim Leek. 2021. Evaluating Synthetic Bugs. Hong Kong (2021), 14.                              [35] Jonathan Metzman, Abhishek Arya, and László Szekeres. 2020. FuzzBench: Fuzzer
+[12] Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. 2019. Grey-box                        Benchmarking as a Service. https://security.googleblog.com/2020/03/fuzzbench-
+     Concolic Testing on Binary Code. In Proceedings of the International Conference                    fuzzer-benchmarking-as-service.html
+     on Software Engineering. 736ś747.                                                             [36] Sebastian Poeplau and Aurélien Francillon. 2021. SymQEMU: Compilation-Based
+[13] DARPA. 2016. DARPA Cyber Grand Challenge Final Event Archive. http:                                Symbolic Execution for Binaries. In Proceedings 2021 Network and Distributed
+     //www.lungetech.com/cgc-corpus/                                                                    System Security Symposium. Internet Society, Virtual. https://doi.org/10.14722/
+[14] Janez Demšar. 2006. Statistical comparisons of classifiers over multiple data sets.                ndss.2021.24118
+     The Journal of Machine Learning Research 7 (2006), 1ś30.                                      [37] Kostya Serebryany. 2015. libFuzzer ś a Library for Coverage-Guided Fuzz Testing.
+[15] Song Dokyung. 2020. Add an option to keep initial seed inputs around. https:                       https://llvm.org/docs/LibFuzzer.html
+     //reviews.llvm.org/D86577                                                                     [38] Kostya Serebryany. 2021. Fuzzer Test Suite. https://github.com/google/fuzzer-
+[16] Song Dokyung. 2020. Enable entropic by default. https://reviews.llvm.org/                          test-suite.
+     D87476                                                                                        [39] Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry
+[17] Song Dokyung. 2020.          Fix arguments of InsertPartOf/CopyPartOf calls                        Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In Proceed-
+     in CrossOver mutator.             https://github.com/llvm/llvm-project/commit/                     ings of the 2012 USENIX Conference on Annual Technical Conference (USENIX
+     c10e63677f5d20f18010f8f68c631ddc97546f7d                                                           ATC’12). USENIX Association, USA, 28.
+[18] Song Dokyung. 2020. Link libFuzzer’s own interceptors when other compiler                     [40] Paras Shah. 2021. Continuous Fuzzing with Go at Dgraph. https://dgraph.io/
+     runtimes are not linked. https://reviews.llvm.org/D83494                                           blog/post/continuous-fuzzing-with-go/
+[19] Song Dokyung. 2020.          Scale energy assigned to each input based on                     [41] L. Simon and A. Verma. 2020. Improving Fuzzing through Controlled Compilation.
+     input execution time.             https://github.com/llvm/llvm-project/commit/                     In 2020 IEEE European Symposium on Security and Privacy (EuroS P). 34ś52.
+     5cda4dc7b4d28fcd11307d4234c513ff779a1c6f                                                           https://doi.org/10.1109/EuroSP48549.2020.00011
+[20] B. Dolan-Gavitt, P. Hulin, E. Kirda, T. Leek, A. Mambretti, W. Robertson, F. Ulrich,          [42] Adith Sudhakar, Mohit Arora, and Souheil Moghnie. 2021. Focus on Fuzzing:
+     and R. Whelan. 2016. LAVA: Large-Scale Automated Vulnerability Addition. In                        Fuzzing Within the SDLC.         https://safecode.org/focus-on-fuzzing-fuzzing-
+     2016 IEEE Symposium on Security and Privacy (SP). 110ś121. https://doi.org/10.                     within-the-sdlc/
+     1109/SP.2016.15                                                                               [43] Robert Swiecki. 2015. Honggfuzz. https://honggfuzz.dev/
+[21] Andrew Fasano. 2019. Rode0day: A Year of Bug-Finding Evaluations.                             [44] Robert Swiecki. 2020. Improving honggfuzz for fuzzbench part 3.            https:
+[22] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++ :                      //groups.google.com/g/fuzzing-discuss/c/rv59P0svXjI
+     Combining Incremental Steps of Fuzzing Research. In 14th {USENIX} Workshop on                 [45] Michał Zalewski. 2014. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/
+     Offensive Technologies ({WOOT} 20). https://www.usenix.org/conference/woot20/                 [46] Michał Zalewski. 2014. Fuzzing with Afl-Fuzz Ð AFL 2.53b Documentation.
+     presentation/fioraldi                                                                              https://afl-1.readthedocs.io/en/latest/fuzzing.html
+[23] FuzzBench. 2021. The report ś FuzzBench. https://google.github.io/fuzzbench/                  [47] Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That
+     reference/report/                                                                                  Matters: Consequences. https://andreas-zeller.blogspot.com/2019/10/when-
+[24] Sijia Geng, Yuekang Li, Yunlan Du, Jun Xu, Yang Liu, and Bing Mao. 2020. An                        results-are-all-that-matters.html
+     Empirical Study on Benchmarks of Artificial Software Vulnerabilities. (March                  [48] Andreas Zeller. 2019. Andreas Zeller’s Old Blog: When Results Are All That
+     2020). https://arxiv.org/abs/2003.09561v1                                                          Matters: The Case of the Angora Fuzzer. https://andreas-zeller.blogspot.com/
+                                                                                                        2019/10/when-results-are-all-that-matters-case.html
+
+
+
+
+                                                                                            1403
+

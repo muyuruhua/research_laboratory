@@ -1,0 +1,216 @@
+{
+  "status": "PASS",
+  "round": "second caption pass",
+  "captions": 29,
+  "before_words": 587,
+  "after_words": 217,
+  "max_whitespace_tokens": 11,
+  "fig4_pdf_page": 12,
+  "table12_pdf_page": 11,
+  "rows": [
+    {
+      "label": "fig:mismatch",
+      "before": "Native endpoints for the three motivating targets (A/D). Points: means; bars: sample standard deviation (SD). Actual $n$ is shown; nominal $N=10$. Unequal horizons limit causal interpretation.",
+      "after": "Native A/D endpoints (mean $\\pm$ SD; actual $n$ shown).",
+      "before_words": 26,
+      "after_words": 8
+    },
+    {
+      "label": "fig:architecture",
+      "before": "Controller design: structural checks, bounded execution, and separate code/IPSM evidence determine reject, provisional, or durable admission.",
+      "after": "Evidence-gated admission with provisional and durable queues.",
+      "before_words": 16,
+      "after_words": 7
+    },
+    {
+      "label": "fig:posterior",
+      "before": "Calibration design: pre-update prediction, code-reward observation, and posterior update. IPSM novelty is excluded from the reward.",
+      "after": "Online productivity calibration using pre-update predictions and code rewards.",
+      "before_words": 16,
+      "after_words": 9
+    },
+    {
+      "label": "fig:reliability",
+      "before": "E-arm logged-reward reliability. Points: mean pre-update probability and reward frequency in ten bins; dashed line: perfect calibration; whiskers: percentile 95\\% whole-run bootstrap CIs (2,000 resamples). Lower strips count positive-mutation episodes. Actual runs $n$ and episodes $m$ are shown; nominal $N=10$.",
+      "after": "E-arm logged-reward calibration. Points: bin means; bars: 95\\% CIs.",
+      "before_words": 40,
+      "after_words": 9
+    },
+    {
+      "label": "fig:trajectories",
+      "before": "Descriptive A--E code-branch trajectories (465 archives). Lines: medians; bands: interquartile ranges, not CIs. Five-minute linear interpolation stays within observed trajectories. Time starts at fuzzer startup; labels give contributing $n$ at 24 hours. Nominal $N=10$.",
+      "after": "A--E code-branch trajectories: medians and interquartile ranges.",
+      "before_words": 34,
+      "after_words": 7
+    },
+    {
+      "label": "fig:posterior_cases",
+      "before": "Selected E-arm state histories. Top: pre-update probability. Bottom: final-selection/frontier-score ratio. Time denotes episode end; lines guide the eye. Colors identify states within each target; zero-frontier ratios are omitted. The text specifies the deterministic selection rule.",
+      "after": "E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom).",
+      "before_words": 35,
+      "after_words": 10
+    },
+    {
+      "label": "fig:dispositions",
+      "before": "C/D/E logged dispositions (left) and first failed $P/U/R$ flags (right). Candidate denominators: 1,326/2,227/735; trial denominators: 1,326/2,226/734. D and E each have one unmatched candidate. Labels do not verify queue membership; unvalidated lifecycle rates remain unavailable.",
+      "after": "C/D/E logged dispositions (left) and first failed $P/U/R$ predicates (right).",
+      "before_words": 35,
+      "after_words": 10
+    },
+    {
+      "label": "fig:cost",
+      "before": "Saved token usage versus terminal code branches for 371 B--E runs. Tokens combine prompt and completion counts (thousands). Panels use target-specific scales; AFLNet has no comparable counter. Unequal horizons and unreconciled counters limit interpretation.",
+      "after": "Saved tokens versus terminal code branches, by target and arm.",
+      "before_words": 34,
+      "after_words": 10
+    },
+    {
+      "label": "fig:callcost",
+      "before": "Saved calls versus terminal code branches for the same 371 B--E runs as \\figref{fig:cost}. Panels use target-specific scales; calls do not measure token or CPU costs.",
+      "after": "Saved model calls versus terminal code branches, by target and arm.",
+      "before_words": 26,
+      "after_words": 11
+    },
+    {
+      "label": "tab:boundary",
+      "before": "Motivating hypotheses, required evidence, and current observations.",
+      "after": "Motivating hypotheses and current evidence.",
+      "before_words": 7,
+      "after_words": 5
+    },
+    {
+      "label": "tab:novelty",
+      "before": "Prior mechanisms and the scope of this work; no performance ranking.",
+      "after": "Prior mechanisms and novelty boundaries.",
+      "before_words": 11,
+      "after_words": 5
+    },
+    {
+      "label": "tab:predicates",
+      "before": "Admission predicates and evidence relative to the pre-trial snapshot.",
+      "after": "Admission predicates and required evidence.",
+      "before_words": 9,
+      "after_words": 5
+    },
+    {
+      "label": "tab:implementation",
+      "before": "Controller requirements versus inspected code. Archive/source identity remains unverified.",
+      "after": "Controller requirements and implementation gaps.",
+      "before_words": 9,
+      "after_words": 5
+    },
+    {
+      "label": "tab:events",
+      "before": "Required event fields, grouped by function. The archive does not yet satisfy the full schema.",
+      "after": "Required event fields by function.",
+      "before_words": 15,
+      "after_words": 5
+    },
+    {
+      "label": "tab:arms",
+      "before": "Required confirmatory arms; repair is disabled in C/D/E. Archive labels do not certify these settings.",
+      "after": "Required configurations for arms A--E.",
+      "before_words": 15,
+      "after_words": 5
+    },
+    {
+      "label": "tab:targets",
+      "before": "Targets and protocols. Blank cells mark unverified build or reset metadata.",
+      "after": "Targets, protocols, and build metadata.",
+      "before_words": 11,
+      "after_words": 5
+    },
+    {
+      "label": "tab:llm",
+      "before": "Required shared LLM settings for B--E. Blank values await the confirmatory freeze.",
+      "after": "Shared LLM settings required for B--E.",
+      "before_words": 12,
+      "after_words": 6
+    },
+    {
+      "label": "tab:mainresults",
+      "before": "Observed branch endpoints and AUCs (mean $\\pm$ sample SD). Cell line 1: branches and actual $n$; line 2: AUC in branch-hours. Nominal $N=10$; no imputation. Unequal horizons preclude causal comparison.",
+      "after": "Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD.",
+      "before_words": 29,
+      "after_words": 8
+    },
+    {
+      "label": "tab:mechanisms",
+      "before": "C/D/E logged mechanisms. IDs are scoped to each archive; dispositions do not verify queue membership. Blank cells lack validated evidence. Logged-reward diagnostics appear in Table~\\ref{tab:logged_calibration}.",
+      "after": "Logged C/D/E mechanisms; blank cells indicate unvalidated evidence.",
+      "before_words": 25,
+      "after_words": 8
+    },
+    {
+      "label": "tab:repair",
+      "before": "Optional repair diagnostics; excluded from primary causal comparisons. Unavailable values remain blank.",
+      "after": "Optional repair diagnostics; unavailable values remain blank.",
+      "before_words": 12,
+      "after_words": 7
+    },
+    {
+      "label": "tab:cve",
+      "before": "Archived vulnerability cases. L: attached log; R: report only. Reported builds and local controls do not independently validate upstream patch equivalence.",
+      "after": "Vulnerability cases and archived evidence (L: log; R: report).",
+      "before_words": 21,
+      "after_words": 9
+    },
+    {
+      "label": "tab:cveresults",
+      "before": "Archived replay batches and separate controls (L/R: Table~\\ref{tab:cve}). Original denominators are retained; absent trials are not imputed. These are not controlled A--E campaigns.",
+      "after": "Reported replay batches and separate controls; original denominators retained.",
+      "before_words": 23,
+      "after_words": 9
+    },
+    {
+      "label": "tab:threats",
+      "before": "Validity threats, required controls, and remaining limits.",
+      "after": "Validity threats, required controls, and evidence limits.",
+      "before_words": 7,
+      "after_words": 7
+    },
+    {
+      "label": "tab:observed_inventory",
+      "before": "Archive run counts; nominal $N=10$ per target--arm. Duplicate D archives are counted once. D status labels are descriptive; duration is the run range.",
+      "after": "Available runs by target; D-arm status and duration.",
+      "before_words": 23,
+      "after_words": 8
+    },
+    {
+      "label": "tab:observed_endpoints",
+      "before": "Native A/D endpoints (mean $\\pm$ sample SD). All available rows are included; unequal horizons and uncertain build provenance preclude causal comparisons.",
+      "after": "Native A/D code and IPSM endpoints (mean $\\pm$ SD).",
+      "before_words": 20,
+      "after_words": 8
+    },
+    {
+      "label": "tab:observed_log_counts",
+      "before": "D-arm schema-v2 counts. Disposition labels do not independently verify queue membership.",
+      "after": "Logged D-arm events; disposition labels do not verify queue membership.",
+      "before_words": 11,
+      "after_words": 10
+    },
+    {
+      "label": "tab:observed_costs",
+      "before": "D-arm per-run cost ranges. Total tokens = prompt + completion counters; k = 1,000.",
+      "after": "Saved D-arm costs: per-run ranges by target.",
+      "before_words": 14,
+      "after_words": 7
+    },
+    {
+      "label": "tab:logged_calibration",
+      "before": "E-arm logged-reward diagnostics on positive-mutation episodes. Brackets: percentile 95\\% whole-run bootstrap CIs (2,000 resamples/target). Lower BS/ECE is better; AUPRC uses AP. Reference: same-run Beta(1,1)-smoothed past included rewards. Fixed-energy code-branch metrics remain unavailable.",
+      "after": "E-arm logged-reward calibration (95\\% CIs in brackets).",
+      "before_words": 32,
+      "after_words": 7
+    },
+    {
+      "label": "tab:archive_arms",
+      "before": "Archive endpoints and observed-horizon AUC (mean $\\pm$ sample SD). Actual count: $n$; nominal $N=10$. Missing target--arm groups have no row.",
+      "after": "Archive endpoints and observed-horizon AUC (mean $\\pm$ SD).",
+      "before_words": 19,
+      "after_words": 7
+    }
+  ],
+  "reduction_percent": 63.0
+}

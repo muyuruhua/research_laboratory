@@ -1,0 +1,1316 @@
+                                                 FOX: Coverage-guided Fuzzing as Online Stochastic Control
+                                                            Dongdong She∗                            Adam Storek∗                                 Yuchong Xie
+                                                        Hong Kong University                      Columbia University                        Hong Kong University
+                                                      of Science and Technology                    New York, NY, USA                       of Science and Technology
+                                                          Hong Kong, China                      astorek@cs.columbia.edu                        Hong Kong, China
+                                                         dongdong@cse.ust.hk                                                                  yu3h0xie@gmail.com
+
+                                                          Seoyoung Kweon                         Prashast Srivastava                              Suman Jana
+                                                          Columbia University                      Columbia University                        Columbia University
+                                                          New York, NY, USA                        New York, NY, USA                          New York, NY, USA
+arXiv:2406.04517v1 [cs.CR] 6 Jun 2024
+
+
+
+
+                                                         sk4865@columbia.edu                      ps3400@columbia.edu                       suman@cs.columbia.edu
+
+                                        Abstract                                                               given time budget. These fuzzers maintain a list of seed inputs and
+                                        Fuzzing is an effective technique for discovering software vulner-     select inputs for further mutation at each stage. They consist of
+                                        abilities by generating random test inputs and executing them          two main components: a scheduler (choosing inputs for mutation)
+                                        against the target program. However, fuzzing large and complex         and mutators (modifying the chosen input). The goal is to generate
+                                        programs remains challenging due to difficulties in uncovering         inputs that explore new edges for better coverage. Most existing
+                                        deeply hidden vulnerabilities. This paper addresses the limitations    fuzzers use randomized mutations to adapt to different branches in
+                                        of existing coverage-guided fuzzers, focusing on the scheduler and     the target program. The effectiveness of a fuzzer, therefore, depends
+                                        mutator components. Existing schedulers suffer from information        on two factors: (i) the mutator’s likelihood to generate new inputs
+                                        sparsity and the inability to handle fine-grained feedback metrics.    achieving new coverage given a specific seed input, and (ii) the
+                                        The mutators are agnostic of target program branches, leading to       scheduler’s ability to identify seeds that, when mutated, are likely
+                                        wasted computation and slower coverage exploration.                    to trigger new edges.
+                                           To overcome these issues, we propose an end-to-end online           Limitations of Existing Approaches. We identify the following
+                                        stochastic control formulation for coverage-guided fuzzing. Our        main drawbacks in the existing design of scheduler and mutator
+                                        approach incorporates a novel scheduler and custom mutator that        components for coverage-guided fuzzing. Firstly, the schedulers use
+                                        can adapt to branch logic, maximizing aggregate edge coverage          coarse-grained feedback to select candidates for further mutation.
+                                        achieved over multiple stages. The scheduler utilizes fine-grained     They rely on seeds that have previously resulted in coverage gain
+                                        branch distance measures to identify frontier branches, where new      when mutated. However, this approach suffers from serious sparsity
+                                        coverage is likely to be achieved. The mutator leverages branch dis-   of information, as coverage-increasing inputs become increasingly
+                                        tance information to perform efficient and targeted seed mutations,    rare as the fuzzing campaign progresses [45]. Consequently, the
+                                        leading to robust progress with minimal overhead.                      scheduler often degenerates into a round-robin approach. Attempt-
+                                           We present FOX, a proof-of-concept implementation of our            ing to use finer-grained data-flow-guided feedback metrics [31, 41]
+                                        control-theoretic approach, and compare it to industry-standard        to address this issue can easily lead to an explosion in the seed cor-
+                                        coverage-guided fuzzers. 6 CPU-years of extensive evaluations on       pus of the fuzzing scheduler [53]. Secondly, the current mutators
+                                        the FuzzBench dataset and complex real-world programs (a total of      are agnostic of the target program branches. They perform random
+                                        38 test programs) demonstrate that FOX outperforms existing state-     mutations independently of the branch logic, with the hope of in-
+                                        of-the-art fuzzers, achieving average coverage improvements up to      creasing coverage. As a result, these existing mutators waste compu-
+                                        26.45% in real-world standalone programs and 6.59% in FuzzBench        tation while attempting to generate coverage-increasing mutations,
+                                        programs over the state-of-the-art AFL++. In addition, it uncov-       leading to slower coverage exploration. Techniques using taint
+                                        ers 20 unique bugs in popular real-world applications including        tracking to customize mutation operations for different branches
+                                        eight that are previously unknown, showcasing real-world security      tend to incur prohibitively high overhead [54]. Furthermore, despite
+                                        impact.                                                                the shared overarching goal of achieving new coverage, current
+                                                                                                               fuzzers often treat the scheduler and mutator as separate entities
+                                        1        Introduction                                                  with distinct objectives and little information exchange.
+                                        Fuzzing is a popular technique for discovering software vulnerabil-    Our Approach. In this paper, we tackle these issues by presenting
+                                        ities by generating random test inputs and executing them against      an end-to-end online stochastic control formulation for coverage-
+                                        the target program [13, 15, 24, 49]. While it has been successful in   guided fuzzing, which encompasses both the scheduler and mutator
+                                        detecting security vulnerabilities in real-world programs [10, 11],    components. In this framework, the stochastic mutator and target
+                                        fuzzing large and complex programs remains challenging due to          program represent the dynamics of the system, where the sched-
+                                        difficulties in uncovering deeply hidden vulnerabilities.              uler makes probabilistic online control decisions about which seed
+                                            This paper focuses on coverage-guided fuzzers, the prevailing      to mutate from the corpus, representing the fuzzer’s state. Each
+                                        approach to fuzzing, aiming to maximize edge coverage within a         scheduling step constitutes a stage of this control process, and our
+                                        ∗ Both   authors contributed equally to the paper.
+                                                                                                               objective is to maximize the sum of expected coverage gain across
+CCS’24, October 14-18, 2024, Salt Lake City, USA                            Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+                                         System dynamics                                 the target frontier branch. This approach leads to fast and robust
+                                            Mutator                                      progress for a wide range of branch distance functions, while main-
+                       Control action:
+                        pick a seed                     Local    Newton’s                taining minimal overhead compared to more expensive techniques
+     Scheduler                                         search     method
+                                                                                         like byte-level taint inference [13, 26, 37].
+         Seed per frontier                                      Generated                    Our design not only results in coverage gains but also provides ac-
+             branch                                              Mutant                  tionable fine-grained, frontier-branch-specific feedback for fuzzing
+                                                      Target program                     developers and users to debug and optimize their setup, going be-
+                                                                                         yond the current work on fuzzing interpretability [3]. For instance,
+                             Branch distances of                                         our scheduler can estimate the different sources of difficulty in
+                              frontier branches                                          flipping frontier branches, including the error in the linear approxi-
+                                                                                         mation of a branch and the rate of reachable samples to a branch.
+                                                                                         Result Summary. To evaluate the effectiveness of our control-
+                       Figure 1: Workflow of FOX                                         theoretic approach to fuzzing, we implement FOX and compare it
+                                                                                         against the leading state-of-the-art fuzzers: AFL++, AFL++ with
+                                                                                         cmplog, AFL++ with cmplog and dictonary. We perform an exten-
+                                                                                         sive evaluation involving over 6 CPU-years of computation of the
+multiple stages subject to a time budget constraint. To solve this
+                                                                                         coverage achieved by FOX and the other evaluation candidates
+problem, we introduce a novel scheduler and mutator that can effi-
+                                                                                         on a set of 38 programs (23 from the FuzzBench dataset [43] as
+ciently adapt to branch logic, integrating them into a comprehensive
+                                                                                         well as 15 from a manually curated dataset of complex real-world
+control framework that can benefit from both the scheduler’s multi-
+                                                                                         programs). FOX outperforms all existing state-of-the-art fuzzers on
+seed view and the mutator’s seed- and branch-specific behavior.
+                                                                                         standalone programs, achieving average improvements as high as
+The workflow of FOX is shown in Figure 1.
+                                                                                         26.45% compared to AFL++, 16.98% compared to AFL++ with cm-
+Scheduler. To address the lack of meaningful information for the                         plog, and 12.90% compared to AFL++ with cmplog and dictionary.
+scheduler when mutators fail to achieve new coverage, we use fine-                       The same performance trend is reflected in the FuzzBench dataset
+grained branch distance measures (see §2.3), indicating how close                        where we see FOX gain a coverage improvement up to 6.59% over
+the current seed is to flipping a branch. Specifically, flipping indi-                   AFL++ including an average performance improvement of 3.50%
+cates generating and executing a seed that can exercise alternative                      when compared across all fuzzers. In addition, we evaluated the bug
+outgoing control-flow branches from the parent node of a previ-                          discovery capabilities of FOX, comparing its performance against
+ously seen branch. To avoid state space explosion while leveraging                       the other candidate fuzzers on Magma dataset [29] with ground-
+finer-grained feedback metrics, we apply the fine-grained feedback                       truth bugs as well as its ability to find bugs in the wild for real-world
+measure only to frontier branches — branches that have at least one                      applications. On the Magma dataset, FOX uncovers up to 16.16%
+unexplored outgoing control-flow edge from their corresponding                           more ground-truth bugs compared to other fuzzers. Finally, FOX
+parent node in the control-flow graph. Thus, our control problem                         also uncovered 20 unique bugs as part of its in-the-wild evaluation
+is simplified to maximizing coverage by flipping frontier branches                       of real-world programs, of which eight were previously unknown
+at each stage (see Section 2 for a formal definition).                                   and have been responsibly disclosed to the affected vendors.
+    Our approach estimates the potential for new coverage of a seed                          In summary, we make the following contributions:
+based on the potential for a branch distance decrease at frontier
+nodes. New coverage implies a decrease in branch distance, though
+a branch distance decrease does not necessarily imply new cov-                                 • Formulating fuzzing as an online stochastic control prob-
+erage. Since branch distance decreases are much more frequent,                                   lem, presenting a unified framework for reasoning about the
+we use them as a reliable proxy and an upper bound on the prob-                                  scheduler and mutator components in tandem.
+ability of achieving new coverage. The scheduler keeps track of                                • Performing coverage exploration by scheduling frontier branches,
+the branch distance decreases, estimating the probability of a seed,                             drastically reducing the scheduler’s control space while em-
+when mutated, to flip a frontier branch with minimal additional                                  ploying finer-grained feedback in the form of branch dis-
+overhead. We present a greedy online scheduling algorithm that                                   tance.
+leverages branch-distance-based probabilistic estimates of expected                            • Designing branch-aware mutators using optimization-
+coverage gain to make provably optimal decisions among all possi-                                oriented strategies to gain new coverage and provide inter-
+ble scheduling algorithms with access to the same estimates of the                               pretable feedback about frontier branches’ characteristics.
+probability of achieving new coverage.                                                         • Introducing FOX as a proof-of-concept of our stochastic-
+Mutator. In order to overcome the limitations of randomized mu-                                  control-guided approach, outperforming existing state-of-
+tators in adapting to branch logic, we present a new mutator that                                the-art fuzzers (AFL++, AFL++ cmplog, AFL++ cmplog with
+utilizes branch distance information for each frontier branch. Our                               dictionary) on FuzzBench as well as a set of complex real-
+mutator has two components: local search and Newton’s method.                                    world programs, achieving coverage improvements up to
+First, we use local search to identify new seeds reaching each fron-                             26.45%.
+tier branch and efficiently learn an approximate linear lower bound                            • Releasing FOX at https://github.com/FOX-Fuzz/FOX to fos-
+of the branch function. Next, we generate new seeds based on New-                                ter further research and collaboration within the research
+ton’s method of root finding, with a high probability of flipping                                community.
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+2 Theory                                                                   dynamics are revealed locally based on the actions selected by the
+                                                                           fuzzer’s mutation and control process. In essence, the fuzzer makes
+2.1 Problem Definition
+                                                                           decisions at each stage based on the current seed corpus 𝑆𝑖 , and
+Coverage-guided mutation-based fuzzing can be defined as an on-            then the program’s behavior and response become apparent when
+line optimization problem aiming to maximize the edge coverage             the chosen mutated input is executed.
+of a target program. Let us begin with an arbitrary target program            Moreover, most existing fuzzers employ randomized mutations
+denoted as 𝑃, which can take inputs up to length 𝑀 bits. A fuzzer          to adaptively explore diverse program behaviors and various branch
+maintains a seed corpus of inputs and iteratively mutates these            types. Since the input space of a fuzzer is often vast and complex, a
+seeds to generate new inputs. These mutated inputs are then exe-           randomized mutation approach avoids introducing specific biases
+cuted by the target program to determine the coverage achieved             toward particular inputs. Instead, it allows the fuzzer to explore a
+on program edges.                                                          wide range of possibilities.
+    At each fuzzing iteration 𝑖, the fuzzer selects a seed 𝑆𝑖 [𝑢𝑖 ] from      Due to both the mutator performing randomized mutations and
+the current seed corpus 𝑆𝑖 , where 𝑢𝑖 represents the index of the          the uncertainty in the target program’s behavior, the system dy-
+chosen seed. Next, the fuzzer applies the mutator 𝑚𝑢𝑡 (·) to 𝑆𝑖 [𝑢𝑖 ],     namic is best represented as a stochastic process. As a result, the
+generating a new input x. The target program is then executed              problem at hand is considered a stochastic optimal control problem.
+with this mutated input, and the achieved edge coverage increase           In this context, the fuzzer aims to find an optimal mutation strat-
+is calculated using the function 𝑐𝑜𝑣 (x, 𝑆𝑖 ) over the mutated input x     egy that maximizes coverage despite the stochastic nature of the
+and the seed corpus 𝑆𝑖 .                                                   system dynamics. This probabilistic optimization approach allows
+    Based on the coverage outcome, the fuzzer decides whether/how          the fuzzer to efficiently explore the input space and achieve effec-
+to update the seed corpus 𝑆𝑖 to 𝑆𝑖+1 . Typically, popular fuzzers add      tive generalization, ultimately improving coverage across diverse
+x to 𝑆𝑖 if it leads to a coverage increase.                                programs and input structures.
+    The objective is to maximize the accumulated coverage across 𝐾            Formulating fuzzing as a stochastic control problem involves
+stages. This can be formally represented as follows:                       five key components as described below:
+                               𝐾
+                              ∑︁                                           State Space. The state space encompasses all possible configura-
+                 Maximize           [𝑐𝑜𝑣 (𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]), 𝑆𝑖 )]     (1)    tions or states of the system at any given stage. In the context of
+                              𝑖=1                                          fuzzing, it includes information about the current seed corpus at
+                                                                           stage 𝑖, denoted as 𝑆𝑖 .
+   Here, 𝑆𝑖 [𝑢𝑖 ] denotes the seed selected for mutation at stage 𝑖,       Control Space. The control space encompasses all the possible
+and 𝑐𝑜𝑣 (𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]), 𝑆𝑖 ) represents the coverage achieved after       decisions that can influence the system’s behavior. In the context
+executing the mutated input on the target program.                         of fuzzing, it refers to the choice of which seed, denoted with index
+   The optimal strategy for the fuzzer to achieve the highest cov-         𝑢𝑖 in the seed corpus 𝑆𝑖 (1 ≤ 𝑢𝑖 ≤ |𝑆𝑖 |), to select at each stage.
+erage for a given target program is to find the sequence of indices        Fuzzer Dynamics. The dynamics summarize how the system
+𝑢𝑖 into the seed corpus 𝑆𝑖 that maximizes the objective function           evolves over stages based on the chosen actions and the current
+representing the accumulated coverage across 𝐾 stages. This prob-          state. In fuzzing, it is characterized by three main steps in the mu-
+lem is an online optimization problem [28] because the fuzzer can          tation stage:
+only observe the output of the 𝑐𝑜𝑣 function after applying the muta-          First, the fuzzer takes the seed corpus 𝑆𝑖 and selects a seed 𝑆𝑖 [𝑢𝑖 ]
+tion operation at each stage sequentially. In an online optimization       based on the control strategy. It then generates a new input x
+setting, the decision-maker (in this case, the fuzzer) must make           by applying the mutator 𝑚𝑢𝑡 (·) to the selected seed 𝑆𝑖 [𝑢𝑖 ]. Next,
+choices at each stage without complete knowledge of the objective          the fuzzer executes the generated mutant on the target program,
+function’s values for future stages. The objective of the fuzzer is to     resulting in a coverage value denoted by 𝑔𝑖 . This coverage value
+maximize the cumulative coverage over the sequence of stages, lead-        represents the extent of coverage achieved for the specific mutated
+ing to an online optimization problem where the optimal sequence           input. Finally, the fuzzer updates the seed corpus (i.e., state) 𝑆𝑖 to
+of seed selections and mutations needs to be found to achieve the          create a modified seed corpus 𝑆𝑖+1 based on the coverage result. This
+highest coverage across the entire fuzzing process.                        step involves incorporating the new input and its corresponding
+                                                                           coverage into the seed corpus for the subsequent stages.
+2.2     Fuzzing as Online Stochastic Control                                  As mentioned earlier, the dynamics of the fuzzing process are
+One approach to addressing the online optimization problem de-             stochastic due to the random nature of the mutator. Formally, we
+scribed above (Equation 1) is to formulate it as an optimal control        define the dynamics steps below:
+problem. This allows us to ground the development of fuzzing algo-
+rithms on the rich theory of optimal control. In an optimal control
+problem, the main goal is to find an optimal control strategy given                                  x ← 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])
+a state space and control space. In our fuzzing scenario, the state                                  𝑔𝑖 = E [𝑐𝑜𝑣 (x, 𝑆𝑖 )]                           (2)
+space represents the state of the fuzzer at each stage, which is the                              𝑆𝑖+1 ← 𝑢𝑝𝑑𝑎𝑡𝑒 (𝑆𝑖 , x, 𝑔𝑖 )
+current seed corpus 𝑆𝑖 , and the control space corresponds to the
+choices the fuzzer makes, such as selecting a seed for mutation.
+   However, the dynamics of the target program are not fully known         Objective Function. The objective function defines the goal or
+in advance due to the online nature of the problem. The system             desired outcome of the system. In the context of fuzzing, it aims to
+CCS’24, October 14-18, 2024, Salt Lake City, USA                Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+maximize the expected total coverage gain across 𝐾 stages:                   by She et al. [49] in the context of graph-centrality-based seed
+                                             𝐾
+                                            ∑︁                               scheduling. Consider a control flow graph (CFG) as 𝐺 = (𝑁 , 𝐸),
+                              Maximize             𝑔𝑖              (3)       where 𝑁 denotes a set of basic blocks and 𝐸 denotes control flow
+                                            𝑖=1                              transitions between these blocks. Given a seed corpus 𝑆, we can
+Constraints. These represent restrictions that need to be satisfied          classify 𝑁 into a set of unvisited nodes 𝑈 and another set of visited
+by the system. Fuzzing is typically subject to resource constraints          nodes 𝑉 based on the code coverage information (𝑆.𝑐𝑜𝑣 indicates
+like that the total execution time (i.e., the sum of execution time          whether a node 𝑛 has been reached by the seed corpus 𝑆):
+for each stage 𝑡𝑖 ) must not go over the total time budget 𝑇 of the
+fuzzing campaign:                                                                                  𝑉 = {𝑛|𝑛 ∈ 𝑁 , 𝑆.𝑐𝑜𝑣 (𝑛) = 1}
+                                                                                                                                                        (7)
+                              𝐾
+                             ∑︁                                                                    𝑈 = {𝑛|𝑛 ∈ 𝑁 , 𝑆.𝑐𝑜𝑣 (𝑛) = 0}
+                                 𝑡𝑖 ≤ 𝑇                          (4)
+                                    𝑖=1                                       Unlike She et al. [49] who identify horizon nodes as a set of unvisited
+                                                                              nodes lying at the boundary between visited and unvisited code
+2.3     Decomposing 𝑐𝑜𝑣 (x, 𝑆𝑖 )                                              regions, we define frontier nodes as a set of visited nodes that
+The coverage function depends on both the mutated input x and                 dominate all the unvisited nodes:
+the current set of seen edges based on 𝑆𝑖 . Formally, 𝑐𝑜𝑣 (x, 𝑆𝑖 ) can
+be modeled as a random variable that counts how many unseen (i.e.,                                𝐹 = {𝑣 |(𝑣, 𝑢) ∈ 𝐸, 𝑣 ∈ 𝑉 , 𝑢 ∈ 𝑈 }                   (8)
+not reached before by any input) edges at stage 𝑖 have been flipped
+by the randomized mutation operation performed on x. To achieve              For the purposes of using frontier nodes to understand coverage,
+this, we use indicator functions 𝑐𝑜𝑣𝑏 (x, 𝑆𝑖 ), each corresponding to        we focus solely on the subset of frontier nodes containing control
+an unseen branch 𝑏 ∈ 𝐵𝑖 , where 𝐵𝑖 represents the set of unseen              instructions that result in conditional jumps. Therefore, in our
+branches at stage 𝑖. These indicator functions are modeled as ran-           setting, each frontier node is associated with a conditional jump,
+dom variables taking values of 0 or 1, indicating whether the unseen         i.e., a frontier branch. Frontier branches at stage 𝑖 are denoted by
+branch 𝑏 is flipped or not. Utilizing the linearity of expectation, we       𝐹 𝐵𝑖 . We assume that each frontier branch 𝑏 at stage 𝑖 involves the
+can express the expectation of the 𝑐𝑜𝑣 function in the following             evaluation of a predicate 𝑄𝑏 . The predicate evaluates to true or false
+manner:                     ∑︁                                               based on a relation 𝑓𝑏 (x) 𝑅𝑏 0, where 𝑅𝑏 represents the condition
+                      𝑔𝑖 =       E [𝑐𝑜𝑣𝑏 (x, 𝑆𝑖 )]                  (5)      type (<, ≤, >, ≥, =, ≠) and x indicates a test input. Flipping a
+                                 𝑏 ∈𝐵𝑖                                       branch indicates finding x′ such that 𝑄𝑏 (𝑓𝑏 (x′ )) ≠ 𝑄𝑏 (𝑓𝑏 (x)). As
+    Most modern fuzzers employ customized randomized mutators,               part of fuzzing instrumentation added to the target program, we
+denoted as 𝑚𝑢𝑡 (·), which essentially generate new inputs drawn              assume that our fuzzer has access to the 2-tuple (𝑄𝑏 (𝑓𝑏 (x)), Rb )
+from an unknown distribution specific to the fuzzer. In our analysis,        for each frontier branch 𝑏 ∈ 𝐹 𝐵𝑖 . With this information, we define
+we assume that the inputs generated by the mutator have a fixed,             branch distance function 𝛿𝑏 as a linear or piece-wise linear function
+yet unknown, probability of flipping a given unseen branch 𝑏 (de-            of 𝑓𝑏 (x) for each frontier branch 𝑏 as given in Table 1.
+noted as Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))). Furthermore, different program           Consider a simple example: a branch 𝑏 if (𝑥 ≤ 15), meaning
+inputs generated by 𝑚𝑢𝑡 (·) for different seeds are independently            𝑓𝑏 (𝑥) = 𝑥 − 15, with a reaching input 𝑥 = 5. The branch is frontier
+distributed. Popular existing fuzzers like AFL++ satisfy these as-           because we have not found an input that exceeds 15. We aim to
+sumptions. Mutators such as havoc randomly alter inputs without              define a linear branch distance function that outputs how close
+targeting specific branches, thus maintaining an equal chance of             𝑥 is to exceeding 15. For an input 𝑥 = 5, 𝑄𝑏 (𝑓𝑏 (𝑥)) = 𝑡𝑟𝑢𝑒 (i.e.,
+flipping any branch for a given seed. Likewise, the creation of one          𝑥 ≤ 15 is true) and 𝑅𝑏 = ≤. Consequently, according to Table 1, the
+input does not influence the creation of another unless a branch is          employed function is 1 − 𝑓𝑏 (𝑥) or 16 − 𝑥. Finding the root input of
+flipped, resulting in coverage gain.                                         16 − 𝑥, i.e. 𝑥 = 16, will flip the frontier branch 𝑏.
+    As a result of these assumptions, we can model the coverage of a             Due to the nature of existing mutators as discussed above, we fur-
+specific branch 𝑏, denoted as 𝑐𝑜𝑣𝑏 (x, 𝑆𝑖 ), where x ← 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]),       ther assume that the program inputs generated by the mutator have
+as a random variable 𝑋 following a Bernoulli distribution with the           an unknown but fixed probability of decreasing branch distance
+probability of success given by Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])).:               𝛿𝑏 for a given unseen branch 𝑏 (Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))).
+                        ∑︁                                                   Therefore, we can model the event 𝛿𝑏 (x) decreases, x ← 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])
+                   𝑔𝑖 =      Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))           (6)      as a random variable 𝑌 ∼ 𝐵𝑒𝑟𝑛𝑜𝑢𝑙𝑙𝑖 (Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))).
+                         𝑏 ∈𝐵𝑖                                               While it is evident that 𝑋 implies 𝑌 (every flip always involves a
+    To maximize the expected coverage gain in stage 𝑖, we need a             branch distance decrease), it is not necessarily true that 𝑌 implies 𝑋
+good estimate for Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])). However, the conven-         (not every branch distance decrease involves a flip). Hence, we find
+tional approach of observing the frequency with which 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])         that: Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])) ≤ Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])).
+flips the branch does not work for our task. This is because using           Therefore, optimizing based on 𝑝 ′ serves as an approximation to
+this approach, the probability for not-yet-flipped branches will             optimizing based on 𝑝, where 𝑝 ′ and 𝑝 are the probabilities of 𝛿𝑏
+be zero, whereas this probability is irrelevant to us once we have           decreasing and 𝑏 flipping, respectively.
+flipped a branch.                                                                Naturally, 𝑝 ′ cannot be used to reason about unseen branches,
+    To address this issue, we utilize the concept of frontier nodes          i.e., branches that have not been reached yet, since we lack branch
+which is closely related to the concept of horizon nodes introduced          distance 𝛿𝑏 information for them. Thus, we focus solely on frontier
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                      CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+Table 1: Branch distance function 𝛿𝑏 for a frontier branch                      be simplified to step (b) as shown below.
+𝑏 ∈ 𝐹 𝐵𝑖 based on the 2-tuple (𝑄𝑏 (𝑓𝑏 (x)), 𝑅𝑏 ). 2-tuples mapping
+                                                                                    𝑢𝑖+1 = 𝑇 𝑆𝑖 [arg max Pr(𝛿𝑏 < 𝑇 𝑆𝑖 [𝑏].𝑑 | 𝑚𝑢𝑡 (𝑇 𝑆𝑖 [𝑏].𝑠)]
+to the same branch distance function are grouped together.                                        𝑏 ∈𝐹 𝐵𝑖
+                                                                                                    𝑇 𝑆𝑖+1 [𝑏].𝑠 = arg min 𝛿𝑏 (𝑠)                         (12)
+                     𝑄𝑏 (𝑓𝑏 (x))        𝑅𝑏       𝛿𝑏 (x)                                                             𝑠 ∈𝑆𝑖+1
+                        false           <                                                            𝑇 𝑆𝑖+1 [𝑏].𝑑 = min 𝛿𝑏 (𝑠)
+                                               𝑓𝑏 (x) − 1                                                            𝑠 ∈𝑆𝑖+1
+                        true            ≥
+                        false           ≤                                          To estimate the branch distance decrease probability for a fron-
+                                                  𝑓𝑏 (x)                        tier branch, we measure the number of total executions of inputs
+                        true            >
+                                                                                that reach the frontier branch, denoted as 𝑡ℎ(·), and the total num-
+                        false           >
+                                               1 − 𝑓𝑏 (x)                       ber of inputs that lower the global minimum branch distance for
+                        true            ≤
+                                                                                the frontier branch, denoted as 𝑝ℎ(·). To incorporate the time con-
+                        false           ≥
+                                                 −𝑓𝑏 (x)                        straint, we further refine the probability estimate by replacing the
+                        true            <
+                                                                                number of hits with time. Specifically, we track the total time spent
+                        false           =
+                                                 |𝑓𝑏 (x)|                       executing inputs that reach a frontier branch 𝑡𝑡 (·) and the total time
+                        true            ≠
+                                                                                spent executing inputs lowering the branch distance for a frontier
+                        false           ≠
+                                               1 − |𝑓𝑏 (x)|                     branch 𝑝𝑡 (·). Additionally, to prevent frequent scheduling of the
+                        true            =
+                                                                                same seeds, we introduce a discount factor 𝜆𝑏 based on how many
+                                                                                times the seed mapped to the frontier branch 𝑏 was scheduled. The
+                                                                                final probability estimate is then given by:
+branches 𝐹 𝐵𝑖 — branches that we have reached but not yet flipped.                                                              𝑝𝑡 (𝑏)
+                                                                                                     Pr(𝛿𝑏 decreases) = 𝜆𝑏                                (13)
+                  ∑︁                                                                                                            𝑡𝑡 (𝑏)
+            𝑔𝑖 ≈      Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))        (9)
+                    𝑏 ∈𝐹 𝐵𝑖                                                        Theorem 1. Given a fixed branch flip probability before each
+                                                                                stage 𝑖, a greedy schedule that chooses 𝑢𝑖+1 such that it maximizes
+   To optimize Equation 9, we use a two-pronged approach. First,                the expected coverage gain at each stage 𝑖 of the problem described
+we choose to schedule 𝑆𝑖 [𝑢𝑖 ] for each stage 𝑖 such that it maximizes          by Equation 3 is optimal.
+the above expression. Second, assuming that most frontier branches
+in a program are approximately linear in the neighborhood of each                  A proof of the theorem can be found in §A.1.
+seed in 𝑆𝑖 , we introduce a custom mutation operation such that the             2.4.2 Optimizing Mutation . In our approach, the primary objective
+Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])) increases for these branches.                 of the mutation stage is to enhance the likelihood of reducing
+                                                                                branch distances for all frontier branches at any given stage. To
+2.4     Fuzzing Algorithm                                                       achieve this, we begin by creating a locally correct linear under-
+2.4.1 Optimal-control-based Scheduler. We solve the following op-               approximator through local search, essentially a subgradient. If
+timization problem using a greedy approach.                                     the slope of this approximator is non-zero (indicating a decreasing
+                                                                                direction), we proceed with the Newton’s method.
+                      𝐾 ∑︁
+                     ∑︁                                                         Local Search. The central idea is to construct a local linear ap-
+        𝑀𝑎𝑥𝑖𝑚𝑖𝑧𝑒                     Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))   (10)
+                     𝑖=1 𝑏 ∈𝐹 𝐵𝑖
+                                                                                proximation of the branch distance function, denoted as 𝛿𝑏 (x), for
+                                                                                a given branch 𝑏. This local approximation should act as a lower
+To optimize each stage 𝑖 efficiently, we aim to select a seed 𝑆𝑖 [𝑢𝑖 ]          bound on 𝛿𝑏 within a neighborhood 𝑁 (x) surrounding the point x.
+that maximizes the inner sum in Equation 10. Given that many                    The local neighborhood depends on the number of bytes modified
+of these probabilities are very small (0 or close to 0), we can ap-             by the mutator in stage 𝑖. Unlike aiming to minimize the average
+proximate the inner sum by taking the maximum term instead.                     error over the points within the neighborhood, we aim to mini-
+This approximation is not only effective but also computationally               mize the under-approximation error. This choice ensures that the
+inexpensive in a streaming setting.                                             Newton’s method remains stable.
+                                                                                   To achieve this, we seek a vector 𝑔 that satisfies the condition
+                                                                                ∀x′ ∈ 𝑁 (x) : 𝑔𝑇 · (x′ − x) ≤ 𝛿𝑏 (x′ ) − 𝛿𝑏 (x). To approximate 𝑔, we
+                      𝐾
+                     ∑︁
+        𝑀𝑎𝑥𝑖𝑚𝑖𝑧𝑒              max Pr(𝛿𝑏 decreases | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))      (11)
+                           𝑏 ∈𝐹 𝐵𝑖                                              resort to a randomized local search, generating a fixed-size sample
+                                                                                of program inputs x′ ∈ 𝑁 (x) using 𝑚𝑢𝑡 (·). We estimate the value of
+                     𝑖=1
+
+We can tackle this problem in two steps: (a) for each branch 𝑏,                 𝑔 by selecting 𝑔 = arg max𝑔′ ∥𝑔′ ∥ 1 , 𝑔′ = (𝛿𝑏 (x′ ) − 𝛿𝑏 (x)) ⊘ (x′ − x),
+find a seed 𝑆𝑖 [𝑢𝑖 ] that maximizes Pr(𝛿𝑏 decreases | mut(𝑆𝑖 [𝑢𝑖 ]))            where ⊘ indicates element-wise division.
+and (b) select the frontier branch 𝑏 ∈ 𝐹 𝐵𝑖 with the maximum                       The success of local search hinges on finding the right balance
+Pr(𝛿𝑏 decreases | mut(𝑆𝑖 [𝑢𝑖 ])). For step (a), we maintain a map-              between accuracy and speed. A large stack of havoc mutations
+ping 𝑇 𝑆 where each frontier branch 𝑏 at stage 𝑖 corresponds to                 leads to sampling over a vast neighborhood 𝑁 (x), rendering an ap-
+a seed 𝑇 𝑆𝑖 [𝑏].𝑠 (along with the corresponding branch distance                 proximation imprecise. Consequently, by fine-tuning the mutation
+𝑇 𝑆𝑖 [𝑏].𝑑) that achieves the lowest branch distance across all inputs          stack we can constrain the neighborhood in a manner that allows
+reaching that frontier branch so far. Subsequently, scheduling can              for relatively more precise approximations. Details pertaining to
+CCS’24, October 14-18, 2024, Salt Lake City, USA                 Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+this fine-tuning of the mutator stack as implemented in FOX are               during dynamic execution. To reduce runtime overhead, we imple-
+discussed in §3.4.                                                            ment an adaptive switch for each hook function. The switch ensures
+Newton’s Method. If we obtain a valid 𝑔 (i.e., non-zero norm) in              that the hook function is invoked only for frontier branches, not for
+the local search, we utilize it to perform the Newton’s method along          fully explored branches where all children nodes have been visited.
+the direction of 𝑔 and identify the point at which the branch flips.          This way, we only incur a relatively small runtime overhead while
+Considering that we want to find an x such that 𝛿𝑏 (x) takes a value          accurately computing branch distances for a small set of frontier
+of 0 and flips the branch, we apply Newton’s method to generate               branches.
+a new input x = x − 𝛿𝑏 (x) ⊘ 𝑔. If the underlying function 𝛿𝑏 (x)
+is linear and the branch is feasible, this step will cause the branch          3.3    Scheduler
+to flip. However, if 𝛿𝑏 (x) is not linear but a well-behaved convex           Our seed scheduler is implemented according to Algorithm 1, fol-
+function, the step is still likely to decrease the branch distance [18].      lowing the theoretical description provided in §2.4. We maintain
+                                                                              a mapping of seeds that achieve the lowest branch distance for
+3     Implementation                                                          each frontier branch 𝑇 𝑆. This approach allows us to reason about
+In this section, we present FOX, our proof-of-concept implemen-               frontier branches rather than individual seeds, mitigating the target
+tation for modeling fuzzing as an online stochastic control prob-             explosion issue discussed by Mouret et al. [44].
+lem. Two essential primitives for FOX to implement its stochastic-               We also keep counters for each frontier branch’s productive time
+control-guided strategy include: (i) identifying frontier branches            𝑃𝑇 and total time 𝑇𝑇 indexed by the branch’s unique CFG node
+and (ii) calculating branch distances. We first discuss how FOX               id. These counters, along with the mapping 𝑇 𝑆, get updated after
+manages these two primitives, outlining the strategies employed               each program input execution. Before scheduling the next seed for
+for efficient tracking. Subsequently, we discuss the implementa-              each stage 𝑖, we compute the set of unvisited nodes 𝑈𝑖 and the set
+tion of scheduling and mutation strategies, as described formally             of frontier branches 𝐹 𝐵𝑖 following the definitions in §2.3.
+in § 2. Finally, we explore how FOX leverages the semantics of                   To compute the probability, we define the seed decay factor 𝜆𝑏
+string comparisons to effectively flip frontier nodes involved in             for each frontier branch 𝑏 as 𝑆𝐶 [𝑇 𝑆 [𝑏.𝑖𝑑]], where 𝑆𝐶 is an array
+such comparisons.                                                             of schedule counters indexed by the seed. Instead of directly com-
+                                                                              puting Pr(𝛿𝑏 decreases) for each frontier branch 𝑏, which might
+3.1     Frontier Branch Identification                                        suffer from numerical underflows if 𝑃𝑇 [𝑏.𝑖𝑑] is much smaller than
+                                                                              𝑇𝑇 [𝑏.𝑖𝑑] × 𝜆𝑏 , we compute the log-probability, as it avoids under-
+FOX uses an intra-procedural control-flow graph (CFG) in conjunc-
+                                                                              flow issues.
+tion with coverage information obtained during a fuzzing campaign
+to identify frontier branches dynamically. FOX augments the AFL++
+LLVM-based instrumentation pass to extract the intra-procedural               Algorithm 1 FOX scheduling algorithm for stage 𝑖
+CFG for each function and embeds its metadata in the binary.                    Input:     𝑃𝑇 ← CFG node id to productive time mapping
+   During a fuzzing campaign, we dynamically mark nodes in the                             𝑇𝑇 ← CFG node id to total time mapping
+CFG as either visited or unvisited based on coverage information                           𝑇 𝑆 ← CFG node id to lowest branch distance seed
+as defined in Equation 7. Additionally, we update the list of frontier                     mapping
+nodes following Equation 8. We only focus on frontier branches, a                          𝑆𝐶 ← Seed to number of scheduled count mapping
+subset of frontier nodes where each node contains control instruc-
+tions resulting in conditional jumps as outlined in §2.3.                        𝑏_𝑚𝑎𝑥 = ∅
+                                                                                 𝑏_𝑚𝑎𝑥_𝑙𝑜𝑔𝑝𝑟𝑜𝑏 = ∞
+3.2     Branch Distance Tracking                                                 for 𝑓 ∈ 𝐹 𝐵𝑖 do
+                                                                                     𝑏_𝑙𝑜𝑔𝑝𝑟𝑜𝑏 = log(𝑃𝑇 [𝑏]) − log(𝑇𝑇 [𝑏]) − log(𝑆𝐶 [𝑇 𝑆 [𝑏].𝑠])
+To facilitate the tracking of branch distances, we employ an LLVM
+                                                                                     if 𝑏_𝑚𝑎𝑥_𝑙𝑜𝑔𝑝𝑟𝑜𝑏 < 𝑏_𝑙𝑜𝑔𝑝𝑟𝑜𝑏 then
+pass to hook every branch instruction and obtain its corresponding
+                                                                                          𝑏_𝑚𝑎𝑥 = 𝑏
+branch distance. Specifically, we examine each conditional branch
+                                                                                          𝑏_𝑚𝑎𝑥_𝑙𝑜𝑔𝑝𝑟𝑜𝑏 = 𝑏_𝑙𝑜𝑔𝑝𝑟𝑜𝑏
+instruction and check if its condition is computed from a CMP
+instruction. If so, we insert a function immediately after the CMP               𝑢𝑖 = 𝑇 𝑆 [𝑏_𝑚𝑎𝑥].𝑠                         ⊲ Schedule 𝑡𝑜𝑝_𝑠𝑒𝑒𝑑
+instruction to intercept its two operands, op1 and op2.                          𝑆𝐶 [𝑢𝑖 ] += 1
+   Integer Comparison. We compute the branch distance 𝛿𝑏 (x) =
+op1 − op2.
+   String Comparison. We calculate an array of byte-wise branch
+distances 𝑜𝑝1[𝑖] − 𝑜𝑝2[𝑖], 1 ≤ 𝑖 ≤ 𝑘, where 𝑘 corresponds to                   3.4    Mutator
+max(len(𝑠𝑡𝑟 1), len(𝑠𝑡𝑟 2)). We add zero-byte padding to ensure both          Our mutator is implemented as shown in Algorithm 2, following the
+strings have the same length if one is shorter than the other.                theoretical description provided in §2.4.2. Given the scheduled seed
+   During the dynamic execution of instrumented programs, our                 𝑆𝑖 [𝑢𝑖 ], we perform a randomized local search by sampling 𝑘 = 1024
+hook functions compute the branch distances and save them into a              program inputs x in the neighborhood 𝑁 (𝑆𝑖 [𝑢𝑖 ]). We empirically
+shared memory accessible by FOX. In real-world programs, there                determined this to be a good trade-off between the number of local
+can be many branch instructions, and invoking a hook function for             searches performed and Newton’s method steps taken. We utilize
+every branch instruction would cause significant runtime overhead             AFL++ havoc mode stochastic mutator [5] for generating mutants,
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                               CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+with the number of random perturbations of the seed reduced to              4   Evaluation
+keep them within the local neighborhood 𝑁 (𝑆𝑖 [𝑢𝑖 ]).                       In this section, we aim to answer the following research questions:
+   For each generated mutant x, we determine the subset of frontier
+branches 𝐹 𝐵𝑖,x ⊆ 𝐹 𝐵𝑖 it reaches and compute the subgradient 𝑔x,𝑏              • RQ1: Can FOX enable testing code that was previously un-
+for each frontier branch 𝑏 ∈ 𝐹 𝐵𝑖,x . We only consider a mutant for               reachable by state-of-the-art fuzzers?
+the Newton’s method when the L1 norm of 𝑔x,𝑏 is greater than the                • RQ2: Does FOX improve fuzzers’ bug discovery capabilities?
+maximum subgradient value 𝐺 [𝑏.𝑖𝑑] encountered so far. We then                  • RQ3: How much control space reduction can FOX achieve
+apply Newton’s method to derive new inputs x∗ for the reached                     compared with existing fuzzers?
+frontier branches and execute them on the target program.                       • RQ4: To what degree do the individual components of FOX
+                                                                                  contribute to its overall performance?
+                                                                                • RQ5: Are there characteristics that make a branch amenable
+Algorithm 2 FOX mutator                                                           to be solved by FOX?
+ Input:     𝛿 ← branch distance function for each frontier branch               We perform a thorough evaluation of FOX against AFL++ ver-
+            𝑏                                                               sion 4.09c (AFLPP) [24], which is the latest and most performant
+            𝑆𝑖 ← Seed corpus                                                version of a widely-recognized state-of-the-art fuzzer [14, 39], top-
+            𝑢𝑖 ← Scheduled seed index                                       ping the December 2023 FuzzBench report [2]. Additionally, we
+            𝑘 ← Local search sample size                                    extend our comparison to AFL++ in cmplog mode (AFLPP+C), an
+  /* Perform local search with sample size k */                             industry implementation of REDQUEEN [13]. The AFLPP+C mode
+  𝐺 = 𝑒𝑚𝑝𝑡𝑦_𝑚𝑎𝑝 ()                                                          intercepts the operands of CMP instructions and applies tailored
+  𝑋 = 𝑒𝑚𝑝𝑡𝑦_𝑚𝑎𝑝 ()                                                          mutations. We specifically opt for this comparison because the mu-
+  for 𝑘 iterations do                                                       tation technique of AFLPP+C most closely aligns with our own
+      x = 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])                                                    mutator. The most potent setting of AFL++, widely embraced in
+      for 𝑓 ∈ 𝐹 𝐵𝑖,x do                                                     industrial environments [4] and academic fuzzing competitions [8],
+          𝑔 = ComputeSubgradient(x, 𝑆𝑖 [𝑢𝑖 ], 𝛿𝑏 )                          is AFL++ with both cmplog and dictionary modes (AFLPP+CD).
+          if 𝑏.𝑖𝑑 ∉ 𝑋 ∨ ∥𝑔∥ 1 > ∥𝐺 [𝑏.𝑖𝑑] ∥ 1 then                          The dictionary mode of AFL++ automatically generates a fuzzing
+               𝐺 [𝑏.𝑖𝑑] = 𝑔                                                 dictionary comprising string constants and integer constants ex-
+               𝑋 [𝑏.𝑖𝑑] = x                                                 tracted from the tested program. We also incorporate dictionaries
+                                                                            provided by FuzzBench. In addition to FOX alone, we evaluate FOX
+  /* Apply Newton method to the top input for each reached fron-
+                                                                            with dictionary (FOX+D) to showcase its performance in a fair
+  tier branch */
+                                                                            comparison against AFLPP+CD.
+  for 𝑓 ∈ 𝐹 𝐵𝑖 do
+                                                                            Benchmarks. For our evaluation, we use all 23 binaries from the
+      if 𝑏.𝑖𝑑 ∈ 𝑋 .𝑘𝑒𝑦𝑠 then
+                                                                            FuzzBench dataset [43]. While FuzzBench is widely acknowledged
+          x∗ = ApplyNewtonMethod(𝑋 [𝑏.𝑖𝑑], 𝑆𝑖 [𝑢𝑖 ], 𝛿𝑏 )
+                                                                            as a standard in fuzzer evaluation [14, 17, 39, 46], we observe that
+      𝑒𝑥𝑒𝑐 (x∗ )                                                            it suffers from two significant challenges: many project harnesses
+                                                                            are either very small (about a third of binaries have less than 20,000
+                                                                            edges, see Table 2) or feature numerous test cases, leading to an
+   For frontier branches that rely on string comparisons, we have           early coverage saturation. This makes it challenging to differentiate
+taken a different approach. We treat string comparison functions            the performance differences among fuzzers. Notably, in SBFT23, a
+like strcmp and strncmp as sequences of multiple single-byte inte-          FuzzBench-based competition, the mean coverage gain of the win-
+ger comparisons and solve them together using Newton’s method.              ner HasteFuzz over AFLPP+CD was a modest 1.28% [9]. To address
+In contrast to the standard local search, for these functions, we           these limitations and provide a more comprehensive assessment,
+take an additional step to analyze the byte differences between the         we further evaluate FOX on 15 real-world standalone programs.
+seed 𝑆𝑖 [𝑢𝑖 ] and the mutant x to investigate the effect of a branch        These programs are carefully selected to represent the diversity
+distance 𝛿𝑏 change.                                                         of our current software ecosystem, encompassing a broad range
+   For each byte difference, we create a new program input by               of functionalities based on prior fuzzing literature [32, 49, 50, 56].
+applying only a single byte difference to the seed and then execute         The details of these programs, along with their corresponding com-
+this modified input to observe if it leads to a change in branch            mit/version, are presented in Table 2. Our results demonstrate that
+distance. If we detect a branch distance change, we identify the            the improvements achieved by FOX generalize beyond FuzzBench.
+specified byte difference in the input as a hot (i.e., influential) byte,   Experimental Setup. To answer RQ1, we evaluate the coverage
+indicating that it directly influences a particular byte in the string      over time achieved by all fuzzers. For RQ2, we measure the number
+comparison.                                                                 of real bugs found in the standalone programs as well as the time
+   Our approach is designed to efficiently identify hot byte locations      taken by the fuzzers to uncover the ground truth bugs present in the
+without the need to probe all byte locations, which is done in many         MAGMA dataset [29]. For RQ3, we quantify the number of frontier
+previous works [13, 26, 38]. Once we find a hot byte location and           branches that FOX explores and compare it to the number of seeds
+know the length of the string being compared, we infer all the other        that AFL++, a conventional coverage-guided fuzzer, has to schedule.
+hot byte locations by exploiting the fact that the hot bytes for a          To answer RQ4, we perform an ablation study by comparing the
+string comparison are typically adjacent.                                   coverage achieved by FOX against its variant with the optimized
+CCS’24, October 14-18, 2024, Salt Lake City, USA                   Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+          Table 2: Studied programs in our evaluation.                          their standard deviations to showcase the stability of our approach
+                                                                                in achieving coverage saturation. The Mann-Whitney U test scores
+Targets         Version # Edge Targets             Version      # Edge          can be found in §B.1. The total number of executions statistics can
+                                                                                be found in §B.2.
+     FuzzBench Targets                systemd 07faa49            127,142        FuzzBench Targets. Across FuzzBench targets (see results in Ta-
+bloaty     52948c1 163,494            vorbis     84c0236          13,729        ble 3), FOX demonstrates superior performance compared to AFL++
+curl       a20f74a 122,270            woff2      8109a2c          19,615        on 18 programs and AFLPP+C on 13 programs, achieving significant
+freetype   cd02d35 34,951             zlib       d71dc66           4,640        mean coverage improvements. For instance, freetype shows up
+harfbuzz cb47dca 78,203                       Standalone Targets                to a 39.97% coverage increase over AFL++ and harfbuzz exhibits a
+jsoncpp    8190e06   9,826            bsdtar     libarchive-3.6.2 38,244        34.46% improvement over AFLPP+C. Similarly, FOX+D outperforms
+lcms       f0d9632 14,693             exiv2      exiv2-0.28.0    122,543        AFLPP+CD on 15 programs, with notable gains of up to 21.17% on
+                                                                                harfbuzz. Coverage progression over time, comparing FOX and
+libjpeg-t  3b19db4 17,789             ffmpeg ffmpeg-6.1          741,421
+                                                                                FOX+D against other fuzzers, is detailed in §B.4.
+libpcap    17ff63e 15,344             jasper     jasper-4.1.2     19,122
+                                                                                    FOX performs comparably or with statistically insignificant dif-
+libpng     cd0ea2a   9,038            nm-new binutils-2.34        54,848        ferences to AFLPP+C on all remaining programs except for lcms,
+libxml2    c7260a4 81,782             objdump binutils-2.34       80,582        openthread, proj4, and zlib. The challenges in these targets stem
+libxslt    180cdb8 61,727             pdftotext xpdf-4.04         53,683        from nested conditions and string comparisons with both operands
+mbedtls    169d9e6 28,373             readelf    binutils-2.34    32,249        as variables, requiring FOX to further adapt the Newton’s method
+openh264 045aeac 19,599               size       binutils-2.34    54,348        to handle these complex branch types. While our current prototype
+openssl    b0593c0 80,662             strip-new binutils-2.34     61,051        does not support them, it does not indicate a design limitation of
+openthread 2550699 50,574             tcpdump tcpdump-4.99.4 47,476             FOX; we plan to extend its capabilities in future iterations (discussed
+proj4      a7482d3 267,147            tiff2pdf libtiff-v4.5.0     21,006        further in §5).
+                                                                                    With the dictionary, addressing the bottleneck of variable string
+re2        b025c6a 15,179             tiff2ps    libtiff-v4.5.0   17,861
+                                                                                comparisons, FOX+D excels on larger FuzzBench programs with
+sqlite3    c78cbf2 77,154             tiffcrop libtiff-v4.5.0     20,096
+                                                                                quality seed corpora like harfbuzz and sqlite3. Particularly note-
+stb        5736b15   7,661            xmllint libxml2-2.9.14 85,412             worthy is its ability to manage control space more efficiently by
+                                                                                focusing solely on frontier branches, reducing redundancy and
+                                                                                maximizing time allocation. This effect is elaborated on in §4.3.
+mutator turned off. Finally, for RQ5, we propose and leverage a set             Even on relatively small programs, the Newton’s method mutator
+of quantitative metrics to interpret the performance of FOX.                    allows FOX to flip branches that neither AFL++ nor AFLPP+C can
+   We follow standard fuzzing evaluation practices [33] and run 10              flip. We further discuss this ability in §4.5.
+campaigns of 24 hours each for each of the fuzzer-program pairs,                Standalone Targets. Comparison of mean coverage achieved by
+totaling over 5 CPU-years of evaluation. As part of our evaluation              FOX against AFL++, AFLPP+C, and AFLPP+CD is presented in
+on the FuzzBench dataset, we use the seeds as recommended in the                Table 4. Across standalone programs, FOX exhibits improvements
+benchmark. For our standalone program evaluation, we provide one                over AFL++ on all programs and surpasses AFLPP+C on 11 pro-
+well-formed seed for each of the targets sourced from the AFL++                 grams, achieving up to 26.45% more code coverage on average
+repository [1]. To ensure fairness in our comparison, each fuzzer               across the standalone target set. One of the targets where we see
+is assigned a single core for each of their fuzzing campaigns. In               notable improvement is bsdtar, where FOX uncovers 97.25% and
+addition to standard summary statistics like mean and standard                  80.61% more edges than AFL++ and AFLPP+C, respectively. Simi-
+deviation over our previously mentioned evaluation metrics, we                  larly, FOX+D outperforms AFLPP+CD on 11 programs, including a
+also perform the Mann-Whitney U test to ensure the observed                     remarkable 49.04% improvement on ffmpeg.
+performance differences are statistically significant. Since this test              Given the larger size of our selected standalone programs com-
+is non-parametric and therefore does not make any assumptions                   pared to FuzzBench programs, tight integration of all fuzzer com-
+about the underlying distribution, it has been widely used in the               ponents becomes critical. Through comprehensive control space
+software testing literature for testing randomized algorithms [12]              optimization, FOX effectively narrows the extensive control space
+and fuzzers [33]. All our experiments are conducted on 10 machines              further by prioritizing branches suitable for flipping by the New-
+with Intel Xeon 2.00 GHz processors running Debian bullseye with                ton’s method mutator, thereby enhancing coverage. In contrast,
+100 GB of RAM.                                                                  AFL++ relies solely on prior observed execution behavior to sched-
+                                                                                ule seeds, lacking guidance on which seeds would be most effective
+4.1     RQ1: Code Coverage                                                      in expanding coverage.
+To answer RQ1, we evaluate the code coverage achieved by FOX
+and compare it against the existing state-of-the-art fuzzers across 23            Result 1: FOX outperforms existing state-of-the-art fuzzers by
+FuzzBench and 15 standalone targets on 10x24 hour campaigns. To                   achieving up to 26.45% more coverage on average across the
+quantify the coverage achieved, we leverage the coverage collection               standalone targets and up to 6.59% more coverage on average
+module of AFL++ that keeps track of the number of control-flow                    across the FuzzBench targets.
+edges exercised during the run using its coverage bitmap. In addi-
+tion, we compare the mean coverage growth over time along with
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                          CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+
+                                         AFLPP               AFLPP+C              AFLPP+CD                   FOX                  FOX+D
+              10000
+                                (a) bsdtar                         (b) exiv2                        (c) ffmpeg                             (d) jasper
+                                                 12000
+                                                                                   35000
+                                                 11000                                                                     4500
+                 8000                                                              30000
+                                                 10000
+Edges found
+
+
+
+
+                                                                                                                           4000
+                 6000                             9000                             25000
+                                                  8000                                                                     3500
+                                                                                   20000
+                 4000                             7000
+                                                                                   15000                                   3000
+                                                  6000
+                        0   4   8 12 16 20 24            0    4    8 12 16 20 24           0   4    8 12 16 20 24                 0   4    8 12 16 20 24
+                                (e) nm-new                        (f) objdump                      (g) pdftotext                           (h) readelf
+                 6000                                                                                                      7000
+                                                                                    4000
+                                                  7000                                                                     6000
+                 5000                                                               3500
+   Edges found
+
+
+
+
+                                                  6000                                                                     5000
+                 4000                                                               3000
+                                                  5000                                                                     4000
+                 3000                                                               2500
+                                                                                                                           3000
+                                                  4000                              2000
+                 2000                                                                                                      2000
+                        0   4   8 12 16 20 24            0    4    8 12 16 20 24           0   4    8 12 16 20 24                 0   4    8 12 16 20 24
+                                  (i) size                        (j) strip-new                    (k) tcpdump                             (l) tiff2pdf
+                 4000                             8000                             17500                                   8000
+
+                                                  7000                             15000
+                 3500
+   Edges found
+
+
+
+
+                                                                                                                           7000
+                                                                                   12500
+                 3000                             6000                             10000                                   6000
+                 2500                             5000                              7500
+                                                                                    5000                                   5000
+                 2000                             4000
+                        0   4   8 12 16 20 24            0    4    8 12 16 20 24           0   4    8 12 16 20 24                 0   4    8 12 16 20 24
+                                                                                                                                          Time (hours)
+                                (m) tiff2ps                       (n) tiffcrop                      (o) xmllint
+                 5500                                                               9000
+                                                  9000
+                 5000                                                               8000
+                                                  8000
+   Edges found
+
+
+
+
+                                                  7000                              7000
+                 4500
+                                                  6000                              6000
+                 4000
+                                                  5000                              5000
+                 3500                             4000
+                        0   4   8 12 16 20 24            0    4    8 12 16 20 24           0   4    8 12 16 20 24
+                                Time (hours)                      Time (hours)                     Time (hours)
+
+Figure 2: The arithmetic mean edge coverage for FOX and FOX+D against three other fuzzers running for 24 hours over ten runs on the
+standalone programs. The error bars indicate one standard deviation.
+
+
+4.2                RQ2: Bug Discovery Effectiveness                                 Curated Bug Dataset. Magma, a popular dataset in the fuzzing
+In RQ2, we evaluate the bug discovery effectiveness of FOX com-                     community [31, 35], contains 21 programs from nine open-source
+pared to other state-of-the-art fuzzers. Following Klees et al.’s rec-              libraries with injected bugs. Our evaluation used 17 programs from
+ommendation [33] on using datasets with curated bugs, we tested                     eight of these libraries: libpng, libtiff, libxml2, lua, openssl,
+our fuzzer on the Magma dataset [29], comparing its performance                     poppler, sqlite3, and libsndfile. php and its four fuzz drivers
+with other fuzzers. Additionally, to understand FOX’s real-world                    were the only targets omitted from our evaluation since this target
+bug detection capabilities, we evaluate it on an array of widely-used               encountered a compilation error during the final linking stage due
+standalone programs and libraries as specified in Table 2.                          to dependency incompatibility. We compared FOX and FOX+D with
+                                                                                    fuzzers like AFL++, AFLPP+C, and AFLPP+CD over five 24-hour
+CCS’24, October 14-18, 2024, Salt Lake City, USA                                Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+Table 3: Mean edge coverage of FOX and FOX+D against three                                   Table 4: Mean edge coverage of FOX and FOX+D against three
+fuzzers on 23 FuzzBench programs for 24 hours over 10 runs. We                                fuzzers on 15 standalone programs over 10 fuzzing campaigns run
+mark the highest number in bold.                                                              for 24 hours each. We mark the highest number in bold.
+
+
+ Targets              FOX AFLPP AFLPP+C FOX+D AFLPP+CD                                           Targets       FOX AFLPP AFLPP+C FOX+D AFLPP+CD
+ bloaty              8,646       8,507           8,627      8,514             8,684              bsdtar        8,893 4,508             4,924 9,194               7,811
+ curl              14,674       14,510          14,358     15,811            15,359              exiv2         7,618 7,526             9,213 10,631            11,306
+ freetype          14,676       10,485          13,401     15,536            13,812              ffmpeg      33,544 29,268            25,147 33,821             22,692
+ harfbuzz           37,155     37,276           27,633     37,103            30,621              jasper        3,811 3,400             3,890 4,257               3,870
+ jsoncpp             1,341       1,341           1,342      1,342             1,343              nm-new        5,475 4,049             5,150 5,841               4,724
+ lcms                1,224         728           2,451      1,976             1,882              objdump       7,196 5,484             6,508 7,536               6,619
+ libjpeg-turbo       3,293       3,299           3,297      3,283             3,301              pdftotext     3,490 2,482             3,016 3,410               2,982
+ libpcap             2,366          43           1,848      3,074             2,690              readelf       6,551 5,767             4,709 6,462               5,549
+ libpng              2,846       2,697           2,838      2,848             2,836              size          3,619 2,934             3,120 4,037               3,167
+ libxml2           18,757       18,623          18,616     19,188            19,003              strip-new     7,330 5,718             6,297 7,930               6,306
+ libxslt           12,184       11,959          11,909     12,424            12,358              tcpdump      16,996 13,399          17,601 17,524             17,841
+ mbedtls             3,987       3,722           3,839      4,037             3,834              tiff2pdf      8,061 7,731             7,803 7,974               7,830
+ openh264          13,780       13,733          13,630     13,826            13,662              tiff2ps       5,257 5,206             5,411  5,306              5,463
+ openssl           11,128       11,102          11,114     11,127            10,902              tiffcrop      9,298 8,763             8,933 9,254               8,835
+ openthread          4,827       4,686           5,140      4,822             5,041              xmllint       8,347 5,179             5,392  8,628              8,696
+ proj4              26,603      26,703         28,904      32,995            32,494
+                                                                                                     Mean gain          26.45%       16.98%           —         12.90%
+ re2                 6,077       6,190           6,105      6,085             6,224
+ sqlite3            37,801      37,701         37,953      40,028            38,846
+ stb                 4,332       4,042           4,180      4,440             4,249
+ systemd             3,836       3,781           3,856      3,835             3,857
+ vorbis              2,050       2,045           2,056      2,054             2,055
+ woff2               2,674       2,458           2,550      2,678             2,514          follow it up with manual analysis to validate deduplicated crashes
+ zlib                  884         883             917        879               913          are unique.
+        Mean gain             6.59% †           0.95%            —            2.97 %            Our findings (Table 6) show FOX and AFLPP+C discovering the
+                                                                                             same number of bugs, both surpassing AFL++. FOX+D, however,
+ † We omit libpcap, as it would unrealistically skew this statistic in favor of FOX.
+                                                                                             uncovered 20 unique bugs, including 2 Use After Frees (CWE-416),
+                                                                                             3 Invalid Frees (CWE-761), 12 Assertion Violations (CWE-617), 1 In-
+                                                                                             finite Loop (CWE-835), and 2 Null Pointer Dereferences (CWE-476).
+test campaigns for each test program, totalling over 1 CPU-year of                           Remarkably, 10 of these bugs were exclusively found by FOX+D,
+evaluation.                                                                                  highlighting its superior bug discovery, especially given the heavily
+   The results, detailed in Table 5, reveal that FOX was the top                             fuzzed nature of these targets.
+performer in identifying unique bugs, outperforming or match-                                   Another interesting observation is that FOX+D heavily outper-
+ing other fuzzers in all the evaluated programs. We observe that                             forms all the other evaluation candidates, uncovering eleven more
+FOX’s superior performance is consistent with Bohme et al.’s [17]                            bugs than the next best performing candidates (FOX, and AFLPP+C).
+prior observation about a strong link between coverage and bug                               A key contributor to this performance difference is xpdf where
+discovery.                                                                                   FOX+D uncovered eight more bugs compared to the other fuzzers.
+   As an interesting side note, we observe that fewer bugs were                              Looking closer at the coverage results, we see that FOX+D uncov-
+triggered in lua and openssl compared to the other libraries. Upon                           ers on average 21.93% more edges than the other fuzzers. In an
+investigation, we found this was due to a limited number of de-                              effort to understand if this coverage increase is correlated with
+tectable ground-truth bugs in these programs. Specifically, lua                              the bugs uncovered by FOX+D in xpdf, we measured Pearson’s
+had only four injected bugs [6], and in openssl, only four have                              correlation coefficient between the edges uncovered and unique
+been confirmed to be reachable [29], with several being provably                             crashes discovered across all the candidate fuzzers over the ten
+unreachable [7].                                                                             24-hour campaigns. We observed a strong correlation with a 0.88
+In-the-wild Bug Discovery. To evaluate FOX and FOX+D’s bug                                   coefficient. This observation is in line with previous findings of a
+discovery in real-world scenarios, we compared them with leading                             strong correlation between edges uncovered and bugs discovered
+fuzzers on a dataset of common programs and libraries (Table 2).                             while fuzzing [17].
+After ten 24-hour campaigns per target, we analyzed each crash                                  Finally, a testament to FOX’s real-world impact is its identifica-
+using standard deduplication practices [33]. Specifically, we employ                         tion of 12 bugs in xpdf, a popular PDF library, with eight being
+stack hashes of the crashing inputs to perform deduplication and                             previously unknown as confirmed by the developers.
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                                       CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+Table 5: Cumulative number of unique bugs triggered and reached                                                         AFLPP
+of FOX and FOX+D against three fuzzers in Magma programs for 24                                                         FOX
+hours over 5 runs. (triggered | reached)                                                                     3000
+
+
+
+
+                                                                                        Control space size
+ Targets               FOX      AFLPP      AFLPP+C      FOX+D      AFLPP+CD                                  2500
+
+ tiffcp                6 | 11      5|8          6|9       7 | 10         6|8
+ tiff_read              4|7        3|5          3|5        3|7           3|6
+                                                                                                             2000
+ libpng                 3|6        1|6          3|6        3|6           3|6
+ xmllint                3|7        2|7          3|7        3|8           3|8                                 1500
+ libxml2_xml            5|9        3|8          3|8        4|9           4|9
+ lua                    2|4        1|2          1|2        1|2           1|2                                        0     4     8       12          16    20      24
+ asn1parse              0|1        0|1          0|1        0|1           0|1                                                         Time (hours)
+ bignum                 0|1        0|1          0|1        0|1           0|1
+ asn1                   2|4        2|4          2|4        2|4           2|4     Figure 3: Control space comparison of FOX with AFLPP on
+ client                 1|7        1|7          1|7        1|5           1|7
+ server                 2|6        1|6          1|6        1|4           1|6
+                                                                                 xmllint over the course of a 24 hour fuzzing campaign.
+ x509                   1|5        0|5          0|5        0|5           0|5
+ pdftoppm              3 | 16     4 | 14       3 | 14     3 | 13        3 | 13
+ pdf_fuzzer            3 | 16     3 | 13       2 | 13      2|8          2 | 12   over frontier branches instead of seeds, we compare the number
+ pdfimages             4 | 13     5 | 10       4 | 11     3 | 11        4 | 11   of frontier branches explored by FOX with the number of seeds
+ sqlite3_fuzz          3 | 10     5 | 13       3 | 11     3 | 10        4 | 13
+ sndfile_fuzzer         7|8        7|8          7|8        8|8           7|8
+                                                                                 explored by AFL++ throughout a fuzzing campaign. This compari-
+                                                                                 son provides insights into the effectiveness of FOX’s approach in
+ total            49 | 131      43 | 118     42 | 118   44 | 112      44 | 120
+                                                                                 streamlining the decision-making process during fuzzing.
+                                                                                     As illustrated in Figure 3, the control space of AFL++ (i.e., the
+Table 6: Cumulative number of unique bugs identified by FOX and                  number of seeds) increases monotonically as it fuzzes xmllint,
+FOX+D against three fuzzers in FuzzBench Programs and standalone                 requiring more time to iterate through the entire seed corpus. In
+programs for 24 hours over 10 runs                                               contrast, FOX reasons over a compact set of frontier branches that
+                                                                                 does not dramatically increase as the fuzzing campaign progresses.
+ Targets      FOX AFLPP AFLPP+C FOX+D AFLPP+CD                                   In fact, on some targets such as readelf, the set of frontier branches
+                                                                                 even decreases. The control space comparison between FOX and
+ nm-new            1             0              1            2              1    AFL++ on 15 standalone programs at 12 and 24 hours, respectively,
+ size              2             2              1            2              1    is presented in Table 7. On average, FOX demonstrates a remarkable
+ objdump           1             0              1            1              1    reduction in the control space by 58.20% during a 24-hour fuzzing
+ pdftotext         4             2              4           12              4    campaign. Particularly noteworthy is FOX’s ability to reduce the
+ woff2             1             1              1            1              0    control space by a factor of 7 on programs like readelf.
+ sqlite3           0             0              1            1              0
+                                                                                  Result 3: FOX reduces the control space by 49.18% for 12-hour
+ libxslt           0             0              0            1              0
+                                                                                  run and 58.20% for 24-hour run when compared with AFL++.
+ total             9             5              9           20              7
+                                                                                 4.4    RQ4: Ablation Study
+                                                                                 To quantify the contribution of the scheduling and mutation strate-
+ Result 2: FOX triggers up to 16.16% more ground-truth bugs
+                                                                                 gies employed by FOX (§4.1), we compare three different variants of
+ compared to the state-of-the-art fuzzers on Magma and when
+                                                                                 FOX: (i) FOX-BASE: representing FOX with both the scheduling and
+ coupled with dictionary uncovers 20 unique vulnerabilities in
+                                                                                 mutator components deactivated and serving as the baseline; (ii)
+ popular programs including eight that were previously unknown.
+                                                                                 FOX-SCHED: employing only the optimization-guided scheduler;
+                                                                                 and (iii) FOX: enabling both the scheduler and the optimization-
+4.3      RQ3: Control Space Reduction                                            guided mutator. We measure the code coverage achieved by these
+In our stochastic control framework, the control space refers to the             three variants (FOX-BASE, FOX-SCHED, and FOX) on our 15 stan-
+pool of seeds available for a fuzzer to select from during fuzzing.              dalone programs across 10 trials, each lasting 1 hour.
+Unlike conventional coverage-guided fuzzers such as AFL++, which                    The results of our ablation study are presented in Table 8. FOX
+choose the next seed from a seed queue, FOX takes a different                    achieves an average of 20.07% more coverage than FOX-BASE and
+approach by scheduling based on frontier branches rather than                    9.23% more coverage than FOX-SCHED. These results explicitly
+individual seeds. AFL++, as the fuzzing campaign advances, adds                  demonstrate the importance and contributions of both FOX sched-
+more seeds to the queue, complicating the decision of which seed to              uler and mutator in enhancing the overall performance. Notably,
+schedule next. To address this complexity, AFL++ employs various                 the frontier-branch-based scheduling alone results in an almost
+techniques to manage the seed queue and prioritize specific seeds.               universal performance improvement of up to 27.2% in mean cover-
+   In contrast, FOX’s scheduling strategy focuses on frontier branches.          age on pdftotext over the baseline, with the sole exception being
+To assess the reduction in control space resulting from scheduling               xmllint. We attribute this anomaly to the fact that xmllint seems
+CCS’24, October 14-18, 2024, Salt Lake City, USA                      Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+Table 7: Control space comparison of FOX with AFLPP on 15 stan-                    Table 8: Mean edge coverage of FOX against its two variants on 15
+dalone programs at both 12 hours and 24 hours over 10 runs.                        standalone programs over 10 fuzzing campaigns run for 1 hour each.
+                                                                                   We mark the highest number in bold.
+                         # FOX Frontier            # AFLPP Seeds
+           Targets                                                                               Targets             FOX         FOX-BASE              FOX-SCHED
+                         12 hrs 24 hrs             12 hrs 24 hrs
+          bsdtar           1,131        1,224        2,226    2,929                              bsdtar             3,952                  2,382                    2,997
+          exiv2            2,953        3,057        2,121    2,446                              exiv2              6,606                  6,152                    6,291
+          ffmpeg           5,615        5,772        6,320    8,976                              ffmpeg            17,316                 16,291                   17,272
+          jasper           1,038        1,034        1,272    1,331                              jasper             3,153                  2,787                    3,007
+          nm-new             971          944        1,970    2,772                              nm-new             3,050                  2,249                    2,449
+          objdump          1,299        1,285        3,239    3,940                              objdump            4,996                  3,672                    4,017
+          pdftotext          929          981        1,466    1,661                              pdftotext          2,567                  1,905                    2,423
+          readelf          1,561        1,215        7,075    8,970                              readelf            3,235                  2,846                    3,152
+          size               671          670        1,470    1,692                              size               2,621                  2,131                    2,351
+          strip-new        1,212        1,210        2,232    2,866                              strip-new          5,476                  4,289                    4,715
+          tcpdump          2,792        3,019        3,642    4,946                              tcpdump            5,875                  4,656                    5,523
+          tiff2pdf         1,755        1,768        4,125    4,670                              tiff2pdf           6,124                  5,754                    5,950
+          tiff2ps          1,093        1,098        2,316    2,692                              tiff2ps            4,373                  4,202                    4,458
+          tiffcrop         1,770        1,764        4,286    4,940                              tiffcrop           6,995                  6,626                    6,936
+          xmllint          1,894        1,964        2,731    3,366                              xmllint            4,220                  4,429                    4,090
+                  Mean decrease                    39.17 %   49.10%                                     Mean gain                        20.07%                     9.23%
+                  Median decrease                  49.18 %   58.20%
+
+                                                                                   Table 9: Frontier branch flipping comparison between FOX,
+                                                                                   AFLPP+C, and AFLPP+CD. R stands for frontier branches reached,
+to have an unusually large control space where the number of fron-                 and F stands for frontier branches flipped. We mark the highest
+tier branches exceeds the number of seeds in the first hour. This                  number in bold.
+trend is visualized in Figure 3, comparing the control space of FOX
+against AFL++. We plan to further investigate this effect in the                     Targets
+                                                                                                        FOX              AFLPP         AFLPP+C            FOX+D          AFLPP+CD
+                                                                                                    R         F      R           F     R       F         R      F        R        F
+future. Similarly, enabling the Newton’s method mutator yields a
+                                                                                     bsdtar        2,873   1,694    1,714      776   1,837      890     3,083   1,854   3,017    1,723
+nearly unanimous gain of up to 31.9% in mean coverage, with only                     exiv2         3,929     948    3,718      886   4,477    1,088     5,664   1,597   5,617    1,482
+a single exception of tiff2ps. We found that tiff2ps has a large                     ffmpeg       12,839   7,800   10,219    6,093   8,922    4,478    13,993   7,766   8,908    3,921
+                                                                                     jasper        1,718     624    1,492      501   1,704      631     1,759     638   1,696      624
+proportion of non-convex branches. We discuss this phenomenon                        nm-new        2,127   1,153    1,591      802   1,964    1,056     2,213   1,158   1,840      947
+                                                                                     objdump       2,746   1,368    2,097    1,010   2,495    1,240     2,817   1,422   2,536    1,267
+in greater depth in §4.5. Improving our mutator for non-convex                       pdftotext     1,425     439    1,146      297   1,361      439     1,623     574   1,342      444
+branches is an important direction that we plan to pursue in future                  readelf       1,475   1,052    1,274      874   1,191      770     1,706   1,249   1,328      893
+                                                                                     size          1,459     771    1,228      619   1,281      671     1,572     850   1,303      671
+work.                                                                                strip-new     2,974   1,526    2,421    1,212   2,615    1,381     3,238   1,633   2,625    1,351
+                                                                                     tcpdump       6,601   3,578    5,196    2,670   6,789    3,496     6,816   3,784   6,850    3,592
+                                                                                     tiff2pdf      3,316   1,575    3,211    1,483   3,227    1,487     3,326   1,572   3,230    1,502
+ Result 4: Frontier-branch-based scheduling and Newton-step-                         tiff2ps       2,155   1,098    2,051      997   2,115    1,041     2,078   1,043   2,133    1,058
+ based mutator both contribute to the 20.07% edge coverage im-                       tiffcrop      3,695   1,887    3,590    1,784   3,642    1,812     3,769   1,942   3,611    1,784
+                                                                                     xmllint       3,502   1,489    2,322      836   2,409      898     3,894   1,750   3,723    1,623
+ provement of FOX over the baseline fuzzer in the first hour.                               Mean gain              23.32%   33.99%   14.16%   21.05%       —       —    13.17%   19.47%
+
+
+4.5     RQ5: FOX Performance Introspection
+In RQ5, we delve into the sources of performance improvement of                     successfully flip more frontier branches, with FOX flipping 33.99%
+FOX and leverage the fine-grained information it provides about                     more than AFL++ and up to 21.05% more than AFLPP+C, while
+frontier branches to guide FOX mutator enhancements. Initially, we                  FOX+D surpasses AFLPP+CD by 19.47%. This underscores FOX’s ef-
+analyze how successful FOX is at reaching and flipping branches                     fective framework in achieving new coverage by handling different
+compared to other state-of-the-art fuzzers. Subsequently, we assess                 types of frontier branches.
+the relationship between branch convexity and FOX’s ability to flip                 Branch Convexity Estimation. As FOX’s Newton’s method mu-
+branches.                                                                           tator is primarily optimized for convex functions [18], we test FOX
+Reaching and Flipping Branches. Distinguishing itself from tra-                     on 15 standalone programs over 5x24-hour campaigns to evaluate
+ditional coverage-guided fuzzers, FOX focuses on targeting and                      its performance on both convex and non-convex branches. Identify-
+flipping frontier branches to boost coverage. We expected FOX to                    ing branch convexity is challenging, so we used midpoint convexity
+not only reach but also flip more branches than its competitors. In                 checks during fuzzing as an estimate. We consider two inputs to be
+10x24-hour fuzzing campaigns, we compared the branch-flipping                       midpoint convex if the branch distance of the average of the two
+abilities of FOX and FOX+D with AFL++, AFLPP+C, and AFLPP+CD                        inputs is less than or equal to the average of the branch distances
+(Table 9). The results show that both FOX and FOX+D reach and                       of the two inputs.
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                              CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+    The experiment involved tracking midpoint convexity before and       pathological branches within target programs where the muta-
+after applying Newton’s method. For each branch, we calculated a         tor consistently decreases branch distances but fails to flip them
+ratio of successful midpoint checks to branch reaches, indicating        throughout the entire fuzzing campaign. We speculate that such
+convexity. Higher ratios suggest convex behavior, while lower ra-        behavior suggests the infeasibility of these branches. Therefore, we
+tios indicate non-convexity. We expected FOX to excel in flipping        plan to modify the scheduler in the future to deploy an aggressive
+convex branches. This was analyzed using logistic regression, mod-       re-weighting strategy to detect and deprioritize such pathological
+eling branch flips against the convexity estimate and its interaction    branches.
+with the binary.                                                          Engineering Limitations. The current prototype of FOX is opti-
+    The regression (details in Appendix C) showed a positive cor-        mized for integer and string comparisons, which are prevalent in
+relation between branch convexity and FOX’s flipping success,            target applications, as shown by our coverage (§4.1) and bug discov-
+with a McFadden’s pseudo-R-squared of 0.048, indicating a good           ery (§4.2) performance. However, our prototype currently does not
+fit [23, 30]. The correlation between branch convexity and flipping      support branches with floating point operations or variable-variable
+success varied among programs, which was anticipated. Although           string comparisons, which appear in benchmarks like lcms and
+midpoint convexity is a useful estimate, it does not always precisely    proj4. This limitation occasionally results in lower coverage com-
+represent a branch’s true convexity and feasibility. For instance,       pared to leading fuzzers. Future updates will aim to expand FOX’s
+non-convex branches might pass the convexity check in certain            applicability to these branch types and involve the community in
+regions, whereas some convex branches could be infeasible, i.e.,         enhancing the tool through open-source contributions.
+impossible to flip.
+
+ Result 5: FOX can flip up to 33.99% more frontier branches, show-       6   Related Work
+ casing the efficacy of its stochastic control-guided framework.         Search-based Software Testing. Such approaches use metaheuris-
+                                                                         tic optimization for tasks like test-case generation [25, 34, 42]. Szek-
+                                                                         eres et al. [52] suggested using stochastic local search and taint
+                                                                         tracking for targeted fuzzing of specific branches to minimize the
+                                                                         distance to a target branch. However, FOX differs by using local
+5    Limitations and Future Work                                         search to estimate the gradient of the branch distance function,
+In this section, we discuss the theoretical and engineering limita-      employing Newton’s method for more effective root finding. There
+tions of the current design of FOX, and outline potential future         are also hybrid methods that integrate path constraint information
+directions for improvement.                                              into their search strategy [19, 22, 27, 51], but these face scaling chal-
+Newton’s Method. FOX utilizes Newton’s method to generate                lenges in large programs. FOX avoids these challenges by focusing
+inputs that decrease branch distances and potentially flip fron-         on frontier branches and using branch distance as a metric to create
+tier branches. The main advantage of this approach is its simplic-       inputs that flip these branches.
+ity and efficiency — it only needs two distinct inputs that reach        Mutator Policies. Several prior studies have aimed to optimize
+the target branch to estimate a Newton step. However, Newton’s           mutation policies for fuzzing [13, 20, 35, 40, 48]. REDQUEEN [13]
+method struggles with non-convex functions like checksums, hash          employed input colorization with strong assumptions about input
+functions, and complex string operations. We aim to enhance our          consistency, contrasted by FOX’s flexible mutations. Angora [20]
+approach by selectively applying more accurate, albeit computa-          used gradient descent and taint tracking, while FOX identifies input
+tionally intensive methods for hard-to-flip non-convex branches.         bytes using local search and Newton’s method. Neuzz [48] adopted
+Local Search. The local search module of FOX establishes a local         a neural network approach for branch behavior, whereas FOX con-
+linear approximation (w.r.t. a seed) of branch distance functions,       structs a simpler model using fewer samples. Lastly, FairFuzz [36]
+utilized by Newton’s method for generating new inputs. Despite           focused on rare branches, whereas FOX uses a branch distance
+the accuracy demonstrated by methods like REDQUEEN [13], their           metric for targeted branch-flipping inputs.
+complexity and inefficiency make them less practical compared to         Scheduler Policies. K-Scheduler [49] uses a centrality-based seed
+local search, as evidenced in our experimental findings. Currently,      scheduling approach that might overestimate the potential of seeds
+local search utilizes AFL++ havoc for mutations, which has diffi-        to discover new edges, possibly including many unreachable nodes
+culty in adaptively controlling the extent and scale of mutations,       in the entire CFG. In contrast, FOX uses data solely from frontier
+resulting in inefficient and redundant mutations. In the future, we      branches for scheduling and mutation, leading to more accurate
+aim to enhance FOX by integrating a sophisticated mutator capa-          decisions.
+ble of dynamically adjusting its mutation strategy based on past         Feedback Metrics. Several studies use detailed feedback like path
+successes in reaching the frontier branches.                             coverage for seed selection [16, 55], which can lead to seed ex-
+Frontier Branch Scheduler. Our scheduler selects seeds associ-           plosion [53]. FOX uses frontier branch granularity and branch
+ated with promising frontier branches, refining the control space        distances to manage this issue. Other research proposes different
+more effectively than traditional seed-based methods. However,           feedback metrics, like data-flow coverage [26, 31] or objectives like
+the scheduler depends on estimates of the likelihood of reducing         reaching sanitizer instrumentation [21, 47], to enhance bug discov-
+branch distance to identify promising branches. Despite the theoret-     ery by exploring various aspects of program state space. In the
+ical optimality demonstrated in §A.1, its practical efficacy relies on   future, we aim to investigate how FOX can be combined with these
+the accuracy of these estimates. In fact, we have identified several     diverse fuzzing objectives.
+CCS’24, October 14-18, 2024, Salt Lake City, USA                               Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+7    Conclusion                                                                              [21] Yaohui Chen, Peng Li, Jun Xu, Shengjian Guo, Rundong Zhou, Yulong Zhang,
+                                                                                                  Tao Wei, and Long Lu. Savior: Towards bug-driven hybrid testing. In 2020 IEEE
+In conclusion, this paper presents a unified framework for coverage-                              Symposium on Security and Privacy (SP), pages 1580–1596. IEEE, 2020.
+guided mutation-based fuzzing by treating fuzzing as an online                               [22] Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. Grey-box
+                                                                                                  concolic testing on binary code. In 2019 IEEE/ACM 41st International Conference
+stochastic control problem. Our extensive experimental results                                    on Software Engineering (ICSE), pages 736–747. IEEE, 2019.
+demonstrate that our proof-of-concept implementation FOX can                                 [23] Thomas A. Domencich and Daniel McFadden. Urban Travel Demand: A Behavioral
+address many challenges of coverage-guided fuzzing for large and                                  Analysis : a Charles River Associates Research Study. North-Holland Publishing
+                                                                                                  Company, 1975. Google-Books-ID: KwK3AAAAIAAJ.
+complex programs.                                                                            [24] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. AFL++: Com-
+                                                                                                  bining Incremental Steps of Fuzzing Research. In USENIX Workshop on Offensive
+                                                                                                  Technologies, WOOT, 2020.
+Acknowledgements                                                                             [25] Gordon Fraser and Andrea Arcuri. Evosuite: automatic test suite generation for
+                                                                                                  object-oriented software. In Proceedings of the 19th ACM SIGSOFT symposium
+We thank our shepherd and the anonymous reviewers for their con-                                  and the 13th European conference on Foundations of software engineering, pages
+structive and valuable feedback. We would also like to thank László                               416–419, 2011.
+                                                                                             [26] Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xiaojun Qin, Dong Wu,
+Szekeres, Jonathan Metzman, Franjo Ivancic, Xinhao Yuan, Junfeng                                  and Zuoning Chen. { GREYONE } : Data flow sensitive fuzzing. In 29th USENIX
+Yang, and Baishakhi Ray for their helpful comments and discussions                                security symposium (USENIX Security 20), pages 2577–2594, 2020.
+that improved the paper. This work is supported partially by an                              [27] Patrice Godefroid, Michael Y Levin, David A Molnar, et al. Automated whitebox
+                                                                                                  fuzz testing. In NDSS, volume 8, pages 151–166, 2008.
+NSF CAREER award; a Google Faculty Fellowship; and an award                                  [28] Elad Hazan et al. Introduction to online convex optimization. Foundations and
+from the Google Cyber NYC Institutional program. Any opinions,                                    Trends® in Optimization, 2016.
+findings, conclusions, or recommendations expressed herein are                               [29] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. Magma: A ground-truth
+                                                                                                  fuzzing benchmark. Proc. ACM Meas. Anal. Comput. Syst., 4(3), nov 2020.
+those of the authors, and do not necessarily reflect those of NSF, or                        [30] D.A. Hensher and P.R. Stopher. Behavioural Travel Modelling. Routledge Library
+Google.                                                                                           Edtions: Global Transport Planning. Taylor & Francis, 2021.
+                                                                                             [31] Adrian Herrera, Mathias Payer, and Antony L Hosking. Dataflow: Toward a data-
+                                                                                                  flow-guided fuzzer. ACM Transactions on Software Engineering and Methodology,
+                                                                                                  2022.
+References                                                                                   [32] Patrick Jauernig, Domagoj Jakobovic, Stjepan Picek, Emmanuel Stapf, and Ahmad-
+ [1] AFL++ Seed Bank. https://github.com/AFLplusplus/AFLplusplus/tree/stable/                     Reza Sadeghi. DARWIN: Survival of the Fittest Fuzzing Mutators. In Proceedings
+     testcases, 2023.                                                                             2023 Network and Distributed System Security Symposium, San Diego, CA, USA,
+ [2] Evaluation report of aflpp on the Fuzzbench dataset. (Dec 1 2023). https://www.              2023. Internet Society.
+     fuzzbench.com/reports/experimental/2023-12-01-aflpp/index.html, 2023.                   [33] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. Evalu-
+ [3] Fuzz introspector. https://github.com/ossf/fuzz-introspector, 2023.                          ating fuzz testing. In Proceedings of the 2018 ACM SIGSAC conference on computer
+ [4] FuzzBench AFL++ setup. https://github.com/google/fuzzbench/blob/master/                      and communications security, pages 2123–2138, 2018.
+     fuzzers/aflplusplus/description.md, 2023.                                               [34] Kiran Lakhotia, Mark Harman, and Hamilton Gross. Austin: A tool for search
+ [5] Havoc mode mutation. https://github.com/AFLplusplus/AFLplusplus/blob/stable/                 based software testing for the c language and its evaluation on deployed automo-
+     docs/afl-fuzz_approach.md, 2023.                                                             tive systems. In 2nd International symposium on search based software engineering,
+ [6] Magma lua bugs. https://github.com/HexHive/magma/tree/v1.2/targets/lua/                      pages 101–110. IEEE, 2010.
+     patches/bugs, 2023.                                                                     [35] Myungho Lee, Sooyoung Cha, and Hakjoo Oh. Learning seed-adaptive mutation
+ [7] Magma openssl bugs. https://github.com/HexHive/magma/issues/68, 2023.                        strategies for greybox fuzzing. In 2023 IEEE/ACM 45th International Conference
+ [8] SBST’23 Fuzzing Competition (C/C++ Programs). https://sbft23.github.io/tools/                on Software Engineering (ICSE). IEEE, 2023.
+     fuzzing, 2023.                                                                          [36] Caroline Lemieux and Koushik Sen. Fairfuzz: A targeted mutation strategy for
+ [9] SBST’23 Fuzzing Competition (C/C++ Programs) Report. https://storage.                        increasing greybox fuzz testing coverage. In Proceedings of the 33rd ACM/IEEE
+     googleapis.com/www.fuzzbench.com/reports/experimental/SBFT23/Final-                          international conference on automated software engineering, pages 475–485, 2018.
+     Coverage/index.html, 2023.                                                              [37] Jie Liang, Mingzhe Wang, Chijin Zhou, Zhiyong Wu, Yu Jiang, Jianzhong Liu,
+[10] Syzbot kernel bug tracker. https://syzkaller.appspot.com/upstream, 2023.                     Zhe Liu, and Jiaguang Sun. Pata: Fuzzing with path aware taint analysis. In 2022
+[11] Syzbot kernel bug tracker. https://github.com/google/oss-fuzz, 2023.                         IEEE Symposium on Security and Privacy (SP), pages 1–17, 2022.
+[12] Andrea Arcuri and Lionel Briand. A practical guide for using statistical tests to       [38] Jie Liang, Mingzhe Wang, Chijin Zhou, Zhiyong Wu, Yu Jiang, Jianzhong Liu,
+     assess randomized algorithms in software engineering. In Proceedings of the 33rd             Zhe Liu, and Jiaguang Sun. Pata: Fuzzing with path aware taint analysis. In 2022
+     International Conference on Software Engineering, ICSE ’11, page 1–10, New York,             IEEE Symposium on Security and Privacy (SP), pages 1–17. IEEE, 2022.
+     NY, USA, 2011. Association for Computing Machinery.                                     [39] Dongge Liu, Jonathan Metzman, Marcel Böhme, Oliver Chang, and Abhishek
+[13] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and                      Arya. Sbft tool competition 2023–fuzzing track. arXiv preprint arXiv:2304.10070,
+     Thorsten Holz. Redqueen: Fuzzing with input-to-state correspondence. In NDSS,                2023.
+     2019.                                                                                   [40] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and
+[14] Dario Asprone, Jonathan Metzman, Abhishek Arya, Giovani Guizzo, and Federica                 Raheem Beyah. { MOPT } : Optimized mutation scheduling for fuzzers. In 28th
+     Sarro. Comparing fuzzers on a level playing field with fuzzbench. In 2022 IEEE               USENIX Security Symposium (USENIX Security 19), 2019.
+     Conference on Software Testing, Verification and Validation (ICST), pages 302–311,      [41] Alessandro Mantovani, Andrea Fioraldi, and Davide Balzarotti. Fuzzing with
+     2022.                                                                                        data dependency information. In 2022 IEEE 7th European Symposium on Security
+[15] Marcel Böhme, Valentin JM Manès, and Sang Kil Cha. Boosting fuzzer efficiency:               and Privacy (EuroS&P), pages 286–302. IEEE, 2022.
+     An information theoretic perspective. In Proceedings of the 28th ACM Joint              [42] Phil McMinn. Search-based software testing: Past, present and future. In 2011 IEEE
+     Meeting on European Software Engineering Conference and Symposium on the                     Fourth International Conference on Software Testing, Verification and Validation
+     Foundations of Software Engineering, pages 678–689, 2020.                                    Workshops, pages 153–163. IEEE, 2011.
+[16] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. Coverage-based                    [43] Jonathan Metzman, László Szekeres, Laurent Simon, Read Sprabery, and Ab-
+     greybox fuzzing as markov chain. In Proceedings of the 2016 ACM SIGSAC Con-                  hishek Arya. Fuzzbench: an open fuzzer benchmarking platform and service.
+     ference on Computer and Communications Security, pages 1032–1043, 2016.                      In Proceedings of the 29th ACM joint meeting on European software engineering
+[17] Marcel Böhme, László Szekeres, and Jonathan Metzman. On the reliability of                   conference and symposium on the foundations of software engineering, 2021.
+     coverage-based fuzzer benchmarking. In Proceedings of the 44th International            [44] Jean-Baptiste Mouret and Jeff Clune. Illuminating search spaces by mapping
+     Conference on Software Engineering, pages 1621–1633, 2022.                                   elites. ArXiv, abs/1504.04909, 2015.
+[18] Stephen Boyd and Lieven Vandenberghe. Convex Optimization. Cambridge                    [45] Stefan Nagy and Matthew Hicks. Full-speed fuzzing: Reducing fuzzing overhead
+     University Press, 2004.                                                                      through coverage-guided tracing. In 2019 IEEE Symposium on Security and Privacy
+[19] Cristian Cadar, Daniel Dunbar, Dawson R Engler, et al. Klee: Unassisted and                  (SP). IEEE, 2019.
+     automatic generation of high-coverage tests for complex systems programs. In            [46] Maria-Irina Nicolae, Max Eisele, and Andreas Zeller. Revisiting neural program
+     OSDI, volume 8, pages 209–224, 2008.                                                         smoothing for fuzzing. In Proceedings of the 31st ACM Joint European Software
+[20] Peng Chen and Hao Chen. Angora: Efficient fuzzing by principled search. In                   Engineering Conference and Symposium on the Foundations of Software Engineer-
+     2018 IEEE Symposium on Security and Privacy (SP). IEEE, 2018.                                ing, ESEC/FSE 2023, page 133–145, New York, NY, USA, 2023. Association for
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                               CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+     Computing Machinery.                                                                 and analogously for 𝑢 1′ :
+[47] Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida.                    ∑︁ 
+     { ParmeSan } : Sanitizer-guided greybox fuzzing. In 29th USENIX Security Sympo-                  𝑝 ′ + (1 − 𝑝 ′ )(𝑞 + (1 − 𝑞)𝑞 + ... + (1 − 𝑞)𝑛−2𝑞)
+                                                                                                                                                         
+                                                                                                                                                                   (19)
+     sium (USENIX Security 20), pages 2289–2306, 2020.
+[48] Dongdong She, Kexin Pei, Dave Epstein, Junfeng Yang, Baishakhi Ray, and Suman               𝑏 ∈𝐵
+     Jana. Neuzz: Efficient fuzzing with neural program smoothing. In 2019 IEEE           Subtracting Equation 18 from Equation 19, we get:
+     Symposium on Security and Privacy (SP). IEEE, 2019.                                       ∑︁ 
+                                                                                                    (𝑝 ′ − 𝑝)(1 − (𝑞 + (1 − 𝑞)𝑞 + ... + (1 − 𝑞)𝑛−2𝑞))
+[49] Dongdong She, Abhishek Shah, and Suman Jana. Effective seed scheduling for
+                                                                                                                                                      
+                                                                                                                                                                   (20)
+     fuzzing with graph centrality analysis. 2022 IEEE Symposium on Security and
+     Privacy (SP), pages 2194–2211, 2022.                                                      𝑏 ∈𝐵
+[50] Ji Shi, Zhun Wang, Zhiyao Feng, Yang Lan, Shisong Qin, Wei You, Wei Zou,             Note that the term involving 𝑞 is in fact a CDF of the geometric
+     Mathias Payer, and Chao Zhang. AIFORE: Smart fuzzing based on automatic
+     input format reverse engineering. In 32nd USENIX Security Symposium (USENIX          distribution. We can therefore simplify further:
+     Security 23), pages 4967–4984, Anaheim, CA, August 2023. USENIX Association.                        ∑︁ 
+                                                                                                              (𝑝 ′ − 𝑝)(1 − (1 − (1 − 𝑞)𝑛−1 ))
+                                                                                                                                               
+[51] Nick Stephens, John Grosen, Christopher Salls, Andrew Dutcher, Ruoyu Wang,                                                                       (21)
+     Jacopo Corbetta, Yan Shoshitaishvili, Christopher Kruegel, and Giovanni Vigna.                       𝑏 ∈𝐵
+     Driller: Augmenting fuzzing through selective symbolic execution. In NDSS,                                  ∑︁ 
+                                                                                                                      (𝑝 ′ − 𝑝)(1 − 𝑞)𝑛−1
+     volume 16, pages 1–16, 2016.
+                                                                                                                                          
+                                                                                                                                                                   (22)
+[52] László Szekeres and R Sekar. Search-based fuzzing.
+[53] Jinghan Wang, Yue Duan, Wei Song, Heng Yin, and Chengyu Song. Be sensitive                                  𝑏 ∈𝐵
+     and collaborative: Analyzing impact of coverage metrics in greybox fuzzing. In       Since 𝑞 is a probability, therefore 0 ≤ 𝑞 ≤ 1, the equation above
+     22nd International Symposium on Research in Attacks, Intrusions and Defenses
+     (RAID 2019), 2019.                                                                   can be bounded as follows:
+                                                                                                          ∑︁                      ∑︁ ′
+[54] Tielei Wang, Tao Wei, Guofei Gu, and Wei Zou. Taintscope: A checksum-aware
+     directed fuzzing tool for automatic software vulnerability detection. In 2010 IEEE
+                                                                                                     0≤        (𝑝 ′ − 𝑝)(1 − 𝑞)𝑛−1 ≤      (𝑝 − 𝑝)       (23)
+     Symposium on Security and Privacy, pages 497–512. IEEE, 2010.                                        𝑏 ∈𝐵                             𝑏 ∈𝐵
+                                                                                          Note that 𝑝 ′ − 𝑝 ≥ 0 since 𝑢 1′ is the first greedy choice. Therefore,
+[55] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu, Kai Lu, and Xu Zhou.
+     { EcoFuzz } : Adaptive { Energy-Saving } greybox fuzzing as a variant of the ad-
+     versarial { Multi-Armed } bandit. In 29th USENIX Security Symposium (USENIX          the total expected coverage gain of 𝑢 1′ is at least as high as the
+     Security 20), pages 2307–2324, 2020.                                                 total expected coverage gain of the optimal assignment 𝑢 1 . This
+[56] Han Zheng, Jiayuan Zhang, Yuhang Huang, Zezhong Ren, He Wang, Chunjie
+     Cao, Yuqing Zhang, Flavio Toffalini, and Mathias Payer. FISHFUZZ: Catch deeper       argument exactly applies to the assignment 𝑢 2, 𝑢 3, ..., 𝑢𝑛 . Therefore,
+     bugs by throwing larger nets. In 32nd USENIX Security Symposium (USENIX              the greedy scheduling strategy is the optimal scheduling strategy
+     Security 23), pages 1343–1360, Anaheim, CA, August 2023. USENIX Association.
+                                                                                          for fuzzing as online stochastic control.                              □
+
+A Theory Addendum                                                                         B Performance Characteristics
+A.1 Proof of Theorem 1                                                                    B.1 Mann-Whitney U Test
+  Proof. Let expected new coverage gain given seed list 𝑆𝑖 and                            For the code coverage evaluation done as part of answering RQ1
+chosen seed index 𝑢𝑖 be defined as:                                                       (§4.1), we report the results of significance testing by performing
+                  ∑︁                                                                      the Mann-Whitney U test (as recommended by Klees et.al [33]) to
+                      Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))         (14)
+                                                                                          validate that the performance improvement FOX and FOX+D obtain
+                        𝑏 ∈𝐵𝑖
+                                                                                          over the other state-of-the-art fuzzers is statistically significant and
+We can transform Equation 14 to sum over the set of all branches                          not due to the randomness of the fuzzing process.
+𝐵 instead of the set of not-flipped branches at stage 𝑖 𝐵𝑖 :                                 The results of the Mann-Whitney U test performed over the cov-
+   ∑︁                                                                                     erage results obtained for standalone programs and the FuzzBench
+       Pr(𝑏 not flipped prior 𝑖) Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ])) (15)                        programs are presented in Table 10 and Table 11, respectively. As
+   𝑏 ∈𝐵                                                                                   evident from Table 4, there is a large, statistically significant per-
+Now consider an optimal schedule 𝜋 = [𝑢 1, 𝑢 2, ..., 𝑢𝑛 ]. Given 𝜋, we                    formance improvement obtained by FOX compared to AFL++ in
+can obtain another assignment 𝜋 ′ from 𝜋 by exchanging 𝑢 1 with a                         all standalone targets but exiv2 and tiff2ps. When comparing
+𝑢 1′ such that 𝑢 1′ is the first greedy choice:                                           FOX against AFLPP+C, the only instances where the performance
+     ∑︁                                                                                   difference is not statistically significant is jasper and tcpdump.
+         Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆 1 [𝑢 1 ]))                                                   Interestingly, jasper and tcpdump are the two of the four targets
+   𝑏 ∈𝐵                                                                                   where AFLPP+C appears to have a slight performance advantage
+                                         ∑︁                                               over FOX+D, but as shown with Mann-Whitney this improvement
+                                     ≤          Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆 1 [𝑢 1′ ]))   (16)
+                                                                                          is statistically insignificant. Similarly, tcpdump and xmllint are
+                                         𝑏 ∈𝐵
+                                                                                          the two out of the four targets where AFLPP+CD seems to perform
+To simplify the equations below, let:                                                     better than FOX+D, yet this advantage is also statistically insignifi-
+                        𝑝 = Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆 1 [𝑢 1 ]))                                cant. In the case of the FuzzBench dataset (Table 3), the only four
+                                                                                          targets where AFL++ appears to outperform FOX — harfbuzz,
+                       𝑝 ′ = Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆 1 [𝑢 1′ ]))                      (17)    libjpeg-turbo, proj4, and re2 — are statistically insignificant.
+                     𝑞 = max Pr(𝑏 flips | 𝑚𝑢𝑡 (𝑆𝑖 [𝑢𝑖 ]))                                 Similarly, AFLPP+C only statistically significantly outperforms
+                             𝑖
+                                                                                          FOX on 4 targets out of the 10 targets AFLPP+C has a higher mean
+The total expected coverage gain for 𝑢 1 is then:                                         coverage on compared to FOX. Likewise, AFLPP+CD’s better cov-
+        ∑︁ 
+             𝑝 + (1 − 𝑝)(𝑞 + (1 − 𝑞)𝑞 + ... + (1 − 𝑞)𝑛−2𝑞)
+                                                           
+                                                                                  (18)    erage performance on bloaty, systemd, and vorbis is statistically
+          𝑏 ∈𝐵                                                                            insignificant.
+CCS’24, October 14-18, 2024, Salt Lake City, USA                       Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+Table 10: Mann-Whitney U test results of FOX against AFLPP,                          B.2     Throughput Measurements
+AFLPP+C, and FOX+D against AFLPP+CD, on 15 standalone pro-
+grams for 24 hours over 10 runs. Statistically significant results                  We report the mean number of mutations (in millions) exercised by
+(𝑝 < 0.05) are in bold.                                                             FOX and FOX+D compared to AFL++, AFLPP+C, and AFLPP+CD as
+                                                                                    part of our coverage evaluation and report them for the Fuzzbench
+                                                                                    programs in Table 12 and the standalone programs in Table 13. In
+         Targets           AFLPP       AFLPP+C          AFLPP+CD                    both instances, we see that both FOX and FOX+D are largely com-
+         bsdtar          1.83e-04         1.83e-04        1.00e-03                  parable in performance to AFLPP+C and AFLPP+CD, showcasing
+         exiv2            1.86e-01        5.83e-04        1.73e-02                  the lightweight nature of our stochastic-control-guided approach.
+         ffmpeg          5.80e-03         3.30e-04        1.83e-04                     An interesting insight is that in certain targets FOX achieves
+         jasper          2.46e-04          3.07e-01        2.41e-01                 higher throughput than AFL++. This occurs because of two reasons.
+         nm-new          1.83e-04         4.59e-03        1.82e-04                  First, the scheduler takes into account the productive time spent
+         objdump         1.82e-04         3.26e-04        1.83e-04                  on a frontier branch compared to the total time spent on it, thereby
+         pdftotext       1.82e-04         2.20e-03         7.34e-01                 indirectly penalizing low throughput seeds. Second, FOX dynam-
+         readelf         1.01e-03         5.83e-04         1.62e-01                 ically turns off instrumentation for flipped (i.e., already reached)
+         size            1.82e-04         7.69e-04        1.83e-04                  branches.
+         strip-new       1.83e-04         3.30e-04        1.83e-04
+         tcpdump         1.83e-04          6.40e-02        3.07e-01
+         tiff2pdf        1.71e-03         7.28e-03        7.28e-03
+         tiff2ps          2.73e-01        1.31e-03        1.71e-03
+         tiffcrop        1.83e-04         2.83e-03        1.01e-03
+         xmllint         1.83e-04         1.83e-04         7.91e-01                 Table 12: Mean number of executions (in millions) of FOX and
+                                                                                     FOX+D against four fuzzers on 23 FuzzBench programs for 24 hours
+                                                                                     over 10 runs.
+
+Table 11: Mann-Whitney U test results of FOX against AFLPP,
+AFLPP+C and FOX+D against AFLPP+CD on 23 FuzzBench programs                           Targets           FOX AFLPP AFLPP+C FOX+D AFLPP+CD
+for 24 hours over 10 runs. Statistically significant results (𝑝 < 0.05)               bloaty            18.63     12.15        14.25       9.96           17.32
+are in bold.
+                                                                                      curl             212.34    388.11       400.29     201.40          399.97
+                                                                                      freetype         133.77    139.14       207.23     183.36          167.00
+       Targets               AFLPP        AFLPP+C        AFLPP+CD                     harfbuzz         102.33    107.82        10.03     104.95           28.09
+       bloaty               5.38e-02         5.71e-01       6.40e-02                  jsoncpp          320.80    288.62       315.40     583.72          459.06
+       curl                 3.45e-01         7.57e-02      3.19e-03                   lcms             200.69    770.22       664.99     196.91          579.56
+       freetype            1.83e-04         1.83e-04       1.83e-04                   libjpeg-turbo    257.84    470.42       584.65     281.14          433.42
+       harfbuzz             6.23e-01        1.83e-04       1.83e-04                   libpcap            5.91     17.17         8.85       5.79           14.19
+       jsoncpp              9.30e-01         7.74e-02      1.59e-05                   libpng           419.08    469.73       474.01     414.27          340.42
+       lcms                1.53e-04         6.63e-04       1.00e+00
+                                                                                      libxml2           61.89     40.95        47.00      62.06           40.04
+       libjpeg-turbo        9.39e-01        1.00e+00       3.09e-02
+       libpcap             6.39e-05          7.57e-02      3.11e-02                   libxslt          585.16    600.73       641.32     541.56          622.92
+       libpng              1.67e-04          5.18e-01      2.29e-02                   mbedtls          205.98    230.64       289.20     119.89          379.54
+       libxml2             4.40e-04         2.83e-03       1.82e-04                   openh264          10.66      9.77         8.86      16.99           12.62
+       libxslt             1.70e-03         2.32e-02       1.13e-02                   openssl          249.52    650.18       591.01     220.17          728.32
+       mbedtls             1.82e-04         1.70e-03       2.83e-03                   openthread       123.44     85.86        83.29     123.97           78.14
+       openh264             2.41e-01        1.70e-03       4.59e-03                   proj4             52.22    108.53        86.30      56.87          104.03
+       openssl             1.76e-04         1.78e-04       1.77e-04                   re2              170.98    358.33       378.28     169.59          364.55
+       openthread          3.40e-02         1.71e-03       3.60e-03                   sqlite3           58.67     70.83        90.31      84.01           99.10
+       proj4                5.21e-01        1.83e-04        2.41e-01                  stb              148.54    252.21       243.58     173.19          271.04
+       re2                  1.60e-01         8.20e-01      1.12e-02
+                                                                                      systemd            8.25      8.48         8.54       8.70            8.40
+       sqlite3              9.70e-01         6.23e-01      2.57e-02
+       stb                 2.08e-04          5.37e-02      3.17e-03                   vorbis           441.68    322.17       185.16     413.96          173.54
+       systemd             4.40e-04          4.73e-01       2.41e-01                  woff2            299.36    915.85       115.84     306.54          118.81
+       vorbis               1.84e-01         2.26e-01       5.43e-01                  zlib              16.89    686.02       649.81      17.24          566.66
+       woff2               1.81e-04         1.31e-03       3.30e-04
+       zlib                 5.01e-01        2.43e-03       2.05e-04
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                      CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+Table 13: Mean number of executions (in millions) of FOX and         B.4   Coverage-over-time
+FOX+D against four fuzzers on 15 standalone programs for 24 hours
+over 10 runs.                                                        We compare the code coverage performance of FOX and FOX+D
+                                                                     against the other state-of-the-art fuzzers (AFL++, AFLPP+C, and
+                                                                     AFLPP+CD) on the FuzzBench dataset running 10 campaigns of 24
+  Targets       FOX AFLPP AFLPP+C FOX+D AFLPP+CD                     hours each. Figure 4 showcases the mean edge coverage achieved
+  bsdtar        15.25       7.93           8.95      14.85   10.43   by the fuzzers across the 10 runs over time with the error bars
+  exiv2          6.13       8.25           7.64       5.54    4.52   indicating one standard deviation.
+  ffmpeg         3.84       3.14           3.11       3.89    2.52
+  jasper        14.40      14.06          14.20      18.14   13.39
+  nm-new         8.37       9.95          13.02       9.12    8.94
+  objdump        7.68       7.90           9.22       8.50    8.84
+  pdftotext      4.67       4.09           4.05       4.74    4.37
+  readelf       13.19       9.64           9.53      10.42   11.52
+  size          10.26      13.85          12.43       7.52    8.91
+  strip-new     12.34       9.27          11.72      12.50    9.53
+  tcpdump        9.08       9.53           9.69       8.79   11.27
+  tiff2pdf      11.74      10.73          10.87      12.65   10.84
+  tiff2ps       13.85      11.43          12.27      18.63   21.42
+  tiffcrop      16.51      10.23          12.32      14.34    9.69
+  xmllint        8.75       7.44           9.50      13.79    9.39
+
+
+B.3     Types of Bugs Identified by FOX+D
+Table 14 specifies the bugs found by FOX+D as part of the bug dis-
+covery evaluation performed on the evaluation dataset consisting
+of both standalone programs and library drivers.
+
+            Table 14: The types of bugs found by FOX+D
+
+                  Targets                         Bug Type
+                  nm-new            Use After Free
+                  nm-new               Invalid Free
+                  size              Use After Free
+                  size                 Invalid Free
+                  objdump              Invalid Free
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf         Assertion Violation
+                  xpdf             Stack Overflow
+                  woff2   Null Pointer Dereference
+                  sqlite3      Assertion Violation
+                  libxslt Null Pointer Dereference
+CCS’24, October 14-18, 2024, Salt Lake City, USA                                        Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana
+
+
+
+                                                    AFLPP                    AFLPP+C                  AFLPP+CD                 FOX                 FOX+D
+                                (a) bloaty                        (b) curl                           (c) freetype      38000
+                                                                                                                                       (d) harfbuzz                         (e) jsoncpp
+                                                16000                             16000
+                 8500                                                                                                  36000                                1340
+                                                15000
+                                                                                  14000                                34000
+   Edges found
+
+
+
+
+                 8000                           14000                                                                                                       1330
+                                                                                                                       32000
+                 7500                           13000                             12000                                30000
+                                                12000                                                                  28000                                1320
+                 7000                                                             10000
+                                                11000                                                                  26000
+                                                                                                                                                            1310
+                        0   4   8 12 16 20 24           0   4   8 12 16 20 24                0   4    8 12 16 20 24            0   4    8 12 16 20 24              0   4     8 12 16 20 24
+                                 (f) lcms                   (g) libjpeg-turbo                         (h) libpcap                       (i) libpng                           (j) libxml2
+                                                                                   3000                                 2850
+                 2500                            3300                                                                                                      19000
+                                                                                   2500                                 2800                               18500
+                                                 3290
+   Edges found
+
+
+
+
+                 2000                                                              2000                                                                    18000
+                                                 3280                                                                   2750
+                                                                                   1500                                                                    17500
+                 1500
+                                                 3270                              1000                                 2700                               17000
+                 1000                                                               500                                                                    16500
+                                                 3260                                                                   2650
+                                                                                      0                                                                    16000
+                        0   4   8 12 16 20 24           0   4   8 12 16 20 24                0   4    8 12 16 20 24            0   4    8 12 16 20 24              0   4     8 12 16 20 24
+                                (k) libxslt                     (l) mbedtls                          (m) openh264                      (n) openssl                         (o) openthread
+              12500                                                               14000
+                                                 4200                                                                  11100                                5200
+              12000                                                               12000                                                                     5000
+Edges found
+
+
+
+
+                                                 4000                                                                  11000
+                                                                                                                                                            4800
+              11500                              3800                             10000
+                                                                                                                       10900                                4600
+              11000                              3600                              8000                                                                     4400
+                                                                                                                       10800                                4200
+                        0   4   8 12 16 20 24           0   4   8 12 16 20 24                0   4    8 12 16 20 24            0   4    8 12 16 20 24              0   4     8 12 16 20 24
+                                 (p) proj4                        (q) re2                             (r) sqlite3                        (s) stb                            (t) systemd
+              34000                                                               40000                                 4500                                3900
+              32000                              6200                                                                   4400
+                                                                                  35000                                                                     3800
+                                                                                                                        4300
+Edges found
+
+
+
+
+              30000
+                                                 6100                                                                   4200                                3700
+              28000                                                               30000
+                                                                                                                        4100                                3600
+              26000                              6000                             25000                                 4000
+              24000                                                                                                     3900                                3500
+                                                 5900                             20000
+                        0   4   8 12 16 20 24           0   4   8 12 16 20 24                0   4    8 12 16 20 24            0   4    8 12 16 20 24              0   4     8 12 16 20 24
+                                                                                                                                       Time (hours)                         Time (hours)
+                                (u) vorbis                       (v) woff2                              (w) zlib
+                 2060                            2700                                  920
+                                                                                       900
+                 2040                            2600
+   Edges found
+
+
+
+
+                                                                                       880
+                 2020                                                                  860
+                                                 2500
+                                                                                       840
+                 2000
+                                                 2400                                  820
+                 1980                                                                  800
+                        0   4   8 12 16 20 24           0   4   8 12 16 20 24                0   4    8 12 16 20 24
+                                Time (hours)                    Time (hours)                          Time (hours)
+
+Figure 4: The arithmetic mean edge coverage for FOX and FOX+D against three other fuzzers running for 24 hours over 10 runs on the
+FuzzBench programs. The error bars indicate one standard deviation.
+
+
+C Performance Introspection Details                                                                        analysis as discussed in §4.5. We include the coefficient (Coeff), the
+                                                                                                           standard error (SE), two-tailed p-value for the t-statistic (p-val),
+C.1 Logistic Regression Result
+                                                                                                           and the 95% confidence intervals (95% CI).
+We evaluate if there is a correlation between the degree to which
+we estimate a branch to be convex and the ability of FOX to flip the
+branch in consideration. We perform this analysis to support our
+claim that our Newton-based mutator can flip branches behaving as
+convex functions. Table 15 shows the result of the logistic regression
+FOX: Coverage-guided Fuzzing as Online Stochastic Control                                                           CCS’24, October 14-18, 2024, Salt Lake City, USA
+
+
+Table 15: Logistic regression model of FOX flipping a branch on 15 standalone programs over 5 fuzzing campaign runs 24 hour
+each. The table shows fitted parameters for the model: branch flipped ∼ convexity + target + convexity × target.
+
+                                                Variable                 Coeff      SE p-val        95 % CI
+                                                intercept                -1.461   0.122   0.000   -1.699   -1.222
+                                                ffmpeg                    0.296   0.129   0.021    0.045    0.548
+                                                jasper                    0.228   0.150   0.128   -0.065    0.521
+                                                libarchive                1.387   0.140   0.000    1.113    1.661
+                                                nm-new                    0.324   0.154   0.035    0.023    0.625
+                                                objdump                   0.474   0.169   0.005    0.143    0.805
+                                                size                      0.672   0.182   0.000    0.315    1.028
+                                                strip-new                 0.335   0.152   0.028    0.036    0.633
+                                                tcpdump                   0.981   0.126   0.000    0.734    1.229
+                                                tiff2pdf                  0.090   0.144   0.533   -0.193    0.373
+                                                tiff2ps                   0.359   0.150   0.017    0.066    0.653
+                                                tiffcrop                 -0.023   0.142   0.870   -0.301    0.255
+                                                xmllint                   1.022   0.146   0.000    0.735    1.309
+                                                xpdf                      1.122   0.232   0.000    0.668    1.576
+                                                convexity                 1.013   0.220   0.000    0.582    1.444
+                                                convexity × ffmpeg       -0.408   0.234   0.081   -0.866    0.050
+                                                convexity × jasper       -1.040   0.304   0.001   -1.636   -0.444
+                                                convexity × libarchive   -0.739   0.261   0.005   -1.252   -0.227
+                                                convexity × nm-new        0.370   0.267   0.165   -0.153    0.893
+                                                convexity × objdump       0.594   0.292   0.042    0.022    1.167
+                                                convexity × size          0.810   0.313   0.010    0.196    1.424
+                                                convexity × strip-new     0.931   0.274   0.001    0.394    1.469
+                                                convexity × tcpdump      -0.211   0.237   0.373   -0.676    0.254
+                                                convexity × tiff2pdf      0.400   0.276   0.147   -0.141    0.942
+                                                convexity × tiff2ps       0.194   0.286   0.497   -0.366    0.754
+                                                convexity × tiffcrop      0.347   0.272   0.201   -0.185    0.880
+                                                convexity × xmllint       0.087   0.271   0.750   -0.445    0.618
+                                                convexity × xpdf         -1.719   0.458   0.000   -2.617   -0.822
+

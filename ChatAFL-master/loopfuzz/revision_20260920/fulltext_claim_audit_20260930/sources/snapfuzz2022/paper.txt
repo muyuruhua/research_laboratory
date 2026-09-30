@@ -1,0 +1,805 @@
+    SnapFuzz: High-Throughput Fuzzing of Network Applications
+                           Anastasios Andronidis                                                                Cristian Cadar
+                            Imperial College London                                                         Imperial College London
+                            London, United Kingdom                                                          London, United Kingdom
+                          a.andronidis@imperial.ac.uk                                                        c.cadar@imperial.ac.uk
+
+ABSTRACT                                                                                   Google has discovered over 25,000 bugs in their products and over
+In recent years, fuzz testing has benefited from increased com-                            22,000 bugs in open-source code using greybox fuzzing [18].
+putational power and important algorithmic advances, leading to                                Unfortunately, not all software can benefit from such fuzzing
+systems that have discovered many critical bugs and vulnerabilities                        campaigns. One important class of software, network protocol im-
+in production software. Despite these successes, not all applications                      plementations, is difficult to fuzz. There are two main difficulties:
+can be fuzzed efficiently. In particular, stateful applications such as                    the fact that in-depth testing of such applications needs to be aware
+network protocol implementations are constrained by a low fuzzing                          of the network protocol they implement (e.g., FTP, DICOM, SIP),
+throughput and the need to develop complex fuzzing harnesses                               and the fact that they have side effects, such as writing data to the
+that involve custom time delays and clean-up scripts.                                      file system or exchanging messages over the network.
+   In this paper, we present SnapFuzz, a novel fuzzing framework                               There are two main approaches for testing such software in a
+for network applications. SnapFuzz offers a robust architecture                            meaningful way. One approach, adopted by Google’s OSS-Fuzz, is
+that transforms slow asynchronous network communication into                               to write unit-level test drivers that interact with the software via
+fast synchronous communication, snapshots the target at the latest                         its API [21]. While such an approach can be effective, it requires
+point at which it is safe to do so, speeds up file operations by                           significant manual effort, and does not perform system-level testing
+redirecting them to a custom in-memory filesystem, and removes                             where an actual server instance interacts with actual clients.
+the need for many fragile modifications, such as configuring time                              A second approach, used by AFLNet [30], performs system-level
+delays or writing clean-up scripts.                                                        testing by starting actual server and client processes, and generat-
+   Using SnapFuzz, we fuzzed five popular networking applications:                         ing random message exchanges between them which nevertheless
+LightFTP, TinyDTLS, Dnsmasq, LIVE555 and Dcmqrscp. We report                               follow the underlying network protocol. Furthermore, it does so
+impressive performance speedups of 62.8 x, 41.2 x, 30.6 x, 24.6 x, and                     without needing a specification of the protocol, but rather by using
+8.4 x, respectively, with significantly simpler fuzzing harnesses in                       a corpus of real message exchanges between server and clients.
+all cases. Due to its advantages, SnapFuzz has also found 12 extra                         AFLNet’s approach has significant advantages, requiring less man-
+crashes compared to AFLNet in these applications.                                          ual effort and performing end-to-end testing at the protocol level.
+                                                                                               While AFLNet makes important advances in terms of fuzzing
+CCS CONCEPTS                                                                               network protocols, it has two main limitations. First, it requires
+                                                                                           users to add or configure various time delays in order to make sure
+• Software and its engineering → Software testing and de-
+                                                                                           the protocol is followed, and to write clean-up scripts to reset the
+bugging; • Security and privacy → Systems security.
+                                                                                           state across fuzzing iterations. Second, it has poor fuzzing perfor-
+                                                                                           mance, caused by asynchronous network communication, various
+KEYWORDS                                                                                   time delays, and expensive file system operations, among others.
+Fuzzing, network protocol implementations, stateful applications                               SnapFuzz addresses both of these challenges thorough a robust
+ACM Reference Format:                                                                      architecture that transforms slow asynchronous network commu-
+Anastasios Andronidis and Cristian Cadar. 2022. SnapFuzz: High-Throughput                  nication into fast synchronous communication, speeds up file oper-
+Fuzzing of Network Applications. In Proceedings of the 31st ACM SIGSOFT                    ations and removes the need for clean-up scripts via an in-memory
+International Symposium on Software Testing and Analysis (ISSTA ’22), July                 filesystem, and improves other aspects such as delaying and au-
+18–22, 2022, Virtual, South Korea. ACM, New York, NY, USA, 12 pages.                       tomating the forkserver placement, correctly handling signal prop-
+https://doi.org/10.1145/3533767.3534376                                                    agation and eliminating developer-added delays.
+                                                                                               These improvements significantly simplify the construction of
+1     INTRODUCTION                                                                         fuzzing harnesses for network applications and dramatically im-
+Fuzzing is an effective technique for testing software systems, with                       prove fuzzing throughput in the range of 8.4 x to 62.8 x (mean:
+popular fuzzers such as AFL and LibFuzzer having found thousands                           30.6 x) for a set of five popular server benchmarks.
+of bugs in both open-source and commercial software. For instance,
+
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+© 2022 Copyright held by the owner/author(s). Publication rights licensed to ACM.          2   FROM AFL TO AFLNET TO SNAPFUZZ
+For the purpose of open access, the author has applied a Creative Commons Attribution
+(CC BY) licence to any Author Accepted Manuscript version arising. The definitive          In this section, we first discuss how AFL and AFLNet work, focusing
+Version of Record was published in Proceedings of the 31st ACM SIGSOFT International       on their internal architecture and performance implications, and
+Symposium on Software Testing and Analysis (ISSTA ’22), July 18–22, 2022, Virtual, South
+Korea, https://doi.org/10.1145/3533767.3534376.                                            then provide an overview of SnapFuzz’s architecture and main
+                                                                                           contributions.
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                                                     Anastasios Andronidis and Cristian Cadar
+
+
+                         2. Request new instance                                                                  2. Request new instance
+
+
+
+               AFL                1. fork()             Forkserver                                  AFLNet            1. fork()               Forkserver
+                                                                                                       TCP/IP
+
+
+
+                                                                 3. fork() and execve()                                                              3. fork() and execve()
+                                              5. Check for crashes                                                                5. Check for crashes
+
+
+
+                                                          Target                                                                                    Target
+
+
+
+
+                                                                                                                                          TCP/IP
+             4. Send input file
+                                                         Instance                                     4. Send input and receive output
+                                                                                                                                                   Instance
+
+
+       Figure 1: Architecture of AFL’s forkserver mode.                                                    Figure 2: Architecture of AFLNet.
+
+
+2.1     American Fuzzy Lop (AFL)
+                                                                                          benefits in the common case where the target application needs
+AFL [27] is a greybox fuzzer that uses an effective coverage-guided
+                                                                                          to perform a long initialisation phase before it is able to consume
+genetic algorithm. AFL uses a modified form of edge coverage
+                                                                                          AFL’s input. Unfortunately though, this mode requires the user not
+to efficiently identify inputs that change the target application’s
+                                                                                          only to have access to the source code of the target application,
+control flow.
+                                                                                          but also knowledge of its internals in order to place the deferred
+    In a nutshell, AFL first loads user-provided initial seed inputs into
+                                                                                          call at the correct stage of execution. As we will explain in §3.4,
+a queue, picks an input, and mutates it using a variety of strategies.
+                                                                                          the forkserver placement has several restrictions (e.g., it cannot be
+If a mutated input improves coverage, it is added to the queue and
+                                                                                          placed after file descriptors are created) and if these restrictions are
+the cycle is repeated.
+                                                                                          violated, the fuzzing campaign can waste a lot of time exploring
+    At a systems level, AFL’s simplest mode (called dumb mode) is
+                                                                                          invalid executions.
+to restart the target application from scratch by forking first and
+then creating a fresh process via execve. When this happens, the
+standard sequence of events to start a process is taking place, with                      2.2    AFLNet
+the OS loader first initialising the target application and its libraries                 AFL essentially targets applications that receive inputs via files
+into memory. AFL then sends to the new process the fuzzed input                           (with stdin a special file type). This means that it is not directly
+through a file descriptor that usually points to an actual file or                        applicable to network applications, as they expect inputs to arrive
+stdin. Lastly, AFL waits for the target to terminate, but kills it if a                   through network sockets and follow an underlying network protocol.
+predefined timeout is exceeded. These steps are repeated for every                            AFLNet [30] extends AFL to work with network applications. Its
+input AFL wants to provide to the target application.                                     most important contribution is that it proposes a new algorithm
+    AFL’s dumb mode is rather slow as too much time is spent on                           on how to generate inputs that follow the underlying network
+loading and initialising the target and its libraries (such as libc) for                  protocol (e.g., the FTP, DNS or SIP protocols). More specifically,
+every generated input. Ideally, the application would be restarted                        AFLNet infers the underlying protocol via examples of recorded
+after all these initialisation steps are done, as they are irrelevant to                  message exchanges between a client and the server.
+the input provided by AFL. This is exactly what AFL’s forkserver                              AFLNet also extends AFL by building the required infrastructure
+mode offers, as shown in Figure 1.                                                        to direct the generated inputs through a network socket to the
+    In this mode, AFL first creates a child server called the forkserver                  target application, as shown in Figure 2. More precisely, from a
+(step 1 in Figure 1), which loads the target application via execve                       systems perspective, AFLNet acts as the client application. After a
+and freezes it just before the main function is about to start.                           configurable delay waiting for the server under fuzzing to initialise,
+    Then, in each fuzzing iteration, the following steps take place                       it sends inputs to the server through TCP/IP or UDP/IP sockets,
+in a loop: AFL requests a new target instance from the forkserver                         with configurable delays between those deliveries (we describe the
+(step 2), the forkserver creates a new instance (step 3), AFL sends                       various time delays needed by AFLNet in §3.2). AFLNet consumes
+fuzzed input to this new instance (step 4), and the forkserver checks                     the replies from the server (or else the server might block) and also
+the target instance for crashes (step 5).                                                 sends to the server a SIGTERM signal after each exchange is deemed
+    With this forkserver snapshotting mechanism, AFL replaces the                         complete, as usually network applications run in infinite loops.
+loading overhead by a much less expensive fork call, while guar-                              As shown in Figure 2, the architecture of AFLNet is similar to
+anteeing that the application will be at its initial state for every                      that of AFL’s deferred forkserver mode, except that communication
+freshly generated input from AFL.                                                         takes place over the network instead of via files.
+    One additional optimisation that AFL offers is the deferred fork-                         Network applications like databases or FTP servers are often
+server mode. In this mode, the user can manually add in the target’s                      stateful, keeping track of their state by storing information to vari-
+source code a special call to an internal function of AFL in order to                     ous files. This can create issues during a fuzzing campaign because
+instruct it to create the forkserver at a later stage in the execution                    when AFLNet restarts the application, its state might be tainted
+of the target application. This can provide significant performance                       by information from a previous execution. To avoid this problem,
+SnapFuzz: High-Throughput Fuzzing of Network Applications                                                                                             ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+
+                       2. Request new instance
+                                                                                                                         eliminate synchronisation delays using its SnapFuzz protocol (§3.2).
+                                                                                                                         Second, a custom in-memory filesystem is added, to improve perfor-
+                                                                    Smart
+      AFLNet                  1. fork()                            Deferred                                              mance and facilitate resetting the state after each fuzzing iteration
+                                                                                                                         (§3.3). Third, the forkserver is replaced by a smart deferred fork-
+                                                                  Forkserver
+        SnapFuzz                                                                                                         server, which automates and optimizes the forkserver placement
+                                                                                                                         (§3.4). We describe the main components of SnapFuzz in detail in
+                                           5. Check for crashes
+                                                                                                3. fork() and execve()
+                                                                                                                         the next section.
+
+                                                                        SnapFuzz                                         3     DESIGN
+                                                                                    Target                               SnapFuzz has two main goals: significantly increase fuzzing through-
+                                                    SnapFuzz Protocol
+
+
+                                                                          TCP/IP                                         put, and simplify the construction of fuzzing harnesses. SnapFuzz
+                                                                                   instance
+
+
+       4. Send input and receive output
+                                                                                     Binary
+                                                                                    rewriting                            accomplishes these goals by intercepting all the communication be-
+                                                                                   In-memory
+                                                                                                                         tween the target application and its environment via binary rewrit-
+                                                                                   Filesystem
+                                                                                                                         ing (§3.1). By controlling this communication, SnapFuzz can then:
+                                                                                                                         (1) Implement an efficient network fuzzing protocol which notifies
+                   Figure 3: Architecture of SnapFuzz.                                                                       the fuzzer when the target application is ready to accept a new
+                                                                                                                             request or when a response is ready to be consumed (§3.2). This
+AFLNet requires the user to write custom clean-up scripts that are                                                           improves fuzzing throughput and eliminates the need for all the
+invoked to reset any filesystem state.                                                                                       custom delays that AFLNet users need to insert in order to syn-
+   We use the term fuzzing harness to refer to all the code that users                                                       chronise the communication between the fuzzer and the target
+need to write in order to be able to fuzz an application. In AFLNet,                                                         application. SnapFuzz also replaces Internet sockets by UNIX
+this includes the client code, the various time delays that need to                                                          domain sockets, which improves performance, and implements
+be manually added, and the clean-up scripts. One important goal                                                              an efficient server termination strategy.
+of SnapFuzz is to simplify the creation of fuzzing harnesses for                                                         (2) Redirect all file operations to use an in-memory filesystem
+network applications.                                                                                                        (§3.3). This improves the performance of filesystem operations,
+                                                                                                                             and obviates the need for user-provided clean-up scripts, as
+2.3    SnapFuzz                                                                                                              SnapFuzz can automatically clean up after each fuzzing iteration
+SnapFuzz is built on top of AFLNet by revamping its network com-                                                             by simply discarding the in-memory state.
+munication architecture as shown in Figure 3, without any modifi-                                                        (3) Automatically place and defer the forkserver (“smart deferred
+cations to AFLNet’s fuzzing algorithm.                                                                                       forkserver”) to the latest safe point (§3.4). This improves per-
+    SnapFuzz’s main objectives are (1) to improve the performance                                                            formance and eliminates the need for manual annotations.
+(throughput) of fuzzing network applications, and (2) lower the                                                          (4) Eliminate custom delays, unnecessary system calls and poten-
+barrier for testing network applications by simplifying the con-                                                             tially expensive clean-up routines that are part of the target
+struction of fuzzing harnesses, in particular by eliminating the need                                                        application, correctly propagate signals from child processes,
+to add manually-specified time delays and to write clean-up scripts.                                                         and better control CPU affinity (§3.5).
+    At a high level, SnapFuzz achieves its significant performance
+gains by: optimising all network communications by eliminating                                                           3.1    Binary Rewriting
+synchronisation delays (the SnapFuzz protocol); automatically in-                                                        SnapFuzz implements a load-time binary rewriting subsystem that
+jecting AFL’s forkserver deeper into the application than otherwise                                                      dynamically intercepts both the OS loader’s and the target’s func-
+possible and without the user’s intervention (smart deferred fork-                                                       tionalities in order to monitor and modify all external behaviours
+server); performing binary rewriting-enabled optimisations which                                                         of the target application.
+eliminate additional delays and inefficiencies; automatically reset-                                                         Applications interact with the external world via system calls,
+ting any filesystem state; and optimising filesystem accesses by                                                         such as read() and write() in Linux, which provide various OS
+redirecting them into an in-memory filesystem.                                                                           services. As an optimisation, Linux provides some services via vDSO
+    SnapFuzz also makes fuzzing harness development easier and in                                                        (virtual Dynamic Shared Object) calls. vDSO is essentially a small
+some cases trivial by completely removing the need for manual code                                                       shared library injected by the kernel in every application in order
+modifications. Such manual changes are often required to: reset                                                          to provide fast access to some services. For instance, gettimeofday()
+the state of either the target or its environment after each fuzzing                                                     is typically using a vDSO call on Linux.
+iteration; terminate the target, as usually servers run in infinite                                                          The main goal of the binary rewriting component of SnapFuzz
+loops; pin the CPU for threads and processes; and add deferred                                                           is to intercept all the system calls and vDSO calls issued by the
+forkserver support to the target.                                                                                        application being fuzzed, and redirect them to a system call handler.
+    Figure 3 shows the architecture of SnapFuzz. While at a high-level                                                   §4.1 presents the implementation details.
+it resembles that of AFLNet, there are several important changes.                                                            By intercepting the target application’s interactions with its
+First, SnapFuzz intercepts the external actions of the target applica-                                                   outside environment at this level of granularity, SnapFuzz can sig-
+tion using binary rewriting (§3.1). It then monitors the behaviour                                                       nificantly increase fuzzing throughput and eliminate the need for
+of both the target application and the AFLNet client in order to                                                         custom delays and scripts, as we discuss in the next subsections.
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                                                                           Anastasios Andronidis and Cristian Cadar
+
+
+                                                       Control socket                                               it fuzzed inputs are unnecessarily slow. As observed before [45],
+                                                       Main socket
+                                                                                                                    replacing them with UNIX domain sockets can lead to significant
+   AFLNet                               R1. Register a recv()
+                                                                                            SnapFuzz                performance speed-ups. We discuss how this is achieved in §4.3.
+
+                                                                                                        Target
+                                                                                                                    Efficient Server Termination. Network servers usually run in a
+
+
+
+
+                                                                                              TCP/IP
+                                                                        SnapFuzz Protocol
+                                                                                                       instance     loop. This loop is terminated either via a special protocol-specific
+                         UNIX Sockets
+              SnapFuzz
+
+
+
+
+                                             R2. recv()                                                             keyword or an OS signal. Since AFLNet cannot guarantee that each
+                                                                                                         Binary
+                                        S1. Register a send()                                           rewriting   fuzzing iteration will finish via a termination keyword, if the target
+                                                                                                       In-memory    does not terminate, it sends it a SIGTERM signal and waits for it to
+                                             S2. send()
+                                                                                                       Filesystem   terminate. Signal delivery is slow and also servers might take a
+                                                                                                                    long time to properly terminate execution. In the context of fuzzing,
+    Figure 4: Messages exchanged for each recv and send.                                                            proper termination is not so important, while fuzzing throughput
+                                                                                                                    is. SnapFuzz implements a simple mechanism to terminate the
+                                                                                                                    server: when it receives an empty string, it infers that the fuzzer
+3.2     SnapFuzz Network Fuzzing Protocol:                                                                          has no more inputs to provide and the application is instantly killed.
+        Eliminating Communication Delays                                                                            This obviously has the downside that it could miss bugs in the
+                                                                                                                    termination routines, but these could be tested separately.
+Network applications often implement multistep protocols with
+                                                                                                                        In summary, the SnapFuzz network fuzzing protocol improves
+multiple requests and replies per session. One of AFLNet’s main
+                                                                                                                    fuzzing performance (significantly, as shown in the evaluation) and
+contributions is to infer the network protocol starting from a set of
+                                                                                                                    simplifies fuzzing harness construction by eliminating the need to
+recorded message exchanges. However, AFLNet cannot guarantee
+                                                                                                                    manually specify three different communication delays.
+that during a certain fuzzing iteration the target will indeed respect
+the protocol. Deviations might be possible for instance due to a
+                                                                                                                    3.3     Efficient State Reset
+partly-incorrect protocol being inferred, bugs in the target applica-
+tion, or most commonly due to the target not being ready to send                                                    AFLNet users typically have to write a clean-up script to reset the
+or receive a certain message.                                                                                       application state after each fuzzing iteration. For instance, LightFTP
+   Therefore, AFLNet performs several checks and adds several                                                       under AFLNet requires a script that cleans up any directories or files
+user-specified delays to ensure communication is in sync with the                                                   that have been created in the previous iteration. Under SnapFuzz,
+protocol. These communication delays, which can significantly                                                       there is no need for such a clean-up script, which simplifies the test
+degrade the fuzzing throughput, are:                                                                                harness construction, and improves performance by avoiding the
+                                                                                                                    invocation of the clean-up script.
+(1) A delay to allow the server to initialise before AFLNet attempts
+                                                                                                                        SnapFuzz solves this challenge by employing an in-memory
+     to communicate.
+                                                                                                                    filesystem. Using the in-memory filesystem tmpfs under UNIX is a
+(2) A delay specifying how long to wait before concluding that
+                                                                                                                    well-known optimisation in the context of fuzzing.1,2,3
+     no responses are forthcoming and instead try to send more
+                                                                                                                        SnapFuzz uses an in-memory filesystem both for efficiency and
+     information, and
+                                                                                                                    for removing the need for clean-up scripts involving filesystem
+(3) A delay specifying how long to wait after each packet is sent
+                                                                                                                    state. However, we are not using tmpfs, but a custom in-memory
+     or received.
+                                                                                                                    filesystem that uses the memfd_create system call for files and the
+   These delays are necessary, as otherwise the OS kernel will reject                                               Libsqlfs library for directories (see §4.2 for details). This allows us
+packets that come too fast while the target is not ready, and AFLNet                                                to quickly duplicate state after forking, as explained below.
+will desynchronise from its state machine. But they cause a lot                                                         In the simplest case where AFL snapshots the target application
+of time to be wasted, essentially because AFLNet does not know                                                      before main, no filesystem modifications have happened at the
+whether the target is ready to send or receive information.                                                         point where the forkserver is placed. So when a fuzzing iteration
+   SnapFuzz overcomes this challenge through a simple but effec-                                                    has finished, the target application process just exits and the OS
+tive network fuzzing protocol. The protocol keeps track of the next                                                 discards its memory, which includes any in-memory filesystem
+action of the target, and notifies AFLNet about it. Figure 4 shows the                                              modifications made during fuzzing. Then, when the forkserver
+messages exchanged between SnapFuzz and AFLNet on each recv                                                         spawns a new instance of the target application, the filesystem is
+(for receiving data) and send (for sending data) system calls. Essen-                                               brought back to a state where all initial files are unmodified.
+tially, to avoid the need for the communication delays discussed                                                        The situation is more complicated when the deferred forkserver
+above, SnapFuzz informs AFLNet when the target is about to issue                                                    is placed after the target application has already created some files.
+a recv or a send. This is performed by introducing an additional                                                    In our implementation, which is based on memfd_create, when
+control socket (implemented via an efficient UNIX domain socket),                                                   the forkserver creates a new instance to be fuzzed, the Linux ker-
+which is used as a send-only channel from the SnapFuzz plugin to                                                    nel shares the memory pages associated with the newly-created
+AFLNet.                                                                                                             in-memory files between the new instance and the forkserver. Note
+   The SnapFuzz network fuzzing protocol additionally implements
+the following two optimisations:                                                                                    1 https://www.cipherdyne.org/blog/2014/12/ram-disks-and-saving-your-ssd-from-
+                                                                                                                    afl-fuzzing.html
+UNIX Domain Sockets. The standard Internet sockets (TPC/IP                                                          2 https://medium.com/@dhiraj_mishra/fuzzing-vim-53d7cf9b5561
+
+and UDP/IP) used by AFLNet to communicate to the target and send                                                    3 https://www.cis.upenn.edu/~sga001/classes/cis331f19/hws/hw1.pdf
+SnapFuzz: High-Throughput Fuzzing of Network Applications                                            ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+
+
+that using tmpfs would not solve this issue—as far as we know,          pthsem support, SnapFuzz’s forkserver can skip these two clone
+there is no way to duplicate a tmpfs filesystem in a copy-on-write      calls, as well as 37 additional system calls, as now SnapFuzz can
+way. This sharing of pages between the new instance and the fork-       place the forkserver just before LightFTP is ready to accept input.
+server is problematic, as now any modifications to the in-memory        However, despite this gain, the overall performance was 10% lower
+files by the fuzzed application instance will persist even after the    than in the version of SnapFuzz without pthsem, due to the overhead
+instance finishes execution. So in the next iteration, when the fork-   of this library. Ideally, SnapFuzz should implement a lightweight
+server creates a new instance, this new instance will inherit those     thread reconstruction mechanism to recreate all dead threads, but
+modifications too.                                                      this is left as future work.
+    SnapFuzz solves this issue as follows. First, note that SnapFuzz
+knows whether the application is executing before or after the fork-    3.5    Additional Binary Rewriting-enabled
+server’s snapshot, as it intercepts all system calls, including fork.          Optimisations
+While the target application executes before the forkserver’s snap-
+                                                                        In this section, we discuss several additional optimisations per-
+shot, SnapFuzz allows all file interactions to be handled normally.
+                                                                        formed by SnapFuzz, which are enabled by its binary rewriting-
+When a new instance is requested from the forkserver, SnapFuzz
+                                                                        based architecture. They concern developer-added delays, writes
+recreates in the new instance all in-memory files registered in the
+                                                                        to stdout/stderr, signal propagation, and CPU affinity, and high-
+in-memory filesystem and copies all their contents by using the
+                                                                        light the versatility of SnapFuzz’s approach in addressing a variety
+efficient sendfile system call once per in-memory file.
+                                                                        of challenges and inefficiencies when fuzzing network applications.
+                                                                        3.5.1 Eliminating developer-added delays. Occasionally, network
+3.4    Smart Deferred Forkserver                                        applications add sleeps or timeouts in order to avoid high CPU
+As discussed in §2.1, the deferred forkserver can offer great perfor-   utilisation when they poll for new connections or data. SnapFuzz
+mance benefits by avoiding initialisation overheads in the target.      removes these delays via binary rewriting, making those calls use
+Such overheads include loading the shared libraries used by the         a more aggressive polling model.
+target, parsing configuration files and cryptographic initialisation       We also noticed that in some cases application developers de-
+routines. Unfortunately, for the deferred forkserver to be used, the    liberately choose to add sleeps in order to wait for various events.
+user needs to manually modify to source code of the target. Further-    For example, LightFTP adds a one second sleep in order to wait
+more, the deferred forkserver cannot be used after the target has       for all its threads to terminate. This might be fine in a production
+created threads, child processes, temporary files, network sockets,     environment, but during a fuzzing campaign such a delay is unnec-
+offset-sensitive file descriptors, or shared-state resources, so the    essary and expensive. SnapFuzz completely skips such sleeps by
+user has to carefully decide where to place it: do it too early and     intercepting and then not issuing this family of system calls at all.
+optimisation opportunities are missed, do it too late and correctness
+is affected.                                                            3.5.2 Avoiding stdout/stderr writes. By default, AFL redirects
+    SnapFuzz makes two important improvements to the deferred           stdout and stderr to /dev/null. This is much more performant
+forkserver: first, it makes it possible to defer it much further than   than actually writing to a file or any other medium, as the ker-
+usually possible with AFL’s architecture, and second, it does so        nel optimizes those operations aggressively. SnapFuzz goes one
+automatically, without any need for manual source modifications.        step further and saves additional time by completely skipping any
+    The two components which enable SnapFuzz to place the fork-         system call that targets stdout or stderr.
+server after many system calls which normally would have caused         3.5.3 Signal Propagation. Some applications use a multi-process
+problems are: (1) its custom network fuzzing protocol which allows      rather than a multi-threaded concurrency model. In this case, if a
+it to skip network setup calls such as socket and accept (§3.2) and     subprocess crashes with a segfault, the signal might not be propa-
+(2) its in-memory filesystem, which transforms filesystem opera-        gated properly to the forkserver and the crash missed. We stumbled
+tions into in-memory changes (§3.3).                                    upon this case with the Dcmqrscp server (§6.5) where a valid new
+    Via binary rewriting, SnapFuzz intercepts each system call, and     bug was manifesting, but AFLNet was unable to detect the issue as
+places the forkserver just before it encounters either a system call    the main process of Dcmqrscp never checked the exit status of its
+that spawns new threads (clone, fork), or one used to receive           child processes.
+input from a client. The reason SnapFuzz still has to stop before          As SnapFuzz has full control of the system calls of the target,
+the application spawns new threads is that the forkserver relies        whenever a process is about to exit, it checks the exit status of
+on fork to spawn new instances to be fuzzed, and fork cannot            its child processes too. If an error is detected, it is raised to the
+reconstruct existing threads—in Linux, forking a multi-threaded         forkserver.
+application creates a process with a single thread [15]. As a pos-
+sible mitigation, we tried to combine SnapFuzz and the pthsem           3.5.4 Smart affinity. AFL is designed to work with single-threaded
+/ GNU pth library [33]—a green threading library that provides          applications that receive input via files, with the fuzzer creating
+non-preemptive priority-based scheduling, with the green threads        a file and then sending it to the target for processing. Therefore,
+executing inside an event-driven framework—but the performance          AFL pins the fuzzer and the target to the same CPU core. SnapFuzz
+overhead was too high.                                                  can detect when a new thread or process is about to be spawned
+    In particular, we used pthsem with LightFTP, as this application    as both clone and fork system calls are intercepted. This creates
+has to execute two clone system calls before it accepts input. With     the opportunity for SnapFuzz to take control of thread scheduling
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                             Anastasios Andronidis and Cristian Cadar
+
+
+by pinning threads and processes to available CPUs. SnapFuzz              4.2    In-memory Filesystem
+implements a very simple algorithm that pins every newly created          As discussed in §3.3, SnapFuzz redirects all file operations to use a
+thread or process to the next available CPU, and also places the          custom in-memory filesystem. This reduces the overhead of reading
+fuzzer on a separate CPU.                                                 and writing from a storage medium, and eliminates the need for
+                                                                          manually-written clean-up scripts.
+4     IMPLEMENTATION                                                          SnapFuzz implements a lightweight in-memory filesystem, which
+SnapFuzz is implemented on top of AFLNet, and targets the Linux           uses two distinct mechanisms, one for files and the other for direc-
+platform. However, the ideas in SnapFuzz could be implemented             tories. For files, SnapFuzz’s in-memory filesystem uses the recent
+using other fuzzers and operating systems. Below, we provide imple-       memfd_create() system call, introduced in Linux in 2015 [26]. This
+mentation details related to binary rewriting (§3.1), our in-memory       system call creates an anonymous file and returns a file descrip-
+filesystem (§4.2), and the use of UNIX domain sockets (§4.3).             tor that refers to it. The file behaves like a regular file, but lives
+                                                                          in memory. Under this scheme, SnapFuzz only needs to specially
+4.1     Binary Rewriting                                                  handle system calls that initiate interactions with a file through a
+                                                                          pathname (like the open and mmap system calls). All other system
+Binary rewriting in SnapFuzz employs two major components:
+                                                                          calls that handle file descriptors are compatible by default with the
+1) the rewriter module, which scans the code for specific functions,
+                                                                          file descriptors returned by memfd_create.
+vDSO and system call assembly opcodes, and redirects them to the
+                                                                              When a target application opens a file, the default behavior of
+plugin module, and 2) the plugin module where SnapFuzz resides.
+                                                                          SnapFuzz is to check if this file is a regular file (e.g. device files are
+Rewriter. SnapFuzz is an ordinary dynamically linked executable           ignored), and if so, create an in-memory file descriptor and copy the
+that is provided with a path to a target application together with        whole contents of the file in the memory address space of the target.
+the arguments to invoke it with. When SnapFuzz is launched, the           SnapFuzz keeps track of pathnames in order to avoid reloading
+expected sequence of events of a standard Linux operating system          the same file twice. This is not only a performance optimisation
+are taking place, with the first step being the dynamic loader that       but also a correctness requirement, as the application might have
+loads SnapFuzz and its dependencies in memory.                            changed the contents of the file in memory.
+   When SnapFuzz starts executing, it inspects the target’s ELF               For directories, SnapFuzz employs the Libsqlfs library [17], which
+binary to obtain information about its interpreter, which in our im-      implements a POSIX-style file system on top of the SQLite database
+plementation is always the standard Linux ld loader. SnapFuzz then        and allows applications to have access to a full read/write filesystem
+scans the loader code for system call assembly opcodes and some           with its own file and directory hierarchy. Libsqlfs simplifies the
+special functions in order to instruct the loader to load the SnapFuzz    emulation of a real filesystem with directories and permissions.
+plugin. In particular, the rewriter: (1) intercepts the dynamic scan-     SnapFuzz uses Libsqlfs for directories only, as we observed better
+ning of the loader in order to append the SnapFuzz plugin shared          performance for files via memfd_create.
+object as a dependency, and (2) intercepts the initialisation order
+of the shared libraries in order to prepend the SnapFuzz plugin           4.3    UNIX Domain Sockets
+initialisation code (in the .preinit_array).
+   After the SnapFuzz rewriter finishes rewriting the loader, exe-        AFLNet uses the standard Internet sockets (TPC/IP and UDP/IP) to
+cution is passed to the rewritten loader in order to load the target      communicate to the target and send it fuzzed inputs. The Internet
+application and its library dependencies. As the normal execution         socket stack includes functionality—such as calculating checksums
+of the loader progresses, SnapFuzz intercepts its mmap system calls       of packets, inserting headers, routing—which is unnecessary when
+used to load libraries into memory, and scans these libraries in          fuzzing applications on a single machine.
+order to recursively rewrite their system calls and redirect them            To eliminate this overhead, similarly to prior work [45], SnapFuzz
+to the SnapFuzz plugin. The SnapFuzz rewriter is based on the             replaces Internet sockets with UNIX domain sockets. More specifi-
+open-source load-time binary rewriter SaBRe [1].                          cally, SnapFuzz uses Sequenced Packet sockets (SOCK_SEQPACKET).
+                                                                          This configuration offers performance benefits and also simplifies
+Plugin. After the loader completes, execution is passed to the target     the implementation. Sequenced Packets are quite similar to TCP,
+application, which will start by executing SnapFuzz’s initialisation      providing a sequenced, reliable, two-way connection-based data
+function. Per the ELF specification, execution starts from the func-      transmission path for datagrams. The difference is that Sequenced
+tion pointers of .preinit_array. This is a common ELF feature used        Packets require the consumer (in our case the SnapFuzz plugin
+by LLVM sanitisers to initialise various internal data structures         running inside the target application) to read an entire packet with
+early, such as the shadow memory [36, 38]. SnapFuzz is using the          each input system call. This atomicity of network communications
+same mechanism to initialise its subsystems like its in-memory            simplifies corner cases where the target application might read only
+filesystem before the execution starts.                                   parts of the fuzzer’s input due to scheduling or other delays. By
+    After the initialisation phase of the plugin, control is passed       contrast, AFLNet handles this issue by exposing manually defined
+back to the target and normal execution resumed. At this stage,           knobs for introducing delays between network communications.
+the SnapFuzz plugin is only executed when the target is about to             Our modified version of AFLNet creates a socketpair of UNIX
+issue a system call or a vDSO call. When this happens, the plugin         domain sockets with the Sequenced Packet type, and passes one end
+checks if the call should be intercepted, and if so, it redirects it to   to the forkserver, which later passes it to the SnapFuzz plugin. The
+the appropriate handler, and then returns back control to the target.     SnapFuzz plugin initiates a handshake with the modified AFLNet,
+SnapFuzz: High-Throughput Fuzzing of Network Applications                                             ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+
+
+after which AFLNet is ready to submit generated inputs to the target     in SnapFuzz uses Sequenced Packet sockets (SOCK_SEQPACKET, see
+or consume responses.                                                    §4.3) that provide atomicity of sending and receiving, which can
+   Translating network communication from Internet sockets to            be violated by Internet sockets. (2) If the snapshot taken by the
+UNIX domain sockets is not trivial, as SnapFuzz needs to support the     smart deferred forkserver contains time-sensitive state (such as a
+two main IP families of TCP and UDP which have a slightly different      certificate with a short time expiration), the state might become in-
+approach to how network communication is established. In addition,       valid when new processes are forked during later fuzzing iterations.
+SnapFuzz also needs to support different types of synchronous and        (3) The target application might rely on timed waits to explore
+asynchronous communication such as (e)poll and select.                   various corner cases, and with SnapFuzz removing all sleeps, these
+   For the TCP family, the socket system call creates a TCP/IP           corner cases might be missed. We have not directly observed such
+socket and returns a file descriptor which is then passed to bind,       issues in our experiments, but if they occur, they might lead to both
+listen and finally to accept, before the system is ready to send or      false positives and false negatives.
+receive any data. SnapFuzz monitors this sequence of events on the          Finally, as discussed in §3.2, SnapFuzz instantly terminates the
+target and when the accept system call is detected, it returns the       application when the fuzzer has no more inputs to provide. While
+UNIX domain socket file descriptor from the forkserver. SnapFuzz         this approach increases performance, it may miss bugs in the ter-
+doesn’t interfere with the socket system call and intentionally          mination routines.
+allows its normal execution in order to avoid complications with
+target applications that perform advanced configurations on the          6     EVALUATION
+base socket. This strategy is similar to the one used by the in-         We demonstrate the benefits of SnapFuzz using five popular servers
+memory file system via the memfd_create system call (§4.2) in            that were previously used in evaluating AFLNet [30]: LightFTP
+order to provide compatibility by default.                               (§6.4), Dcmqrscp (§6.5), Dnsmasq (§6.6), LIVE555 (§6.7) and Tiny-
+   The UDP family is handled in a similar way, with the only differ-     DTLS (§6.8). Our experiments show that SnapFuzz significantly
+ence that instead of monitoring for an accept system call to return      improves fuzzing throughput, while at the same time reducing the
+the UNIX domain socket of the forkserver, SnapFuzz is monitoring         effort needed to create fuzzing harnesses. As a result of its signif-
+for a bind system call.                                                  icant performance benefit, SnapFuzz also found 12 extra crashes
+                                                                         compared to AFLNet in these applications.
+5    LIMITATIONS
+                                                                         6.1    Methodology
+This section summarises the main limitations of SnapFuzz.
+   As discussed in §3.4, the smart deferred forkserver cannot be         Our main performance metric is the number of fuzzing iterations
+placed after the application has spawned threads, because our im-        per second. Note that each fuzzing iteration may include multiple
+plementation relies on fork, and in Linux, forking a multi-threaded      message exchanges between the fuzzer and the target. A fuzzing
+application creates a process with a single thread [15]. To address      campaign consists of a given number of fuzzing iterations.
+this, we envision a lightweight thread reconstruction mechanism             During a fuzzing campaign, the fuzzer’s speed may vary across
+to recreate all dead threads, but this is not a trivial task and would   iterations, sometimes significantly, due to different code executed by
+require understanding the performance tradeoffs involved.                the target. To ensure a meaningful comparison between SnapFuzz
+   The effectiveness of the smart forkserver is also inhibited by        and AFLNet, rather than fixing a time budget and counting the
+early unimportant network communication, such as a handshake.            number of iterations performed by each, we instead fix the number
+When during such early communication the target application is           of iterations and measure the execution time of each system. We
+the first to send some data, we take a snapshot after this completes;    monitored standard fuzzing metrics including bug count, coverage,
+unfortunately, we cannot do so once the fuzzer starts sending input.     stability, path and cycles completed, to make sure that the SnapFuzz
+   SnapFuzz’s smart deferred forkserver is typically ideal for target    and AFLNet campaigns have the same (or very similar) behaviour.
+applications that retrieve data from files early in their execution,        We chose to run each target for one million iterations to simulate
+just before network communication starts. In this way, the reads         realistic AFLNet fuzzing campaigns (ranging from approximately
+have to be executed only once rather than on every fuzzing iteration.    15 h to 36 h). We repeated the execution of each campaign 10 times.
+However, if the files are large, performance can degrade. For every
+new forked process spawned from the smart deferred forkserver,           6.2    Experimental Setup
+SnapFuzz has to memory copy all the in-memory loaded files—as            All of our experiments were conducted on a 3.0 GHz AMD EPYC
+memfd_create uses shared memory to store the in-memory files—            7302P 16-Core CPU and 128 GB RAM running 64-bit Ubuntu 18.04
+in order to avoid different forked processes to interfere with each      LTS (kernel version 4.15.0-162) with an SSD disk. Note that using
+other. For large files, this might entail a significant overhead. In     a slower HDD instead of an SSD disk would likely lead to larger
+future work, we plan to investigate approaches for better handling       gains for SnapFuzz’s in-memory filesystem component.
+such large files.                                                           SnapFuzz is built on top of AFLNet revision 0f51f9e from Janu-
+   SnapFuzz might also subtly change the program behaviour. We           ary 2021 and SaBRe revision 7a94f83. The servers tested and their
+discuss three such instances: (1) SnapFuzz is emulating Internet         workloads were taken from the AFLNet paper and repository at the
+sockets with UNIX domain sockets, and the native filesystem with         revision mentioned above.
+an in-memory one. While we strive for maximum compatibility,                We used the default configurations proposed by AFLNet for all
+subtle differences might exist. For example network communication        benchmarks, with a couple of exceptions. For the Dcmqrscp server,
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                              Anastasios Andronidis and Cristian Cadar
+
+
+Table 1: Average time in minutes, with standard deviation                      Note that SnapFuzz can place the forkserver later than it could
+in parenthesis, to complete one million fuzzing iterations                  be placed manually. For the deferred forkserver to work properly,
+in AFLNet vs Snapfuzz, across 10 repetitions.                               recall that no file descriptor must be open before the forkserver
+                                                                            snapshots the target. This is because the underlying resource of
+                               AFLNet         SnapFuzz    Speedup           a file descriptor is retained after a fork happens. This limits the
+            Dcmqrscp         1055 (138)        127 (15)      8.4 x          area where the deferred forkserver can be placed manually. Snap-
+            Dnsmasq           917 (111)         30 (1)      30.6 x          Fuzz overcomes this challenge with its in-memory file system as
+            TinyDTLS         1401 (297)         34 (11)     41.2 x          described in §4.2 and thus it is able to place the forkserver after the
+            LightFTP         2135 (327)         34 (2)      62.8 x          whole initialisation process has finished.
+            LIVE555          1547 (218)         63 (2)      24.6 x             The one million iterations for LightFTP take on average 35 h
+                                                                            35 min under AFLNet, while only 34 min under SnapFuzz, providing
+                                                                            a 62.8 x speedup.
+two changes were required: 1) we had to include a Bash clean-up
+script to reset the state of a data directory of the server, and 2) we      6.5    Dcmqrscp
+had to add a wait time between requests of 5 ms as we observed              Dcmqrscp [12] is a multi-threaded DICOM image archive server
+AFLNet to desynchronise from its target. These changes further              that manages a number of storage areas and allows images to be
+emphasise the fact that the clean-up scripts and delays that users          stored and queried. The fuzzing harness instructs the DICOM server
+need to specify when building a fuzzing harness are fragile and may         to echo connection information back to the client, and to store, find
+need adjustment when using different machines, thus SnapFuzz’s              and retrieve specific images into and from its database.
+ability to eliminate their need is important.                                  Dcmqrscp heavily exercises SnapFuzz’s in-memory filesystem
+   In TinyDTLS we decided to decrease the inter-request wait time           as on every iteration the probability to read or create files is high.
+from 30 ms to 2 ms, as we noticed the AFLNet performance was                Dcmqrscp also benefits from the smart deferred forkserver, as it has
+seriously suffering due to this large delay. Again, this shows that         a long initialisation phase in which the server dynamically loads
+choosing the right values for these time delays is difficult.               the libnss library and also parses multiple configuration files that
+                                                                            dictate the syntax and capabilities of the DICOM language.
+6.3     Summary of Results                                                     Our signal propagation subsystem (§3.5.3) was able to expose
+Table 1 shows a summary of the results. In particular, it compares          a bug in Dcmqrscp which was also triggered by AFLNet but was
+the average time needed by AFLNet and by SnapFuzz to complete               missed because signals were not properly propagated.
+one million iterations. AFLNet takes between 15 h 17 min to 35 h               The one million Dcmqrscp iterations take on average 17 h 35 min
+35 min to complete these iterations, with SnapFuzz taking only a            to execute under AFLNet, while only 2 h 7 min under SnapFuzz,
+fraction of that time, between 30 min and 2 h 7 min. The speedups           providing a 8.4 x speedup.
+are impressive in each case, varying between 8.4 x for Dcmqrscp
+and 62.8 x for LightFTP. In all cases, we observed identical coverage       6.6    Dnsmasq
+statistics, bug counts, and stability numbers.                              Dnsmasq [13] is a single-threaded DNS proxy and DHCP server
+                                                                            designed to have a small footprint and be suitable for resource-
+6.4     LightFTP                                                            constrained routers and firewalls. The fuzzing harness instructs
+LightFTP [23] is a small multi-threaded server for file transfers           Dnsmasq to query various bogus domain names from its configura-
+that implements the FTP protocol. The fuzzing harness instructs             tion file and then report results back to its client.
+LightFTP to log in a specific user, list the contents of the home              Dnsmasq is an in-memory database with very little interac-
+directory on the FTP server, create directories, and execute various        tion with the filesystem. Therefore, it doesn’t benefit from the
+other commands for system information.                                      in-memory filesystem, but it profits from the SnapFuzz protocol
+   LightFTP exercises a large set of SnapFuzz’s subsystems. First, it       and the optimisations of §3.5. Furthermore, it highly benefits from
+heavily utilises the filesystem, as the probability to create directories   the smart deferred forkserver, as it has a long initialisation process:
+is quite high on every iteration. Second, it has verbose logging and        Dnsmasq performs approximately 1,200 system calls before it is
+writing to stdout. Third, it has a long initialisation phase, because       ready to accept input.
+it parses a configuration file and then undergoes a heavyweight                As for other benchmarks, a manually-placed forkserver under
+process of initialising x509 certificates. And lastly, LightFTP has         AFLNet could not snapshot the application at the same depth as
+a hardcoded sleep delay to make sure that all of its threads have           SnapFuzz’s smart deferred forkserver. This is because Dnsmasq
+terminated gracefully.                                                      needs to execute a sequence of system calls to establish a network
+   SnapFuzz optimises all the above functionalities. First, it removes      connection with AFLNet. This sequence includes creating a socket,
+all synchronisation and sleep delays. Second, all directory inter-          binding its file descriptor, calling listen, executing a select to
+actions are translated into in-memory operations, thus avoiding             check for incoming connections, and finally accepting the connec-
+context switches and disk overheads. SnapFuzz’s smart deferred              tion. Therefore, under AFLNet, the latest possible placement of the
+forkserver snapshots the LightFTP server after its initialisation           forkserver would be just before this sequence. Under SnapFuzz,
+phase and thus fuzzing under SnapFuzz pays the initialisation over-         network communications are translated into UNIX domain socket
+head only once. Lastly, SnapFuzz cancels stdout and stderr writes.          communications that don’t require any of the above, and thus the
+SnapFuzz: High-Throughput Fuzzing of Network Applications                                                ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+
+
+smart deferred forkserver can snapshot the target right before read-       domain socket protocol. TinyDTLS writes a lot of data to stdout,
+ing the input from the fuzzer, saving a lot of initialisation time.        so it also benefits from SnapFuzz’s ability to skip these system calls.
+   The one million Dnsmasq iterations take on average 15 h 17 min              The one million TinyDTLS iterations take on average 23 h 21 min
+under AFLNet, while only 30 min under SnapFuzz, providing a 30.6 x         under AFLNet, while only 34 min under SnapFuzz, providing a 41.2 x
+speedup.                                                                   speedup.
+                                                                               We remind the reader that in TinyDTLS we decided to decrease
+6.7    LIVE555                                                             the manually-added inter-request time delay from 30ms to 2ms, as
+                                                                           we noticed the performance of AFLNet was seriously affected by
+LIVE555 [24] is a single-threaded multimedia streaming server that
+                                                                           it. Without this change, AFLNet would take significantly longer to
+uses open standard protocols like RTP/RTCP, RTSP and SIP. The
+                                                                           complete one million iterations.
+fuzzing harness instructs the LIVE555 server to accept requests to
+stream the content of a specific file, and the server replies to these
+requests with information and the actual streaming data.                   6.9    Performance Breakdown
+    LIVE555 only reads files and thus no state reset script is required.   In §6.4–§6.8 we discuss which components of SnapFuzz are likely to
+It has a relatively slim initialisation phase with the main overhead       benefit each application the most. Those conclusions were reached
+coming from the many writes to stdout with welcoming messages              by investigating the system calls issued by the applications, using
+to users. LIVE555 benefits from the SnapFuzz protocol and the              the estimates provided by strace about how much each system call
+elimination of stdout writes.                                              takes in the kernel. To have a better understanding of the contribu-
+    LIVE555 reads its files only after the forkserver performs its         tion of each components, we perform an ablation study in which
+snapshot. As a result, those files are not kept in the in-memory           we run different versions of SnapFuzz for a short number of 10k
+filesystem of SnapFuzz, and are read from the actual filesystem in         iterations. We chose a much smaller number of iterations because
+each iteration. We leave as future work the optimisation of pre-           running so many experiments with 1M iterations was prohibitive
+defining a set of files to be loaded in the in-memory file system          on our computing infrastructure. This means that our speedups
+when the smart deferred forkserver kicks in, so the target could           sometimes differ from those achieved by 1M iterations. However,
+read these files from memory rather the actual filesystem.                 the main goal of these experiments is to gain additional insights
+    The one million LIVE555 iterations take on average 25 h 47 min         into the impact of different components and their interaction.
+under AFLNet, while only 63 min under SnapFuzz, providing a 24.6 x            Due to various dependencies among components, we start with a
+speedup.                                                                   version of SnapFuzz containing only the network fuzzing protocol,
+                                                                           and keep adding components one by one. However, it is important to
+6.8    TinyDTLS                                                            understand that the order in which we add components matters, as
+                                                                           their effect is often multiplicative. In particular, this means that the
+TinyDTLS [40] is a DTLS 1.2 single-threaded UDP server target-             additional impact of components added earlier can be significantly
+ing IoT devices. In the fuzzing harness, TinyDTLS accepts a new            diminished compared to the case where the same component is
+connection and then the DTLS handshake is initiated in order for           added later. We give two examples:
+communication to be established.
+   The protocol followed by AFLNet has several steps, and progress         (1) SnapFuzz protocol and smart affinity. The SnapFuzz proto-
+to the next step is accomplished either by a successful network                col is a performant non-blocking protocol that polls the fuzzer
+action or after a timeout has expired. TinyDTLS supports two cipher            and the application for communication. Under the default re-
+suites, one Elliptic Curve (EC)-based, the other Pre-Shared Keys               stricted CPU affinity of AFLNet, the protocol is under-performing,
+(PSK)-based. EC-based encryption is slow, requiring the use of a               because the polling model requires independent CPU cores to
+large timeout between requests, which slows down fuzzing with                  get the expected performance benefit. At the same time, the
+AFLNet considerably. In addition, AFLNet includes some hardcoded               smart CPU affinity component depends on whether the Snap-
+delays between network interactions so that it doesn’t overwhelm               Fuzz protocol is enabled or not, as the protocol changes what is
+the target—without these delays, network packets might be dropped              executed on the CPU.
+and AFLNet’s state machine desynchronised. Due to TinyDTLS’s               (2) In-memory filesystem and smart deferred forkserver. The
+processing delays, network buffers might fill up if AFLNet sends too           smart deferred forkserver performs better when the in-memory
+much data in a short time period. To deal with this, AFLNet checks             filesystem is enabled, because with an in-memory filesystem it
+on every send and receive if all the bytes are sent, and retries if not.       can delay the forkserver past filesystem operations. On the other
+   SnapFuzz handles all these issues through its network fuzzing               hand, the in-memory filesystem also performs better when the
+protocol. (We also note that TinyDTLS exercises SnapFuzz’s UDP                 smart deferred forkserver is enabled. This is because the in-
+translation capabilities, unlike the other servers which use TCP.)             memory filesystem has a fixed overhead of loading and storing
+The end result is that all these delays are eliminated: AFLNet doesn’t         the files the target is reading in the beginning of its execution.
+need to guess the state of the target anymore, as SnapFuzz explicitly          This initial overhead might degrade performance, especially
+informs AFLNet about the next action of the target. Similarly, the             for short executions. When the deferred forkserver is enabled,
+issue of dropped packets disappears, as AFLNet is always informed              this overhead is bypassed, as these files are loaded only once in
+when it is the right time to send more data. Finally, SnapFuzz’s UNIX          memory and consecutive operations will be only in-memory.
+domain sockets eliminate the need for send and receive retries, as            One option would be to try all possible orderings. However, the
+full buffer delivery from and to the target is guaranteed by the           full number is large (6! = 720) and some orderings are difficult to
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                                     Anastasios Andronidis and Cristian Cadar
+
+
+Table 2: Speedup achieved by SnapFuzz compared to AFLNet, when each SnapFuzz component is added one by one. Note that
+the ordering has an impact on the speedup achieved by each component (see text).
+
+                                               Protocol    + Affinity   + No Sleeps    + No StdOut     + Defer    + In-Mem FS
+                              Dcmqrscp            1.30 x       3.85 x         1.00 x         1.00 x      1.94 x         1.55 x
+                              Dnsmasq             1.90 x       3.47 x         1.00 x         1.00 x      4.79 x         1.00 x
+                              TinyDTLS            3.40 x      12.21 x         1.00 x         1.00 x      1.09 x         1.09 x
+                              LightFTP            1.90 x       1.79 x         2.76 x         1.00 x      2.39 x         2.23 x
+                              LIVE555             3.00 x       5.93 x         1.04 x         1.04 x      1.25 x         1.18 x
+
+
+run due to engineering limitations (e.g., the SnapFuzz protocol is                   Finally, all benchmarks required code modifications to add sup-
+deeply embedded into SnapFuzz and disabling it would require a                     port for the deferred forkserver. As discussed in §3.4, locating the
+major engineering overhaul). Nevertheless, we believe the ordering                 optimal position in the target’s code can be difficult and error-prone.
+we present here is still useful in providing insights into the impact              By contrast, SnapFuzz places the smart deferred forkserver auto-
+of each SnapFuzz component.                                                        matically, and often at a later stage than it would have been possible
+    Table 2 shows our results. Note that all components have a signif-             with AFLNet.
+icant impact on at least one benchmark. Furthermore, the SnapFuzz
+protocol, the smart affinity, and the smart deferred forkserver al-                6.11     Detected Crashes
+ways lead to gains, while eliminating developer-added delays (no                   In addition to the experiments above, we have run both SnapFuzz
+sleeps), avoiding stdout/stderr writes (no stdout) and the in-memory               and AFLNet for 24 h on each benchmark, with three repetitions. We
+file system make no difference in some benchmarks. Removing                        then accumulated all discovered crashes in a single repository. To
+writes to stdout/stderr is the least impactful component, benefiting               deduplicate the crashes found, we recompiled all benchmarks under
+only LIVE555. Note that while the smart affinity has the highest                   ASan and UBSan, and then grouped the crashing inputs based on
+overall gains, these are partly due to the fact that the SnapFuzz                  the reports from the sanitisers.
+protocol is enabled. As explained above, the smart affinity makes                     SnapFuzz, as expected, was able to find all the crashes discovered
+the polling model used by the SnapFuzz protocol work efficiently.                  by AFLNet. Due to its advantages, it also found additional crashes
+    The reported numbers are largely consistent with our qualita-                  in 3 of the 5 benchmarks. More precisely, it found 4 crashes in
+tive observations of §6.4–§6.8. For instance, the main benefits of                 the Dcmqrscp benchmark while AFLNet was not able to find any.
+LightFTP come from the SnapFuzz protocol (1.90 x) which removes                    In Dnsmasq, SnapFuzz found 7 crashes, while AFLNet found only
+synchronisation and server termination delays; from smart affinity                 1, and in LIVE555 it found 4 crashes, while AFLNet only 2. Both
+(1.79 x), especially since LightFTP is multi-threaded; from remov-                 tools found 3 crashes in TinyDTLS. Overall, SnapFuzz found 18
+ing developer-added delays, which are present in LightFTP (2.76 x);                deduplicated crashes, 12 more than AFLNet. (But note that with the
+from the smart deferred forkserver (2.39 x), as it has a long initialisa-          exception of the crash discussed in §3.5.3, we expect AFLNet to find
+tion phase; and from the in-memory filesystem (2.23 x), as it makes                the other 11, but after a significantly longer time.)
+heavy use of the filesystem. While LightFTP has writes to stdout,                     The crashes are caused by heap overflows, stack overflows, use-
+removing them does not make a noticeable difference.                               after-free bugs, and other types of undefined behaviours. Fortu-
+    The performance numbers for other benchmarks also largely                      nately, they seem to have been fixed in the latest versions of these
+agree with our expectations. For instance, the in-memory filesystem                applications. We plan to rerun SnapFuzz on the latest versions.
+brings no benefits to Dnsmasq, which is an in-memory database
+with little filesystem interaction; but it highly benefits from the                7   RELATED WORK
+smart deferred server (4.79 x), given that it has a long initialisation            SnapFuzz focuses on creating an efficient fuzzing platform for net-
+with over 1,200 system calls issued before it is able to accept input.             work applications and helps algorithmic research to be built on top
+                                                                                   of a strong foundation.
+6.10      Reduced fuzzing harness effort                                              SnapFuzz builds on top of AFLNet [30], and reuses its ability to
+SnapFuzz significantly reduces the manual effort necessary to build                infer network protocols. However, AFLNet has various inefficiencies
+fuzzing harnesses.                                                                 and requires fragile manual delays and clean-up scripts in its fuzzing
+   A key advantage is that it eliminates the need for specifying                   harnesses. Our comprehensive evaluation against AFLNet shows
+communication delays. More specifically, all benchmarks required                   how SnapFuzz can address both problems, resulting in impressive
+the three delays described in §3.2. Choosing values for these de-                  speedups in the range of 8.4 x-62.8 x.
+lays can be difficult, and they might need to be readjusted across                    Besides AFLNet, a popular way of fuzzing network applications is
+platforms, as we have also discovered (see §6.2).                                  via the de-socketing functionality of Preeny [32]. Preeny intercepts
+   Two of the benchmarks, namely Dcmqrscp and LightFTP, require                    networking functions such as connect and accept and makes them
+clean-up scripts that delete various application files and directories.            return sockets that are synchronised with stdin and stdout, es-
+While these scripts are small (2-3 commands each), they can be diffi-              sentially allowing AFL to continue to fuzz files and redirecting their
+cult to get right, requiring a good understanding of the benchmarks                contents over network sockets, as expected by the network applica-
+and test harnesses.                                                                tions being tested. Synchronisation is done in a hacky way: Preeny
+SnapFuzz: High-Throughput Fuzzing of Network Applications                                                    ISSTA ’22, July 18–22, 2022, Virtual, South Korea
+
+
+implements a small server thread that is continuously polling AFL’s      disadvantage of this approach is that it requires kernel support; by
+generated input file and then forwards the read data to the appropri-    contrast, SnapFuzz runs in user mode, using an unmodified OS.
+ate network calls through a UNIX domain socket to the target [31].          Most work on testing network protocol implementations has
+While a direct comparison with AFLNet and SnapFuzz is not easily         targeted algorithmic rather than platform-level improvements, fo-
+possible because a meaningful fuzzing campaign requires the net-         cusing in particular on inferring network protocol implementa-
+work protocol inferred by AFLNet, we expect a rewrite of AFLNet          tions [3, 8, 11, 30, 44]. This work is orthogonal to SnapFuzz and
+on top of Preeny to be slower than vanilla AFLNet, due to the extra      could be combined with it, as we have done with AFLNet’s pro-
+overhead imposed by file-based fuzzing and the additional thread         tocol inference algorithm. More broadly, greybox fuzzing is an
+server used by Preeny.                                                   active area of research [5] with recent work on improving its ef-
+    We are also aware of other tools for fuzzing network applications,   fectiveness by directing exploration toward interesting program
+such as jdbirdwell/afl [19] and WinAFL [42]. These tools have not        parts [6, 7], combining it with symbolic execution [10, 29, 39], infer-
+been published, so trying to understand their operation by using         ring input grammars [2, 41] or specialising it to various application
+their documentation or reverse-engineering the code is difficult.        domains [20, 22, 46].
+Nevertheless, by briefly doing so, our understanding is that they           Besides greybox fuzzing, other forms of fuzzing have been used
+use a similar architecture to AFLNet, based on Internet sockets          to test network applications, such as blackbox fuzzing [4, 14, 16],
+and custom delays. So we would expect their performance to be            fault injection [25, 28] and symbolic execution [9, 34, 37].
+comparable to that of AFLNet. Their documentation also confirms
+our understanding of the code. For instance, WinAFL discusses            8    CONCLUSION
+that: "this mode [network fuzzing] is considered as experimen-           Fuzzing stateless applications has proven extremely successful, with
+tal since we have experienced some problems with stability and           hundreds of bugs and security vulnerabilities being discovered. Re-
+performance." These performance problems are likely due to the           cently, in-depth fuzzing of stateful applications such as network
+AFLNet-style architecture observed in the code. As a second exam-        servers has become feasible, due to algorithmic advances that make
+ple, jdbirdwell/afl discusses that: "The user needs to experimentally    it possible to generate inputs that follow the application’s network
+determine a timeout delay (in milliseconds) that produces a suffi-       protocol. Unfortunately, fuzzing such applications requires clean-up
+ciently low percentage of hangs (exits forced by expiration of the       scripts and manually-configured time delays that are error-prone,
+delay) while allowing the input to the target from afl-fuzz to be com-   and suffers from low fuzzing throughput. SnapFuzz addresses these
+pletely processed." This type of manual effort and experimentation       challenges through a robust architecture, which combines a syn-
+is one of the key problems that SnapFuzz solves.                         chronous communication protocol with an in-memory filesystem
+    Multifuzz [45] presents a more advanced de-socketing library         and the ability to delay the forkserver to the latest safe point, as
+called Desockmulti, which is similar to Preeny, but optimised in         well as other optimisations. As a result, SnapFuzz simplifies fuzzing
+various ways, e.g., by removing the use of threads and adding the        harness construction and improves the fuzzing throughput sig-
+ability to initiate multiple connections to the target. MultiFuzz is     nificantly, between 8.4 x and 62.8 x on a set of popular network
+specifically designed for publish/subscribe protocols and the evalu-     applications, allowing it to find additional crashes.
+ation does not include the benchmarks used by AFLNet and us. For             SnapFuzz is made available to the community as open-source,
+the two benchmarks used, libcoap and Mosquitto, the paper reports        with the hope that it will help improve the security and reliability
+throughput increases of two to three orders of magnitude on top          of network applications and facilitate further research in this space:
+of AFLNet. We expect SnapFuzz to perform even better due to its          https://srg.doc.ic.ac.uk/projects/snapfuzz/.
+network fuzzing protocol, smart deferred forkserver and its mem-
+ory file system (MultiFuzz uses tmpfs, see §3.3) but unfortunately,      Acknowledgements. We would like to thank the AFLNet authors,
+MultiFuzz is not available as open source (only its Desockmulti          Van-Thuan, Marcel and Abhik, for making their excellent system
+library is available), so a direct comparison is not possible.           available to the community and for answering our questions. We
+    Nyx-Net [35] uses hypervisor-based snapshot fuzzing with selec-      would also like to thank Frank Busse for his feedback on the paper.
+tive emulation of network functionality to handle network traffic.       This research has received funding from the European Research
+While Nyx-Net achieves impressive speedups similar to SnapFuzz,          Council (ERC) under the European Union’s Horizon 2020 research
+its architecture is fundamentally different. Nyx-Net requires a cus-     and innovation programme (grant agreement 819141) and from
+tom kernel module, a modified version of QEMU and KVM, and               the Engineering and Physical Sciences Research Council (EPSRC)
+also a custom VM build in which the target applications are exe-         under the HiPEDS Centre for Doctoral Training.
+cuted. Nyx-Net also implements a custom networking layer that
+emulates some POSIX network functionality which currently does           REFERENCES
+not support complex network targets. While Nyx-Net is able to             [1] Paul-Antoine Arras, Anastasios Andronidis, Luís Pina, Karolis Mituzas, Qianyi
+                                                                              Shu, Daniel Grumberg, and Cristian Cadar. 2022. SaBRe: Load-time Selective
+support more advanced fuzzing use cases like fuzzing hypervisors,             Binary Rewriting. International Journal on Software Tools for Technology Transfer
+SnapFuzz’s user-mode approach avoids many layers of additional                24 (2022), 205–223.
+                                                                          [2] Cornelius Aschermann, Tommaso Frassetto, Thorsten Holz, Patrick Jauernig,
+complexity.                                                                   Ahmad-Reza Sadeghi, and Daniel Teuchert. 2019. NAUTILUS: Fishing for Deep
+    Xu et al. [43] propose new operating systems primitives for               Bugs with Grammars. In Proc. of the 26th Network and Distributed System Security
+fuzzing. These include, for instance, a new snapshot system call,             Symposium (NDSS’19) (San Diego, CA, USA).
+                                                                          [3] Jinsheng Ba, Marcel Böhme, Zahra Mirzamomen, and Abhik Roychoudhury. 2022.
+which aims to address the same goal as SnapFuzz with respect                  Stateful Greybox Fuzzing. In Proc. of the 2022 USENIX Annual Technical Conference
+to efficiently snapshotting the target. As for Nyx-Net, the main              (USENIX ATC’22).
+ISSTA ’22, July 18–22, 2022, Virtual, South Korea                                                                                      Anastasios Andronidis and Cristian Cadar
+
+
+ [4] Greg Banks, Marco Cova, Viktoria Felmetsger, Kevin Almeroth, Richard Kem-            [27] Michal Zalewski. [n.d.]. Technical “whitepaper” for afl-fuzz. http://lcamtuf.
+     merer, and Giovanni Vigna. 2006. SNOOZE: toward a Stateful NetwOrk prOtocol               coredump.cx/afl/technical_details.txt.
+     fuzZEr. In International conference on information security. Springer, 343–358.      [28] network-emulator repository 2022. https://github.com/guidovranken/network-
+ [5] Marcel Böhme, Cristian Cadar, and Abjik Roychoudhury. 2021. Fuzzing: Chal-                emulator.
+     lenges and Reflections. IEEE Software 38, 03 (2021), 79–86.                          [29] Saahil Ognawala, Thomas Hutzelmann, Eirini Psallida, and Alexander Pretschner.
+ [6] Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen, and Abhik Roychoudhury.                   2018. Improving Function Coverage with Munch: A Hybrid Fuzzing and Directed
+     2017. Directed greybox fuzzing. In Proc. of the 24th ACM Conference on Computer           Symbolic Execution Approach. (April 2018).
+     and Communications Security (CCS’17) (Dallas, TX, USA).                              [30] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. 2020. AFLNet: A
+ [7] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2016. Coverage-                     Greybox Fuzzer for Network Protocols. In Proc. of the IEEE International Confer-
+     Based Greybox Fuzzing as Markov Chain. In Proc. of the 23rd ACM Conference on             ence on Software Testing, Verification, and Validation – Testing Tools Track (ICST’20)
+     Computer and Communications Security (CCS’16) (Vienna, Austria).                          (Online).
+ [8] Juan Caballero, Heng Yin, Zhenkai Liang, and Dawn Song. 2007. Polyglot: Auto-        [31] Preeny documentation 2022. https://github.com/zardus/preeny/issues/10.
+     matic Extraction of Protocol Message Format Using Dynamic Binary Analysis.           [32] Preeny repository 2022. https://github.com/zardus/preeny.
+     In Proc. of the 14th ACM Conference on Computer and Communications Security          [33] Pthsem / GNU Pth 2022. https://www.auto.tuwien.ac.at/~mkoegler/index.php/
+     (CCS’07) (Alexandria, VA, USA).                                                           pth.
+ [9] Cristian Cadar, Vijay Ganesh, Peter Pawlowski, David Dill, and Dawson Engler.        [34] Raimondas Sasnauskas, Olaf Landsiedel, Muhammad Hamad Alizai, Carsten
+     2006. EXE: Automatically Generating Inputs of Death. In Proc. of the 13th ACM             Weise, Stefan Kowalewski, and Klaus Wehrle. 2010. KleeNet: discovering insidious
+     Conference on Computer and Communications Security (CCS’06) (Alexandria, VA,              interaction bugs in wireless sensor networks before deployment. In Proc. of the 9th
+     USA). https://doi.org/10.1145/1455518.1455522                                             ACM/IEEE International Conference on Information Processing in Sensor Networks
+[10] Yaohui Chen, Peng Li, Jun Xu, Shengjian Guo, Rundong Zhou, Yulong Zhang,                  (IPSN’10) (Stockholm, Sweden).
+     Taowei, and Long Lu. 2020. SAVIOR: Towards Bug-Driven Hybrid Testing.                [35] Sergej Schumilo, Cornelius Aschermann, Andrea Jemmett, Ali Abbasi, and
+     In Proc. of the 29th USENIX Security Symposium (USENIX Security’20) (Virtual              Thorsten Holz. 2022. Nyx-net: network fuzzing with incremental snapshots.
+     Conference).                                                                              In Proceedings of the Seventeenth European Conference on Computer Systems. 166–
+[11] Weidong Cui, Marcus Peinado, Karl Chen, Helen J. Wang, and Luis Irun-Briz.                180.
+     2008. Tupni: Automatic Reverse Engineering of Input Formats. In Proc. of the 15th    [36] Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry
+     ACM Conference on Computer and Communications Security (CCS’08) (Alexandria,              Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In Proc. of
+     VA, USA).                                                                                 the 2012 USENIX Annual Technical Conference (USENIX ATC’12) (Boston, MA,
+[12] Dcmqrscp: DICOM image archive (central test node) 2022. https://support.dcmtk.            USA).
+     org/docs/dcmqrscp.html.                                                              [37] JaeSeung Song, Cristian Cadar, and Peter Pietzuch. 2014. SymbexNet: Testing
+[13] Dnsmasq 2022. https://thekelleys.org.uk/dnsmasq/.                                         Network Protocol Implementations with Symbolic Execution and Rule-Based
+[14] Rong Fan and Yaoyao Chang. 2017. Machine learning for black-box fuzzing of net-           Specifications. IEEE Transactions on Software Engineering (TSE) 40, 7 (2014),
+     work protocols. In International Conference on Information and Communications             695–709.
+     Security. Springer, 621–632.                                                         [38] Evgeniy Stepanov and Konstantin Serebryany. 2015. MemorySanitizer: fast detec-
+[15] fork(2) — Linux manual page 2022. https://man7.org/linux/man-pages/man2/                  tor of uninitialized memory use in C++. In Proc. of the International Symposium
+     fork.2.html.                                                                              on Code Generation and Optimization (CGO’15) (San Francisco, CA, USA).
+[16] Hugo Gascon, Christian Wressnegger, Fabian Yamaguchi, Daniel Arp, and Konrad         [39] Nick Stephens, John Grosen, Christopher Salls, Andrew Dutcher, Ruoyu Wang,
+     Rieck. 2015. Pulsar: Stateful black-box fuzzing of proprietary network protocols.         Jacopo Corbetta, Yan Shoshitaishvili, Christopher Kruegel, and Giovanni Vigna.
+     In International Conference on Security and Privacy in Communication Systems.             2016. Driller: Augmenting Fuzzing Through Selective Symbolic Execution. In
+     Springer, 330–347.                                                                        Proc. of the 23rd Network and Distributed System Security Symposium (NDSS’16)
+[17] GitHub page of Libsqlfs library 2022. https://github.com/guardianproject/libsqlfs.        (San Diego, CA, USA).
+[18] Google. 2022. ClusterFuzz Trophies. https://google.github.io/clusterfuzz#            [40] Tinydtls-fuzz repository 2022. https://github.com/assist-project/tinydtls-fuzz.
+     trophies.                                                                            [41] Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. 2019. Superion: Grammar-
+[19] jdbirdwell/afl repository 2022. https://github.com/jdbirdwell/afl.                        Aware Greybox Fuzzing. In Proc. of the 41st International Conference on Software
+[20] Hyungsub Kim, M. Ozgur Ozmen, Antonio Bianchi, Z. Berkay Celik, and Dongyan               Engineering (ICSE’19) (Montreal, Canada).
+     Xu. 2021. PGFUZZ: Policy-Guided Fuzzing for Robotic Vehicles. In Proc. of the        [42] WinAFL repository 2022. https://github.com/jdbirdwell/afl.
+     27th Network and Distributed System Security Symposium (NDSS’21) (Online).           [43] Wen Xu, Sanidhya Kashyap, Changwoo Min, and Taesoo Kim. 2017. Designing
+[21] LibFuzzer 2022. http://llvm.org/docs/LibFuzzer.html.                                      New Operating Primitives to Improve Fuzzing Performance. In Proc. of the 24th
+[22] Daniel Liew, Cristian Cadar, Alastair Donaldson, and J. Ryan Stinnett. 2019. Just         ACM Conference on Computer and Communications Security (CCS’17) (Dallas, TX,
+     Fuzz It: Solving Floating-point Constraints Using Coverage-guided Fuzzing. In             USA).
+     Proc. of the Joint Meeting of the European Software Engineering Conference and       [44] Yingchao Yu, Zuoning Chen, Shuitao Gan, and Xiaofeng Wang. 2020. SGP-
+     the ACM Symposium on the Foundations of Software Engineering (ESEC/FSE’19)                Fuzzer: A State-Driven Smart Graybox Protocol Fuzzer for Network Protocol
+     (Tallinn, Estonia).                                                                       Implementations. IEEE Access 8 (2020), 198668–198678.
+[23] LightFTP repository 2022. https://github.com/hfiref0x/LightFTP.                      [45] Yingpei Zeng, Mingmin Lin, Shanqing Guo, Yanzhao Shen, Tingting Cui, Ting
+[24] LIVE555 repository 2022. https://github.com/rgaufman/live555.                             Wu, Qiuhua Zheng, and Qiuhua Wang. 2020. MultiFuzz: A Coverage-Based
+[25] Paul Dan Marinescu, Radu Banabic, and George Candea. 2010. An Extensible                  Multiparty-Protocol Fuzzer for IoT Publish/Subscribe Protocols. Sensors 20, 18
+     Technique for High-Precision Testing of Recovery Code. In Proc. of the 2010               (2020), 5194.
+     USENIX Annual Technical Conference (USENIX ATC’10) (Boston, MA, USA).                [46] Rui Zhong, Yongheng Chen, Hong Hu, Hangfan Zhang, Wenke Lee, and Dinghao
+[26] memfd_create(2) — Linux manual page 2022. https://man7.org/linux/man-pages/               Wu. 2020. SQUIRREL: Testing Database Management Systems with Language
+     man2/memfd_create.2.html.                                                                 Validity and Coverage Feedback. In Proc. of the 27th ACM Conference on Computer
+                                                                                               and Communications Security (CCS’20) (Online).
+

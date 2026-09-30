@@ -1,0 +1,776 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=Evaluating+Synthetic+Bugs&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 509142,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                12
+              ]
+            ],
+            "date-time": "2026-09-12T01:46:12Z",
+            "timestamp": 1789177572436,
+            "version": "build-2803163510"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 49,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2021,
+                    5,
+                    24
+                  ]
+                ],
+                "date-time": "2021-05-24T00:00:00Z",
+                "timestamp": 1621814400000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by-sa/4.0/"
+            }
+          ],
+          "funder": [
+            {
+              "name": "Office of Naval Research",
+              "award": [
+                "N00014-19-1-2364"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "N00014-19-1-2364"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "National Science Foundation",
+              "award": [
+                "CNS-1916398"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CNS-1916398"
+                  ]
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                24
+              ]
+            ]
+          },
+          "DOI": "10.1145/3433210.3453096",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2021,
+                6,
+                4
+              ]
+            ],
+            "date-time": "2021-06-04T15:26:39Z",
+            "timestamp": 1622820399000
+          },
+          "page": "716-730",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 18,
+          "title": [
+            "Evaluating Synthetic Bugs"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Joshua",
+              "family": "Bundt",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Northeastern University, Boston, MA, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Andrew",
+              "family": "Fasano",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Northeastern University &amp; Massachusetts Institute of Technology, Boston, MA, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Brendan",
+              "family": "Dolan-Gavitt",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "New York University, New York, NY, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "William",
+              "family": "Robertson",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Northeastern University, Boston, MA, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Tim",
+              "family": "Leek",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Massachusetts Institute of Technology, Lexington, MA, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2021,
+                6,
+                4
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "Dave Aitel. 2002. An Introduction to SPIKE the Fuzzer Creation Kit. (2002).  Dave Aitel. 2002. An Introduction to SPIKE the Fuzzer Creation Kit. (2002)."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1985793.1985795"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/stvr.1486"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "Cornelius Aschermann. 2020. eqv/aflq_fast_cov: A fast binary coverage measurement tool based on AFL's Qemu mode. https://github.com/eqv/aflq_fast_cov  Cornelius Aschermann. 2020. eqv/aflq_fast_cov: A fast binary coverage measurement tool based on AFL's Qemu mode. https://github.com/eqv/aflq_fast_cov"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23371"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409729"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "Grey-Box Concolic Testing on Binary Code. In International Conference on Software Engineering",
+              "volume": "747",
+              "author": "Choi Jaeseung",
+              "year": "2019",
+              "unstructured": "Jaeseung Choi , Joonun Jang , Choongwoo Han , and Sang Kil Cha . 2019 . Grey-Box Concolic Testing on Binary Code. In International Conference on Software Engineering , Vol. 2019-May. IEEE, 736-- 747 . Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. 2019. Grey-Box Concolic Testing on Binary Code. In International Conference on Software Engineering, Vol. 2019-May. IEEE, 736--747."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2843859.2843867"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2016.15"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MSEC.2019.2933682"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "unstructured": "Andrea Fioraldi Dominik Maier Heiko Eißfeldt and Marc Heuse. 2020. AFLplusplus. https://github.com/AFLplusplus/AFLplusplus  Andrea Fioraldi Dominik Maier Heiko Eißfeldt and Marc Heuse. 2020. AFLplusplus. https://github.com/AFLplusplus/AFLplusplus"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "volume-title": "Proceedings of the 29th USENIX Security Symposium. USENIX Association, 2577--2594",
+              "author": "Gan Shuitao",
+              "year": "2020",
+              "unstructured": "Shuitao Gan , Chao Zhang , Peng Chen , Bodong Zhao , Xiaojun Qin , Dong Wu , and Zuoning Chen . 2020 . GREYONE: Data flow sensitive fuzzing . In Proceedings of the 29th USENIX Security Symposium. USENIX Association, 2577--2594 . Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xiaojun Qin, Dong Wu, and Zuoning Chen. 2020. GREYONE: Data flow sensitive fuzzing. In Proceedings of the 29th USENIX Security Symposium. USENIX Association, 2577--2594."
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2009.5070546"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "Whitebox Fuzzing. In Proceedings of the International Workshop on Random Testing (RT '07)",
+              "author": "Godefroid Patrice",
+              "year": "2007",
+              "unstructured": "Patrice Godefroid . 2007 . Random Testing for Security: Blackbox vs . Whitebox Fuzzing. In Proceedings of the International Workshop on Random Testing (RT '07) . Association for Computing Machinery, 1. Patrice Godefroid. 2007. Random Testing for Security: Blackbox vs. Whitebox Fuzzing. In Proceedings of the International Workshop on Random Testing (RT '07). Association for Computing Machinery, 1."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "volume-title": "Proceedings of the 29th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI '08)",
+              "author": "Godefroid Patrice",
+              "unstructured": "Patrice Godefroid , Adam Kiezun , and Michael Y. Levin . 2008a. Grammar-Based Whitebox Fuzzing . In Proceedings of the 29th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI '08) . Association for Computing Machinery, New York, NY, USA, 206--215. Patrice Godefroid, Adam Kiezun, and Michael Y. Levin. 2008a. Grammar-Based Whitebox Fuzzing. In Proceedings of the 29th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI '08). Association for Computing Machinery, New York, NY, USA, 206--215."
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Proceedings of the ISOC Network and Distributed System Security Symposium. Internet Society, 16",
+              "author": "Godefroid Patrice",
+              "year": "2008",
+              "unstructured": "Patrice Godefroid , Michael Y. Levin , and David Molnar . 2008 b. Automated Whitebox Fuzz Testing . In Proceedings of the ISOC Network and Distributed System Security Symposium. Internet Society, 16 . Patrice Godefroid, Michael Y. Levin, and David Molnar. 2008b. Automated Whitebox Fuzz Testing. In Proceedings of the ISOC Network and Distributed System Security Symposium. Internet Society, 16."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "unstructured": "Google. 2020 a. ClusterFuzz. ClusterFuzz. https://google.github.io/clusterfuzz/  Google. 2020 a. ClusterFuzz. ClusterFuzz. https://google.github.io/clusterfuzz/"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "unstructured": "Google. 2020 b. Google/Honggfuzz. Google. https://github.com/google/honggfuzz  Google. 2020 b. Google/Honggfuzz. Google. https://github.com/google/honggfuzz"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "unstructured": "Google. 2020 c. libFuzzer -- a Library for Coverage-Guided Fuzz Testing. - LLVM 10 Documentation. https://llvm.org/docs/LibFuzzer.html  Google. 2020 c. libFuzzer -- a Library for Coverage-Guided Fuzz Testing. - LLVM 10 Documentation. https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "unstructured": "Google. 2020 d. OSS -Fuzz. OSS-Fuzz. https://google.github.io/oss-fuzz/  Google. 2020 d. OSS -Fuzz. OSS-Fuzz. https://google.github.io/oss-fuzz/"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "unstructured": "Sam Hocevar. 2020. Samhocevar/Zzuf. https://github.com/samhocevar/zzuf  Sam Hocevar. 2020. Samhocevar/Zzuf. https://github.com/samhocevar/zzuf"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "volume-title": "Proceedings of the USENIX Security Symposium. USENIX Association, 14",
+              "author": "Holler Christian",
+              "year": "2012",
+              "unstructured": "Christian Holler , Kim Herzig , and Andreas Zeller . 2012 . Fuzzing with Code Fragments . In Proceedings of the USENIX Security Symposium. USENIX Association, 14 . Christian Holler, Kim Herzig, and Andreas Zeller. 2012. Fuzzing with Code Fragments. In Proceedings of the USENIX Security Symposium. USENIX Association, 14."
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238176"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "International Conference on Software Engineering. ACM .",
+              "author": "Valentin J M",
+              "year": "2020",
+              "unstructured": "Valentin J M Manè s, Soomin Kim , and Sang Kil Cha . 2020 . Ankou: Guiding Grey-box Fuzzing towards Combinatorial Difference . In International Conference on Software Engineering. ACM . Valentin J M Manè s, Soomin Kim, and Sang Kil Cha. 2020. Ankou: Guiding Grey-box Fuzzing towards Combinatorial Difference. In International Conference on Software Engineering. ACM ."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "Manuel Egele, Edward J. Schwartz, and Maverick Woo.",
+              "author": "Marie Manès Valentin Jean",
+              "year": "2019",
+              "unstructured": "Valentin Jean Marie Manès , HyungSeok Han , Choongwoo Han , Sang Kil Cha , Manuel Egele, Edward J. Schwartz, and Maverick Woo. 2019 . The Art, Science , and Engineering of Fuzzing : A Survey . (2019). Valentin Jean Marie Manès, HyungSeok Han, Choongwoo Han, Sang Kil Cha, Manuel Egele, Edward J. Schwartz, and Maverick Woo. 2019. The Art, Science, and Engineering of Fuzzing : A Survey. (2019)."
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jonathan Metzman Abhishek Arya and Laszlo Szekeres. 2020. FuzzBench: Fuzzer Benchmarking as a Service. https://security.googleblog.com/2020/03/fuzzbench-fuzzer-benchmarking-as-service.html  Jonathan Metzman Abhishek Arya and Laszlo Szekeres. 2020. FuzzBench: Fuzzer Benchmarking as a Service. https://security.googleblog.com/2020/03/fuzzbench-fuzzer-benchmarking-as-service.html",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/96267.96279"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00056"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2991079.2991103"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2017.23404"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3236024.3236084"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "unstructured": "SciPy. 2019. Sparse data with mannwhitneyu · Issue #11035 · scipy/scipy. https://github.com/scipy/scipy/issues/11035#issuecomment- 552508317  SciPy. 2019. Sparse data with mannwhitneyu · Issue #11035 · scipy/scipy. https://github.com/scipy/scipy/issues/11035#issuecomment- 552508317"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "unstructured": "Carnegie Mellon University SEI. 2020. CERTCC /Certfuzz. CERT Coordination Center (CERT/CC). https://github.com/CERTCC/certfuzz  Carnegie Mellon University SEI. 2020. CERTCC /Certfuzz. CERT Coordination Center (CERT/CC). https://github.com/CERTCC/certfuzz"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "volume-title": "Proceedings of the USENIX Annual Technical Conference. USENIX Association, 10",
+              "author": "Serebryany Konstantin",
+              "year": "2012",
+              "unstructured": "Konstantin Serebryany , Derek Bruening , Alexander Potapenko , and Dmitry Vyukov . 2012 . AddressSanitizer : A Fast Address Sanity Checker . In Proceedings of the USENIX Annual Technical Conference. USENIX Association, 10 . Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry Vyukov. 2012. AddressSanitizer : A Fast Address Sanity Checker. In Proceedings of the USENIX Annual Technical Conference. USENIX Association, 10."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00052"
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSP48549.2020.00011"
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "volume-title": "Adding diversity and realism to LAVA, a vulnerability addition system. Master's thesis",
+              "author": "Sridhar Rahul",
+              "unstructured": "Rahul Sridhar . 2018. Adding diversity and realism to LAVA, a vulnerability addition system. Master's thesis . Massachusetts Institute of Technology . Rahul Sridhar. 2018. Adding diversity and realism to LAVA, a vulnerability addition system. Master's thesis. Massachusetts Institute of Technology."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2016.23368"
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "unstructured": "Robert 'S wice cki. 2016. honggfuzz. https://github.com/google/honggfuzz  Robert 'S wice cki. 2016. honggfuzz. https://github.com/google/honggfuzz"
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "unstructured": "Peach Tech. 2020. Peach Fuzzer. Peach Tech. https://www.peach.tech/  Peach Tech. 2020. Peach Fuzzer. Peach Tech. https://www.peach.tech/"
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2508859.2516736"
+            },
+            {
+              "key": "e_1_3_2_1_46_1",
+              "volume-title": "ProFuzzer: On-the-fly Input Type Probing for Better Zero-Day Vulnerability Discovery. In 2019 IEEE Symposium on Security and Privacy (SP). IEEE, 769--786",
+              "author": "You Wei",
+              "year": "2019",
+              "unstructured": "Wei You , Xueqiang Wang , Shiqing Ma , Jianjun Huang , Xiangyu Zhang , Xiaofeng Wang , and Bin Liang . 2019 . ProFuzzer: On-the-fly Input Type Probing for Better Zero-Day Vulnerability Discovery. In 2019 IEEE Symposium on Security and Privacy (SP). IEEE, 769--786 . Wei You, Xueqiang Wang, Shiqing Ma, Jianjun Huang, Xiangyu Zhang, Xiaofeng Wang, and Bin Liang. 2019. ProFuzzer: On-the-fly Input Type Probing for Better Zero-Day Vulnerability Discovery. In 2019 IEEE Symposium on Security and Privacy (SP). IEEE, 769--786."
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "volume-title": "Proceedings of the USENIX Security Symposium. USENIX Association, 18",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun , Sangho Lee , Meng Xu , Yeongjin Jang , and Taesoo Kim . 2018 . QSYM : A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing . In Proceedings of the USENIX Security Symposium. USENIX Association, 18 . Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. 2018. QSYM : A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In Proceedings of the USENIX Security Symposium. USENIX Association, 18."
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "unstructured": "Michael Zalewski. 2020. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/  Michael Zalewski. 2020. American Fuzzy Lop. https://lcamtuf.coredump.cx/afl/"
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3372297.3417260"
+            }
+          ],
+          "event": {
+            "name": "ASIA CCS '21: ACM Asia Conference on Computer and Communications Security",
+            "location": "Virtual Event Hong Kong",
+            "acronym": "ASIA CCS '21",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 2021 ACM Asia Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3433210.3453096",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/abs/10.1145/3433210.3453096",
+              "content-type": "text/html",
+              "content-version": "vor",
+              "intended-application": "syndication"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3433210.3453096",
+              "content-type": "application/pdf",
+              "content-version": "vor",
+              "intended-application": "syndication"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3433210.3453096",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T20:48:12Z",
+            "timestamp": 1750193292000
+          },
+          "score": 32.926838,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3433210.3453096"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                24
+              ]
+            ]
+          },
+          "references-count": 49,
+          "alternative-id": [
+            "10.1145/3433210.3453096",
+            "10.1145/3433210"
+          ],
+          "URL": "https://doi.org/10.1145/3433210.3453096",
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                24
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2021-06-04",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                11,
+                12
+              ]
+            ],
+            "date-time": "2025-11-12T16:34:36Z",
+            "timestamp": 1762965276759,
+            "version": "3.45.0"
+          },
+          "reference-count": 0,
+          "publisher": "IOP Publishing",
+          "isbn-type": [
+            {
+              "type": "electronic",
+              "value": "9780750313742"
+            },
+            {
+              "type": "print",
+              "value": "9780750313759"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "DOI": "10.1088/978-0-7503-1374-2ch7",
+          "type": "book-chapter",
+          "created": {
+            "date-parts": [
+              [
+                2018,
+                6,
+                8
+              ]
+            ],
+            "date-time": "2018-06-08T15:11:44Z",
+            "timestamp": 1528470704000
+          },
+          "page": "7-1-7-9",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Synthetic biology—reengineering bugs and molecules"
+          ],
+          "prefix": "10.1088",
+          "author": [
+            {
+              "given": "Thomas Andrew",
+              "family": "Waigh",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Biological Physics, School of Physics and Astronomy, Schuster Building, University of Manchester, UK"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "266",
+          "published-online": {
+            "date-parts": [
+              [
+                2017,
+                9,
+                1
+              ]
+            ]
+          },
+          "container-title": [
+            "Some Critical Questions in Biological Physics"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                11,
+                12
+              ]
+            ],
+            "date-time": "2025-11-12T16:30:19Z",
+            "timestamp": 1762965019000
+          },
+          "score": 20.846375,
+          "resource": {
+            "primary": {
+              "URL": "https://iopscience.iop.org/book/mono/978-0-7503-1374-2/chapter/bk978-0-7503-1374-2ch7"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2017,
+                9,
+                1
+              ]
+            ]
+          },
+          "ISBN": [
+            "9780750313742",
+            "9780750313759"
+          ],
+          "references-count": 0,
+          "URL": "https://doi.org/10.1088/978-0-7503-1374-2ch7",
+          "published": {
+            "date-parts": [
+              [
+                2017,
+                9,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2022,
+                4,
+                3
+              ]
+            ],
+            "date-time": "2022-04-03T20:23:49Z",
+            "timestamp": 1649017429756
+          },
+          "reference-count": 0,
+          "publisher": "IOP Publishing",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "DOI": "10.1088/978-0-7503-1375-9ch7",
+          "type": "book-chapter",
+          "created": {
+            "date-parts": [
+              [
+                2017,
+                10,
+                4
+              ]
+            ],
+            "date-time": "2017-10-04T11:44:41Z",
+            "timestamp": 1507117481000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Synthetic biology - rengineering bugs and molecules"
+          ],
+          "prefix": "10.1088",
+          "author": [
+            {
+              "given": "Thomas Andrew",
+              "family": "Waigh",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "266",
+          "published-online": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "container-title": [
+            "Some Critical Questions in Biological Physics\nA guided tour around the bugbears"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2017,
+                10,
+                4
+              ]
+            ],
+            "date-time": "2017-10-04T11:44:44Z",
+            "timestamp": 1507117484000
+          },
+          "score": 20.520535,
+          "resource": {
+            "primary": {
+              "URL": "http://iopscience.iop.org/book/978-0-7503-1374-2/chapter/bk978-0-7503-1375-9ch7"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "references-count": 0,
+          "URL": "https://doi.org/10.1088/978-0-7503-1375-9ch7",
+          "published": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

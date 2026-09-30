@@ -1,0 +1,287 @@
+{
+  "status": "PASS",
+  "scope": "Editorial concision; no new experiments or imputation",
+  "backup": "before_float_concision",
+  "reviewed_figures": 9,
+  "reviewed_tables": 20,
+  "caption_words_before": 1173,
+  "caption_words_after": 217,
+  "caption_reduction_percent": 81.5,
+  "table_cell_words_before": 2328,
+  "table_cell_words_after": 2096,
+  "table_cell_reduction_percent": 10.0,
+  "word_count_rule": "Whitespace-delimited words after removing TeX command names and replacing citation/reference commands by REF. Numbers and math are retained.",
+  "protected_numeric_or_missing_cells": 598,
+  "explicit_cell_edits": 105,
+  "schema_columns": 3,
+  "abstract_words": 181,
+  "keywords": 5,
+  "pages": 21,
+  "bibliography_entries": 25,
+  "vector_empirical_figures": 7,
+  "raster_images": 0,
+  "source_root_used": "/home/ckt/Documents/000_2026_test_dev/Key_Experiment",
+  "original_source_root": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/Key_Experiment",
+  "source_relocation_verified": true,
+  "full_data_checks": 299219,
+  "scientific_limitations": [
+    "No new experiment execution or vulnerability replay",
+    "No imputation for missing runs",
+    "Archive observations do not establish matched-horizon causal effects"
+  ],
+  "checks": {
+    "all figure/table labels reviewed": 1,
+    "caption original matches backup": 29,
+    "caption matches reviewed copy": 29,
+    "table row identities preserved": 19,
+    "table column counts preserved": 216,
+    "unmodified table cell preserved": 979,
+    "cell matches reviewed copy": 105,
+    "seven event streams preserved": 1,
+    "event stream names preserved": 1,
+    "schema split into three columns": 1,
+    "missing evidence cells preserved": 5,
+    "citation commands preserved": 5,
+    "display equations and algorithms preserved": 3,
+    "abstract unchanged": 1,
+    "abstract word limit": 1,
+    "keyword limit": 1,
+    "figure references and sizes preserved": 1,
+    "independent abstract/body acronym scopes": 1,
+    "scientific boundary retained": 8,
+    "python syntax": 5,
+    "copy editor is idempotent": 1,
+    "idempotence preserves bytes": 1,
+    "no build errors or overfull boxes": 7,
+    "cross-references resolved": 1,
+    "full numerical audit passes": 1,
+    "final numeric audit hashes match delivery": 2,
+    "vulnerability source audit passes": 1,
+    "vulnerability audit matches delivery": 1,
+    "layout review matches delivery": 1
+  },
+  "items": [
+    {
+      "label": "fig:mismatch",
+      "file": "main.revised.tex",
+      "caption_words_before": 65,
+      "caption_words_after": 8
+    },
+    {
+      "label": "fig:architecture",
+      "file": "main.revised.tex",
+      "caption_words_before": 25,
+      "caption_words_after": 7
+    },
+    {
+      "label": "fig:posterior",
+      "file": "main.revised.tex",
+      "caption_words_before": 16,
+      "caption_words_after": 9
+    },
+    {
+      "label": "fig:reliability",
+      "file": "main.revised.tex",
+      "caption_words_before": 114,
+      "caption_words_after": 9
+    },
+    {
+      "label": "fig:trajectories",
+      "file": "main.revised.tex",
+      "caption_words_before": 112,
+      "caption_words_after": 7
+    },
+    {
+      "label": "fig:posterior_cases",
+      "file": "main.revised.tex",
+      "caption_words_before": 96,
+      "caption_words_after": 10
+    },
+    {
+      "label": "fig:dispositions",
+      "file": "main.revised.tex",
+      "caption_words_before": 77,
+      "caption_words_after": 10
+    },
+    {
+      "label": "fig:cost",
+      "file": "main.revised.tex",
+      "caption_words_before": 97,
+      "caption_words_after": 10
+    },
+    {
+      "label": "fig:callcost",
+      "file": "main.revised.tex",
+      "caption_words_before": 48,
+      "caption_words_after": 11
+    },
+    {
+      "label": "tab:boundary",
+      "file": "main.revised.tex",
+      "caption_words_before": 8,
+      "caption_words_after": 5,
+      "cell_words_before": 101,
+      "cell_words_after": 72
+    },
+    {
+      "label": "tab:novelty",
+      "file": "main.revised.tex",
+      "caption_words_before": 11,
+      "caption_words_after": 5,
+      "cell_words_before": 96,
+      "cell_words_after": 80
+    },
+    {
+      "label": "tab:predicates",
+      "file": "main.revised.tex",
+      "caption_words_before": 8,
+      "caption_words_after": 5,
+      "cell_words_before": 97,
+      "cell_words_after": 85
+    },
+    {
+      "label": "tab:implementation",
+      "file": "main.revised.tex",
+      "caption_words_before": 25,
+      "caption_words_after": 5,
+      "cell_words_before": 195,
+      "cell_words_after": 161
+    },
+    {
+      "label": "tab:events",
+      "file": "main.revised.tex",
+      "caption_words_before": 28,
+      "caption_words_after": 5,
+      "cell_words_before": 139,
+      "cell_words_after": 136
+    },
+    {
+      "label": "tab:arms",
+      "file": "main.revised.tex",
+      "caption_words_before": 18,
+      "caption_words_after": 5,
+      "cell_words_before": 62,
+      "cell_words_after": 61
+    },
+    {
+      "label": "tab:targets",
+      "file": "main.revised.tex",
+      "caption_words_before": 13,
+      "caption_words_after": 5,
+      "cell_words_before": 28,
+      "cell_words_after": 28
+    },
+    {
+      "label": "tab:llm",
+      "file": "main.revised.tex",
+      "caption_words_before": 19,
+      "caption_words_after": 6,
+      "cell_words_before": 110,
+      "cell_words_after": 100
+    },
+    {
+      "label": "tab:mainresults",
+      "file": "main.revised.tex",
+      "caption_words_before": 54,
+      "caption_words_after": 8,
+      "cell_words_before": 60,
+      "cell_words_after": 60
+    },
+    {
+      "label": "tab:mechanisms",
+      "file": "main.revised.tex",
+      "caption_words_before": 44,
+      "caption_words_after": 8,
+      "cell_words_before": 190,
+      "cell_words_after": 181
+    },
+    {
+      "label": "tab:repair",
+      "file": "main.revised.tex",
+      "caption_words_before": 13,
+      "caption_words_after": 7,
+      "cell_words_before": 30,
+      "cell_words_after": 30
+    },
+    {
+      "label": "tab:cve",
+      "file": "main.revised.tex",
+      "caption_words_before": 40,
+      "caption_words_after": 9,
+      "cell_words_before": 171,
+      "cell_words_after": 135
+    },
+    {
+      "label": "tab:cveresults",
+      "file": "main.revised.tex",
+      "caption_words_before": 38,
+      "caption_words_after": 9,
+      "cell_words_before": 197,
+      "cell_words_after": 146
+    },
+    {
+      "label": "tab:threats",
+      "file": "main.revised.tex",
+      "caption_words_before": 7,
+      "caption_words_after": 7,
+      "cell_words_before": 144,
+      "cell_words_after": 113
+    },
+    {
+      "label": "tab:observed_inventory",
+      "file": "observed_tables.updated_20260929.tex",
+      "caption_words_before": 34,
+      "caption_words_after": 8,
+      "cell_words_before": 72,
+      "cell_words_after": 72
+    },
+    {
+      "label": "tab:observed_endpoints",
+      "file": "observed_tables.updated_20260929.tex",
+      "caption_words_before": 28,
+      "caption_words_after": 8,
+      "cell_words_before": 57,
+      "cell_words_after": 57
+    },
+    {
+      "label": "tab:observed_log_counts",
+      "file": "observed_tables.updated_20260929.tex",
+      "caption_words_before": 20,
+      "caption_words_after": 10,
+      "cell_words_before": 70,
+      "cell_words_after": 70
+    },
+    {
+      "label": "tab:observed_costs",
+      "file": "observed_costs.updated_20260929.tex",
+      "caption_words_before": 23,
+      "caption_words_after": 7,
+      "cell_words_before": 33,
+      "cell_words_after": 33
+    },
+    {
+      "label": "tab:logged_calibration",
+      "file": "figures_updated_20260929/logged_calibration_table.tex",
+      "caption_words_before": 59,
+      "caption_words_after": 7,
+      "cell_words_before": 110,
+      "cell_words_after": 110
+    },
+    {
+      "label": "tab:archive_arms",
+      "file": "archive_arm_results.updated_20260929.tex",
+      "caption_words_before": 33,
+      "caption_words_after": 7,
+      "cell_words_before": 366,
+      "cell_words_after": 366
+    }
+  ],
+  "output_sha256": {
+    "archive_arm_results.updated_20260929.tex": "0fd3743deb7894c701d80e96d3a8d3c93893b8cb6f350c41c0cbfff5a84a1fa2",
+    "figures_updated_20260929/logged_calibration_table.tex": "e5978808b9eef88305c0f662bf7cfb7d126663a8d1ea005bf02d18538556ea96",
+    "main.revised.tex": "e7e71f219ab90c590112e731193e8fc48e1a8b6bbfe8c68c0119435041590939",
+    "observed_costs.updated_20260929.tex": "85025e2518eff218eab2de55306f4860365aeb4654f78630c33ab9a76d35e2bc",
+    "observed_tables.updated_20260929.tex": "0819cdb44a66e70206eceecb08100f4ef9fb0c16729f50ca6ab60045540f18f2",
+    "main.revised.pdf": "be31f3aedf03237f98bcd8b53cd09677945518d1c7988322aa3d3f5f8372bf79"
+  }
+}

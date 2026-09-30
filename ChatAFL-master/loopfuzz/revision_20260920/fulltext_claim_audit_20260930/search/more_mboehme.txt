@@ -1,0 +1,855 @@
+<html>
+<head>
+<title>Marcel B&ouml;hme, Ph.D. - Scalable Software Security Laboratory - CISPA Helmholtz Center for Information Security</title>
+<link rel="StyleSheet" href="style.css" type="text/css" media="screen">
+<link rel="StyleSheet" href="style.css" type="text/css" media="print">
+<link rel="shortcut icon" href="old_hp/css/favicon.ico">
+
+<body bgcolor="#eeeeee"
+      text="#000000"
+      link="#c00000"
+      vlink="#a00000"
+      alink="#ffa000">
+<p style="position:fixed; top: 8px; margin: 0; left: 850px; width: 300px; padding: 5px; background-color:#ffffff">
+<a href="#top">Top</a><br/>
+<a href="#news">News</a><br/>
+<a href="#service">Service</a><br/>
+<a href="#publications">Publications</a><br/>
+<a href="#vulns">Advisories and Bugs</a><br/>
+<a href="manifesto.html" onmousedown="ga('send','pageview', {'page': '/manifesto.html','title': 'Manifesto'});">Reproducibility Manifesto</a><br/>
+<a href="#umlauts">Post Scriptum</a><br/>
+<a href="https://boehme-lab.github.io/CV.Marcel.Boehme.pdf">CV [June'26]</a>
+<br/><br/>
+<a href="img/freetype2_dot.gif" onmousedown="ga('send','pageview', {'page': '/freetype2','title': 'Freetype2'});" target="_blank"><img src="img/freetype2_neato_smaller.gif" width="300">
+<br/>
+<br/>
+	Visualizing Fuzzer Progress</a><br/>
+	<small>Call graph coverage: Honggfuzz vs AFL</small>
+<br/>
+</p>
+
+<table cellspacing=2 cellpadding=0 border=0 style="margin-left: 3px; max-width: 830px;" bgcolor="#ffffff" >
+<tr><th bgcolor="#c00000" width="1%">&nbsp;</th><th bgcolor="#ffffff" width="1%">&nbsp;</th>
+<td valign=middle align=left>
+<img id="top" alt="" src="Marcel4.jpeg" border=0 height="180px"/>
+</td>
+<td valign=top align=left width="650px"  style="padding-left: 10px;"><h1 style="margin-top: 2px; padding-top: 0;"><strong class=large_heading>Marcel B&ouml;hme</strong>&nbsp;<span style="font-size:10pt;">Ph.D. (NUS)</span></h1><br/>
+<p style="font-size: 10pt; margin-top: 0; min-width: 300px;">
+Faculty Member<br/>
+<a href="https://boehme-lab.github.io/">Scalable Software Security Laboratory</a><br/>
+CISPA Helmholtz Center for Information Security<br/>
+<br/>
+<br/>
+<script type="text/javascript">
+//<![CDATA[
+<!--
+var x="function f(x){var i,o=\"\",ol=x.length,l=ol;while(x.charCodeAt(l/13)!" +
+"=48){try{x+=x;l+=l;}catch(e){}}for(i=l-1;i>=0;i--){o+=x.charAt(i);}return o" +
+".substr(0,ol);}f(\")37,\\\"BHL_WJ220\\\\]M720\\\\530\\\\100\\\\C100\\\\010\\"+
+"\\310\\\\4430\\\\600\\\\=000\\\\t\\\\310\\\\700\\\\610\\\\200\\\\q28?`p}1,Q" +
+".W7ldsoq$!^fr120\\\\S120\\\\030\\\\330\\\\9530\\\\230\\\\630\\\\020\\\\330\\"+
+"\\120\\\\\\\\\\\\530\\\\520\\\\410\\\\430\\\\410\\\\100\\\\Q500\\\\530\\\\4" +
+"00\\\\610\\\\700\\\\010\\\\F?_700\\\\500\\\\-6}=gxq6;3!=!%771\\\\$!+ 9(%-\\" +
+"\"(f};o nruter};))++y(^)i(tAedoCrahc.x(edoCrahCmorf.gnirtS=+o;721=%y;i=+y)3" +
+"7==i(fi{)++i;l<i;0=i(rof;htgnel.x=l,\\\"\\\"=o,i rav{)y,x(f noitcnuf\")"     ;
+while(x=eval(x));
+//-->
+//]]>
+</script> <a href="https://mpi-softsec.github.io/CV.Marcel.Boehme.pdf">[CV]</a>
+
+</p>
+</td>
+
+<td valign=middle align=left>
+<!--img alt="" src="background.jpg" border=0 height="180px"/-->
+</td>
+</tr>
+<tr><th bgcolor="#c0c0c0" width="30px">&nbsp;</th><th bgcolor="#ffffff" width="30px">&nbsp;</th><td colspan=3 style="font-family:Helvetica;" >
+  <h3><a id="about">About</a></h3>
+<p style="font-size: 14px;">Marcel Böhme is a faculty member at the CISPA Helmholtz Center for Information Security based in Munich, Germany where he leads the Scalable Software Security Laboratory (S3Lab). His group has made foundational contributions to automatic software testing, specifically <a href="https://www.mpg.de/20666079/software-security-gap-fuzzing" target="_blank">fuzzing</a> which has become one of the most successful techniques for automatic vulnerability discovery at scale: While conventional wisdom has that testing can only show the presence of bugs but never their absence, Marcel has developed the first statistical framework to make statements about a program's correctness after an error-less testing campaign. While testing is embarrassingly parallel, his probabilistic theory explains how the cost of bug finding is actually exponential in the number of machines, and when even the most effective systematic testing technique is outperformed by a simple, random approach. More recently, his group has been developing the statistical and causal foundations of empirical software security analysis at scale, supported by an ERC grant. To find out more about the research in our group, head over to&nbsp;<a href="https://boehme-lab.github.io/" target="_blank">https://boehme-lab.github.io</a></p>
+<p style="font-size: 14px;">Marcel is an <a href="https://www.acm.org/media-center/2025/december/distinguished-members-2025">ACM Distinguished Member</a>, a Guest Editor-in-Chief and Associate Editor for the ACM TOSEM, the flagship journal in software engineering and a member of the steering committees of <a href="https://ase-conferences.org/steering-committee">ACM/IEEE ASE</a> and <a href="https://www.issta.org/#steering">ACM ISSTA</a>, two of the largest, premier conferences in his area. He won a 2024 <a href="https://www.mpi-sp.org/71953/news_publication_23813048_transferred" target="_blank">ERC Consolidator</a>&nbsp;grant, a 2022 <a href="https://www.comp.nus.edu.sg/alum/alumaward/2022-ocaa/" target="_blank">NUS Outstanding Young Computing Alumni Award</a>, a 2019 <a href="https://rms.arc.gov.au/RMS/Report/Download/Report/a3f6be6e-33f7-4fb5-98a6-7526aaa184cf/194" target="_blank">ARC DECRA</a> (Australia’s ERC Starting), a 2019 <a href="https://research.google/programs-and-events/past-programs/faculty-research-awards/" target="_blank">Google Faculty Research Award</a>, and several <a href="https://mpi-softsec.github.io/awards.html" target="_blank">ACM Distinguished Paper awards</a>, spotlights, and highlights at the premier publication venues for security and software engineering. Marcel received his PhD at the National University of Singapore (NUS).&nbsp;</p>
+<p style="font-size: 14px;">His current research concerns the automatic discovery of security flaws at the very large scale. One part of his group works on the foundations of automatic vulnerability discovery and program analysis in general. For instance, we seek to identify fundamental limitations of existing techniques, we study empirical methods (incl. statistical and causal reasoning) for program analysis, and we explore the assurances that software testing provides when no bugs are found. The other part of his group develops practical vulnerability discovery technology that is widely used in software security practice. For instance, Entropic is the default power schedule in LibFuzzer which powers the largest fuzzing platforms at Google and Microsoft, fuzzing hundreds of security-critical projects on 100k machines 24/7.</p>
+
+  <h3 style="margin-bottom: 5pt; padding: 0;"><a id="news">News</a></h3>
+<table style="margin-left: 10pt; padding: 0; border-collapse: collapse; font-size:10pt;">
+<tr><td valign=top><b>2026</b></td><td><b>:</b> <i>Excited to <b><a href="https://www.issta.org/#steering">chair the program committee</a></b> of ISSTA'26 together with the awesome Cindy Rubio Gonzáles!</i></td></tr>
+<tr><td valign=top>&nbsp;</td></tr>
+<tr><td valign=top><b>Aug'26</b></td><td><b>:</b> <i>From Sep. 1st, <b>we will gradually move from Bochum (MPI / RUB) to Munich (CISPA / TUM)</b>. Several open positions!</i></td></tr>
+<tr><td valign=top><b>Jul'26</b></td><td><b>:</b> <i>On Sep. 1st, I'm excited to give a keynote on Agentic Software Security at the <a href="https://www.sicp.de/en/aktuelle-veranstaltungen/tag-der-it-sicherheit-2026/20-paderborner-tag-der-it-sicherheit#c998100">20th Paderborner Day of IT Security</a>.</i></td></tr>
+<tr><td valign=top><b>Jul'26</b></td><td><b>:</b> <i>The results of the internships of Eric (CMU) <a href="https://boehme-lab.github.io/papers/ASE26-empirical.pdf">📝</a> and Pepe (CISPA) <a href="https://boehme-lab.github.io/papers/ASE26-FTTG.pdf">📝</a> accepted at ASE’26 in Munich! Congrats team!</i></td></tr>
+<tr><td valign=top><b>May'26</b></td><td><b>:</b> <i>Giving a <b>keynote</b> @ ICST'26: <a href="https://conf.researchr.org/details/icst-2026/icst-2026-keynote/2/Adversarial-Benchmarking-An-Urgent-Call-for-a-Stronger-Signal-of-Technological-Progr">Adversarial Benchmarking: An Urgent Call for a Stronger Signal of Technological Progress</a>.</i></td></tr>	
+<tr><td valign=top><b>Dec'25</b></td><td><b>:</b> <i>Inducted as <b><a href="https://www.acm.org/media-center/2025/december/distinguished-members-2025">ACM Distinguished Member</a></b> for contributions in software security and fuzz testing.</i></td></tr>	
+<tr><td valign=top><b>Nov'25</b></td><td><b>:</b> <i>Elected as member of the <b><a href="https://ase-conferences.org/steering-committee">steering committee</a></b> of the International Conference on Automated Software Engineering (ASE).</i></td></tr>
+<!--tr><td valign=top><b>Nov'25</b></td><td><b>:</b> <i>ASE'25 as <a href="https://www.linkedin.com/feed/update/urn:li:activity:7397992078800117762/">poster-first conference</a> was a great success! Thanks to the amazing GC Shin Yoo and my PC Co-Chair Lingming Zhang.</i></td></tr-->
+<tr><td valign=top><b>Sep'25</b></td><td><b>:</b> <i>Our paper <a href="papers/NDSS24-chatafl.pdf">"LLM-guided Protocol Fuzzing"</a> is <b>Number 29 in Rieck's <a href="https://web.archive.org/web/20250914193351/https://www.mlsec.org/topnotch/sec_ntop100.html#li-adba11576a-">Top-100 Security Papers</a></b>. Congrats Ruijie and team!</i></td></tr>
+<!--tr><td valign=top><b>Jul'25</b></td><td><b>:</b> <i>Invited to give a <b>keynote</b> on <a href="https://www.mpi-sp.org/71953/news_publication_23813048_transferred?c=6054">Empirical Program Analysis</a> at the <a href="https://conf.researchr.org/attending/isec-2026/iisec-2026-keynote-speaker">19th ISEC</a>!</i></td></tr-->
+<tr><td valign=top><b>Jun'25</b></td><td><b>:</b> <i>Our paper <a href="paper/ISSTA25-topscore.pdf">Top Score on the Wrong Exam</a> won the <b>ACM Distinguished Paper Award</b> at ISSTA'25. Congrats Niklas &amp; Jing!</i></td></tr>
+<!--tr><td valign=top><b>Apr'25</b></td><td><b>:</b> <i>Invited to give <b>keynote</b> <a href="https://conf.researchr.org/details/icse-2025/sbft-2025-papers/2/Keynote-by-Marcel-B-hme">"Benchmarks are our measures of progress. Or are they?"</a> and to join an <b>expert panel</b> at SBFT'25!</i></td></tr-->
+<tr><td valign=top><b>Apr'25</b></td><td><b>:</b> <i>Invited opinion piece on <a href="paper/IEEESP25-howto.pdf">how to solve cybersecurity once and for all</a> to appear at IEEE S&P journal (Vol. 23, Issue 3)!</i></td></tr>
+<tr><td valign=top><b>Feb'25</b></td><td><b>:</b> <i>Our paper on a <a href="paper/ICLR25-unseen.pdf">beautiful statistical riddle about the undiscovered</a> is an <b>ICLR'25 Spotlight</b> (Top 5%). Congrats Seongmin!</i></td></tr>
+<tr><td valign=top><b>Dec'24</b></td><td><b>:</b> <i>We won an <b><a href="https://erc.europa.eu/sites/default/files/2024-12/erc-2024-cog-results-all-domains.pdf">ERC Consolidator grant</a></b> (2M €; 5 years)---the <b>first ERC CoG in SE</b> (and 3rd in Security) in Europe <b>in 5 years</b>!</i></td></tr>
+<!--
+<tr><td valign=top><b>Oct'24</b></td><td><b>:</b> <i>Our work on <a href="paper/CCS24-lmtest.pdf">finding side-channels due to future microarchitectures</a> won <b>Distinguished Paper</b> at ACM CCS'24. Congrats all!</i></td></tr>
+<tr><td valign=top><b>Aug'24</b></td><td><b>:</b> <i>Thrilled to give a <b><a href="https://raid2024.github.io/program.html">keynote</a></b> on "how to solve cybersecurity once and for all" at the 27th Symposium on RAID (CORE A)!</i></td></tr>
+<tr><td valign=top><b>Feb'24</b></td><td><b>:</b> <i>Honored and incredibly grateful to receive the <b><a href="https://www.comp.nus.edu.sg/alum/alumaward/2022-ocaa/">NUS Outstanding Young Computing Alumni Award</a></b>!</i></td></tr>
+<tr><td valign=top><b>Nov'23</b></td><td><b>:</b> <i>Our discovery of a connection between fuzzing and information theory is this month's <b><a href="paper/CACM23.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/CACM23.PDF','title': 'CACM23'});">CACM research highlight</a></b>!</i></td></tr>
+<tr><td valign-top><b>Jul'24</b></td><td><b>:</b> <i>Our work on <a href="paper/ICSE25-leak.pdf">statistical program analysis for privacy</a> has been accepted at ICSE'25. Congrats Seongmin and Shreyas!</i></td></tr>
+<tr><td valign-top><b>Apr'24</b></td><td><b>:</b> <i>Our work on testing the limits of ML for vulnerability detection has been accepted at USENIX Sec'24. Congrats Niklas!</i></td></tr>
+<tr><td valign=top><b>Dec'23</b></td><td><b>:</b> <i>Happy to serve as an Area Chair for ICSE'24 and ASE'24 as well as on the PCs of FSE'24 and ISSTA'24!</i></td></tr>
+<tr><td valign=top><b>Dec'23</b></td><td><b>:</b> <i>Thrilled to receive the Best Reviewer Award from CCS'23 and ICSE'23, flagship conferences in Security and SE, resp.!</i></td></tr>
+<tr><td valign=top><b>Oct'23</b></td><td><b>:</b> <i>Paper on protocol fuzzing equipped with LLMs to interrogate protocol RFCs accepted at <a href="paper/NDSS24.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/NDSS24.PDF','title': 'NDSS24'});">NDSS'24</a>! Congrats Ruijie et al.!</i></td></tr>
+<tr><td valign=top><b>Oct'23</b></td><td><b>:</b> <i>Teaching a seminar on software and network security with Kevin Borgolte! Looking forward to the papers and experiments!</i></td></tr>
+<tr><td valign=top><b>Aug'23</b></td><td><b>:</b> <i><b>Visit the homepage of the MPI SoftSec research group at: <a href="https://mpi-softsec.github.io/">https://mpi-softsec.github.io</a>.</b></i></td></tr>
+<tr><td valign=top><b>Aug'23</b></td><td><b>:</b> <i>Two papers on statistical reasoning about programs accepted at <a href="paper/FSE23.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/FSE23.PDF','title': 'FSE23'});">ESEC/FSE'23</a> and <a href="paper/ASE23.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/ASE23.PDF','title': 'ASE23'});">ASE'23</a>. Congrats Seongmin and Nikhil!</i></td></tr>
+<tr><td valign=top><b>Aug'23</b></td><td><b>:</b> <i>Co-organized the <a href="https://casa.rub.de/en/events/casa-summer-school">CASA Summer School on Software Security</a> in Bochum. Thanks to all the speakers and participants!</i></td></tr>
+<tr><td valign=top><b>Jul'23</b></td><td><b>:</b> <i>Journal ext. of our work on human-in-the-loop autom. program repair to appear at the <a href="paper/TSE24.pdf">IEEE TSE</a>! Congrats Charaka et al!</i></td></tr>
+<tr><td valign=top><b>Jun'23</b></td><td><b>:</b> <i>Co-organized the <a href="https://fuzzingworkshop.github.io/">FUZZING'23</a> workshop and the <a href="https://sbft23.github.io/tools/fuzzing">SBFT Fuzzing Tool Competition</a>! Great way to catch up.</i></td></tr>
+<tr><td valign=top><b>Apr'23</b></td><td><b>:</b> <i>Featured in Max Planck Research Magazin: <a href="https://www.mpg.de/20065327/software-sicherheit-sicherheitsluecke-fuzzing">Schlupfloch im Programm</a> (German).</i></td></tr>
+<tr><td valign=top><b>Mar'23</b></td><td><b>:</b> <i>Co-organized a Dagstuhl on <a href="https://www.dagstuhl.de/en/seminars/seminar-calendar/seminar-details/23131">Software Bug Detection: Challenges and Synergies</a>.</i></td></tr>
+<tr><td valign=top><b>Feb'23</b></td><td><b>:</b> <i>Invited to talk at the <a href="https://suri.epfl.ch/">EPFL SuRI Summer School</a> and the <a href="https://neverworkintheory.org/">Never Work In Theory</a> live event!</i></td></tr>
+<tr><td valign=top><b>Dec'22</b></td><td><b>:</b> <i>Papers on <a href="https://mboehme.github.io/paper/ICSE23.Effectiveness.pdf">fuzzer effectiveness</a> and <a href="https://mboehme.github.io/paper/ICSE23.Debugging.pdf">problematic assumptions in fault localization research</a> accepted at ICSE'23!</i></td></tr>
+<tr><td valign=top><b>May'22</b></td><td><b>:</b> <i>Invited to serve as <a href="https://conf.researchr.org/committee/icse-2024/icse-2024-technical-track-technical-track">Area Chair</a> (Dependability and Security) at ICSE'24 and to join the <a href="https://dl.acm.org/journal/tosem/editorial-board">ACM TOSEM Editorial Board</a>!</i></td></tr>
+<tr><td valign=top><b>May'22</b></td><td><b>:</b> <i>Our Entropic paper is the new <b><a href="https://www.sigsoft.org/resources/highlights.html">ACM SIGSOFT Research Highlight</a></b>. Congrats Valentin and Sang Kil!</i></td></tr>
+<tr><td valign=top><b>Apr'22</b></td><td><b>:</b> <i>Our paper on <a href="https://mboehme.github.io/paper/USENIX22.pdf">Stateful Greybox Fuzzing</a> has been accepted at USENIX Security 2022. Congrats Jinsheng, Zahra, and Abhik!</i></td></tr>
+<tr><td valign=top><b>Oct'21</b></td><td><b>:</b> <i>Invited to serve on the Program Committees of <a href="https://conf.researchr.org/track/icse-2023/icse-2023-technical-track">ICSE'23</a>, <a href="https://www.sigsac.org/ccs/CCS2022/">CCS'22</a>, <a href="https://2022.esec-fse.org/track/fse-2022-research-papers">ESEC/FSE'22</a>, <a href="https://conf.researchr.org/track/icse-2022/icse-2022-seip---software-engineering-in-practice">ICSE'22 SEIP</a>, and <a href="https://icst2022.vrain.upv.es/">ICST'22</a>.</i></td></tr>
+<tr><td valign=top><b>Nov'21</b></td><td><b>:</b> <i>Invited to discuss fuzzing versus SBST on an <a href="https://twitter.com/sbstworkshop/status/1464162127594377216">SBST'22</a> panel of experts with A. Zeller, L. Briand, M. Harmann, and others!</i></td></tr>
+<tr><td valign=top><b>July'21</b></td><td><b>:</b> <i>Our work on <a href="paper/ICST20.AFLNet.pdf">learning a semantic oracle by queries to the user</a> is featured in the <a href="https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9462245">IEEE Software Practitioner's Digest</a>!</i></td></tr>
+<tr><td valign=top><b>July'21</b></td><td><b>:</b> <i>Excited to give an invited lecture on the <a href="https://conf.researchr.org/track/issta-2021/ecoop-issta-2021-summer-school">Foundations of Software Testing</a> at the ECOOP/ISSTA'21 summer school!</i></td></tr>
+<tr><td valign=top><b>July'21</b></td><td><b>:</b> <i>Excited to join <a href="https://nebelwelt.net/">Mathias Payer</a> at the <a href="https://conf.researchr.org/details/ecoop-issta-2021/ecoop-issta-2021-discussions-with-experts/9/Fuzzing">ECOOP/ISSTA'21 Discussion with Experts</a> on Fuzzing.</i></td></tr>
+<tr><td valign=top><b>July'21</b></td><td><b>:</b> <i>Invited to join <a href="http://www0.cs.ucl.ac.uk/staff/M.Harman/">Mark Harman</a> and <a href="https://andreas-zeller.info/">Andreas Zeller</a> in the SBST'22 Panel on Fuzzing and Search-based Software Testing!</i></td></tr>
+<tr><td valign=top><b>May'21</b></td><td><b>:</b> <i>Our paper on <a href="paper/FSE21.pdf">estimating residual risk in greybox fuzzing</a> accepted at ESEC/FSE'21! Congrats Danushka and Valentin!</i></td></tr>
+<tr><td valign=top><b>Apr'21</b></td><td><b>:</b> <i>Our paper on <a href="paper/CCS21.pdf">regression greybox fuzzing</a> has been accepted at CCS'21! Very productive collab with Xiaogang of Swinburne.</i></td></tr>
+<tr><td valign=top><b>Jan'21</b></td><td><b>:</b> <i>Invited to serve on the Organizing Committees of <a href="https://conf.researchr.org/track/issta-2021/ecoop-issta-2021-workshops">ECOOP/ISSTA'21</a>, <a href="https://2022.esec-fse.org/s">ESEC/FSE'22</a>, and <a href="http://www.icse-conferences.org/">ICSE'23</a>!</i></td></tr>
+<tr><td valign=top><b>Dec'20</b></td><td><b>:</b> <i>Invited to serve on the Program Committees of <a href="https://www.sigsac.org/ccs/CCS2021/">CCS'21</a>, <a href="https://conf.researchr.org/home/icse-2021" target="_blank">ICSE'21</a>, <a href="https://conf.researchr.org/home/issta-2021" target="_blank">ISSTA'21</a>, <a href="https://conf.researchr.org/series/ase">ASE'21</a>, and <a href="https://icst2021.icmc.usp.br/committee/icst-2021-papers-program-committee">ICST'21</a>!</i></td></tr>
+<tr><td valign=top><b>Nov'20</b></td><td><b>:</b> <i>Received the <a href="https://2020.esec-fse.org/program/program-esecfse-2020" target="_blank"><b>ACM SIGSOFT Distinguished Paper Award</b></a> @ ESEC/FSE'20. Congrats Valentin and Sang Kil!</i></td></tr>
+<tr><td valign=top><b>Sep'20</b></td><td><b>:</b> <i>Entropic [ESEC/FSE'20] is the <a href="https://github.com/llvm/llvm-project/commit/f3c2e0bcee64b0905addaefe9cd0c9ad4d20ac6f">default schedule in LibFuzzer</a> which powers <a href="https://github.com/google/oss-fuzz">Google's OSSFuzz</a> and <a href="https://github.com/microsoft/onefuzz">Microsoft's OneFuzz</a>!</i></td></tr>
+<tr><td valign=top><b>Jul'20</b></td><td><b>:</b> <i>Received the <a href="https://2020.icse-conferences.org/info/awards" target="_blank"><b>ACM SIGSOFT Distinguished Paper Award</b></a> @ ICSE'20. Congrats Zhen, Lucia, and Abhik!</i></td></tr>
+<tr><td valign=top><b>May'20</b></td><td><b>:</b> <i>Two papers accepted at ESEC/FSE'20! (Each 0day comes at exponential cost; a link b/w fuzzing &amp; information theory).</i></td></tr>
+<tr><td valign=top><b>Feb'20</b></td><td><b>:</b> <i>Received the <a href="https://research.google/outreach/faculty-research-awards/recipients/" target="_blank">Google Faculty Research Award</a> (15% acc. rate) and the Dean's Award for Research Excellence (ECR)!</i></td></tr>
+<tr><td valign=top><b>Feb'20</b></td><td><b>:</b> <i>Invited to serve as the Co-Chair of <a href="https://conf.researchr.org/committee/issta-2021/issta-2021-organizing-comittee" target="_blank">ECOOP/ISSTA'21</a> Workshops! Submit your Workshop proposals <a href="https://forms.gle/acnyGJTRaVKa9Rku5">here</a>.</i></td></tr>
+<tr><td valign=top><b>Oct'19</b></td><td><b>:</b> <i>Invited to serve on the Program Committees of <a href="https://conf.researchr.org/home/icse-2020" target="_blank" target="_blank">ICSE'20</a>, <a href="https://conf.researchr.org/home/issta-2020" target="_blank">ISSTA'20</a>, <a href="https://www.deakin.edu.au/ase2020">ASE'20</a>, <a href="http://www.icst2020.info/" target="_blank">ICST'20</a>, and <a href="https://conf.researchr.org/track/icse-2020/icse-2020-New-Ideas-and-Emerging-Results" target="_blank">ICSE'20-NIER</a>!</i></td></tr>
+<tr><td valign=top><b>Sep'19</b></td><td><b>:</b> <i>Established a reproducibility policy for my research group: <a href="https://mboehme.github.io/manifesto.html" target="_blank" onmousedown="ga('send','pageview', {'page': '/manifesto.html','title': 'Reproducibility'});">https://mboehme.github.io/manifesto.html</a>.</i></td></tr>
+<tr><td valign=top><b>Sep'19</b></td><td><b>:</b> <i>Invited as <a href="https://conf.researchr.org/committee/issta-2020/issta-2020-organizing-committee" target="_blank">ISSTA'20 Doctoral Symposium Co-Chair</a>. Looking forward to the fresh ideas of the next generation!</i></td></tr>
+<tr><td valign=top><b>Apr'19</b></td><td><b>:</b> <i>Co-organising a Shonan meeting on <a href="https://shonan.nii.ac.jp/seminars/160/" target="_blank">Fuzzing and Symbolic Execution: Reflections, Challenges, and Opportunities</a> (Sep'19)!</i></td></tr>
+<tr><td valign=top><b>Feb'19</b></td><td><b>:</b> <i>Our team released AFLSmart @ <a href="https://github.com/aflsmart">https://github.com/aflsmart</a>. For more details see <a href="paper/TSE19.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/aflsmartpaper','title': 'aflsmartpaper'});">Smart Greybox Fuzzing</a> [TSE'19]!</i></td></tr>
+<tr><td valign=top><b>Dec'18</b></td><td><b>:</b> <i>Received the <b><a href="https://rms.arc.gov.au/RMS/Report/Download/Report/a3f6be6e-33f7-4fb5-98a6-7526aaa184cf/194">2019 ARC Discovery Early Researcher Award</a></b> (200 awardees across *all* disciplines across all of Australia)!</i></td></tr>
+<tr><td valign=top><b>Dec'18</b></td><td><b>:</b> <i>Presenting my vision statement <a href="https://arxiv.org/abs/1807.10255" onmousedown="ga('send','pageview', {'page': '/vision','title': 'Vision'});" target="_blank">
+in Software Testing: A Roadmap</a> at ICSE'19 (NIER) in Montreal!</i></td></tr>
+<tr><td valign=top><b>Nov'18</b></td><td><b>:</b> <i><a href="paper/TSE19.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/aflsmartpaper','title': 'aflsmartpaper'});">Smart Greybox Fuzzing</a> in the news: @<a href="https://www.securityweek.com/researchers-introduce-smart-greybox-fuzzing" target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews2','title': 'smartNews2'});">Security Week</a>, @<a href="https://www.theregister.co.uk/2018/11/28/better_fuzzer_aflsmart/" target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews1','title': 'smartNews1'});">The Register</a>, @<a href="https://nakedsecurity.sophos.com/2018/12/03/faster-fuzzing-ferrets-out-42-fresh-zero-day-flaws/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews3','title': 'smartNews3'});">Nacked Security</a>. Great work Thuan!</i></td></tr>
+<tr><td valign=top><b>July'18</b></td><td><b>:</b> <i>Our newest fuzzer has discovered <a href="#vulns">17 vulnerabilities (CVEs)</a>, including 9 in FFMPEG. Great work <a href="https://www.comp.nus.edu.sg/~thuanpv/" target="_blank" onmousedown="ga('send','pageview', {'page': '/Thuan','title': 'Thuan'});">Thuan</a>, Alex, and Andrew!</i></td></tr>
+<tr><td valign=top><b>July'18</b></td><td><b>:</b> <i>My journal-first article <a href="paper/TOSEM18.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/TOSEM18.PDF','title': 'TOSEM18'});">Software Testing as Species Discovery</a> has been accepted at <a href="https://2018.fseconference.org/track/fse-2018-Journal-First">ESEC/FSE 2018</a>.</i></td></tr>
+<tr><td valign=top><b>Jun'18</b></td><td><b>:</b> <i>Our article on verifying long-run behavior in the presence of uncertainty has been accepted at <a href="https://2018.fseconference.org">ESEC/FSE'18</a> (61/295=21%)!</i></td></tr>
+<tr><td valign=top><b>Apr'18</b></td><td><b>:</b> <i>My article on <a href="paper/TOSEM18.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/TOSEM18.PDF','title': 'TOSEM18'});">Software Testing as Species Discovery</a> has been accepted at the <a href="https://tosem.acm.org/">ACM TOSEM</a> (52 pages, journal-first)!</i></td></tr>
+<tr><td valign=top><b>Jan'18</b></td><td><b>:</b> <i>Invited as member of the <a href="http://formal-analysis.com/iceccs/2018/">ICECCS'18</a> (PC&amp;OC), the <a href=" http://www.aswec2018.com">ASWEC'18</a>, and the <a href="http://software.imdea.org/sbst18/">SBST'18</a> Program Committees</a>!</i></td></tr>
+<tr><td valign=top><b>Dec'17</b></td><td><b>:</b> <i>Invited as member of the <a href=" http://www.ase2018.com/?p=calls#demonstrations">ASE'18 Demo</a>, the <a href="https://conf.researchr.org/committee/issta-2018/issta-2018-artifacts-artifact-evaluation-committee">ISSTA'18 AEC</a>, the <a href="http://www.icse2018.org/track/icse-2018-ACM-Student-Research-Competition">ICSE'18 SRC</a>, and the <a href="https://2018.msrconf.org/committee/msr-2018-mining-challenge-mining-challenge-committee">MSR'18 MC</a> Program Committees!</i></td></tr>
+<tr><td valign=top><b>Nov'17</b></td><td><b>:</b> <i>The extension of our <a href="paper/CCS16.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/CCS16.PDF','title': 'CCS16'});">CCS'16</a> paper has been accepted at SE flagship journal <a href="https://www.computer.org/web/tse">IEEE Transactions on Software Engineering</a>!</i></td></tr>
+<tr><td valign=top><b>Aug'17</b></td><td><b>:</b> <i>Our paper entitled <a href="paper/CCS17.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/CCS17.PDF','title': 'CCS17'});">Directed Greybox Fuzzing</a> accepted at <a href="https://www.sigsac.org/ccs/CCS2017/" target="_blank">ACM CCS'17</a> (151/836 = 18%)! Download our tool  <a href="https://github.com/aflgo/aflgo" target="_blank" onmousedown="ga('send','pageview', {'page': '/AFLGO','title': 'AFLGO'});">AFLGo</a>.</i></td></tr>
+<tr><td valign=top><b>Aug'17</b></td><td><b>:</b> <i>Our <a href="paper/TSE15.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/TSE15.PDF','title': 'TSE15'});">probabilistic analysis of testing efficiency</a> ranked among Top-50 most popular IEEE TSE articles for 6 months! <i style="opacity: 0.5;">[<a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=April+2016" target="_blank">1</a><a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=May+2016">2</a><a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=June+2016">3</a><a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=July+2016">4</a><a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=August+2016">5</a><a href="http://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=32&topArticlesDate=September+2016">6</a>]</i></i></td></tr>
+<tr><td valign=top><b>July'17</b></td><td><b>:</b> <i>Our paper on lightweight flow detection accepted at <a href="http://ase2017.org" target="_blank">ASE'17</a> (65/314=21%)! Excellent thesis of my first BSc. student, Bj&ouml;rn.</i></td></tr>
+<tr><td valign=top><b>Jun'17</b></td><td><b>:</b> <i>Awarded USD 2,000 in bug bounties from Google Security for security-critical bugs found by <a href="https://github.com/mboehme/aflfast" target="_blank" onmousedown="ga('send','pageview', {'page': '/AFLFAST','title': 'AFLFAST'});">AFLFast</a>!</i></td></tr>
+<tr><td valign=top><b>Jun'17</b></td><td><b>:</b> <i><a href="paper/FSE17.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/FSE17.PDF','title': 'FSE17'});">. is the Bug and How is it Fixed? An Experiment with Practitioners</a> accepted at <a href="https://esec-fse17.uni-paderborn.de">ESEC/FSE'17</a> (72/295 = 24%)!</i></td></tr>
+<tr><td valign=top><b>Jun'17</b></td><td><b>:</b> <i>Our correlation study of test suite quality and repair quality metrics accepted at <a href="http://www.springer.com/cda/content/document/cda_downloaddocument/Call_Special_Issue_Automatic_Repair_EmSE-1.pdf?SGWID=0-0-45-1562868-p35707729" target="_blank">Empirical Software Engineering</a> Journal!</i></td></tr>
+<tr><td valign=top><b>May'17</b></td><td><b>:</b> <i>Our directed fuzzer AFLGO applied to patch testing finds more than 40 bugs in security-critical programs (<a href="#vulns">17 CVEs</a>)!</i></td></tr>
+<tr><td valign=top><b>May'17</b></td><td><b>:</b> <i>Invited by the <a href="http://sgcsc.sg/event-2017-06-TechTalk.html">Singapore Cybersecurity Consortium</a> to talk about Directed Greybox Fuzzing (AFLGO).</i></td></tr>
+<tr><td valign=top><b>May'17</b></td><td><b>:</b> <i>Invited as member of the <a href="http://www.icse2018.org/track/icse-2018-ACM-Student-Research-Competition">ICSE'18 SRC PC</a>. If you are graduate or undergraduate student, do consider to submit!</i></td></tr>
+<tr><td valign=top><b>Feb'17</b></td><td><b>:</b> <i>Invited to talk about "Testing versus Verification for Scalable Vulnerability Detection" at Simon Fraser University, Canada.</i></td></tr>
+<tr><td valign=top><b>Feb'17</b></td><td><b>:</b> <i>AFLFast finds <a href="https://sourceware.org/bugzilla/buglist.cgi?bug_status=UNCONFIRMED&bug_status=NEW&bug_status=ASSIGNED&bug_status=SUSPENDED&bug_status=WAITING&bug_status=REOPENED&bug_status=RESOLVED&bug_status=VERIFIED&bug_status=CLOSED&f0=OP&f1=OP&f2=product&f3=component&f4=alias&f5=short_desc&f7=content&f8=CP&f9=CP&j1=OR&list_id=34413&o2=substring&o3=substring&o4=substring&o5=substring&o6=substring&o7=matches&query_format=advanced&v2=AFLFast&v3=AFLFast&v4=AFLFast&v5=AFLFast&v6=AFLFast&v7=%22AFLFast%22"/>&gt 50 crashes</a> in GNU Binutils and Coreutils. <a href="https://www.gnu.org/software/coreutils/coreutils.html#backtotop">P&aacute;draig Brady</a>, Coreutils maintainer, <a href="http://www.pixelbeat.org/docs/coreutils-testing.html#coverage">highlights our research</a>!</i></td></tr>
+<tr><td valign=top><b>Aug'16</b></td><td><b>:</b> <i>AFLFast finds 6 unique flaws in Perl (via <a href="https://news.ycombinator.com/item?id=12330038">Hacker News</a>) and several bugs in Erlang VM (via <a href="https://news.ycombinator.com/item?id=12346414">Hacker News</a>).</i></td></tr>
+<tr><td valign=top><b>July'16</b></td><td><b>:</b> <i>"Coverage-based Greybox Fuzzing as Markov Chain" accepted at <a href="https://www.sigsac.org/ccs/CCS2016/">CCS'16</a> (137/831 = 16%). AFLFast available on <a href="https://github.com/mboehme/aflfast" target="_blank" onmousedown="ga('send','pageview', {'page': '/AFLFAST','title': 'AFLFAST'});">Github</a></i>!</td></tr>
+<tr><td valign=top><b>July'16</b></td><td><b>:</b> <i>"Model-based Whitebox Fuzzing for Program Binaries" accepted at <a href="http://ase2016.org/program.html">ASE'16</a> (57/353 = 16%)</i>.</td></tr>
+<tr><td valign=top><b>May'16</b></td><td><b>:</b> <i>Found and fixed several vulnerabilities in binutils, valgrind, gdb, and other libbfd-based security tools <a href="http://www.openwall.com/lists/oss-security/2016/05/05/5">(9 CVEs assigned)</a></i>.</td></tr>
+<tr><td valign=top><b>Jan'16</b></td><td><b>:</b> <i>Co-Lecturer for CS4218 Software Testing with Prof. Abhik Roychoudhury.</i></td></tr>
+<tr><td valign=top><b>Dec'15</b></td><td><b>:</b> <i>Invited as member of the <a href="http://www.cs.ucdavis.edu/fse2016/calls/demos/">FSE'16</a> Demo PC and the <a href="https://issta2016.cispa.saarland/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/issta16Committee','title': 'ISSTA16 Committee'});">ISSTA'16</a> Artifact Evaluation Committee.</i></td></tr>
+<tr><td valign=top><b>Dec'15</b></td><td><b>:</b> <i>New release of <a href="http://www.comp.nus.edu.sg/~release/corebench" target="_blank" onmousedown="ga('send','pageview', {'page': '/corebench','title': 'CoREBench'});"><code>CoREBench</code></a> on <a href="https://github.com/mboehme/corebench">Github</a> and <a href="https://hub.docker.com/r/mboehme/corebench" >Docker Hub</a>! Just type</i> <code style="background-color:black; color:white">$ docker pull mboehme/corebench</code>.</td></tr>
+<tr><td valign=top><b>Sep'15</b></td><td><b>:</b> <i>Our "Probabilistic Analysis of the Efficiency of Automated Software Testing" has been accepted at the Journal IEEE TSE!</i></td></tr>
+<tr><td valign=top><b>Apr'15</b></td><td><b>:</b> <i>Automated Debugging voted Best Seminar! It was also voted 3rd among *all* courses in the CS department, Saarland Uni!</i></td></tr>
+<tr><td valign=top><b>Mar'15</b></td><td><b>:</b> <i>Invited to talks <a href="paper/FSE14.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/fse14.PDF','title': 'FSE14'});">on the efficiency of automated testing</a> at <a href="http://crest.cs.ucl.ac.uk/index.php?id=7451" target="_blank">UCL in London</a>, <a href="http://istd.sutd.edu.sg/news-events/event/seminar-series/seminar-on-the-efficiency-of-automated-testing/">SUTD in S'pore</a>, NTU in S'pore, and <a href="https://www.informatik.tu-darmstadt.de/de/aktuelles/veranstaltungentermine/?no_cache=1&tx_cal_controller%5Bview%5D=event&tx_cal_controller%5Btype%5D=tx_cal_phpicalendar&tx_cal_controller%5Buid%5D=2339&tx_cal_controller%5Byear%5D=2015&tx_cal_controller%5Bmonth%5D=06&tx_cal_controller%5Bday%5D=23&cHash=7f364e209f5eac6c27507cf3f39a997c">TU Darmstadt</a>!</i></td></tr>
+<tr><td valign=top><b>Jan'15</b></td><td><b>:</b> <i>Invited as member of the <a href="http://issta2015.cs.uoregon.edu/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/issta15Committee','title': 'ISSTA15 Committee'});">ISSTA'15</a> Artifact Evaluation Committee.</i></td></tr>
+<tr><td valign=top><b>Dec'14</b></td><td><b>:</b> <i>Making the Top10 of <a href="paper/SEN.Nov.2014.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/SEN14.PDF','title': 'SEN14'});">most downloaded SE articles</a> in the past 3months with <a href="http://www.comp.nus.edu.sg/~release/corebench" target="_blank" onmousedown="ga('send','pageview', {'page': '/corebench','title': 'CoREBench'});"><code>CoREBench</code></a>, on <a href="paper/ISSTA14.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/issta14.PDF','title': 'ISSTA14'});">quantifying error complexity</a>!</i></td></tr>
+<tr><td valign=top><b>Oct'14</b></td><td><b>:</b> <i>Giving a seminar on <a href="https://www.st.cs.uni-saarland.de/edu/adebug/2014/" target="_blank" onmousedown="ga('send','pageview', {'page': '/adebug','title': 'Automated Debugging'});">Automated Debugging</a > this semester WS14/15. Talk to me about thesis topics.</i></td></tr>
+<tr><td valign=top><b>Jul'14</b></td><td><b>:</b> <i>Successfully defended my <a href="http://www.comp.nus.edu.sg/~abhik/Students/Marcel.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/dissertation','title': 'Dissertation'});">dissertation</a> and moved from National University of Singapore to Saarland University, Germany.</i></td></tr>
+<tr><td valign=top><b>Jun'14</b></td><td><b>:</b> <i>Our paper <a href="paper/FSE14.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/fse14.PDF','title': 'FSE14'});">"On the Efficiency of Automated Testing"</a> has been accepted at <a href="http://fse22.gatech.edu">FSE 2014</a>.</i></td></tr>
+<tr><td valign=top><b>May'14</b></td><td><b>:</b> <i><a href="http://www.comp.nus.edu.sg/~release/corebench" target="_blank" onmousedown="ga('send','pageview', {'page': '/corebench','title': 'CoREBench'});"><code>CoREBench</code></a> has been found to exceed the expectations by the ISSTA'14 Artifact Evaluation Commitee!</i></td></tr>
+<tr><td valign=top><b>Apr'14</b></td><td><b>:</b> <i>Our paper on <a href="paper/ISSTA14.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/issta14.PDF','title': 'ISSTA14'});">quantifying error complexity</a> has been accepted at <a href="http://issta2014.org/">ISSTA 2014</a>.</i></td></tr>
+<tr><td valign=top><b>Feb'14</b></td><td><b>:</b> <i>Visiting <a href="http://crest.cs.ucl.ac.uk/cow/30/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/cow30','title': 'COW30'});">COW'30</a> in London, UK and Prof. <a href="http://www.st.cs.uni-saarland.de/zeller/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/andreas.zeller','title': 'Andreas Zeller'});">Andreas Zeller</a>'s team at Uni Saarland, Germany.</i></td></tr>
+<tr><td valign=top><b>Jan'14</b></td><td><b>:</b> <i>Invited as member of the <a href="http://2015.icse-conferences.org/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/icse15Committee','title': 'ICSE15 Committee'});">ICSE'15</a> NIER program committee. Chairing session "New Formalisms".</i></td></tr>
+<tr><td valign=top><b>Jan'14</b></td><td><b>:</b> <i>Meeting Nobel Laureates, Fields Medal Winners, and bright young scientists from all disciplines at <a href="http://www.gyss-one-north.sg/"  target="_blank" onmousedown="ga('send','pageview', {'page': '/gyss','title': 'GYSS'});">GYSS'14</a>.</i></td></tr>
+nclick="ga('send','pageview', {'page': '/issta14.PDF','title': 'ISSTA14'});"
+<tr><td valign=top><b>Nov'13</b></td><td><b>:</b> <i>My thoughts on being SoC Graduate Student featured on the official blog: <a href="http://socbytes.blogspot.sg/2013/11/marcels-maxims.html"  target="_blank" onmousedown="ga('send','pageview', {'page': '/marcelsMaxims','title': 'Marcel's Maxims'});">Marcel's Maxims</a> (Jun'14: Also in <a href="http://www.comp.nus.edu.sg/newsclips/index.html"  target="_blank" onmousedown="ga('send','pageview', {'page': '/straitsTimes','title': 'Straits Times'});">Straits Times</a>).</i></td></tr>
+-->
+</table>
+
+
+
+<h3 style="margin-bottom: 5pt; margin-top: 30pt; padding: 0;"><a id="publications">Selected Publications</a></h3>
+<table style="font-size: 9pt;  margin-left: 10pt; padding: 0;">
+                        <tbody>
+<tr><td colspan="2"><b style="font-size:10pt;">[Textbook]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="https://www.fuzzingbook.org" target="_blank" onmousedown="ga('send','pageview', {'page': '/Fuzzing.PDF','title': 'Fuzzing'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">The Fuzzing Book</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/fuzzingbook.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/Fuzzing.BIBTEX','title': 'Fuzzing'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Andreas Zeller, Rahul Gopinath, <u>Marcel B&ouml;hme</u>, Gordon Fraser, and Christian Holler</td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Interactive, Jupyter-style textbook on fuzzing and automated test generation.</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+								Digital textbook available at <i><a href="https://www.fuzzingbook.org">https://www.fuzzingbook.org</a></i></td></tr>
+						<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ASE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ASE26-llm4bic.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">LLM-based Agents for Identifying Bug-Introducing Commits</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ASE26-llm4bic.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Niklas Risse and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) First paper to substantially improve on SZZ in 20+ years using an agentic approach with grepping skills.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Automated Software Engineering 2026 (ASE'26), 13 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ASE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ASE26-FFTG.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Feature-Focused Test Generation</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ASE26-FFTG.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Jose Antonio Zamudio Amaya, Gaetano Sapia, Alexi Turcotte, David Benavides, <u>Marcel B&ouml;hme</u>, and Andreas Zeller</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Marries software variability and grammar-based fuzzing. Configure grammars to focus on program features.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Automated Software Engineering 2026 (ASE'26), 13 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ASE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ASE26-profiling.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Accurate and Low-Cost Residual Risk Assessment via Sampled Profiling and Structure-Aware Coverage Amplification</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ASE26-profiling.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Seongmin Lee, Işıl Özgü, <u>Marcel B&ouml;hme</u>, Miryung Kim</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Explores the utility of no-overhead, hardware-based coverage profiling for residual risk estimation.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Automated Software Engineering 2026 (ASE'26), 13 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ASE'26 NIER]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ASE26-empirical.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Empirical Computation: Prompting versus Programming</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ASE26-empirical.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Eric Tang, Jing Liu, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Vision paper that establishes Empirical Computation as an interesting new topic in Software Engineering.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Automated Software Engineering 2026 (ASE'26 NIER track), 5 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[FSE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/FSE26-llmtesting.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Evaluating LLM-Based Regression Test Generation</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/FSE26-llmtesting.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Jing Liu, Seongmin Lee, Eleonora Losiouk, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Establishes that *change intention* is more critical than the changed code in effective LLM-based Regression Testing.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM International Conference on the Foundations of Software Engineering 2026 (FSE'26), 23 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[FSE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/FSE26-concordance.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">In Bugs We Trust? On Measuring the Randomness of a Fuzzer Benchmarking Outcome</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/FSE26-concordance.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Ardi Madadi, Seongmin Lee, Cornelius Aschermann, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) First paper to establish <i>concordance</i> of a benchmarking method to measure the "randomness" of the benchmark outcome.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM International Conference on the Foundations of Software Engineering 2026 (FSE'26), 21 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[AAAI'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/AAAI26-incoherence.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Incoherence as Oracle-less Measure of Error in LLM-Based Code Generation</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/AAAI26-incoherence.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Thomas Valentin, Ardi Madadi, Gaetano Sapia, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to estimate the correctness of an LLM-generated program when we have no specification or ground-truth available.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>Annual AAAI Conference on Artificial Intelligence (AAAI'26). 14pp.</i></td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> Thomas fully developed this idea while he was an undergrad intern in our group. Fantastic work, Thomas!</td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the data and scripts at <a href="https://github.com/mpi-softsec/difftrust">https://github.com/mpi-softsec/difftrust</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE26-reachabilityGap.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Scaling Security Testing by Addressing the Reachability Gap</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE26-reachabilityGap.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Gaetano Sapia and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to configure and interact with <i>any</i> software system to execute a given target functionality (and run invivo fuzzing)?</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering (ICSE'26). 12pp.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> This is Gaetano's first paper, and it lays the foundation for much more interesting work in agentic security testing. Congrats Gaetano!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE26-dependency.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Dependency-aware Residual Risk Analysis</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE26-dependency.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Seongmin Lee and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) First work to account for dependencies among coverage elements in residual risk estimation.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering (ICSE'26). 12pp.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE26-interaction.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">On Interaction Effects in Greybox Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE26-interaction.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Konstantinos Kitsios, <u>Marcel B&ouml;hme</u>, and Alberto Bacchelli</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) First work to identify and leverage interaction effects between mutation operators in greybox fuzzing.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering (ICSE'26). 12pp.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[SP'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/SP26-cottontail.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Cottontail: LLM-Driven Concolic Execution for Highly Structured Test Input Generation</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/SP26-cottontail.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Haoxin Tu, Seongmin Lee, Yuxian Li, Peng Chen, Lingxiao Jiang, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to perform concolic execution to generate highly structured test inputs for systematically testing parsing programs.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE Symposium on Security and Privacy (SP'26). 18pp.</i></td></tr>
+	                <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                         <b>Note:</b> We published the prototype at <a href="https://github.com/haoxintu/cottontail">https://github.com/haoxintu/cottontail</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[TOSEM'26]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="https://arxiv.org/pdf/2408.08772" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Vital: Vulnerability-Oriented Symbolic Execution via Type-Unsafe Pointer-Guided Monte Carlo Tree Search</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TOSEM26-vital.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Haoxin Tu, Lingxiao Jiang, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to guide symbolic execution towards the most vulnerable parts of the execution tree using MCTS.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM Transactions on Software Engineering and Methodology (TOSEM). 24pp.</i></td></tr>
+                  <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                           <b>Note:</b> We published the prototype at <a href="https://github.com/haoxintu/Vital-SE">https://github.com/haoxintu/Vital-SE</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ISSTA'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ISSTA25-topscore.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Top Score on the Wrong Exam: On Benchmarking in Machine Learning for Vulnerability Detection</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ISSTA25-topscore.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Niklas Risse, Jing Liu, <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) The most prevalent problem statement of ML4VD as function-level binary classification problem is ill-defined.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM SIGSOFT International Symposium on Software Testing and Analysis 2025 (ISSTA'25), 22 pages.</i></td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the code, data and results at <a href="https://github.com/niklasrisse/TopScoreWrongExam">https://github.com/niklasrisse/TopScoreWrongExam</a>.</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> The supplementary material can be found at <a href="paper/ISSTA25-supplementary.pdf">ISSTA25-supplementary.pdf</a>.</td></tr>
+	                    <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+	                          <b>Award:</b> Our paper was selected as <b>ACM Distinguished Paper Award</b>! Congrats Niklas and Jing!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[IEEE S&P'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/IEEESP25-howto.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">How to Solve Cybersecurity Once and For All</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/IEEESP25-howto.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) We should stop trying to confirm the effectiveness of our defenses and start failing to find counterexamples.</i></td></tr>
+	                    <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;">🌱</td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE Security and Privacy, Vol. 23, Issue 3 (<b>Invited Paper</b>).</i></td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> A much abbreviated version of my <a href="https://www.slideshare.net/slideshow/keynote-raid-24-how-to-solve-cybersecurity-once-and-for-all/273801338">keynote</a> at <a href="https://raid2024.github.io/program.html">RAID'24</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[TOSEM'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/TOSEM25-roadmap.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Software Security Analysis in 2030 and Beyond: A Research Roadmap</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TOSEM25-roadmap.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <u>Marcel B&ouml;hme</u>, Eric Bodden, Tevfik Bultan, Cristian Cadar, Yang Liu, and Giuseppe Scanniello</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Challenges and opportunities for the security analysis of our software systems of the future.</i></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;">🌱</td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM Transactions on Software Engineering and Methodology (<b>Invited Paper</b>).</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[TOSEM'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/TOSEM25-bench.pdf" target="_blank"--><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Fuzzing: On Benchmarking Outcome as a Function of Benchmark Properties</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TOSEM25-bench.bib" target="_blank"--><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Dylan Wolff, <u>Marcel B&ouml;hme</u>, Abhik Roychoudhury</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How would fuzzer ranking change if programs were larger or initial seeds had more coverage?</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM Transactions on Software Engineering and Methodology, Just Accepted, 23 pages.</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[TSE'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/TSE25-aflnet.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">AFLNet Five Years Later: On Coverage-Guided Protocol Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TSE25-aflnet.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Ruijie Meng, Van-Thuan Pham, <u>Marcel B&ouml;hme</u>, and Abhik Roychoudhury</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) State- and code-coverage-guided greybox fuzzing (Extended version of our ICSE'20 Tool Demo).</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE Transactions on Software Engineering.</i></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> AFLNet is available on Github at <a href="https://github.com/aflnet/aflnet">https://github.com/aflnet/aflnet</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICLR'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICLR25-unseen.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">How Much is Unseen Depends Chiefly on Information About the Seen</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICLR25-unseen.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Seongmin Lee and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Significant progress on a beautiful statistical riddle. For instance, estimates training data representativeness.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>International Conference on Learning Representations (ICLR'25), 24 pages.</i></td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published all data and analysis at <a href="https://github.com/niMgnoeSeeL/UnseenGA">https://github.com/niMgnoeSeeL/UnseenGA</a>.</td></tr>
+			            <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Award:</b> Our paper was selected as <b>ICLR'25 Spotlight</b> (Top 5%)! Congrats Seongmin!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE25-invivo.pdf" target="_blank" ><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Invivo Fuzzing by Amplifying Actual Executions</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE25-invivo.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Octavio Galland and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Don't attach a fuzzer using fuzz drivers! Inject a fuzzer and amplify any state.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering 2025 (ICSE'25), 13 pages.</i></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the prototype, exp. setup, and results at <a href="https://github.com/OctavioGalland/afllive">https://github.com/OctavioGalland/afllive</a>.</td></tr>
+                        <tr><td><a href="https://github.com/OctavioGalland/afllive"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Available, Functional, and Reusable!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE25-leak.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Accounting for Missing Events in Statistical Information Leakage Analysis</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE25-leak.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Seongmin Lee, Shreyas Minocha, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Estimating software privacy in the small sample regime.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering 2025 (ICSE'25), 12 pages.</i></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the prototype, exp. setup, and results at <a href="https://github.com/niMgnoeSeeL/ChaoMI">https://github.com/niMgnoeSeeL/ChaoMI</a>.</td></tr>
+                        <tr><td><a href="https://github.com/HexHive/MendelFuzz-Artifact"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Available and Functional!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[FSE'25]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/FSE25-mendelfuzz.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">MendelFuzz: The Return of the Deterministic Stage</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/FSE25-mendelfuzz.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Han Zheng, Flavio Toffalini, <u>Marcel B&ouml;hme</u>, and Mathias Payer</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Can a fuzzer cover more code with minimal corruption of the initial seed?</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM International Conference on the Foundations of Software Engineering 2025 (FSE'25), 21 pages.</i></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the prototype, exp. setup, and results at <a href="https://github.com/HexHive/MendelFuzz-Artifact">https://github.com/HexHive/MendelFuzz-Artifact</a>.</td></tr>
+                        <tr><td><a href="https://github.com/HexHive/MendelFuzz-Artifact"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Available, Functional, and Reproduced!</td></tr>
+	                    <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Award:</b> Adopted as <b><a href="https://github.com/AFLplusplus/AFLplusplus/pull/1972">default mode</a> in the most widely-used fuzzer</b> AFL++ since v4.10c.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[USENIX Sec'24]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/USENIX24-ml4sec.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Uncovering the Limits of Machine Learning for Automatic Vulnerability Detection</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/USENIX24-ml4sec.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Niklas Risse and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Are machine learning models for vulnerability discovery as good as they seem?</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>USENIX Security Symposium 2024 (USENIX Sec'24), 19 pages.</i></td></tr>
+<tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                        <b>Note:</b> We published the code, data and results at <a href="https://github.com/niklasrisse/LimitsOfML4Vuln">https://github.com/niklasrisse/LimitsOfML4Vuln</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[CCS'24]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/CCS24-lmtest.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Testing Side-Channel Security of Crypto. Implementations Against Future Microarchitectures</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/CCS24-lmtest.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                G. Barthe, <u>M. B&ouml;hme</u>, S. Cauligi, C. Chuengsatiansup, D. Genkin, M. Guarnieri, D. Romero, P. Schwabe, D. Wu, and Y. Yarom</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(Two-line Abstract) Turns out all tested crypto impl. are vulnerable in the presence of recently proposed microarchitectures.</i></td></tr>
+	                <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+--- even despite of (and sometimes because of) coding idioms meant to mitigate side channels at the source code level.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM Conference on Computer and Communications Security 2024 (CCS'24), 16 pages.</i></td></tr>
+<tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Note:</b> We published the prototype at <a href="https://github.com/hw-sw-contracts/leakage-model-testing">https://github.com/hw-sw-contracts/leakage-model-testing</a>.</td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+	                        <b>Award:</b> Our paper received the <b>ACM SIGSAC Distinguished Paper Award</b>. Congrats all!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'24]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE24-predict.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Extrapolating Coverage Rate in Greybox Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE24-predict.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Danushka Liyanage, Seongmin Lee, Chakkrit Tantithamthavorn, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to *predict* the coverage rate of a greybox fuzzer in the future.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i> IEEE/ACM International Conference on Software Engineering 2024 (ICSE'24), 13 pages.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> We published tools, data, and analysis at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.10575734">10.5281/zenodo.10575734</a>).</td></tr>
+	                    <tr><td><a href="https://doi.org/10.5281/zenodo.10575734"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Functional and Reusable!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[NDSS'24]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/NDSS24-chatafl.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Large Language Model guided Protocol Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/NDSS24-chatafl.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Ruijie Meng, Martin Mirchev, <u>Marcel B&ouml;hme</u>, and Abhik Roychoudhury</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) How to make a fuzzer ask ChatGPT about the correct structure and order of messages as specified in 100+ pages of RFC.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>Network and Distributed System Security Symposium (NDSS) 2024, 15 pages.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> We published tools, data, and analysis at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.8373804">10.5281/zenodo.8373804</a>) and <a href="https://github.com/ChatAFLndss/ChatAFL">https://github.com/ChatAFLndss/ChatAFL</a>.</td></tr>
+                        <tr><td><a href="https://doi.org/10.5281/zenodo.8373804"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Inaugural NDSS Artifact Evaluation Committee evaluated our artifact as Available, Functional, and Reproduced!</td></tr>
+	                    <tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+	                            <b>Award:</b> <b><a href="https://web.archive.org/web/20250914193351/https://www.mlsec.org/topnotch/sec_ntop100.html#li-adba11576a-">Number 29</a></b> in the <b>Normalized Top-100 Security Papers</b> of all time.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[TSE'24]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/TSE24.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Human-in-the-loop Automatic Program Repair</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TSE24.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Charaka Geethal, <u>Marcel B&ouml;hme</u>, and Van-Thuan Pham</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Learn2fix automatically "negotiates" with the user the condition under which the bug is observed before it repairs the bug.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE Transactions on Software Engineering (TSE), 2024, 24 pages.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> Journal extension of our homonymous <a href="paper/ICST20.pdf">ICST'20</a> paper.</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> We publish our implementation, data, and scripts available at: <a href="https://github.com/charakageethal/learn2fix-journal-ext/">https://github.com/charakageethal/learn2fix-journal-ext/</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[CACM'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/CACM23-entropic.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Boosting Fuzzer Efficiency: An Information Theoretic Perspective</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/CACM23-entropic.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <u>Marcel B&ouml;hme</u>, Valentin Man&egrave;s, Sang Kil Cha</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Every generated input reveals some information about the program. Maximizing information maximizes efficiency..</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>Communications of the ACM (Vol. 66, No. 11)</i></td></tr>
+			<tr><td style="margin-right: 0; padding-right: 0; margin-bottom: 0; padding-bottom: 0; margin-top: 0; padding-top: 0;"><big>🏆</big></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Award:</b> CACM Research Highlight for the month of November. CACM is the monthly journal sent to all members of the ACM. Congrats all!</td></tr>
+			<tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> CACM Technical Perspective: <a href="https://cacm.acm.org/magazines/2023/11/277438-technical-perspective-whats-all-the-fuss-about-fuzzing">"What's all the fuss about fuzzing?"</a> by the amazing Gordon Fraser!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ASE'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ASE23-preciseApprox.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Precise Data-Driven Approximation for Program Analysis via Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ASE23-preciseApprox.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Nikhil Parasaram, Earl T. Barr, Sergey Mechtaev, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Marry static analysis to over-/under-approx. the valid state space and fuzzing + stats to estimate the degree of validity.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Automated Software Engineering (ASE) 2023, 12 pages.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> We published tools, data, and analysis at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.7902214">10.5281/zenodo.7902214</a>).</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ESEC/FSE'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/FSE23-reachability.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Statistical Reachability Analysis</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/FSE23-reachability.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Seongmin Lee and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Quantiative program analysis using a statistical rather than an analytical approach.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE) 2023, 12 pages</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                 <b>Note:</b> We published tools, data, and analysis at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.7612964">10.5281/zenodo.7612964</a>).</td></tr>
+	                    <tr><td><a href="https://doi.org/10.5281/zenodo.7612964"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                 <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Functional and Reusable!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE23-effectiveness.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Reachable Coverage: Estimating Saturation in Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE23-effectiveness.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Danushka Liyanage, <u>Marcel B&ouml;hme</u>, Chakkrit Tantithamthavorn, and Stephan Lipp</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Estimating the maximum achievable coverage by automatic test input generation.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering 2023 (ICSE'23), 13 pages</i></td></tr>
+	                <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> We published data, analysis, and figures at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.7571359">10.5281/zenodo.7571359</a>).</td></tr>
+			        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Featured in the <a href="https://www.fuzztesting.io/fuzzing-weekly/2023/cw5">Fuzzing Weekly Newsletter</a> (CW5).</td></tr>
+	                <tr><td><a href="https://doi.org/10.5281/zenodo.7571359"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Available and Reusable!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE23-debug-assumptions.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Evaluating the Impact of Experimental Assumptions in Automated Fault Localization</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE23-debug-assumptions.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Ezekiel Soremekun, Lukas Kirschner, <u>Marcel B&ouml;hme</u>, and Mike Papadakis</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Evaluating the assumptions that researchers make during debugging tool evaluations.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE International Conference on Software Engineering 2023 (ICSE'23), 13 pages</i></td></tr>
+			<tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Website:</b> <a href="https://debugging-assumptions.github.io/">https://debugging-assumptions.github.io/</a></td></tr>
+	        <tr><td><a href="https://debugging-assumptions.github.io/"><img width="21" src="img/badge.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> Artifact Evaluation Committee evaluated our artifact as Available and Reusable!</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ISSTA'23]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ISSTA23-green.pdf" target="_blank"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Green Fuzzing: A Saturation-based Stopping Criterion using Vulnerability Prediction</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ISSTA23-green.bib" target="_blank"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                 Stephan Lipp, Daniel Elsner, Severin Kacianka, Alexander Pretschner, <u>Marcel B&ouml;hme</u>, Sebastian Banescu</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) We suggest to stop a fuzzing campaign when the coverage of potentially vulnerable code saturates.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM SIGSOFT International Symposium on Software Testing and Analysis 2023 (ISSTA'23), 13 pages</i></td></tr>
+<tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> We published data, analysis, and figures at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.7944722">10.5281/zenodo.7944722</a>) and Github (<a href="https://github.com/tum-i4/green-fuzzing-artifacts/tree/1.0.0">https://github.com/tum-i4/green-fuzzing-artifacts</a>).</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[USENIX SEC'22]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/USENIX22.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/USENIX22.PDF','title': 'USENIX22'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Stateful Greybox Fuzzing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/USENIX22.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/USENIX22.BIBTEX','title': 'USENIX22'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Jinsheng Ba, <u>Marcel B&ouml;hme</u>, Zahra Mirzamomen, Abhik Roychoudhury</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Navigating an unknown state space by identifying and monitoring state variables values.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>USENIX Security Symposium (USENIX SEC) 2022, 18 pages</i></td></tr>
+<tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> SGFuzz is available on Github: <b><a href="https://github.com/bajinsheng/SGFuzz">https://github.com/bajinsheng/SGFuzz</a></b></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ISSTA'22]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ISSTA22.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/ISSTA22.PDF','title': 'ISSTA22'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Human-in-the-loop Oracle Learning for Semantic Bugs in String Processing Programs</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ISSTA22.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/ISSTA22.BIBTEX','title': 'ISSTA22'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Charaka Geethal, Van-Thuan Pham, Aldeida Aleti, and <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Learning to identify semantic bugs for string processing programs</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA'22), 11 pages</i></td></tr>
+	                    <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				                <b>Note:</b> We published data, analysis, and figures at <a href="https://github.com/charakageethal/grammar2fix">https://github.com/charakageethal/grammar2fix</a>.</td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'22]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE22.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/ICSE22.PDF','title': 'ICSE22'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">On the Reliability of Coverage-Based Fuzzer Benchmarking</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE22.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/ICSE22.BIBTEX','title': 'ICSE22'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <u>Marcel B&ouml;hme</u>, Laszlo Szekeres, Jonathan Metzman</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) We find a strong correlation but no strong agreement on fuzzer superiority in terms of coverage versus bugs.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE/ACM International Conference on Software Engineering 2022 (ICSE'22), 11 pages</i></td></tr>
+			<tr><td></td><td style="margin-left: 0; padding-left: 0;">
+				<b>Note:</b> We published data, analysis, and figures at Zenodo (DOI <a href="https://doi.org/10.5281/zenodo.6045830">10.5281/zenodo.6045830</a>) and Github (<a href="https://github.com/icse22data/">https://github.com/icse22data/</a>).</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+		        <b>Slides</b> @<a href="https://www.slideshare.net/mboehme/on-the-reliability-of-coveragebased-fuzzer-benchmarking">Slideshare</a></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[ICSE'22-NIER]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/ICSE22.NIER.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/ICSE22NIER.PDF','title': 'ICSE22NIER'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:12pt;">Statistical Reasoning about Programs</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/ICSE22.NIER.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/ICSE22NIER.BIBTEX','title': 'ICSE22NIER'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) Open challenges and new research directions for automated program analysis at scale.</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE International Conference on Software Engineering 2022: New Ideas and Emerging Results (ICSE'22 NIER), 5 pages</i></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+		        <b>Slides</b> @<a href="https://www.slideshare.net/mboehme/statistical-reasoning-about-programs">Slideshare</a></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td colspan="2"><b style="font-size:10pt;">[IEEE TSE'22]</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 10pt;"><a href="paper/TSE22.pdf" target="_blank" onmousedown="ga('send','pageview', {'page': '/TSE22.PDF','title': 'TSE22'});"><img src="img/pdf2.gif" width="16"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                <b style="font-size:10pt;">An Experimental Assessment of Using Theoretical Defect Predictors to Guide Search-Based Software Testing</b></td></tr>
+                        <tr><td style="margin-right: 0; padding-right: 0;"><a href="paper/TSE22.bib" target="_blank" onmousedown="ga('send','pageview', {'page': '/TSE22.BIBTEX','title': 'TSE22'});"><img src="img/bibtex.png"></a></td><td style="margin-left: 0; padding-left: 0;">
+                                Anjana Perera, Aldeida Aleti, Burak Turhan, <u>Marcel B&ouml;hme</u></td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+(One-line Abstract) What is the impact of defect predictor accuracy on defectiveness-guided test generation?</td></tr>
+                        <tr><td></td><td style="margin-left: 0; padding-left: 0;">
+                                <i>IEEE Transactions on Software Engineering (TSE), 16 pages</i></td></tr>
+<tr style="font-size:5px;"><td>&nbsp;</td><td>&nbsp;</td></tr>
+                        </tbody></table>
+<a href="pubs.html"><h3>[Older publications]</h3></a>
+<small><i>&copy; Above are the author's versions of the works. They are posted here for your personal use. Not for redistribution.<br/>&nbsp;&nbsp;&nbsp;The definitive versions were published in the referenced conferences.</i></small><br/>
+<br/>
+
+
+
+<h3 style="margin-bottom: 5pt; margin-top: 30pt; padding: 0;"><a id="service">Service</a></h3>
+<ul>
+    <li>Editorial Board</li>
+    <ul><li>ACM Transactions on Software Engineering and Methodology (TOSEM)</li>
+      <ul><li>Associate Editor</li>
+	      <li>Guest Editor in Chief: <a href="https://dl.acm.org/journal/tosem/registered-papers">Registered Papers</a></li>
+      </ul>
+    </ul>
+	<li style="margin-top:10px">Steering Committees</li>
+	<ul><li><a href="https://ase-conferences.org/steering-committee">ACM/IEEE International Conference on Automated Software Engineering (ASE)</a></li>
+		<li><a href="https://www.issta.org/#steering">ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA)</a></li>
+		<li><a href="https://fuzzing-workshop.github.io/">International Workshop on Fuzzing (FUZZING)</a></li>
+	</ul>
+    <li style="margin-top:10px">Organisation</li>
+	<ul><li><b>2027</b>: <a href="https://conf.researchr.org/home/fse-2027">FSE</a> New Faculty Symposium Organizer</li>
+		<li><b>2026</b>: <a href="https://conf.researchr.org/track/issta-2026/issta-2026-research-papers">ISSTA</a> <b>PC Chair</b>, <a href="https://conf.researchr.org/track/ase-2026/ase-2026-new-faculty-symposium">ASE</a> New Faculty Symposium Organizer</li>
+	    <li><b>2025</b>: <a href="https://conf.researchr.org/track/ase-2025/ase-2025-papers">ASE</a> <b>PC Chair</b>, <a href="https://fuzzingworkshop.github.io/">FUZZING</a> Organizer</li>
+	    <li><b>2024</b>: <a href="https://conf.researchr.org/committee/icse-2024/icse-2024-technical-track-technical-track">ICSE</a> Area Chair (Dep.&amp;Sec.), <a href="https://conf.researchr.org/track/ase-2024">ASE</a> Area Chair (Sec.), <a href="https://conf.researchr.org/track/ase-2024/ase-2024-tool-demonstrations">ASE</a> Tools Chair, <a href="https://fuzzingworkshop.github.io/">FUZZING</a> Organizer</li>
+	    <li><b>2023</b>: <a href="https://conf.researchr.org/committee/icse-2023/icse-2023-organising-committee">ICSE</a> Sustainability Co-Chair, <a href="https://www.dagstuhl.de/seminars/seminar-calendar/seminar-details/23131">Dagstuhl</a> Organizer, <a href="https://fuzzingworkshop.github.io/">FUZZING</a> Organizer</li>
+	    <li><b>2022</b>: <a href="https://2022.esec-fse.org/committee/fse-2022-organizing-committee">ESEC/FSE</a> Publicity and Social Media Co-Chair, <a href="https://fuzzingworkshop.github.io/">FUZZING</a> Organizer</li>
+	    <li><b>2021</b>: <a href="https://conf.researchr.org/committee/issta-2021/issta-2021-organizing-comittee">ECOOP/ISSTA</a> Workshops Co-Chair</li>
+	    <li><b>2020</b>: <a href="https://conf.researchr.org/committee/issta-2020/issta-2020-organizing-committee">ISSTA</a> Doctoral Symposium Co-Chair</li>
+	    <li><b>2019</b>: NII Shonan: <a href="shonan.txt" target="_blank">Fuzzing and Symbolic Execution: Reflections, Challenges, and Opportunities</a></li>
+            <li><b>2018</b>: <a href="http://formal-analysis.com/iceccs/2018/" target="_blank">ICECCS</a> Workshops Chair</li>
+    	</ul>
+    <li style="margin-top:10px">Committee Member</li>
+    	<ul>
+		<li><b>2027</b>: <a href="https://conf.researchr.org/track/icse-2027/icse-2027-research-track">ICSE</a>, <a href="https://conf.researchr.org/track/fse-2027/fse-2027-papers">FSE</a></li>
+		<li><b>2026</b>: <a href="https://aaai.org/conference/aaai/aaai-26/2026-program-committee/">AAAI</a>, <a href="https://conf.researchr.org/track/icse-2026/icse-2026-research-track?">ICSE</a>, <a href="https://conf.researchr.org/track/ase-2026/ase-2026-research-track">ASE</a></li>
+		<li><b>2025</b>: <a href="https://conf.researchr.org/track/icse-2025/icse-2025-research-track?">ICSE</a></li>
+	    <li><b>2024</b>: <a href="https://conf.researchr.org/committee/icse-2024/icse-2024-technical-track-technical-track">ICSE</a>, <a href="https://conf.researchr.org/home/fse-2024">FSE</a>, <a href="https://2024.issta.org/track/issta-2024-papers">ISSTA</a></li>
+	    <li><b>2023</b>: <a href="https://www.sigsac.org/ccs/CCS2023/">CCS</a>, <a href="https://conf.researchr.org/track/icse-2023/icse-2023-technical-track">ICSE</a>, <a href="https://conf.researchr.org/track/issta-2023/issta-2023-technical-papers">ISSTA</a></li>
+	    <li><b>2022</b>: <a href="https://www.sigsac.org/ccs/CCS2022/">CCS</a>, <a href="https://2022.esec-fse.org/track/fse-2022-research-papers">ESEC/FSE</a>, <a href="https://conf.researchr.org/track/icse-2022/icse-2022-seip---software-engineering-in-practice">ICSE SEIP</a>, <a href="https://icst2022.vrain.upv.es/">ICST</a></li>
+	    <li><b>2021</b>: <a href="https://www.sigsac.org/ccs/CCS2021/">CCS</a>, <a href="https://conf.researchr.org/home/icse-2021" target="_blank">ICSE</a>, <a href="https://conf.researchr.org/home/issta-2021" target="_blank">ISSTA</a>, <a href="https://conf.researchr.org/track/ase-2021/ase-2021-papers">ASE</a>, <a href="https://icst2021.icmc.usp.br/" target="_blank">ICST</a></li>
+	    <li><b>2020</b>: <a href="https://conf.researchr.org/home/icse-2020" target="_blank">ICSE</a>, <a href="https://conf.researchr.org/home/issta-2020" target="_blank">ISSTA</a>, <a href="https://www.deakin.edu.au/ase2020">ASE</a>, <a href="http://www.icst2020.info/" target="_blank">ICST</a>, <a href="https://conf.researchr.org/track/icse-2020/icse-2020-New-Ideas-and-Emerging-Results" target="_blank">ICSE-NIER</a></li>
+	    <li><b>2019</b>: <a href="https://conf.researchr.org/home/icse-2019" target="_blank">ICSE</a>, <a href="https://2019.ase-conferences.org/committee/ase-2019-papers-program-committee" target="_blank">ASE</a>, <a href="https://tap.sosy-lab.org/2019/index.php" target="_blank">TAP</a></li>
+	    <li><b>2018</b>: <a href="http://formal-analysis.com/iceccs/2018/" target="_blank">ICECCS</a>, <a href="http://software.imdea.org/sbst18/" target="_blank">SBST</a>, <a href=" http://www.aswec2018.com" target="_blank">ASWEC</a>, <a href="https://conf.researchr.org/committee/issta-2018/issta-2018-artifacts-artifact-evaluation-committee" target="_blank">ISSTA AEC</a>, <a href="http://www.icse2018.org/track/icse-2018-ACM-Student-Research-Competition" target="_blank">ICSE SRC</a>, <a href=" http://www.ase2018.com/?p=calls#demonstrations" target="_blank">ASE Demo</a>, <a href="https://2018.msrconf.org/committee/msr-2018-mining-challenge-mining-challenge-committee" target="_blank">MSR MC</a></li>
+	    <li><b>2016</b>: FSE Demo, ISSTA Artifact Evaluation</li>
+	    <li><b>2015</b>: ICSE NIER (<a href="http://2015.icse-conferences.org/program/15-program/124-nier-new-formalism">session chair</a>), ISSTA Artifact Evaluation</li>
+    	</ul>
+</ul>
+
+<h3 style="margin-bottom: 5pt; margin-top: 30pt; padding: 0;"><a id="vulns">Security Advisories (82) and Reported Bugs (120)</a></h3>
+Our tools have found several security-critical vulnerabilities in widely used open-source projects and libraries,
+such as <a href="https://www.openwall.com/lists/oss-security/2017/05/15/1">php</a> (4), <a href="https://bugs.kde.org/show_bug.cgi?id=359181">valgrind</a>, <a href="https://sourceware.org/bugzilla/show_bug.cgi?id=19597">gdb</a>, <a href="http://lists.gnu.org/archive/cgi-bin/namazu.cgi?query=Marcel+Boehme&submit=Search%21&idxname=bug-coreutils&max=20&result=normal&sort=score">coreutils</a> (13), <a href="https://sourceware.org/bugzilla/buglist.cgi?bug_status=UNCONFIRMED&bug_status=NEW&bug_status=ASSIGNED&bug_status=SUSPENDED&bug_status=WAITING&bug_status=REOPENED&bug_status=RESOLVED&bug_status=VERIFIED&bug_status=CLOSED&f0=OP&f1=OP&f2=product&f3=component&f4=alias&f5=short_desc&f7=content&f8=CP&f9=CP&j1=OR&list_id=35065&o2=substring&o3=substring&o4=substring&o5=substring&o7=matches&query_format=advanced&resolution=---&resolution=FIXED&v2=AFLFast&v3=AFLFast&v4=AFLFast&v5=AFLFast&v7=%22AFLFast%22">binutils</a> (56), <a href="https://gcc.gnu.org/bugzilla/buglist.cgi?bug_status=UNCONFIRMED&bug_status=NEW&bug_status=ASSIGNED&bug_status=SUSPENDED&bug_status=WAITING&bug_status=REOPENED&bug_status=RESOLVED&bug_status=VERIFIED&bug_status=CLOSED&cf_known_to_fail_type=allwords&cf_known_to_work_type=allwords&email1=Boehme&email2=Marcel&emailassigned_to1=1&emailassigned_to2=1&emailcc1=1&emailcc2=1&emaillongdesc1=1&emaillongdesc2=1&emailreporter1=1&emailreporter2=1&emailtype1=substring&emailtype2=substring&query_format=advanced">libiberty</a> (8), <a href="https://www.prevanders.net/dwarfbug.html#DW201703-007">libdwarf</a> (7), <a href="http://www.openwall.com/lists/oss-security/2017/05/15/1">libxml2</a> (4), <a href="https://git.ffmpeg.org/gitweb/ffmpeg.git?a=search&h=HEAD&st=commit&s=b%C3%B6hme">ffmpeg</a> (10), <a href="https://github.com/dbry/WavPack/issues?utf8=%E2%9C%93&q=thuan">wavepac</a> (4), <a href="http://www.live555.com/liveMedia/public/changelog.txt">Live555 Media Server</a> (2), <a href="https://github.com/libming/libming/issues/68">libming</a>, and <a href="https://bugzilla.libav.org/show_bug.cgi?id=1039">libav</a>.
+Our tools have been discussed in the news @<a href="https://www.securityweek.com/researchers-introduce-smart-greybox-fuzzing" target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews2','title': 'smartNews2'});">Security Week</a>, @<a href="https://www.theregister.co.uk/2018/11/28/better_fuzzer_aflsmart/" target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews1','title': 'smartNews1'});">The Register</a>, @<a href="https://nakedsecurity.sophos.com/2018/12/03/faster-fuzzing-ferrets-out-42-fresh-zero-day-flaws/" target="_blank" onmousedown="ga('send','pageview', {'page': '/smartNews3','title': 'smartNews3'});">Nacked Security</a>, @<a href="https://news.ycombinator.com/item?id=12330038">Hackernews</a>, and by the coreutils package maintainer <a href="http://www.pixelbeat.org/docs/coreutils-testing.html#coverage">P&aacute;draig Brady</a>. Google Security awarded USD 2,000 for hardening of security-critical open-source libraries.<br/>
+Most vulnerabilities were detected and analyzed during experiments of <a href="https://www.comp.nus.edu.sg/~thuanpv/">Van-Thuan Pham</a> and myself.<br/>
+</br>
+
+In 2023, we issued the following security advisory for OpenSSL (secure communication) <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-0215>CVE-2023-0215</a>, for Live555 (streaming) <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-37117>CVE-2023-37117</a>, and for ProFTPD (file transfer) <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-51713>CVE-2023-51713</a>. Great work Ruijie and Octavio!<br/>
+<br/>
+In 2021, we issued the following security advisories. Great work <a href="https://github.com/bajinsheng" target="_blank" onmousedown="ga('send','pageview', {'page': '/Jinsheng','title': 'Jinsheng'});">Jinsheng</a>!<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-38380>CVE-2021-38380</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-38381>CVE-2021-38381</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-38382>CVE-2021-38382</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-38383>CVE-2021-38383</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-39282>CVE-2021-39282</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-39283>CVE-2021-39283</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41396>CVE-2021-41396</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41397>CVE-2021-41397</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41687>CVE-2021-41687</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41688>CVE-2021-41688</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41689>CVE-2021-41689</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41690>CVE-2021-41690</a>
+<br/><br/>
+In 2019, we issued the following security advisories. Great work <a href="https://thuanpv.github.io" target="_blank" onmousedown="ga('send','pageview', {'page': '/Thuan','title': 'Thuan'});">Thuan</a>!<br/>
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-7314>CVE-2019-7314</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-15232>CVE-2019-15232</a>
+	       <i>(Your web-streaming baby monitor or security camera could be vulnerable)</i>
+<br/><br/>
+In 2018, we issued the following security advisories. Great work <a href="https://thuanpv.github.io" target="_blank" onmousedown="ga('send','pageview', {'page': '/Thuan','title': 'Thuan'});">Thuan</a>, Alex, and Andrew!<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10372>CVE-2018-10372</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10373>CVE-2018-10373</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10536>CVE-2018-10536</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10537>CVE-2018-10537</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10538>CVE-2018-10538</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10539>CVE-2018-10539</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-10540>CVE-2018-10540</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-12458>CVE-2018-12458</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-12459>CVE-2018-12459</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-12460>CVE-2018-12460</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13300>CVE-2018-13300</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13301>CVE-2018-13301</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13302>CVE-2018-13302</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13303>CVE-2018-13303</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13304>CVE-2018-13304</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13305>CVE-2018-13305</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-13785>CVE-2018-13785</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19539>CVE-2018-19539</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19540>CVE-2018-19540</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19541>CVE-2018-19541</a>,<br/>
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19542>CVE-2018-19542</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19543>CVE-2018-19543</a>,
+	       <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19543>CVE-2018-19543</a>
+<br/><br/>
+In 2016 and 2017, we issued the following security advisories. Credit also goes to <a href="https://thuanpv.github.io" target="_blank" onmousedown="ga('send','pageview', {'page': '/Thuan','title': 'Thuan'});">Thuan Pham</a>!<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-2226>CVE-2016-2226</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4487>CVE-2016-4487</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4488>CVE-2016-4488</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4489>CVE-2016-4489</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4490>CVE-2016-4490</a>,</br>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4491>CVE-2016-4491</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4492>CVE-2016-4492</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-4493>CVE-2016-4493</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-6131>CVE-2016-6131</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-6965>CVE-2017-6965</a>,</br>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-6966>CVE-2017-6966</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-6969>CVE-2017-6969</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7209>CVE-2017-7209</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7210>CVE-2017-7210</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7223>CVE-2017-7223</a>,</br>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7224>CVE-2017-7224</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7225>CVE-2017-7225</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7226>CVE-2017-7226</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7227>CVE-2017-7227</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7299>CVE-2017-7299</a>,</br>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7300>CVE-2017-7300</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7301>CVE-2017-7301</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7302>CVE-2017-7302</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7303>CVE-2017-7303</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7304>CVE-2017-7304</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7578>CVE-2017-7578</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8392>CVE-2017-8392</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8393>CVE-2017-8393</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8394>CVE-2017-8394</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8395>CVE-2017-8395</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8396>CVE-2017-8396</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8397>CVE-2017-8397</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-8398>CVE-2017-8398</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9047>CVE-2017-9047</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9048>CVE-2017-9048</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9049>CVE-2017-9049</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9050>CVE-2017-9050</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9051>CVE-2017-9051</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9052>CVE-2017-9052</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9053>CVE-2017-9053</a>,<br/>
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9054>CVE-2017-9054</a>,
+               <a href=http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-9055>CVE-2017-9055</a><br/>
+
+<h3 style="margin-bottom: 5pt; margin-top: 30pt; padding: 0;"><a id="manifesto">Software Engineering Reproducibility Manifesto (SERM)</a></h3>
+<p>I am trying to lead my research group according to a consistent reproducibility policy. Read more at <a href="manifesto.html" onmousedown="ga('send','pageview', {'page': '/manifesto.html','title': 'Manifesto'});">https://mboehme.github.io/manifesto</a>.</p>
+<ol>
+	<li>I will educate my graduate students about sound empirical analysis and reproducibility.</li>
+	<li>We will implement our techniques directly into the baseline and avoid unrelated changes.</li>
+	<li>We will make all our source code publicly available upon acceptance (as far as funder allows).</li>
+	<li>We will make all our papers available by Green Open Access (as far as publisher allows).</li>
+	<li>We will share data, scripts, and figures for the main results under CC-BY.</li>
+	<li>We will add a "Reproducibility" declaration at the end of each paper.</li>
+</ol>
+
+
+<h3 style="margin-bottom: 5pt; margin-top: 30pt; padding: 0;"><a id="umlauts">Post Scriptum - Umlauts</a></h3>
+My last name is properly written with an umlaut (i.e, B&ouml;hme).
+                        The letter &ouml; is pronounced like 'u' in fur or 'e' in earn.
+                        <table border="1" align="center" cellpadding=4 style="margin-top: 10px; border-collapse:collapse;">
+                        <tbody><tr><td><b>Latex/Bibtex</b></td><td><code>B{\"o}hme</code></td></tr>
+                        <tr><td>HTML</td><td><code>B&amp;ouml;hme</code></td></tr>
+                        <tr><td>UTF8</td><td><code>B&ouml;hme</code></td></tr>
+                        </tbody></table>
+                        Latex supports umlauts natively using <code>\usepackage[utf8]{inputenc}</code> among the imports.<br>
+			The correct english transliteration spells: <code>Boehme</code>.<br/>
+<br/>
+
+<p><address>
+<small class=address><font color="#b0b0b0">Marcel B&ouml;hme
+&lt;<script type="text/javascript">
+//<![CDATA[
+<!--
+var x="function f(x){var i,o=\"\",ol=x.length,l=ol;while(x.charCodeAt(l/13)!" +
+"=48){try{x+=x;l+=l;}catch(e){}}for(i=l-1;i>=0;i--){o+=x.charAt(i);}return o" +
+".substr(0,ol);}f(\")37,\\\"BHL_WJ220\\\\]M720\\\\530\\\\100\\\\C100\\\\010\\"+
+"\\310\\\\4430\\\\600\\\\=000\\\\t\\\\310\\\\700\\\\610\\\\200\\\\q28?`p}1,Q" +
+".W7ldsoq$!^fr120\\\\S120\\\\030\\\\330\\\\9530\\\\230\\\\630\\\\020\\\\330\\"+
+"\\120\\\\\\\\\\\\530\\\\520\\\\410\\\\430\\\\410\\\\100\\\\Q500\\\\530\\\\4" +
+"00\\\\610\\\\700\\\\010\\\\F?_700\\\\500\\\\-6}=gxq6;3!=!%771\\\\$!+ 9(%-\\" +
+"\"(f};o nruter};))++y(^)i(tAedoCrahc.x(edoCrahCmorf.gnirtS=+o;721=%y;i=+y)3" +
+"7==i(fi{)++i;l<i;0=i(rof;htgnel.x=l,\\\"\\\"=o,i rav{)y,x(f noitcnuf\")"     ;
+while(x=eval(x));
+//-->
+//]]>
+</script>&gt;
+
+&middot; mboehme.github.io &middot; Updated: 2021-08-11 14:05</font>
+</small>
+</address>
+</td></tr></table>
+</body>
+</html>
+
+

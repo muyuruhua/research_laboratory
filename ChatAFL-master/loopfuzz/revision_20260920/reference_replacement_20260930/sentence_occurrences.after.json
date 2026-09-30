@@ -1,0 +1,547 @@
+[
+  {
+    "id": "C001",
+    "source": "main.revised.tex",
+    "line": 83,
+    "keys": [
+      "aflnet"
+    ],
+    "sentence": "AFLNet uses responses to construct an inferred protocol state machine (IPSM), making protocol-visible feedback available without a target-specific internal-state extractor~\\cite{aflnet}.",
+    "paragraph": "\\section{Introduction}\nStateful protocol fuzzing must discover useful interaction sequences as well as useful message contents. A server can accept a request only after earlier exchanges establish a session, authenticate a client, or create a resource. AFLNet uses responses to construct an inferred protocol state machine (IPSM), making protocol-visible feedback available without a target-specific internal-state extractor~\\cite{aflnet}. This deployment advantage comes with an abstraction boundary: a response code or sequence is evidence about observable behavior, rather than an identifier of the server's complete semantic state."
+  },
+  {
+    "id": "C002",
+    "source": "main.revised.tex",
+    "line": 85,
+    "keys": [
+      "stateafl"
+    ],
+    "sentence": "StateAFL already identifies limitations of response-derived state abstractions and uses memory observations to infer server states~\\cite{stateafl}.",
+    "paragraph": "StateAFL already identifies limitations of response-derived state abstractions and uses memory observations to infer server states~\\cite{stateafl}. The fact that responses can misrepresent internal progress is therefore established background. Our question is how a fuzzer retaining a response-visible abstraction should decide, during a campaign, whether a particular state signal is useful enough to justify further exploration. A new IPSM state edge can accompany a previously unseen code branch, reproduce an already explored rejection path, or distinguish responses after the measured code surface has saturated. These outcomes should not receive identical evidential weight."
+  },
+  {
+    "id": "C003",
+    "source": "main.revised.tex",
+    "line": 87,
+    "keys": [
+      "chatafl"
+    ],
+    "sentence": "ChatAFL demonstrates that LLMs can derive protocol structures and propose interaction sequences~\\cite{chatafl}.",
+    "paragraph": "Assistance from large language models (LLMs) makes this distinction consequential for queue management. ChatAFL demonstrates that LLMs can derive protocol structures and propose interaction sequences~\\cite{chatafl}. A generated request is nevertheless a hypothesis about both message structure and live session conditions. If a proposal is retained indefinitely because it produces a new response-derived state, the fuzzer may repeatedly mutate an input whose apparent novelty has little downstream code value. Durable queue membership represents a continuing allocation of execution resources."
+  },
+  {
+    "id": "C004",
+    "source": "main.revised.tex",
+    "line": 137,
+    "keys": [
+      "aflnet",
+      "stateafl",
+      "nsfuzz",
+      "sgf_usenix22"
+    ],
+    "sentence": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}.",
+    "paragraph": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM; StateAFL uses memory snapshots, and NSFuzz traces program state variables. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses."
+  },
+  {
+    "id": "C005",
+    "source": "main.revised.tex",
+    "line": 137,
+    "keys": [
+      "aflnet5years2025"
+    ],
+    "sentence": "The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}.",
+    "paragraph": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM; StateAFL uses memory snapshots, and NSFuzz traces program state variables. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses."
+  },
+  {
+    "id": "C006",
+    "source": "main.revised.tex",
+    "line": 137,
+    "keys": [
+      "stateinspector2022"
+    ],
+    "sentence": "The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}.",
+    "paragraph": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM; StateAFL uses memory snapshots, and NSFuzz traces program state variables. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses."
+  },
+  {
+    "id": "C007",
+    "source": "main.revised.tex",
+    "line": 139,
+    "keys": [
+      "nyxnet2022"
+    ],
+    "sentence": "Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}.",
+    "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+  },
+  {
+    "id": "C008",
+    "source": "main.revised.tex",
+    "line": 139,
+    "keys": [
+      "snapfuzz2022"
+    ],
+    "sentence": "Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}.",
+    "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+  },
+  {
+    "id": "C009",
+    "source": "main.revised.tex",
+    "line": 139,
+    "keys": [
+      "fuzztructionnet2024"
+    ],
+    "sentence": "Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}.",
+    "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+  },
+  {
+    "id": "C010",
+    "source": "main.revised.tex",
+    "line": 139,
+    "keys": [
+      "blueman2025"
+    ],
+    "sentence": "BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}.",
+    "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+  },
+  {
+    "id": "C011",
+    "source": "main.revised.tex",
+    "line": 139,
+    "keys": [
+      "distfuzz2025"
+    ],
+    "sentence": "DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}.",
+    "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+  },
+  {
+    "id": "C012",
+    "source": "main.revised.tex",
+    "line": 141,
+    "keys": [
+      "gramatron_effective_grammar_aware_2021"
+    ],
+    "sentence": "Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}.",
+    "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+  },
+  {
+    "id": "C013",
+    "source": "main.revised.tex",
+    "line": 141,
+    "keys": [
+      "carpetfuzz_documentation_2023"
+    ],
+    "sentence": "Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}.",
+    "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+  },
+  {
+    "id": "C014",
+    "source": "main.revised.tex",
+    "line": 141,
+    "keys": [
+      "formatfuzzer"
+    ],
+    "sentence": "FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}.",
+    "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+  },
+  {
+    "id": "C015",
+    "source": "main.revised.tex",
+    "line": 141,
+    "keys": [
+      "fuzztruction2023"
+    ],
+    "sentence": "FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}.",
+    "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+  },
+  {
+    "id": "C016",
+    "source": "main.revised.tex",
+    "line": 141,
+    "keys": [
+      "miner2023"
+    ],
+    "sentence": "MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}.",
+    "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron generates inputs through grammar automata~\\cite{gramatron_effective_grammar_aware_2021}; CarpetFuzz extracts option constraints from documentation~\\cite{carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+  },
+  {
+    "id": "C017",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "chatafl"
+    ],
+    "sentence": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C018",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "llmif_augmented_large_language_2024"
+    ],
+    "sentence": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C019",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "fuzz4all_universal_fuzzing_large_2024"
+    ],
+    "sentence": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C020",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "fuzzgpt2024"
+    ],
+    "sentence": "FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C021",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "whitefox2024"
+    ],
+    "sentence": "FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C022",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "prophetfuzz2024"
+    ],
+    "sentence": "ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C023",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "hybridllm2026"
+    ],
+    "sentence": "Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C024",
+    "source": "main.revised.tex",
+    "line": 143,
+    "keys": [
+      "hgfuzzer2026"
+    ],
+    "sentence": "Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}.",
+    "paragraph": "ChatAFL uses LLMs for protocol-message generation~\\cite{chatafl}; LLMIF derives device-testing inputs from protocol specifications~\\cite{llmif_augmented_large_language_2024}; Fuzz4All generates and mutates program inputs across languages~\\cite{fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and LLM-assisted directed greybox fuzzing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+  },
+  {
+    "id": "C025",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "bandits_states2023"
+    ],
+    "sentence": "The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C026",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "tscheduler2024"
+    ],
+    "sentence": "T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C027",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "entropic2020"
+    ],
+    "sentence": "Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C028",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "seqfuzzsdn2026"
+    ],
+    "sentence": "SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C029",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "fox2024"
+    ],
+    "sentence": "FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C030",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "fishfuzz2023"
+    ],
+    "sentence": "FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C031",
+    "source": "main.revised.tex",
+    "line": 145,
+    "keys": [
+      "wingmuzz2025"
+    ],
+    "sentence": "WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}.",
+    "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}. T-Scheduler combines Beta--Bernoulli estimation with Thompson sampling for seed scheduling~\\cite{tscheduler2024}. Entropic allocates seed energy using estimated information gain~\\cite{entropic2020}. SeqFuzzSDN infers extended finite-state machines and plans control-message sequences for software-defined networking controllers~\\cite{seqfuzzsdn2026}. These works delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz schedules open-source protocol implementations and their seeds to guide blackbox testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+  },
+  {
+    "id": "C032",
+    "source": "main.revised.tex",
+    "line": 147,
+    "keys": [
+      "protocolguard2026"
+    ],
+    "sentence": "ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}.",
+    "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+  },
+  {
+    "id": "C033",
+    "source": "main.revised.tex",
+    "line": 147,
+    "keys": [
+      "bsfuzzer2026"
+    ],
+    "sentence": "ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}.",
+    "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+  },
+  {
+    "id": "C034",
+    "source": "main.revised.tex",
+    "line": 147,
+    "keys": [
+      "mercuriuzz2026"
+    ],
+    "sentence": "ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}.",
+    "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+  },
+  {
+    "id": "C035",
+    "source": "main.revised.tex",
+    "line": 147,
+    "keys": [
+      "magma2020"
+    ],
+    "sentence": "Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure.",
+    "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+  },
+  {
+    "id": "C036",
+    "source": "main.revised.tex",
+    "line": 149,
+    "keys": [
+      "profuzzbench_benchmark_stateful_protocol_2021",
+      "fuzzbench2021"
+    ],
+    "sentence": "ProFuzzBench and FuzzBench provide structured evaluation settings for protocol and general-purpose fuzzers~\\cite{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}.",
+    "paragraph": "Evaluation methodology is a further boundary. ProFuzzBench and FuzzBench provide structured evaluation settings for protocol and general-purpose fuzzers~\\cite{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}. Reliability analyses and prudent evaluation practices require care when interpreting coverage, repeated trials, and resource controls~\\cite{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}. Our protocol adopts these concerns while keeping available retrospective observations distinct from the unfinished confirmatory comparisons. Candidate-level, episode-level, and controlled rediscovery measurements remain necessary to establish the proposed mechanisms."
+  },
+  {
+    "id": "C037",
+    "source": "main.revised.tex",
+    "line": 149,
+    "keys": [
+      "reliability_benchmarking_2022",
+      "sok_prudent_evaluation_practices_2024"
+    ],
+    "sentence": "Reliability analyses and prudent evaluation practices require care when interpreting coverage, repeated trials, and resource controls~\\cite{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}.",
+    "paragraph": "Evaluation methodology is a further boundary. ProFuzzBench and FuzzBench provide structured evaluation settings for protocol and general-purpose fuzzers~\\cite{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}. Reliability analyses and prudent evaluation practices require care when interpreting coverage, repeated trials, and resource controls~\\cite{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}. Our protocol adopts these concerns while keeping available retrospective observations distinct from the unfinished confirmatory comparisons. Candidate-level, episode-level, and controlled rediscovery measurements remain necessary to establish the proposed mechanisms."
+  },
+  {
+    "id": "C038",
+    "source": "main.revised.tex",
+    "line": 161,
+    "keys": [
+      "bandits_states2023"
+    ],
+    "sentence": "The Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\",
+    "paragraph": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "id": "C039",
+    "source": "main.revised.tex",
+    "line": 162,
+    "keys": [
+      "tscheduler2024"
+    ],
+    "sentence": "T-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\",
+    "paragraph": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "id": "C040",
+    "source": "main.revised.tex",
+    "line": 162,
+    "keys": [
+      "entropic2020"
+    ],
+    "sentence": "T-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\",
+    "paragraph": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "id": "C041",
+    "source": "main.revised.tex",
+    "line": 163,
+    "keys": [
+      "seqfuzzsdn2026"
+    ],
+    "sentence": "SeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\",
+    "paragraph": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "id": "C042",
+    "source": "main.revised.tex",
+    "line": 164,
+    "keys": [
+      "magma2020"
+    ],
+    "sentence": "Magma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\",
+    "paragraph": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "id": "C043",
+    "source": "main.revised.tex",
+    "line": 321,
+    "keys": [
+      "thompson1933"
+    ],
+    "sentence": "Keeping this factor and any warm-up policy fixed prevents calibration from simultaneously changing the baseline scheduler. Adapting posterior-guided randomization~\\cite{thompson1933} to the discounted, frontier-weighted controller, draw",
+    "paragraph": "\\subsection{Calibrated scheduling}\nThe topology term favors underexplored observed states:\n\\begin{equation}\nF(s)=\n\\begin{cases}\n4,&s\\text{ is newly reachable or }\\deg^+(s)\\leq1,\\\\\n2,&1<\\deg^+(s)\\leq3,\\\\\n1,&\\deg^+(s)>3.\n\\end{cases}\n\\end{equation}\nOnly reachable states with eligible seeds participate. $\\deg^+(s)$ counts outgoing IPSM state edges, not code branches. Let $B(s)$ denote the inherited base weight shared by C, D, and E. Define\n\\begin{equation}\n\\operatorname{Frontier}(s)=B(s)F(s).\n\\end{equation}\nKeeping this factor and any warm-up policy fixed prevents calibration from simultaneously changing the baseline scheduler. Adapting posterior-guided randomization~\\cite{thompson1933} to the discounted, frontier-weighted controller, draw\n\\begin{equation}\n\\widetilde{\\theta}_s\\sim\\operatorname{Beta}(\\alpha_s,\\beta_s)\n\\end{equation}\nand calculate\n\\begin{equation}\nS(s)=\\operatorname{Frontier}(s)[\\epsilon+(1-\\epsilon)\\widetilde{\\theta}_s],\n\\qquad\\epsilon=0.1.\n\\label{eq:score}\n\\end{equation}\nSelect a state with probability proportional to $S(s)$, recording the pseudorandom seed. This is Thompson-sampled weighted selection, not an argmax policy. Under a finite eligible set, the positive floor gives nonzero selection probability, not a fixed number of selections."
+  },
+  {
+    "id": "C044",
+    "source": "main.revised.tex",
+    "line": 501,
+    "keys": [
+      "greenbenchmark2023"
+    ],
+    "sentence": "Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\\cite{greenbenchmark2023}.",
+    "paragraph": "Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. Trial order is randomized within machine blocks and balanced across machines and time periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost. Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\\cite{greenbenchmark2023}. The proposed analysis therefore distinguishes allocated CPU-hours, measured consumption, and actual search exposure."
+  },
+  {
+    "id": "C045",
+    "source": "main.revised.tex",
+    "line": 546,
+    "keys": [
+      "validation2017"
+    ],
+    "sentence": "We assess probabilistic accuracy with the binary Brier score (BS), also used in software defect prediction~\\cite{validation2017}:\n\\begin{equation}\n\\mathrm{BS}=\\frac{1}{n}\\sum_{t=1}^{n}(p_t-r_t)^2.",
+    "paragraph": "For complete episodes, $p_t=\\widehat{\\theta}_{s_t,t}^{\\,\\mathrm{pre}}$ predicts later reward $r_t$. We assess probabilistic accuracy with the binary Brier score (BS), also used in software defect prediction~\\cite{validation2017}:\n\\begin{equation}\n\\mathrm{BS}=\\frac{1}{n}\\sum_{t=1}^{n}(p_t-r_t)^2.\n\\end{equation}\nWe adapt the binned expected calibration error (ECE) of Guo et al.~\\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count. This evaluates event probabilities rather than predicted-class confidence. Bin counts accompany the estimate; empty bins remain unestimated. Reliability plots and precision--recall analysis~\\cite{davis2006pr} accompany the BS. We report non-interpolated average precision (AP): precision at each distinct score threshold weighted by its recall increment. This quantity differs from trapezoidal precision--recall area; it is left undefined when there are no positive episodes. Compare the BS to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases."
+  },
+  {
+    "id": "C046",
+    "source": "main.revised.tex",
+    "line": 550,
+    "keys": [
+      "guo2017calibration"
+    ],
+    "sentence": "\\end{equation}\nWe adapt the binned expected calibration error (ECE) of Guo et al.~\\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count.",
+    "paragraph": "For complete episodes, $p_t=\\widehat{\\theta}_{s_t,t}^{\\,\\mathrm{pre}}$ predicts later reward $r_t$. We assess probabilistic accuracy with the binary Brier score (BS), also used in software defect prediction~\\cite{validation2017}:\n\\begin{equation}\n\\mathrm{BS}=\\frac{1}{n}\\sum_{t=1}^{n}(p_t-r_t)^2.\n\\end{equation}\nWe adapt the binned expected calibration error (ECE) of Guo et al.~\\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count. This evaluates event probabilities rather than predicted-class confidence. Bin counts accompany the estimate; empty bins remain unestimated. Reliability plots and precision--recall analysis~\\cite{davis2006pr} accompany the BS. We report non-interpolated average precision (AP): precision at each distinct score threshold weighted by its recall increment. This quantity differs from trapezoidal precision--recall area; it is left undefined when there are no positive episodes. Compare the BS to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases."
+  },
+  {
+    "id": "C047",
+    "source": "main.revised.tex",
+    "line": 550,
+    "keys": [
+      "davis2006pr"
+    ],
+    "sentence": "Reliability plots and precision--recall analysis~\\cite{davis2006pr} accompany the BS.",
+    "paragraph": "For complete episodes, $p_t=\\widehat{\\theta}_{s_t,t}^{\\,\\mathrm{pre}}$ predicts later reward $r_t$. We assess probabilistic accuracy with the binary Brier score (BS), also used in software defect prediction~\\cite{validation2017}:\n\\begin{equation}\n\\mathrm{BS}=\\frac{1}{n}\\sum_{t=1}^{n}(p_t-r_t)^2.\n\\end{equation}\nWe adapt the binned expected calibration error (ECE) of Guo et al.~\\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count. This evaluates event probabilities rather than predicted-class confidence. Bin counts accompany the estimate; empty bins remain unestimated. Reliability plots and precision--recall analysis~\\cite{davis2006pr} accompany the BS. We report non-interpolated average precision (AP): precision at each distinct score threshold weighted by its recall increment. This quantity differs from trapezoidal precision--recall area; it is left undefined when there are no positive episodes. Compare the BS to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases."
+  },
+  {
+    "id": "C048",
+    "source": "main.revised.tex",
+    "line": 557,
+    "keys": [
+      "efron1979"
+    ],
+    "sentence": "Bootstrap resampling~\\cite{efron1979} operates on whole runs; the percentile 95\\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here.",
+    "paragraph": "Per target, report mean, median and dispersion. Bootstrap resampling~\\cite{efron1979} operates on whole runs; the percentile 95\\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. Apply the Benjamini--Hochberg procedure~\\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Report adjusted values without claiming unconditional false-discovery-rate control. The primary admission-mechanism family has nine D--C productivity contrasts and is reported separately. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator."
+  },
+  {
+    "id": "C049",
+    "source": "main.revised.tex",
+    "line": 557,
+    "keys": [
+      "mann1947"
+    ],
+    "sentence": "For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$.",
+    "paragraph": "Per target, report mean, median and dispersion. Bootstrap resampling~\\cite{efron1979} operates on whole runs; the percentile 95\\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. Apply the Benjamini--Hochberg procedure~\\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Report adjusted values without claiming unconditional false-discovery-rate control. The primary admission-mechanism family has nine D--C productivity contrasts and is reported separately. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator."
+  },
+  {
+    "id": "C050",
+    "source": "main.revised.tex",
+    "line": 557,
+    "keys": [
+      "cliff1993"
+    ],
+    "sentence": "For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$.",
+    "paragraph": "Per target, report mean, median and dispersion. Bootstrap resampling~\\cite{efron1979} operates on whole runs; the percentile 95\\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. Apply the Benjamini--Hochberg procedure~\\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Report adjusted values without claiming unconditional false-discovery-rate control. The primary admission-mechanism family has nine D--C productivity contrasts and is reported separately. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator."
+  },
+  {
+    "id": "C051",
+    "source": "main.revised.tex",
+    "line": 557,
+    "keys": [
+      "benjamini1995"
+    ],
+    "sentence": "Apply the Benjamini--Hochberg procedure~\\cite{benjamini1995} at nominal $q=0.05$.",
+    "paragraph": "Per target, report mean, median and dispersion. Bootstrap resampling~\\cite{efron1979} operates on whole runs; the percentile 95\\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. For independent run-level contrasts, report two-sided Mann--Whitney U tests~\\cite{mann1947} with ties accounted for, and Cliff's $\\delta$~\\cite{cliff1993}, oriented as $\\Pr(X_{\\rm treatment}>X_{\\rm comparator})-\\Pr(X_{\\rm treatment}<X_{\\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. Apply the Benjamini--Hochberg procedure~\\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Report adjusted values without claiming unconditional false-discovery-rate control. The primary admission-mechanism family has nine D--C productivity contrasts and is reported separately. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator."
+  },
+  {
+    "id": "C052",
+    "source": "main.revised.tex",
+    "line": 559,
+    "keys": [
+      "kaplan1958"
+    ],
+    "sentence": "Historical time-to-trigger uses Kaplan--Meier estimates~\\cite{kaplan1958} under non-informative right censoring, alongside CVE-specific deadline recall.",
+    "paragraph": "Cross-target summaries use equal-weight target effects and a hierarchical bootstrap resampling targets, then runs within targets. Raw branch counts from different programs or individual executions are not pooled as independent samples. Target regressions and uncertainty accompany aggregates. Historical time-to-trigger uses Kaplan--Meier estimates~\\cite{kaplan1958} under non-informative right censoring, alongside CVE-specific deadline recall. Fuzzer-failure interruptions are distinguished because censoring may be informative."
+  },
+  {
+    "id": "C053",
+    "source": "main.revised.tex",
+    "line": 841,
+    "keys": [
+      "benchmarkproperties"
+    ],
+    "sentence": "Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\\cite{benchmarkproperties}.",
+    "paragraph": "Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes."
+  },
+  {
+    "id": "C054",
+    "source": "main.revised.tex",
+    "line": 841,
+    "keys": [
+      "mutationassessment2023"
+    ],
+    "sentence": "Mutation-based assessment offers a complementary fault-oriented perspective~\\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes.",
+    "paragraph": "Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes."
+  }
+]

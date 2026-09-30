@@ -1,0 +1,20 @@
+--- before/main.revised.tex
++++ after/main.revised.tex
+@@ -20,7 +20,7 @@
+ \usepackage[final,hidelinks]{hyperref}
+ % Place figure/table destinations at the start of each float.
+ \usepackage[all]{hypcap}
+-\hypersetup{pdfauthor={Ketang Chen and Xiaolei Ren},
++\hypersetup{pdfauthor={Ketang Chen and Xiaolei Ren and Junxi Chen},
+ pdftitle={When Protocol States Mislead: Evidence-Gated Admission and Online Feedback Calibration for LLM-Assisted Stateful Fuzzing}}
+ % Keep each citation number visible and individually linked.
+ \biboptions{sort}
+@@ -68,6 +68,8 @@
+ \ead{3250006913@student.must.edu.mo}
+ \author[inst1]{Xiaolei Ren\corref{cor1}}
+ \ead{xlren@must.edu.mo}
++\author[inst1]{Junxi Chen}
++\ead{2240016952@student.must.edu.cn}
+ \cortext[cor1]{Corresponding author: Xiaolei Ren.}
+ \affiliation[inst1]{organization={Macau University of Science and Technology},
+ addressline={Avenida Wai Long, Taipa},city={Macau},country={China}}

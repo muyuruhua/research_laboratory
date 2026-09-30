@@ -1,0 +1,1012 @@
+960                                                                       IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+
+      AFLNet Five Years Later: On Coverage-Guided
+                   Protocol Fuzzing
+      Ruijie Meng , Van-Thuan Pham , Marcel Böhme , and Abhik Roychoudhury , Senior Member, IEEE
+
+
+   Abstract—Protocol implementations are stateful which makes                 security flaw in OpenSSL, an implementation of the SSL/TLS
+them difficult to test: Sending the same test input message                   protocol which promises secure communication.1
+twice might yield a different response every time. Our proposal                  However, finding vulnerabilities in protocol implementations
+to consider a sequence of messages as a seed for coverage-
+directed greybox fuzzing, to associate each message with the                  is also difficult. First, a server is stateful and message-driven.
+corresponding protocol state, and to maximize the coverage of                 It takes a sequence of messages (a.k.a. requests) from a client,
+both the state space and the code was first published in 2020                 processes the messages, and sends appropriate responses. Yet,
+in a short tool demonstration paper. AFLNet was the first code-               the implemented protocol may not entirely correspond to the
+and state-coverage-guided protocol fuzzer; it used the response               specified protocol, making model-based fuzzing approaches
+code as an indicator of the current protocol state. Over the past
+five years, the tool paper has gathered hundreds of citations,                [1], [2] less effective. For instance, as shown in Fig. 2, the
+the code repository was forked almost 200 times and has seen                  Live555 streaming media server implements a state machine
+over thirty pull requests from practitioners and researchers, and             for the Real-Time Streaming Protocol (RTSP) that uninten-
+our initial proposal has been improved upon in many significant               tionally introduces an unspecified transition between the INIT
+ways. In this paper, we first provide an extended discussion and a            and PLAY states (shown in red). Second, the server’s response
+full empirical evaluation of the technical contributions of AFLNet
+and then reflect on the impact that our approach and our tool                 depends on both the current message and its internal state,
+had in the past five years, on both the research and the practice             which is influenced by earlier messages, posing challenges for
+of protocol fuzzing.                                                          vanilla coverage-guided greybox fuzzers like American Fuzzy
+   Index Terms—Greybox fuzzing, network protocol testing, state-              Lop (AFL) and its extensions [3], [4].
+ful fuzzing.                                                                     Before the extension to state-coverage, greybox fuzzers were
+                                                                              primarily designed to test stateless programs (e.g., command
+                          I. INTRODUCTION                                     line programs or libraries) where the same input would mostly
+                                                                              produce the same output. If a generated input covered source
+
+I   T is critical to find security flaws in protocol implementa-
+    tions. Protocols are used by internet-facing servers to talk
+to each other or to clients in an effective and reliable manner.
+                                                                              code that was not previously covered, it was added to the set of
+                                                                              input seeds for later fuzzing. If there was any program state, it
+                                                                              would not be considered. Indeed, users of AFL were aware of
+A protocol specifies the exact sequence and structure of mes-                 these limitations and submitted several requests and questions
+sages that can be exchanged between two or more online parties.               for stateful fuzzing support to its developers’ group [5], as
+However, this ability to talk to a server from anywhere in the                shown in Fig. 1.
+world provides ample opportunities for remote code execution                     In 2020, motivated by the aforementioned challenges of
+attacks. An attacker does not even require physical access to the             stateful network protocol fuzzing and the pressing need for an
+machine. For instance, the famous Heartbleed vulnerability is a               effective tool by researchers and practitioners, we introduced
+                                                                              AFLNET [6]–the first code- and state-coverage-guided greybox
+                                                                              fuzzer. However, an extended technical discussion and a full
+                                                                              empirical evaluation of all its components in a full-length article
+  Received 21 November 2024; revised 17 January 2025; accepted 22 January
+                                                                              have since been outstanding.
+2025. Date of publication 30 January 2025; date of current version 18 April      AFLNET integrates automated state model inference with
+2025. This work was supported in part by the National Research Foundation,    coverage-guided fuzzing, allowing both to work in tandem:
+Singapore, in part by the Cyber Security Agency of Singapore under its
+National Cybersecurity R&D Programme under Grant Fuzz Testing NRF-
+                                                                              fuzzing generates new message sequences to cover new states
+NCR25-Fuzz-0001, in part by the European Union, and in part by the ERC        and incrementally complete the state model. Meanwhile, the dy-
+grant under Project AT SCALE, 101179366. Recommended for acceptance           namically constructed state model helps drive fuzzing towards
+by G. Fraser. (Corresponding author: Ruijie Meng.)
+  Ruijie Meng and Abhik Roychoudhury are with the National University
+                                                                              more critical code regions by leveraging both state coverage
+of Singapore, Singapore 117417 (e-mail: ruijie_meng@u.nus.edu; abhik@         and code coverage information from the retained message se-
+comp.nus.edu.sg).                                                             quences. With these advanced features, AFLNET successfully
+  Van-Thuan Pham is with the University of Melbourne, Melbourne, VIC
+3053, Australia (e-mail: thuan.pham@unimelb.edu.au).
+                                                                              generated a random message sequence that discovered the hid-
+  Marcel Böhme is with the Max Planck Institute for Security and Privacy,     den transition in the RTSP implementation of Live555 (see
+44799 Bochum, Germany (e-mail: marcel.boehme@acm.org).
+  Digital Object Identifier 10.1109/TSE.2025.3535925                            1 See   http://heartbleed.com/
+
+
+                  © 2025 The Authors. This work is licensed under a Creative Commons Attribution 4.0 License. For more information,
+                                                   see https://creativecommons.org/licenses/by/4.0/
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                                           961
+
+
+
+                                                                              In this paper, we first provide an extended discussion and
+                                                                           a full empirical evaluation of the technical contributions of
+                                                                           AFLNET. We evaluate AFLNET in large-scale experiments on
+                                                                           the widely-used ProFuzzBench benchmark [12] to provide re-
+                                                                           searchers and practitioners with a deeper understanding of the
+                                                                           capabilities of AFLNET and the effectiveness of each of its com-
+                                                                           ponents. Specifically, we thoroughly analyze the effectiveness
+                                                                           of state feedback both independently and in combination with
+                                                                           traditional code coverage feedback. Additionally, we evaluate
+                                                                           the impact of different seed-selection strategies implemented in
+                                                                           AFLNET. Based on these results, we offer practical guidance to
+                                                                           AFLNET users on its optimal use cases and the most effective
+                                                                           configurations to maximize their results.
+                                                                              Finally, we reflect on the impact that our approach and our
+                                                                           tool had in the past five years, on both the research and the
+Fig. 1.   Requests from AFL’s users asking for stateful fuzzing support.   practice of protocol fuzzing. This reflection not only illus-
+                                                                           trates AFLNET’s growing impact but also identifies open chal-
+                                                                           lenges and opportunities, shedding light on recent progress and
+                                                                           promising new directions for future research in stateful network
+                                                                           protocol fuzzing.
+
+                                                                                          II. BACKGROUND AND MOTIVATION
+                                                                           A. Motivating Example: File Transfer Protocol (FTP)
+                                                                              We begin with an informal introduction of the main concepts
+                                                                           behind server communication and the terminology we are using
+                                                                           in this paper. A server is a software system that can be accessed
+                                                                           remotely, e.g., via the Internet. A client is a software system
+                                                                           that uses the services which are provided by a server. In order
+                                                                           for the client to use the services of a server, the client must first
+Fig. 2. RTSP as implemented in Live555. There exists an unspecified        establish a connection via a communication channel. A network
+shortcut between the INIT and PLAY state (shown in red).
+                                                                           socket is an endpoint for sending or receiving data and can be
+                                                                           identified by an IP address and a port.
+Fig. 2), retained the sequence, and systematically evolved it                 In order to exchange information, both network participants
+to uncover a critical zero-day vulnerability (CVE-2019-7314,               send messages. A message is a distinct data packet. A message
+CVSS score: 9.8). In March 2020, we released AFLNET as an                  sequence is a vector of messages. A valid order of messages is
+open-source tool on GitHub: https://github.com/aflnet/aflnet.              governed by a protocol. The protocol provides strict rules and
+   Over the past five years, our tool has received tremendous              regulations that determine how data is transmitted and ensures
+attention from both the research community and industry. As of             reliable communication between client and server. A message
+November 2024, it has garnered 872 stars on GitHub. It supports            from the client is also called request while a message from the
+17 protocols2 , most of which were contributed by other re-                server is called response3 . Each request may advance the server
+searchers. Security researchers have written experience reports            state, e.g., from initial state to authenticated. The server state
+and tutorials about the application of AFLNET to challenging               is a specific status of the server in the communication with the
+targets such as as the 5G network [7], Internet of Things (IoT)            client.
+[8], [9], medical imaging applications [10], and automotive                   Listing 1 shows an exchange of messages according to the
+systems [11] highlighting its impact on practice. Researchers              File Transfer Protocol (FTP) between a client and LightFTP
+have cited the short AFLNET tool demo paper hundreds of times              [19], a server that implements FTP and is one of the sub-
+(270+ according to Google Scholar), highlighting its impact                jects in our evaluation. The message sequence sent from the
+on research. Educators are introducing AFLNET as a coverage-               client is highlighted in red. FTP is the standard protocol for
+guided protocol fuzzer to hundreds of Master’s students at                 transferring files (RFC959 [20]). FTP specifies that a client
+several universities, including the University of Melbourne                must first authenticate itself at the server. Only after successful
+and Carnegie Mellon University, highlighting its impact on                 authentication can the client issue other commands (i.e., transfer
+education.                                                                 parameter commands and service commands). For each request
+                                                                           message from the client, the FTP server replies with a response
+  2 List of protocols supported by AFLNET: RTSP, FTP, MQTT, DTLS, DNS,
+DICOM, SMTP, SSH, TLS, SIP, HTTP, IPP, TFTP, DHCP, SNTP, NTP, and            3 In some protocols, e.g., mutual authentication in TLS, when the client is
+SNMP.                                                                      authenticating its identity to the server, the request comes from the server.
+962                                                                    IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+Listing 1. Message exchange between an FTP client (red) and the LightFTP   normal mutational file fuzzing [13]. These two approaches have
+server (black) on the control channel.
+                                                                           several drawbacks. While unit testing is effective at some spe-
+1     220 LightFTP server v2.0a ready                                      cific program states, it may not be able to thoroughly test the
+2     USER foo                                                             interactions/transitions between several program states. More-
+3     331 User foo OK. Password required                                   over, it usually requires a substantial effort to write a new test
+4     PASS foo
+5     230 User logged in, proceed.                                         harness to maintain correct program states and avoid false posi-
+6     MKD demo                                                             tives. Importantly, it is not applicable for end-to-end fuzzing to
+7     257 Directory created.                                               test the whole server whose source code may not be available.
+8     CWD demo
+9     250 Requested file action okay, completed.                              Working on concatenated files leads to inefficiency and in-
+10    STOR test.txt                                                        effectiveness in bug finding. First, for each fuzzing iteration,
+11    150 File status okay                                                 the whole selected seed file needs to be mutated. Given a file f
+12    226 Transfer complete
+13    LIST                                                                 which is constructed by concatenating a sequence of messages
+14    150 File status okay                                                 from m1 to mn , CGF mutates the whole file f and treats all
+15    226 Transfer complete                                                messages equally. Suppose a message mi is the most interest-
+16    QUIT
+17    221 Goodbye!                                                         ing one (e.g., exploring it leads to higher code coverage and
+                                                                           potential bugs), CGF repeats mutating uninteresting messages
+                                                                           m1 to mi-1 before working on mi and it has no knowledge to
+message containing a status code (e.g., 230 [login successful] or          focus on mi . Second, lacking state transition information, CGF
+430 [invalid user/pass]). The status code in the response ensures          could produce many invalid sequences of messages which are
+that client requests are acknowledged and informs the client               likely to be rejected by the SUT.
+about the current server state.                                               Due to the aforementioned limitations of CGF on stateful
+   Finding vulnerabilities in protocol implementations is chal-            server fuzzing, the most popular technique is still stateful black-
+lenging. First, a server is stateful and message-driven. It takes          box fuzzing (SBF). Several SBF tools have been developed in
+a sequence of messages (e.g., messages shown in Listing 1 in               both academia (e.g., Sulley, BooFuzz [18], [17]), and in the
+red) from a client, handles the messages, and sends appropriate            industry (e.g., Peach, beSTORM [1], [16]). These tools traverse
+responses. In addition, a server features a massive state space            a given protocol model, in the form of a finite state machine
+that can be traversed effectively only with specific sequences             or a graph, and leverage data models/grammars of messages
+of messages. For example, only after accepting the correct                 accepted at the states to generate (syntactically valid) message
+user name and password (i.e., USER foo and PASS foo),                      sequences and stress test the SUT. However, their effectiveness
+LightFTP can transition to the state where it can process the              heavily depends on the completeness of the given state model
+MKD demo command. Second, a server’s response depends on                   and data model, which are normally written manually based
+both, the current message and the current internal server state            on the developers’ understanding of the protocol specification
+which is controlled by a sequence of earlier messages.                     and the sample captured network traffic between the client and
+                                                                           the server. These manually provided models may not capture
+                                                                           correctly the protocols implemented inside the SUT. Protocol
+B. Difficulties of Traditional Fuzzing Approaches
+                                                                           specifications contain hundreds of pages of prose-form text.
+    To find vulnerabilities in stateful protocols, there are sev-          Developers of implementations may misinterpret existing or
+eral challenges for state-of-the-art fuzzing approaches, like              add new states or transitions. Moreover, like other blackbox
+coverage-based greybox fuzzing (CGF) [13], [15] and stateful               approaches, SBF does not retain interesting test cases for further
+blackbox fuzzing (SBF) [1], [17]. The details of each approach             fuzzing. More specifically, even though SBF could produce test
+and their corresponding limitations are listed in Table I. CGF             cases leading to new interesting states, which have not been
+is an effective automated vulnerability detection technique.               defined in its state model, SBF does not retain those for further
+It leverages code coverage information, obtained by lightweight            explorations. It also does not update the state model at run-time.
+code instrumentation, to retain and prioritize interesting seeds              To address the aforementioned limitations of current CGF
+(e.g., input files) generated by mutation operators (e.g., bit flips       and SBF approaches, we introduce AFLNET–the first stateful
+and splicing) in an evolutionary fashion. However, vanilla CGF,            CGF (SCGF) tool. AFLNET is an evolutionary mutation-based
+like AFL and its extensions [14], [4], [3], neither know the               fuzzer that leverages code as well as state feedback to efficiently
+server state information nor the required structure or order of            and systematically explore the code and state space of a protocol
+the messages to be sent. These CGF were mainly designed to                 implementation. In our setting, AFLNET acts as a client while
+test stateless programs (e.g., file processing programs) which             the protocol server acts as the fuzz target. AFLNET makes au-
+always produce the same output for the same input. No state is             tomated state model inferencing and coverage-guided fuzzing
+maintained or taken into account.                                          work hand in hand; fuzzing helps to generate new message
+    Developers only have workaround solutions to fuzz protocol             sequences to cover new states and make the state model grad-
+implementations using current CGF approaches. They would                   ually more complete. Meanwhile, the dynamically constructed
+need to write test harnesses for unit testing of specific program          state model helps to drive the fuzzing towards more important
+states of the server under test (SUT) [15] or to concatenate               code parts by using both the state coverage and code coverage
+message sequences into files and use them as seeds to do                   information of the retained message sequences.
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                                 963
+
+
+
+                                                              TABLE I
+                    LIMITATIONS OF TRADITIONAL FUZZING APPROACHES IN FINDING VULNERABILITIES IN STATEFUL PROTOCOLS
+
+Approach            Description                             Representative Tools      Limitations
+Coverage-guided Leverage code coverage information
+                                                           AFL [13] and its exten- Neither know the server state information nor the
+greybox fuzzing to retain and prioritize interesting
+                                                           sions [14], [4], [3]     required message structure or order to be sent
+(CGF)              seeds generated by mutation operators
+                                                                                    For (1), cannot thoroughly test the interactions /
+                   (1) Write test harness for unit testing                          transitions between several program states; requires
+Workaround         of specific program states of the                                substantial manual effort to write a correct test
+solutions       of server under test (SUT);                For (1), libFuzzer [15]; harness; and cannot test the whole server whose
+coverage-guided    (2) Concatenate message structures For (2), AFL [13]             source code is not available;
+greybox fuzzing    into files and use them as seeds to do                           For (2), inefficiency and ineffectiveness in bug finding
+                   normal mutational file fuzzing                                   due to no knowledge of which message to focus on
+                                                                                    and no state transition information
+                   Traverse the given protocol model                                Writing state models and data models involves much
+                                                           beSTORM [16], Boo-
+Stateful blackbox and leverage data models/grammars                                 manual effort and expertise, which are also often
+                                                           Fuzz [17], Peach [1]
+fuzzing (SBF)      of messages to generate message se-                              error-prone; and learn nothing from past fuzzing ex-
+                                                           and Sulley [18]
+                   quences from scratch                                             ecution
+
+
+
+
+                 III. THE AFLNET APPROACH
+   AFLNET is a network-enabled stateful greybox fuzzer that
+leverages additional state feedback from the server along with
+the code feedback to boost the coverage of a protocol imple-
+mentation. Algorithm 1 provides a procedural overview. The in-
+put is the server program under test P, an initial (potentially
+empty) draft of the implemented protocol state machine (IPSM)
+S, and the actual, recorded network traffic T between a client
+and P. The traffic T can be recorded traces from multiple ses-
+sions. The output is a set of error-revealing message sequences
+C✗ and the IPSM S that has been augmented throughout the
+fuzzing campaign.
+   AFLNET starts with a pre-processing phase (Lines 1–6).
+Given the server P, the initial IPSM S, and the recorded net-
+work traffic T , AFLNET constructs the initial seed corpus C and
+adds state transitions observed in T to S. In order to construct
+C, each trace t ∈ T of recorded network traffic is parsed into
+the corresponding message sequence M , which is then added
+to C and sent to the server P. The details of the recording and
+replay of message sequences (incl. the parse and send methods)
+are discussed in Section III-A. From each server response R, the
+exercised state transitions are extracted. States and transitions
+that have been observed are added to the IPSM S if they do
+not already exist. If no IPSM is given as input, S is initialized
+as a directed graph without nodes and edges. Our lightweight
+protocol learning (incl. the updateIPSM method) is elaborated
+in Section III-B.
+   In each iteration (Lines 8–26), AFLNET generates several
+new sequences based on the selected seed sequence. Dur-
+ing seed selection, AFLNET interleaves AFL’s original strat-
+egy, which relies on the order of the seed queue (Lines
+14–15), with a strategy based on the state heuristics in the
+IPSM S (Lines 10–12). Specifically, AFLNET starts lightweight
+seed selection based on the seed queue, and switches to the
+heavy state-heuristic-based strategy when the fuzzer cannot find
+964                                                               IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+                                                                      server is started and the connection is established, AFLNET
+                                                                      can proceed to replay message sequences. For each request
+                                                                      m in the sequence, (i) the request m is sent to the server,
+Fig. 3. An annotated FTP message sequence processed for mutational    (ii) a delay is introduced, and (iii) the response is received.
+fuzzing (from the sniffer trace in Listing 1).
+                                                                      The delay is required because many servers (incl. the LightFTP
+                                                                      server) stop the message exchange if a new request arrives
+“interesting” sequences within the allowed time gap. The for-         before the server’s response has been received. When the entire
+mer strategy is the same as that used in AFL. In the latter seed-     sequence is executed, the connection is closed, and the server
+selection strategy, AFLNET selects a progressive state s ∈ S and      is terminated. We suggest terminating the server (or at least the
+a sequence M ∈ C exercising s to steer the fuzzer towards more        ongoing session) because this will reset any accumulated state.
+progressive regions in the server state space (Section III-C; incl.   The next message sequence can start from the same initial state.
+choose_state and choose_sequence_to_state).
+   The selected sequence is assigned an amount of energy
+based on the default power schedule of the greybox fuzzer             B. Lightweight Protocol Learning
+[14] and systematically mutated (Section III-D; incl. mutate
+and is_interesting). Crash-triggering sequences are added to the         We refer to the directed labelled graph which reconciles all
+crashing corpus C✗ , “interesting” sequences are added to the         state transitions that have been observed throughout the fuzzing
+normal corpus C, and all other generated sequences are dis-           campaign as the implemented protocol state machine (IPSM).
+carded (Line 19–25). A sequence M is considered as interesting        Each node represents a state. Each directed edge represents
+if the new state(s) or state transition(s) have been observed in      a state transition. The edge is annotated with a request and
+the server response R for M, or if M covers new branches in the       response message. If there is an edge between two states s1 and
+server’s source code.                                                 s2 , and the server is currently in state s1 and receives a request
+                                                                      that matches the one in the edge label, then the server sends a
+                                                                      response that matches the one in the edge label and transitions
+A. Recording and Replay for Fuzzing                                   to state s2 . An example illustrating the utility of the IPSM is
+   In order to facilitate mutational fuzzing for message se-          shown in Fig. 2.
+quences, we first need to develop the capability to record and           The IPSM represents the current and potentially incomplete
+replay message sequences. In order to record a realistic mes-         view of the protocol state machine that has actually been im-
+sage exchange between the client and the server, a network            plemented. The purpose of the fuzzer is to generate message
+sniffer can be used. A network sniffer captures network traf-         sequences that discover new state transitions. This in turn itera-
+fic for a specified period of time. For instance, we can use          tively increases the completeness of the IPSM w.r.t. actual state
+tcpdump4 to capture the traffic from a user-generated FTP             machine.
+session. The sniffer records the entire network traffic that can         After sending a request sequence M ∈ C, the network-
+be filtered automatically. The relevant message exchange can          enabled fuzzer receives a response sequence R. From R,
+be extracted using a packet analyzer. A packet analyzer can           AFLNET extracts the sequence of state transitions. We assume
+identify and distinguish different message exchanges between          determinism, i.e., executing M several times always produces
+different nodes in the network. For instance, we used the packet      the same sequence of state transitions. Each state should be
+analyzer Wireshark5 to automatically extract the sequence of          uniquely identifiable. For many protocols, the response contains
+FTP requests.                                                         information about the current server state. For instance, we
+   To generate the initial corpus of message sequences C,             can use the FTP status code in the server response to quickly
+AFLNET parses the filtered sniffer traces T (i.e., parse in Al-       identify the server state (e.g., 230 [login successful]). If no (de-
+gorithm 1). The objective of the parser is to identify the start      tailed) state information is normally available in R, we suggest
+and end of a message in the filtered trace. This can be done          to instrument the program such that the server function that
+with a packet analyzer such as Wireshark. In our case, we             handles a certain state also prints the associated state ID. Such
+implemented a lightweight method that finds the header and            instrumentation is sensible when fuzzing in-house or open-
+terminator of a message as specified in the given protocol. For       source protocol implementations.
+instance, each FTP message starts with a valid FTP command               In order to augment the IPSM S (cf. updateIPSM in Algo-
+(e.g., USER, PASS) and is terminated with a carriage return           rithm 1), the nodes and edges are added for states and state
+followed by a line feed character (i.e., 0x0D0A). Moreover,           transitions that have not been observed previously (i.e., before
+AFLNET associates with each message in the sequence the               sending m ∈ M ). For each existing or new state s ∈ S, AFLNET
+corresponding server state transitions (cf. Fig. 3). This is done     records the number of times a mutated message sequence has
+by sending the messages and parsing the responses one by one.         executed s (#fuzz), the number of times s has been se-
+   To replay a message sequence (i.e., send in Algorithm 1),          lected for fuzzing (#selected), and the number of coverage-
+AFLNET acts as a client. In our setting, the server provides          increasing message sequences that have been added to C after
+network sockets and the fuzzer can connect to those. After the        selecting s for fuzzing (#paths). This statistical information
+                                                                      is used for steering the fuzzer towards more progressive regions
+  4 https://www.tcpdump.org/pcap.html                                 of the state space. In turn, the boosted fuzzer should enable a
+  5 https://www.wireshark.org/                                        more efficient augmentation of the IPSM.
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                                965
+
+
+
+C. Steering the Fuzzer to Progressive States                          This evolutionary approach is the secret sauce of the tremen-
+   In order to steer the fuzzer towards more progressive regions      dous recent success of coverage-based greybox fuzzing.
+in the state space, AFLNET chooses message sequences M ∈                 Given a state s and a message sequence M , AFLNET gen-
+                                                                      erates a new sequence M  by mutation (cf. Line 17 in Al-
+C to mutate that exercise one of the more progressive states
+and that is more likely to increase coverage (Lines 10–12 in          gorithm 1). In order to ensure that the mutated sequence M 
+                                                                      still exercises the chosen state s, AFLNET splits the original
+Algorithm 1).
+                                                                      sequence M into three parts:
+   Choosing a state. In each iteration, AFLNET selects a server
+state s ∈ S in the IPSM S to focus on (cf. choose_state in               • The prefix M1 is required to reach the selected state s.
+                                                                            The prefix is identified using the state annotations (cf.
+Algorithm 1). AFLNET uses several heuristics that can be com-
+                                                                            Fig. 3). If M = m1 , . . . , mn , then M1 = m1 , . . . , mi 
+puted from the statistical data available in the learned IPSM. To
+identify fuzzer blind spots, i.e., rarely exercised states, AFLNET          such that s is observed for the first time when message
+                                                                            mi is sent, i.e. s ∈ states(send(P, m1 , .., mi−1 )) ∧ s ∈
+chooses a state s with a probability that is inversely propor-
+                                                                            states(send(P, M1 )).
+tional to the proportion of mutated message sequences that
+have executed s (#fuzz). AFLNET chooses recently discovered              • The candidate subsequence M2 contains all messages
+                                                                            that can be executed after M1 while still remaining
+states s with higher priority by prioritizing states that have been
+rarely chosen for fuzzing (#selected). In order to maximize                 in state s. In other words, M2 is the longest subse-
+the probability of discovering new state transitions, AFLNET                quence M1 , M2  ⊆ M , such that states(send(P, M1 )) =
+                                                                            states(send (P, M1 , M2 )).
+chooses a state s with higher priority that has been particularly
+successful in contributing to an increased code or state coverage        • The suffix M3 is simply the left-over subsequence such that
+when they were previously selected (#paths).                                M1 , M2 , M3  = M .
+                                                                         The mutated message sequence M  = M1 , mutate(M2 ),
+   Choosing a message sequence. In each iteration, given
+the selected state s ∈ S, AFLNET selects a message se-                M3 . By maintaining the original subsequence M1 , M  will still
+quence M ∈ C from the corpus C that exercises s (cf.                  reach the state s which is the state that the fuzzer is currently
+                                                                      focusing on. The mutated candidate subsequence mutate(M2 )
+choose_sequence_to_state in Algorithm 1). We leverage the
+original selection strategy that is provided by the greybox fuzzer    produces an alternative sequence of messages upon the progres-
+                                                                      sive state s. In our initial experiments, we observed that the
+but on the reduced corpus of sequences that exercise the se-
+                                                                      alternative requests may not be observable “now”, but propagate
+lected state s. For instance, classically AFL prioritizes shorter
+seeds in the corpus that execute quicker. Our modified strategy       to later responses. Hence, AFLNET continues with the execution
+                                                                      of the original suffix M3 .
+first filters only sequences that execute s. Shorter and quicker
+                                                                         AFLNET offers several protocol-aware mutation operators to
+sequences that have reached more states are prioritized.
+   Assigning energy. In greybox fuzzing, the energy of a seed         modify the candidate subsequence (cf. mutate in Algorithm 1).
+                                                                      From the corpus C of message sequences, AFLNET produces a
+input determines how many new inputs are generated from the
+given seed input the next time it is chosen (cf. energy in Algo-      pool of messages. The message pool is a collection of actual
+rithm 1). For instance, the AFL coverage-based greybox fuzzer         messages from network sniffer traces (plus generated mes-
+                                                                      sages) that can be added or substituted into existing message
+[13] assigns more energy to a seed that executes faster and that
+is shorter. AFLNET leverages the default power schedule of the        sequences M ∈ C. In order to mutate the candidate sequence
+greybox fuzzer. A power schedule is the mechanism that assigns        M2 , AFLNET supports the replacement, insertion, duplication,
+                                                                      and deletion of messages. In addition to these protocol-aware
+the energy of a seed.
+                                                                      mutation operators, AFLNET uses the common byte-level op-
+                                                                      erators that are known from greybox fuzzing, such as bit flip-
+D. Mutating a Message Sequence                                        ping, and the substitution, insertion, or deletion of blocks of
+   AFLNET is mutation-based fuzzer, i.e., a seed message se-          bytes. The mutations are stacked, i.e., several protocol-aware
+quence is chosen from a corpus and mutated to generate new se-        and byte-level mutation operators are applied to generate the
+quences. There are several advantages over existing generation-       mutated candidate sequence. The mutations affect the start
+based approaches which generate new message sequences from            and end indices of the mutated and any subsequent message
+scratch. First, a mutation-based approach can leverage a valid        in the sequence. Hence, the index annotations are updated
+trace of real network traffic to generate new sequences that are      accordingly.
+likely valid—albeit entirely without a protocol specification.
+In contrast, a generation-based approach [18], [2], [17] requires
+                                                                      E. Selecting Interesting Message Sequences
+a detailed protocol specification, including concrete message
+templates and the protocol state machine. Hence, BOOFUZZ                After applying protocol-aware mutations on the selected
+[17], a generation-based approach, does not discover the un-          message sequence M , AFLNET generates a new message se-
+specified state transition in Fig. 2 in page 2. Second, a mutation-   quence M  and sends it to the server under test to investi-
+based approach allows the fuzzer to evolve a corpus of par-           gate whether M  is “interesting” (Line 18 in Algorithm 1).
+ticularly interesting message sequences. Generated sequences          A sequence is considered as interesting if the server response
+that have led to the discovery of new states, state transitions, or   contains new states or state transitions that have not previously
+program branches are added to the corpus for further fuzzing.         been observed (i.e., they are not recorded in the IPSM S); a
+966                                                                     IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+
+Fig. 4.   Architecture and Implementation of Stateful Greybox Fuzzing in AFLNET.
+
+
+sequence is interesting also if it covers new branches in the                                        IV. IMPLEMENTATION
+server’s source code.
+                                                                               We implemented our prototype AFLNET as an extension of
+   To select “interesting” message sequences, AFLNET records
+                                                                            the popular and successful greybox fuzzer AFL [13], [21].
+both state coverage and branch coverage in the same bitmap B
+                                                                            The architecture of AFLNET is shown in Fig. 4. To facilitate
+during program execution. In contrast, AFL only records the
+                                                                            communication with the server, we first enabled network com-
+branch coverage in the bitmap. While hitting a branch B1 →
+                                                                            munication over sockets, which is not supported by the vanilla
+B2 , AFL computes the map index using Equation 1 (where
+                                                                            AFL. AFLNET supports two channels, one to send and one
+prev_loc and cur_loc are branch keys of the basic block of B1
+                                                                            to receive messages from the Server Under Test. AFLNET
+and B2 ) and increments the corresponding value for this index
+                                                                            uses standard C Socket APIs (i.e., connect, poll, send, and
+by 1. However, based on our observation, this bitmap often has
+                                                                            recv)6 to implement this feature. To ensure proper synchro-
+many empty entries in the default bitmap size (MAP_SIZE),
+                                                                            nization between AFLNET and the server under test, we added
+which provides the chance to maintain additional state coverage
+                                                                            delays between requests (see Section III-A). Otherwise, several
+within the same bitmap as well.
+                                                                            server implementations drop the connection if a new message
+            map_index = cur_loc ⊕ (prev_loc               1)         (1)    is received before the response is sent and acknowledged. To
+                                                                            minimize the delay, we used the Linux poll API to monitor
+   To achieve this, AFLNET shifts the code coverage to the left
+                                                                            the status of both outgoing and incoming buffers. In our exper-
+of the bitmap by a certain number of elements SHIFT_SIZE,
+                                                                            iments, this led to a substantial speed up (3×) compared to a
+where SHIFT_SIZE is the number of the bitmap entries re-
+                                                                            static delay.
+served to store state coverage information). The map index for
+                                                                               The Request Sequences Parser takes the pcap files con-
+code branches is then computed using Equation 2.
+                                                                            taining the captured network traffic and produces the initial
+map_index = (cur_loc ⊕ (prev_loc                1)) % (MAP_SIZE             corpus of message sequences (cf. Section III-A). AFLNET uses
+                   − SHIFT_SIZE) + SHIFT_SIZE                        (2)    protocol-specific information of the message structure to ex-
+                                                                            tract individual requests, in correct order, from the captured
+   Following this adjustment, AFLNET reserves the bitmap                    network traffic. In order to reduce the onus on the developer,
+space with SHIFT_SIZE many elements to state coverage.                      AFLNET only requires to specify a mechanism to identify mes-
+While observing a state transition S1 → S2 , AFLNET computes                sage boundaries (i.e., start and end of individual request mes-
+the map index for this state transition using Equation 3, where             sages). For instance, for the four protocols in our evaluation,
+prev_state and cur_state are state keys by numbering raw states             we implemented the method to extract request sequences (and
+S1 and S2 starting from the number 1, and STATE_SIZE is the                 to parse the state information from the server responses) into
+maximum number of states expected to be observed at the end                 only 200 lines of C code.
+of fuzzing campaign. The value of the corresponding index is                   The State Machine Learner takes the server responses
+then incremented by 1.                                                      and augments the implemented protocol state machine (IPSM)
+ map_index = (prev_state STATE_SIZE + cur_state)                            with newly observed states and transitions. AFLNET reads the
+                                                                            server response into a byte buffer, extracts the status code as
+             % SHIFT_SIZE                     (3)
+                                                                            specified in the protocol, and determines the executed state
+   Based on the maintained bitmap, AFLNET selects “interest-                (transitions). To represent the IPSM, AFLNET uses the Graphviz
+ing” message sequences that hit new bitmap entries or increase              graph libary7 and the Collections-C8 , which supports high-
+the hit count (cf. is_interesting in Algorithm 1). The interesting          level data structures like HashMap and List. These libraries
+message sequences are saved into the seed corpus C for further
+examination (Line 23). Meanwhile (Lines 24–25), AFLNET
+updates the states in IPSM S, and the time to find interesting                6 http://man7.org/linux/man-pages/man2/socket.2.html
+paths, which facilitates tracking whether AFLNET enters the                   7 https://www.graphviz.org/pdf/libguide.pdf
+
+coverage plateau.                                                             8 https://github.com/srdja/Collections-C
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                                    967
+
+
+
+
+                                                                            Fig. 6. A sample mutated sequence if the state 331 (User OK) and the
+                                                                            message sequence in Fig. 3 have been chosen.
+
+
+                                                                            end, we design three research questions to be covered in the
+Fig. 5. Learning example of the implemented protocol state machine (IPSM)   following:
+from the LightFTP Server.
+                                                                            RQ.1: How effective is state feedback alone in guiding
+are used to construct the state machine, and associate state-                        the fuzzing campaign? This research question aims
+specific information. The GraphViz library can render the entire                     to evaluate whether state feedback alone is effective
+state machine as an image file. This allows users of AFLNET                          in guiding the fuzzing campaign when code feedback
+to understand intuitively the fuzzer progress in terms of the                        is unavailable. We seek to measure this performance
+coverage of the state space.                                                         and examine the potential for extending AFLNET to
+   The Target State Selector takes information from the IPSM                         scenarios such as fuzzing remote servers.
+to select the state that AFLNET should focus on next. AFL im-               RQ.2: Can state feedback enhance the fuzzing effective-
+plements the seed corpus (here, containing message sequences)                        ness alongside code feedback? This research question
+as a linked list of queue entries. A queue entry is the data                         aims to evaluate the extent to which fuzzing effective-
+structure containing pertinent information about the seed input.                     ness can be improved by incorporating additional state
+In addition, AFLNET maintains a state corpus which consists                          feedback. We expect the fuzzer to cover more code with
+of (i) a list of state entries, i.e., a data structure containing                    the inclusion of state feedback.
+pertinent state information, and (ii) a hashmap which maps a                RQ.3: What is the impact of different seed-selection strate-
+state identifier to a list of queue entries exercising the state                     gies? In the default configuration, AFLNET adopts an
+corresponding to the state identifier. Both the target state se-                     interleaving seed-selection strategy that alternates be-
+lector and the Sequence Selector leverage the state corpus.                          tween the order in the seed queue and the state heuris-
+The Sequence Mutator augments AFL’s fuzz_one method                                  tics. This research question aims to evaluate the impact
+with protocol-aware mutation operators.                                              of this interleaving strategy compared to the seed selec-
+   Now we illustrate how all these components of AFLNET work                         tion based on a single source.
+together to fuzz the LightFTP server. Suppose AFLNET starts                    To answer these questions, we follow the recommended ex-
+with only one pcap file containing the network traffic as shown             perimental design for fuzzing experiments [22], [23].
+in Listing 1. First, Request Sequence Parser parses the pcap                   Benchmark. We selected the subjects from PROFUZZBENCH
+file to generate a single sequence (as visualized in Fig. 3) and            [12] as our benchmark. PROFUZZBENCH is a widely-used
+saves it into the corpus C. At the same time, State Machine                 benchmarking platform for evaluating stateful fuzzers of net-
+Learning constructs the initial IPSM based on the response                  work protocols [24], [25], [26], [27]. PROFUZZBENCH com-
+codes; this initial IPSM contains black nodes and transitions               prises a suite of mature and open-source programs that imple-
+in Fig. 5. Suppose that Target State Selector selects state                 ment well-known network protocols (e.g., SSH and FTP). In ad-
+331 (“USER foo OK”) as the target state. Sequence Selec-                    dition, it integrates a set of protocol fuzzing tools, including
+tor will then randomly select a sequence from the sequence                  AFLNET. Our experiments were conducted on PROFUZZBENCH
+corpus C, which contains only one sequence at this moment.                  using the default versions of these subjects.
+Afterward, Sequence Mutators identifies the sequence pre-                      Performance Metrics and Measures. For each experiment,
+fix (“USER foo” request), the candidate subsequence (“PASS                  we report both code coverage and state space coverage. The key
+foo” request), and the remaining subsequence as the suffix.                 idea is that a bug cannot be exposed in uncovered code or
+By mutating the candidate subsequence using stacked mutators,               states. To evaluate code coverage, we measure the branch cov-
+Sequence Mutators may generate a wrong password request                     erage achieved using the automated tooling provided by the
+(“PASS bar”) leading to an error state (530 Not logged                      benchmarking platform PROFUZZBENCH [12]. To evaluate the
+in). Following this wrong password, it replays the suffix (e.g.,            coverage of the state space, we measure the number of state
+“MKD demo”, “CWD demo”) leading to a loop in the state 530                  transitions constructed in the protocol state machine IPSM.
+because all these commands are not allowed before successful                Additionally, we use the Vargha-Delaney effect size (Â12 ) to
+authentication. Finally, the “QUIT” request is sent, and the                measure the statistical significance of the comparison results be-
+server exits. Since the generated test sequence (as visualized              tween two independent groups, which in our case are AFLNET
+in Fig. 6) covers new state and state transitions (as highlighted           and its variants.
+in red in Fig. 5), it is added into the corpus C and the IPSM.                 Experimental Configuration and Infrastructure. We con-
+                                                                            ducted all the experiments using the Git commit 62d63a5
+                                                                            of AFLNET. The SHIFT_SIZE parameter was set to half of
+                          V. EVALUATION
+                                                                            the bitmap size, reserving one-half of the bitmap space for
+   This evaluation seeks to analyze the contribution of each                state coverage and the other half for code coverage. We set
+algorithmic component embedded within AFLNET. To this                       STATE_SIZE to 256 based on our observations from our
+968                                                                IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+
+Fig. 7.   Code branch covered over time by AFLNET, AFLNETDARK and AFLNETBLACK across 10 runs of 24 hours on the PROFUZZBENCH subjects.
+
+
+preliminary experiments. All experiments were run on an Intel®         subjects (i.e., DCMTK, Exim, forked-daapd, and Live555),
+Xeon® Platinum 8468V CPU with 192 logical cores clocked                there was almost no difference in code coverage between
+at 2.70GHz, 512GB of memory, and running Ubuntu 22.04.3                AFLNETDARK and AFLNETBLACK.
+LTS. Each experiment runs for 24 hours. We report the average             To investigate the reason for this difference, we collected
+results over 10 runs to mitigate the impact of randomness.             the state number of all subjects at the end of the fuzzing
+                                                                       campaign. It is interesting to note that for the subjects
+                                                                       where AFLNETDARK did not outperform AFLNETBLACK, the
+RQ.1 Effectiveness of State Feedback alone                             state numbers were also lower compared to those where
+   To evaluate the effectiveness of state feedback alone in guid-      AFLNETDARK showed better performance. For example, the
+ing the fuzzing campaign, we developed two additional invari-          state number of the subject DCMTK is 3, while there are 334
+ant tools of AFLNET for comparison:                                    states observed for the subject Bftpd. This result is expected, as
+   • AFLNETDARK: a dark-box version of AFLNET with only                an insufficient number of states is inadequate for guiding the
+      state feedback enabled,                                          fuzzing campaign, leading to a similar performance between
+   • AFLNETBLACK: a black-box version of AFLNET with both              AFLNETDARK and AFLNETBLACK. Therefore, we conclude
+      code and state feedback disabled.                                that state feedback alone is effective in guiding the fuzzing cam-
+In this experiment, AFLNETDARK is our focus, AFLNET-                   paign, provided there is a reasonable number of states to offer
+Black serves as the baseline, and AFLNET represents the target         guidance. When code feedback is unavailable, state feedback is
+that AFLNETDARK aims to achieve.                                       a fallback guidance for improving code coverage.
+   Fig. 7 shows the trends in average code coverage over
+time for AFLNET, AFLNETDARK and AFLNETBLACK. Overall,                    State feedback alone is effective in guiding the fuzzing cam-
+state feedback alone had no negative impact on code coverage             paign when the state number is reasonable.
+across all subjects. With the guidance from state feedback,
+AFLNETDARK significantly outperformed AFLNETBLACK in
+terms of code coverage in 6 of the 12 PROFUZZBENCH sub-
+                                                                       RQ.2 Effectiveness of Additional State Feedback
+jects (i.e., Bftpd, DNSmasq, Kamailio, LightFTP, ProFTPD and
+Pure-FTPd). In particular, in the subject Bftpd, AFLNETDARK               In this experiment, we examined whether a fuzzer with addi-
+even performed similarly to AFLNET. In the subjects OpenSSH            tional state guidance could outperform one with only code guid-
+and TinyDTLS, although AFLNETDARK only slightly improved               ance. For this purpose, we compared two variants of AFLNET:
+the number of code branches covered at the end of the fuzzing             • AFLNETCODE: a variant AFLNET with only code feed-
+campaign, it achieved the same branch number approximately                   back,
+6× and 4× faster than AFLNETBLACK, respectively, which                    • AFLNETQUEUE: a variant AFLNET with both code and
+can obviously reduce the fuzzing time. Unfortunately, for other              state feedback.
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                           969
+
+
+
+                                                          TABLE II
+            AVERAGE BRANCH COVERAGE AND AVERAGE STATE COVERAGE ACROSS 10 RUNS OF 24 HOURS ACHIEVED BY AFLNETQUEUE
+                                                  COMPARED TO AFLNETCODE
+
+                               Code Coverage Comparison                             State Coverage Comparison
+         Subject
+                        AFLNETCODE AFLNETQUEUE Improv Â12                   AFLNETCODE AFLNETQUEUE       Improv Â12
+         Bftpd                   484.8             491.5   +1.38%     0.72          170.5            334.0   +0.96×      1.00
+         DCMTK                  3076.6            3086.3   +0.32%     0.56            3.0              3.0    0.00×      0.50
+         DNSmasq                1221.0            1217.6   -0.28%     0.43          282.5          27364.0 +95.85×       1.00
+         Exim                   2847.7            2862.7   +0.53%     0.46           61.6             75.7   +0.23×      1.00
+         forked-daapd           2384.9            2401.3   +0.69%     0.54           22.0             37.7   +0.71×      1.00
+         Kamailio               9800.2            9752.4   -0.49%     0.43           89.2            300.3   +2.37×      1.00
+         LightFTP                355.8             347.2   -2.42%     0.21          179.0            388.7   +1.17×      1.00
+         Live555                2809.8            2818.5   +0.31%     0.53           75.1             87.9   +0.17×      1.00
+         OpenSSH                3336.7            3300.0   -1.10%     0.20           93.5          30480.9 +325.00×      1.00
+         ProFTPD                5296.4            5309.6   +0.25%     0.55          250.6            473.5   +0.89×      1.00
+         Pure-FTPd              1268.0            1277.1   +0.72%     0.45          292.1            420.2   +0.44×      1.00
+         TinyDTLS                574.4             575.7   +0.23%     0.50           30.5             37.5   +0.23×      1.00
+         Average                     -                 - +0.01%          -              -                 -   +35.67×       -
+
+
+
+Both AFLNETQUEUE and AFLNETCODE select interesting seeds              only exhibited a small number of observed states. It is expected
+based on the test order in the corpus queue. We did not in-           that this sparse feedback is not effective in improving the code
+clude the original AFLNET for comparison because it uses an           coverage. Conversely, the results for DNSmasq and OpenSSH
+interleaving strategy between the seed-queue order and the            suggest that overly dense feedback can also be ineffective.
+state heuristics to select interesting seeds. Since this experiment   Overall, there is no correlation between the number of states
+specifically focuses on the impact of additional state guidance,      observed and the improvements in code coverage.
+we developed the invariant fuzzer AFLNETQUEUE to eliminate               These experimental results demonstrate that additional state
+the influence of seed-selection strategies.                           feedback can effectively guide the fuzzer to explore more states.
+   Table II shows the average number of code branches and             The additional state guidance did show significant effectiveness
+states covered by AFLNETQUEUE and AFLNETCODE across                   in improving the code coverage, and it also has no obvious
+all subjects. To quantify the improvement of AFLNETQUEUE              harm on most subjects (i.e., 10 out of 12 subjects). A possible
+over AFLNETCODE, we report the percentage improvements                explanation is that AFLNET considers response codes from a
+in terms of code coverage and state coverage achieved in 24           server as the representation of states; however, this may not be
+hours, respectively (Improv), as well as the possibility that a       a good state definition for each subject, as noted by the follow-
+random campaign of AFLNETQUEUE outperforms a random                   up works of AFLNET [28], [26].
+campaign of AFLNETCODE (Â12 ). We consider the Vargha-
+Delaney effect size Â12 ≥ 0.71 or Â12 ≤ 0.29 to indicate a            Additional state feedback, as defined by AFLnet, can ef-
+substantial advantage of AFLNETQUEUE over AFLNETCODE, or                fectively guide the fuzzer to explore a larger state space.
+vice versa.                                                             However, it does not result in significant improvement in
+   In the aspect of code coverage, the additional state feed-           code coverage.
+back in AFLNETQUEUE had a mixed impact when compared to
+AFLNETCODE, which uses only code feedback. AFLNETQUEUE
+outperformed AFLNETCODE in 8 out of 12 subjects, with                 RQ.3 Impact of Seed-Selection Strategies
+only 1 subject (i.e., LightFTP) showing statistically significant        To evaluate the impact of seed-selection strategies, we com-
+improvement. In contrast, for the remaining 4 subjects, the           pare AFLNET with two alternative implementations:
+additional state feedback had a negative impact on the code              • AFLNETQUEUE: a variant AFLNET that selects interesting
+coverage, although only in the subjects LightFTP and OpenSSH                seeds only based on the order of the seed queue,
+in a statistically significant way. Overall, while additional state      • AFLNETIPSM: a variant AFLNET that selects interesting
+coverage can slightly improve code coverage for most subjects,              seeds only based on the state heuristics.
+this improvement is not statistically significant (7 out of the 12    AFLNET selects interesting seeds using an interleaving strategy
+subjects).                                                            between the order of the seed queue and the state heuristics. All
+   In the aspect of state coverage, AFLNETQUEUE covered               these tools are configured with both code- and state- feedback.
+35.67× more states on average. For nearly all subjects (except        We compare three tools in terms of the code coverage and the
+the subject DCMTK), the Vargha-Delaney effect size Â12 =             state coverage.
+1.00 indicates a substantial advantage of AFLNETQUEUE over               Table III shows the average code branches covered by
+AFLNETCODE in exploring state space. In addition, it is worth         AFLNET, AFLNETQUEUE and AFLNETIPSM across 10 runs
+noting that some subjects (e.g., DCMTK and forked-daapd)              of 24 hours. In addition, we report the improvement in the
+970                                                              IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+                                                          TABLE III
+                             AVERAGE BRANCH COVERAGE ACROSS 10 RUNS OF 24 HOURS ACHIEVED BY AFLNET
+                                           COMPARED TO AFLNETQUEUE AND AFLNETIPSM
+
+                                             Comparison with AFLNETQUEUE            Comparison with AFLNETIPSM
+                 Subject         AFLNET
+                                             AFLNETQUEUE Improv Â12                AFLNETIPSM     Improv Â12
+                 Bftpd              487.0              491.5    -0.92%      0.23              486.6      +0.08%       0.47
+                 DCMTK             3120.4             3086.3    +1.10%      0.95             3113.7      +0.22%       0.70
+                 DNSmasq           1202.5             1217.6    -1.24%      0.00             1194.9      +0.64%       0.70
+                 Exim              2922.0             2862.7    +2.07%      0.36             2888.8      +1.15%       0.80
+                 forked-daapd      2329.9             2401.3    -2.97%      0.13             2279.4      +2.22%       0.80
+                 Kamailio          9899.4             9752.4    +1.51%      0.97             9824.6      +0.76%       0.68
+                 LightFTP           346.6              347.2    -0.16%      0.33              345.5      +0.32%       0.62
+                 Live555           2808.1             2818.5    -0.37%      0.41             2780.5      +0.99%       0.75
+                 OpenSSH           3353.8             3300.0    +1.63%      0.82             3341.4      +0.37%       0.65
+                 ProFTPD           5324.2             5309.6    +0.27%      0.58             5150.5      +3.37%       0.89
+                 Pure-FTPd         1167.5             1277.1    -8.58%      0.00             1075.4      +8.56%       0.96
+                 TinyDTLS           583.8              575.7    +1.41%      0.79              577.5      +1.09%       0.76
+                 Average                 -                  -   -0.52%         -                    -    +1.65%           -
+
+
+
+code coverage of AFLNET compared to AFLNETQUEUE and                  cover more code as well, as demonstrated in some subjects (e.g.,
+AFLNETIPSM, respectively (Improv), and the Vargha-Delaney            DNSmasq, forked-daapd, and Pure-FTPd).
+effect size (Â12 ). Compared to the seed-selection strategy based
+on queue order (i.e., AFLNETQUEUE), the interleaving seed-            The fuzzer configured with interleaving seed-selection strat-
+selection strategy (i.e., AFLNET) performed significantly better      egy outperforms selecting interesting seeds based only on
+in some subjects (i.e., DCMTK, Kamailio, OpenSSH, and Tiny-           queue order or state heuristics.
+DTLS). However, it underperformed in the subjects DNSmasq,
+forked-daapd, and Pure-FTPd. In the remaining subjects, both
+seed-selection strategies had similar performance. Compared to
+the strategy based on the state heuristics (i.e., AFLNETIPSM),                VI. RECENT PROGRESS IN STATEFUL FUZZING
+the interleaving strategy consistently performed better although        AFLNET has significantly advanced fuzzing techniques for
+the improvement was not statistically significant in some sub-       network protocols. During the fuzzing campaign, AFLNET acts
+jects (e.g., Bftpd).                                                 as the client application, establishing real network connections
+   Table IV shows the state coverage of AFLNET,                      with the server under test and then exchanging messages. This
+AFLNETQUEUE and AFLNETIPSM in a similar format to                    approach follows the real-world architectures of network pro-
+our previous table. Overall, AFLNET outperformed both                tocols, reducing the manual effort of understanding network
+baseline tools AFLNETQUEUE and AFLNETIPSM in terms                   protocols and modifying source codes. AFLNET is widely re-
+of state coverage. AFLNET covered 5.77% more states than             garded as an optimal choice for network protocol fuzzing9 , and
+AFLNETQUEUE, and 12.77% more states than AFLNETIPSM                  has uncovered numerous critical vulnerabilities in widely-used
+on average. Although AFLNET covers fewer states than                 protocol implementations. However, it also has several short-
+AFLNETIPSM or AFLNETQUEUE in the subjects Bftpd,                     comings that the research community has actively addressed,
+LightFTP, and TinyDTLS, this underperformance is not                 leading to enhancements in various aspects.
+significant given the values of Â12 .
+   Considering both aspects of code coverage and state cover-        What is a state? Considering state feedback and optimizing
+age, AFLNET is the best performer among the comparison tools         state coverage is a key contribution of AFLNET. Yet, what do we
+across all subjects. Therefore, the interleaving seed-selection      consider as the current “state” and how do we identify it? In the
+strategy is generally the best configuration while testing most      default setting, AFLNET uses the response code extracted from
+subjects. However, if the primary goal is to maximize code cov-      the response message to represent the current protocol state.
+erage, users might consider configuring the fuzzer with a seed-      However, the response code is a very coarse representation of
+selection strategy based solely on queue order, as suggested         states. As demonstrated in our previous experiment, this state
+by the comparison between AFLNET and AFLNETQUEUE. On                 representation does not significantly improve code coverage.
+the other hand, if maximizing state coverage is the objective,       In addition, the response codes are not always available in
+the interleaving seed-selection strategy is undoubtedly the best     response messages.
+choice.                                                                 To address this limitation, a series of works have proposed al-
+   In addition, it is interesting to note that there is no obvious   ternative state representations. SGFUZZ [28] uses the sequence
+correlation between state coverage and code coverage. A fuzzer         9 https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/
+that covers more states does not necessarily mean it would           best_practices.md#fuzzing-a-network-service
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                          971
+
+
+
+                                                             TABLE IV
+                                AVERAGE STATE COVERAGE ACROSS 10 RUNS OF 24 HOURS ACHIEVED BY AFLNET
+                                              COMPARED TO AFLNETQUEUE AND AFLNETIPSM
+
+                                             Comparison with AFLNETQUEUE           Comparison with AFLNETIPSM
+                 Subject          AFLNET
+                                             AFLNETQUEUE     Improv Â12           AFLNETIPSM     Improv Â12
+                 Bftpd               334.3            334.0     +0.09%      0.57           335.0     -0.21%     0.37
+                 DCMTK                 3.0              3.0      0.00%      0.50             3.0      0.00%     0.50
+                 DNSmasq           32256.5          27364.0    +17.88%      1.00         26982.2    +19.55%     1.00
+                 Exim                 69.1             75.7     -8.72%      0.45            66.0     +4.70%     0.51
+                 forked-daapd         43.2             37.7    +14.67%      1.00            39.0    +10.85%     1.00
+                 Kamailio            313.0            300.3     +4.23%      0.89           235.2    +33.10%     0.70
+                 LightFTP            380.4            388.7     -2.14%      0.46           375.9     +1.20%     0.58
+                 Live555              91.7             87.9     +4.32%      0.57            89.3     +2.69%     0.69
+                 OpenSSH           35433.5          30480.9    +16.25%      1.00         30943.6    +14.51%     1.00
+                 ProFTPD             476.0            473.5     +0.53%      0.59           359.9    +32.26%     1.00
+                 Pure-FTPd           521.2            420.2    +24.05%      1.00           463.8    +12.39%     1.00
+                 TinyDTLS             36.8             37.5     -1.87%      0.46            30.1    +22.26%     0.74
+                 Average                 -                 -    +5.77%         -                -   +12.77%        -
+
+
+
+of values assigned to state variables (identified as enum type      second, due to several factors: Firstly, AFLNET sends inputs
+variables) to represent the sequence of protocol states corre-      through the network sockets, which is significantly slower than
+sponding to a message sequence. Similarly, NSFUZZ [26] in-          reading inputs from files. Secondly, it introduces a time delay
+troduces a variable-based state representation to infer states      between messages to ensure the server is ready to receive the
+of network protocols. STATEAFL [27] infers protocol states          next message. Lastly, it runs a clean-up script to reset the state
+by taking snapshots of long-lived memory areas. Utilizing the       of the environment after each iteration.
+recent advances in large language models (LLMs), CHATAFL               GREEN-FUZZ [33] improves the fuzzing throughput of
+[24] uses LLMs to infer states based on exchanged messages.         AFLNET by utilizing a simulated socket library Desock+, a
+These approaches effectively address the challenge of state         modified version of preeny, to reduce system call overhead.
+identification in AFLNET.                                           NYX-NET [25] employs hypervisor-based snapshot fuzzing
+                                                                    to ensure noise-free execution and accelerate state resets.
+How to maximize state coverage? AFLNET provides three
+                                                                    SNAPFUZZ [34] enhances the fuzzing throughput by introducing
+seed-selection (line 10 of Algorithm 1) algorithms: FAVOR,
+                                                                    several strategies, including transforming slow asynchronous
+RANDOM, and ROUND-ROBIN, with FAVOR being the de-
+                                                                    network communication into fast synchronous communication,
+fault configuration. The FAVOR algorithm prioritizes states that
+                                                                    snapshotting states, and using in-memory filesystems. These
+are rarely exercised, giving them more chances to be tested.
+                                                                    approaches significantly increase the fuzzing throughput of
+The RANDOM algorithm selects states randomly, while the
+                                                                    AFLNET.
+ROUND-ROBIN algorithm maintains states in a circular queue
+and selects them in turns. However, as shown by Liu et al. [29],
+                                                                    How to maximize the syntactic validity of each message?
+these three algorithms yield similar results in terms of code
+                                                                    During message mutation, AFLNET uses the same byte-level
+coverage.
+                                                                    mutation operators as traditional greybox fuzzers, which can
+   Subsequent works have sought to propose more principled
+                                                                    easily break the structure of a valid message. In principle,
+approaches to state selection. Borcherding et al. [30] model
+                                                                    existing grammar-aware strategies can be applied to AFLNET
+state selection as a Multi-armed Bandit Problem. Unfortunately,
+                                                                    to improve the effectiveness of message mutation. Given a
+the authors found that this approach prevents the fuzzer from
+                                                                    user-provided data model describing the message grammar,
+reaching deeper states, resulting in worse code coverage com-
+                                                                    structure-aware blackbox protocol fuzzers [1], [16] generate
+pared to AFLNET. AFLNETLEGION [29] introduces a novel
+                                                                    valid messages from scratch, while structure-aware greybox
+seed-selection algorithm to AFLNET based on LEGION [31], a
+                                                                    fuzzers [3], [35] take a mutation-based approach. In contrast,
+variant of Monte Carlo tree search. However, the performance
+                                                                    CHATAFL [24] obtains the message structure information from
+improvements of AFLNETLEGION turn out to be not statistically
+                                                                    the LLMs and then preserves valid message grammar dur-
+significant. We believe that this is explained by the low fuzzing
+                                                                    ing mutation. In addition, there are several existing works
+throughput of baseline AFLNET, which hinders the full potential
+                                                                    [36], [37], [38] that dynamically infer message structures
+of this systematic algorithm. Once this challenge is resolved,
+                                                                    based on the observed messages. We can distinguish black-
+it is worthwhile to explore other heuristics that have shown
+                                                                    box approaches [39], [40] that learn the message structure
+promise in (code) coverage-guided greybox fuzzing [14],
+                                                                    from a given corpus of messages and whitebox approaches
+[32], [4].
+                                                                    [36], [41] that actively explore the protocol implementation
+How to maximize fuzzing throughput? AFLNET operates with            to uncover message structure. For instance, Polyglot [36] uses
+low fuzzing throughput, averaging around 20 executions per          dynamic analysis techniques, such as tainting and symbolic
+972                                                                        IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+execution, to extract the message format from the protocol                     Five years ago, it was not common to make prototypes publicly
+implementation.                                                                available as open source [47].
+                                                                                  AFLNet is a practical solution to the long-standing problem
+Protocol Environment Fuzzing. AFLNET focuses on only
+                                                                               of validating reactive systems. Looking back and reflecting
+fuzzing network traffic over a specific port. However, beyond
+                                                                               on it, we feel this is because of the sheer dearth of suitable
+this single input source, network protocols often interact with
+                                                                               approaches for testing reactive systems, though there exist many
+complex execution environments such as configuration files,
+                                                                               approaches for testing sequential transformational systems. Re-
+databases, and other network sockets, which can affect the
+                                                                               active systems are in continuous interaction with the environ-
+behaviors as well. CHAOSAFL [42] involves all file-related
+                                                                               ment by exchanging messages or events between the system and
+inputs as fuzzing targets, while E FUZZ [43] considers the full
+                                                                               the environment. Thus the “input” to a reactive system is not
+program environment in the system-call layer as fuzzing targets.
+                                                                               a single event but rather a sequence of events. Most protocol
+Both approaches extend the capability of AFLNET in finding
+                                                                               implementations are reactive systems - instead, the sequence
+environment-inducing bugs.
+                                                                               of messages that can be legitimately exchanged is the so-called
+             VII. REFLECTIONS AND PATH FORWARD                                 protocol! Prior to the greybox approach of AFLNet, reactive
+                                                                               system validation would typically need to be carried out via
+   Over the past five years, AFLNET has made significant contri-               stateful blackbox fuzzing approaches or via algorithmic white-
+butions to research, practice, and education. In terms of research             box verification approaches such as model checking. We al-
+impact, the short tool demo paper of AFLNET has been cited                     ready mentioned the deficiencies of using stateful blackbox
+over 270 times (as of November 2024, according to Google                       fuzzing approaches - since they involve manual writing of a
+Scholar), with many citations appearing in premier conferences                 state model and data model. Moreover, the effectiveness of the
+and journals in Security and Software Engineering. Regarding                   stateful blackbox fuzzing approach depends on how complete
+practical impact, AFLNET has garnered 872 stars on GitHub and                  the manually-written state model and data model are.
+currently supports 17 protocols, 12 of which were contributed                     Regarding the use of model checking for validating reactive
+by other researchers, demonstrating its versatility and commu-                 systems, this would suffer from various limitations.
+nity engagement.                                                                  • A temporal logic property needs to be provided to guide
+   Security researchers have also published experience reports                       the validation exercise via model checking.
+and tutorials on using AFLNET for challenging targets [7],                        • The validation will be carried out at the model level where
+[10], [11], [8], [9]. For example, the NCC Group explored                            only the protocol model is being checked. Alternatively,
+the challenges of fuzzing 5G protocols [7] and demonstrated                          if the protocol implementation is being checked, an ab-
+AFLNET’s ability to uncover bugs in this critical domain10 .                         straction will need to be designed to extract a finite state
+Similarly, researchers from the University of Melbourne ex-                          transition system from the infinite state protocol imple-
+tended AFLNET to support IPv6 for fuzz testing the software                          mentation, as per the abstraction-refinement approach of
+development kit (SDK) of Matter, a novel application-layer                           software model checking [48].
+protocol designed to unify fragmented smart home ecosystems                       • Finally, after a bug is found, it is reported in the form of a
+[44]. This extension has discovered zero-day vulnerabilities                         counter-example trace from where a buggy event sequence
+in the Matter SDK [8], [9]. Moreover, ETAS, a subsidiary of                          still needs to be extracted.
+Robert Bosch GmbH, highlighted AFLNET as a potential open-                        The work of AFLNet and subsequent works free the practi-
+source protocol fuzzing solution in the context of the ISO/SAE                 tioner from all of these steps, thereby constituting a significant
+21434 standard for road vehicle cybersecurity engineering [11].                practical advance. It also represents a significant conceptual
+In education, AFLNET has been introduced to hundreds of Mas-                   and practical advance over greybox fuzzing by accompanying
+ter’s students through modules such as “Security and Software                  greybox fuzzing with lightweight model learning. This has
+Testing (SWEN90006)” [45] at the University of Melbourne                       opened up the applicability of greybox fuzzing from stateless
+and “Fantastic Bugs and How to Find Them (17-712)” [46] at                     systems like file format parsers to a plethora of stateful, reactive
+Carnegie Mellon University.                                                    applications. Recent works in the research community on ex-
+   Why has our work on AFLNet generated such practical and                     tending greybox fuzzing to concurrent and distributed systems
+academic impact in a short period of fewer than five years?                    (e.g., [49], [50]) also rely partially on the core advance in the
+We can see two reasons: (i) our open science approach and                      AFLNet work. Moving forward, we may thus see a much wider
+(ii) providing a practical solution to a long-standing problem of              variety of stateful, reactive, concurrent, distributed application
+validating reactive systems. As for our open science approach,                 software being routinely checked via greybox fuzzing. These
+we strongly believe that sound progress in science requires                    advances would constitute the broader and longer-term impact
+reproducibility and that effective impact in practice requires                 of the AFLNet work in 2020.
+open source. AFLNet is an excellent case demonstrating the
+success of our open science approach. Today, it is expected that
+the tools and artifacts are published together with the paper.                                        ACKNOWLEDGMENT
+
+  10 NCC
+                                                                                  Any opinions, findings and conclusions, or recommendations
+         Group reported that AFLNET identified some crash-triggering issues,
+which were under further investigation and subject to coordinated disclosure   expressed in this material are those of the author(s) and do not
+as appropriate.                                                                reflect the views of National Research Foundation, Singapore,
+MENG et al.: AFLNET FIVE YEARS LATER: ON COVERAGE-GUIDED PROTOCOL FUZZING                                                                                973
+
+
+
+and Cyber Security Agency of Singapore. Views and opinions                     [26] S. Qin, F. Hu, Z. Ma, B. Zhao, T. Yin, and C. Zhang, “NSFuzz: Towards
+expressed are however those of the author(s) only and do not                        efficient and state-aware network service fuzzing,” ACM Trans. Softw.
+                                                                                    Eng. Methodology, vol. 32, no. 6, pp. 1–26, 2023.
+necessarily reflect those of the European Union or the European                [27] R. Natella, “StateAFL: Greybox fuzzing for stateful network servers,”
+Research Council Executive Agency. Neither the European                             Empirical Softw. Eng., vol. 27, no. 7, 2022, Art. no. 191.
+Union nor the granting authority can be held responsible for                   [28] J. Ba, M. Böhme, Z. Mirzamomen, and A. Roychoudhury, “Stateful
+                                                                                    greybox fuzzing,” in Proc. 31st USENIX Secur. Symp. USENIX Asso-
+them.                                                                               ciation, 2022, pp. 3255–3272.
+                                                                               [29] D. Liu, V.-T. Pham, G. Ernst, T. Murray, and B. I. Rubinstein, “State
+                                                                                    selection algorithms and their impact on the performance of stateful
+                              REFERENCES                                            network protocol fuzzing,” in Proc. IEEE Int. Conf. Softw. Anal.,
+                                                                                    Evolution Reengineering. Piscataway, NJ, USA: IEEE Press, 2022,
+ [1] Protocol-Fuzzer CE, “Peach Fuzzer Platform.” [Online]. Available:              pp. 720–730.
+     https://gitlab.com/gitlab-org/security-products/protocol-fuzzer-ce        [30] A. Borcherding, M. Giraud, I. Fitzgerald, and J. Beyerer, “The bandit’s
+ [2] Spike Fuzzer Platform, “SPIKE Fuzzer Platform.” [Online]. Available:           states: Modeling state selection for stateful network fuzzing as multi-
+     http://www.immunitysec.com                                                     armed bandit problem,” in Proc. IEEE Eur. Symp. Secur. Privacy
+ [3] V.-T. Pham, M. Böhme, A. E. Santosa, A. R. Căciulescu, and A.                 Workshops, 2023, pp. 345–350.
+     Roychoudhury, “Smart greybox fuzzing,” IEEE Trans. Softw. Eng.,           [31] D. Liu, G. Ernst, T. Murray, and B. I. Rubinstein, “Legion: Best-first
+     vol. 47, no. 9, pp. 1980–1997, Sep. 2019.                                      concolic testing,” in Proc. 35th IEEE/ACM Int. Conf. Automated Softw.
+ [4] M. Böhme, V.-T. Pham, M.-D. Nguyen, and A. Roychoudhury, “Directed             Eng., 2020, pp. 54–65.
+     greybox fuzzing,” in Proc. ACM SIGSAC Conf. Comput. Commun.               [32] C. Lemieux and K. Sen, “FairFuzz: A targeted mutation strategy for
+     Secur., 2017, pp. 2329–2344.                                                   increasing greybox fuzz testing coverage,” in Proc. 33rd ACM/IEEE
+ [5] Website, “AFL user group,” 2019. Accessed: August 15, 2019. [Online].          Int. Conf. Automated Softw. Eng., 2018, pp. 475–485.
+     Available: https://groups.google.com/forum/#!forum/afl-users              [33] S. B. Andarzian, C. Daniele, and E. Poll, “Green-Fuzz: Efficient fuzzing
+ [6] V.-T. Pham, M. Böhme, and A. Roychoudhury, “AFLNet: a greybox                  for network protocol implementations,” in Int. Symp. Foundations Pract.
+     fuzzer for network protocols,” in Proc. 13th IEEE Int. Conf. Softw.            Secur., 2023, pp. 253–268.
+     Testing, Validation Verification, 2020, pp. 460–465.                      [34] A. Andronidis and C. Cadar, “Snapfuzz: High-throughput fuzzing of
+ [7] N. Group, “The challenges of fuzzing 5G protocols,” 2021. Accessed:            network applications,” in Proc. 31st ACM SIGSOFT Int. Symp. Softw.
+     October 3, 2024. [Online]. Available: https://www.nccgroup.com/au/             Test. Anal., 2022, pp. 340–351.
+     research-blog/the-challenges-of-fuzzing-5g-protocols/                     [35] C. Aschermann, T. Frassetto, T. Holz, P. Jauernig, A.-R. Sadeghi, and
+ [8] C. S. Alliance, “A use-after-free vulnerability discovered by AFLNet,”         D. Teuchert, “Nautilus: Fishing for deep bugs with grammars,” in Proc.
+     2024. Accessed: October 3, 2024. [Online]. Available: https://github.          Netw. Distrib. System Secur. Symp., 2019.
+     com/project-chip/connectedhomeip/pull/33148/                              [36] J. Caballero, H. Yin, Z. Liang, and D. Song, “Polyglot: Automatic
+ [9] C. S. Alliance, “A critical memory (heap) leak vulnerability discovered        extraction of protocol message format using dynamic binary analysis,”
+     by AFLNet,” 2024. Accessed: October 3, 2024. [Online]. Available:              in Proc. 14th ACM Conf. Comput. Commun. Secur., 2007, pp. 317–329.
+     https://github.com/project-chip/connectedhomeip/pull/32970/               [37] T. Blazytko et al., “GRIMOIRE: Synthesizing structure while fuzzing,”
+[10] M. Nedyak, “How to hack medical imaging applications via DICOM,”               in Proc. 28th USENIX Secur. Symp., 2019, pp. 1985–2002.
+     in Proc. Hack In Box Secur. Conf., 2020.                                  [38] J. Wang, B. Chen, L. Wei, and Y. Liu, “Superion: Grammar-aware
+[11] E. GmbH, “Demystifying a current trend—Security fuzz testing in the            greybox fuzzing,” in Proc. IEEE/ACM 41st Int. Conf. Softw. Eng.
+     context of ISO/SAE 21434,” 2024. Accessed: October 3, 2024. [Online].          Piscataway, NJ, USA: IEEE Press, 2019, pp. 724–735.
+     Available: https://youtu.be/HDfkD67UUSw                                   [39] J. Patra and M. Pradel, “Learning to fuzz: Application-independent
+                                                                                    fuzz testing with probabilistic, generative models of input data,” TU
+[12] R. Natella and V.-T. Pham, “ProFuzzBench: A benchmark for stateful
+                                                                                    Darmstadt, Tech. Rep., 2016.
+     protocol fuzzing,” in Proc. 30th ACM SIGSOFT Int. Symp. Softw. Testing
+                                                                               [40] R. Fan and Y. Chang, “Machine learning for black-box fuzzing of
+     Anal., 2021, pp. 662–665.
+                                                                                    network protocols,” in Proc. Inf. Commun. Secur., 2018, pp. 621–632.
+[13] M. Zalewski, “AFL.” [Online]. Available: https://lcamtuf.coredump.cx/
+                                                                               [41] W. Cui, M. Peinado, K. Chen, H. J. Wang, and L. Irun-Briz, “TUPNI:
+     afl/
+                                                                                    Automatic reverse engineering of input formats,” in Proc. 15th ACM
+[14] M. Böhme, V.-T. Pham, and A. Roychoudhury, “Coverage-based grey-
+                                                                                    Conf. Comput. Commun. Secur., 2008, pp. 391–402.
+     box fuzzing as markov chain,” in Proc. ACM SIGSAC Conf. Comput.           [42] Z. Mirzamomen and M. Böhme, “Finding bug-inducing program envi-
+     Commun. Secur., 2016, pp. 1032–1043.                                           ronments,” 2023, arXiv:2304.10044.
+[15] LLVM. “libFuzzer—A library for coverage-guided fuzz testing,” LLVM.       [43] R. Meng, G. J. Duck, and A. Roychoudhury, “Program environment
+     [Online]. Available: https://llvm.org/docs/LibFuzzer.html                      fuzzing,” in Proc. 31st ACM SIGSAC Conf. Comput. Commun. Secur.,
+[16] beSTORM Modules. “beSTORM black box testing.” [Online]. Available:             2024, pp. 720–734.
+     https://www.beyondsecurity.com/bestorm.html                               [44] C. S. Alliance, “Matter—The foundation for connected things,” 2024.
+[17] JTPEREYDA, “Boofuzz: A fork and successor of the sulley fuzzing                Accessed: October 3, 2024. [Online]. Available: https://csa-iot.org/all-
+     framework.” [Online]. Available: https://github.com/jtpereyda/boofuzz          solutions/matter/
+[18] OpenRCE. “Sulley: A pure-python fully automated and unattended            [45] University of Melbourne, “Security and software testing,” 2023.
+     fuzzing framework.” [Online]. Available: https://github.com/OpenRCE/           Accessed: October 3, 2024. [Online]. Available: https://github.com/
+     sulley                                                                         SWEN90006-2023/SWEN90006-assignment-2
+[19] “LightFTP Server.” [Online]. Available: https://github.com/hfiref0x/      [46] C. M. University, “Fantastic bugs and how to find them,” 2023. Ac-
+     LightFTP                                                                       cessed: October 3, 2024. [Online]. Available: https://cmu-fantastic-bugs.
+[20] IEFT, “File Transfer Protocol,” 1985. Accessed: August 12, 2019.               github.io/
+     [Online]. Available: https://tools.ietf.org/html/rfc959                   [47] F. Weissberg et al., “Sok: Where to fuzz? Assessing target selection
+[21] ICAMTUF. “AFL vulnerability trophy case.” [Online]. Available: http://         methods in directed fuzzing,” in Proc. 19th ACM Asia Conf. Comput.
+     lcamtuf.coredump.cx/afl/#bugs                                                  Commun. Secur. (ASIA CCS). New York, NY, USA: ACM, 2024,
+[22] G. Klees, A. Ruef, B. Cooper, S. Wei, and M. Hicks, “Evaluating fuzz           pp. 1539–1553. [Online]. Available: https://doi.org/10.1145/3634737.
+     testing,” in Proc. ACM SIGSAC Conf. Comput. Commun. Secur., 2018,              3661141
+     pp. 2123–2138.                                                            [48] T. Ball and S. Rajamani, “Automatically validating temporal safety
+[23] M. Böhme, L. Szekeres, and J. Metzman, “On the reliability of coverage-        properties of interfaces,” in Proc. Int. SPIN Workshop Model Checking
+     based fuzzer benchmarking,” in Proc. 44th Int. Conf. Softw. Eng., 2022,        Softw., 2001, pp. 213–217.
+     pp. 1621–1633.                                                            [49] R. Meng, G. Pirlea, A. Roychoudhury, and I. Sergey, “Greybox fuzzing
+[24] R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large                     of disrtibuted systems,” in Proc. 30th ACM Conf. Comput. Commun.
+     language model guided protocol fuzzing,” in Proc. 31st Annu. Netw.             Secur. (CCS), 2023, pp. 234–245.
+     Distrib. System Secur. Symp., 2024.                                       [50] D. Wolff, S. Zheng, G. Duck, U. Mathur, and A. Roychoudhury,
+[25] S. Schumilo, C. Aschermann, A. Jemmett, A. Abbasi, and T. Holz,                “Greybox fuzzing for concurrency testing,” in Proc. 29th ACM Int. Conf.
+     “Nyx-net: Network fuzzing with incremental snapshots,” in Proc. 17th           Architectural Support Program. Languages Operating Syst. (ASPLOS),
+     Eur. Conf. Comput. Syst., 2022, pp. 166–180.                                   2024, pp. 145–160.
+974                                                                           IEEE TRANSACTIONS ON SOFTWARE ENGINEERING, VOL. 51, NO. 4, APRIL 2025
+
+
+
+                         Ruijie Meng is a Ph.D. student with the Na-                                          Marcel Böhme is a faculty member with Max
+                         tional University of Singapore, advised by Prof.                                     Planck Institute for Security and Privacy (MPI-
+                         Abhik Roychoudhury. Her research interests include                                   SP), Germany where he leads the Software Security
+                         software security, software engineering, and sys-                                    research group. His group has made foundational
+                         tems. Her research focuses on building effective                                     contributions to fuzzing which has become one of
+                         and practical techniques for improving security and                                  the most successful techniques for the automatic
+                         reliability of software systems, particularly stateful                               discovery of security flaws in practice. We are
+                         reactive systems. Her work has been published at                                     interested in the automatic discovery of security
+                         premier conferences in both software engineering                                     flaws in software systems at the very large scale.
+                         (e.g., ICSE and FSE) and security (e.g., CCS and                                     Some of us work on the foundations of automatic
+                         NDSS). She has also developed and open-sourced                                       vulnerability discovery and program analysis in
+several automated security testing tools. These tools have discovered more        general. For instance, we seek to identify fundamental limitations of existing
+than 200 previously unknown vulnerabilities in widely used software systems,      techniques, we study empirical methods (including statistical and causal
+with more than 50 CVEs assigned.                                                  reasoning) for program analysis, and we explore the assurances that software
+                                                                                  testing provides when no bugs are found. Another part of our group develops
+                          Van-Thuan Pham received the Ph.D. degree in             practical vulnerability discovery tools that are widely used in software security
+                          computer science from the National University of        practice. For instance, entropic is the default power schedule in LibFuzzer
+                          Singapore, in 2017. He is a Senior Lecturer in cyber-   which powers the largest fuzzing platforms with Google and Microsoft,
+                          security with the University of Melbourne (UoM)         fuzzing hundreds of security-critical projects on 100 k machines 24/7. Our
+                          and an ARC DECRA Fellow. His research interests         tools have discovered more than 100 bugs in widely used software systems,
+                          include scalable and high-performance fuzz testing      more than 70 of which are security-critical vulnerabilities registered as CVEs
+                          to enhance the reliability and security of software     with the US National Vulnerability Database.
+                          systems. His research, conducted in collaboration
+                          with companies such as Google and government                                      Abhik Roychoudhury (Senior Member, IEEE) is
+                          agencies, has resulted in numerous publications in                                a Provost’s Chair Professor of computer science
+                          premier journals and conferences (e.g., TSE, EMSE,                                with the National University of Singapore (NUS),
+ICSE, CCS, ISSTA), one U.S. patent, and one international patent application.                               where he leads a research team on Trustworthy and
+Notably, one of his papers received a Distinguished Paper Award at ICSE                                     Secure Software (TSS). His research group with
+2024. He has also developed several open-source automated security testing                                  NUS is known for foundational contributions to
+tools, including AFLGo, AFLSmart, AFLNet, and AFLTeam. These tools have                                     software testing and analysis. Specifically, the team
+been instrumental in discovering over 100 (critical) vulnerabilities in large,                              has made contributions to automatic programming
+real-world software systems. His research has been featured on media channels                               and automated program repair, and to fuzz testing
+such as theregister.co.uk and securityweek.com.                                                             for finding security vulnerabilities in software sys-
+                                                                                                            tems. These works have been honored with various
+                                                                                  awards including an International Conference on Software Engineering (ICSE)
+                                                                                  Most Influential Paper Award (Test-of-time award) for program repair, and
+                                                                                  IEEE New Directions Award 2022 for contributions to symbolic execution
+                                                                                  and its usage in program repair. He was the Inaugural Recipient of the
+                                                                                  NUS Outstanding Graduate Mentor Award 2024. He has served the Software
+                                                                                  Engineering Research Community in various capacities including as a Chair
+                                                                                  of the major conferences of the field, ICSE and FSE. Currently, he serves as
+                                                                                  a Chair of the FSE Steering Committee. He is the current Editor-in-Chief of
+                                                                                  the ACM Transactions on Software Engineering and Methodology (TOSEM).
+                                                                                  He is a fellow of the ACM.
+

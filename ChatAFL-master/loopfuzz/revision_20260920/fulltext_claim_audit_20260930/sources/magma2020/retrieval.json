@@ -1,0 +1,31 @@
+{
+  "key": "magma2020",
+  "title": "{Magma}: A Ground-Truth Fuzzing Benchmark",
+  "status": "fulltext_downloaded",
+  "attempts": [
+    {
+      "url": "https://dl.acm.org/doi/pdf/10.1145/3428334",
+      "status": 403,
+      "final_url": "https://dl.acm.org/doi/pdf/10.1145/3428334",
+      "bytes": 5576
+    },
+    {
+      "url": "https://api.openalex.org/works/https://doi.org/10.1145/3428334",
+      "status": 429
+    },
+    {
+      "url": "https://hexhive.epfl.ch/publications/files/21SIGMETRICS.pdf",
+      "status": 200,
+      "final_url": "https://hexhive.epfl.ch/publications/files/21SIGMETRICS.pdf",
+      "bytes": 1379360
+    }
+  ],
+  "retrieved_utc": "2026-09-30T09:08:47.689304+00:00",
+  "source": "https://hexhive.epfl.ch/publications/files/21SIGMETRICS.pdf",
+  "pdf": "fulltext_claim_audit_20260930/sources/magma2020/paper.pdf",
+  "text": "fulltext_claim_audit_20260930/sources/magma2020/paper.txt",
+  "pages": 29,
+  "characters": 136742,
+  "sha256": "83ce6e4f4bf698250fcb1d0c27542468257d86a9b6eb37a0837e1afc3d8f9488",
+  "title_token_overlap": 1.0
+}

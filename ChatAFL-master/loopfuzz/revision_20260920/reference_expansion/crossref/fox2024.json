@@ -1,0 +1,1310 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=FOX+Coverage-guided+Fuzzing+as+Online+Stochastic+Control&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 2815509,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                12
+              ]
+            ],
+            "date-time": "2026-09-12T01:51:32Z",
+            "timestamp": 1789177892693,
+            "version": "build-2803163510"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 57,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    12,
+                    2
+                  ]
+                ],
+                "date-time": "2024-12-02T00:00:00Z",
+                "timestamp": 1733097600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/501100006374",
+              "name": "Google",
+              "doi-asserted-by": "publisher",
+              "id": [
+                {
+                  "id": "10.13039/501100006374",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/501100006374",
+              "name": "NSF (National Science Foundation)",
+              "doi-asserted-by": "publisher",
+              "id": [
+                {
+                  "id": "10.13039/501100006374",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "DOI": "10.1145/3658644.3670362",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ],
+            "date-time": "2024-12-09T12:19:20Z",
+            "timestamp": 1733746760000
+          },
+          "page": "765-779",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 10,
+          "title": [
+            "FOX: Coverage-guided Fuzzing as Online Stochastic Control"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0001-6655-0468",
+              "authenticated-orcid": false,
+              "given": "Dongdong",
+              "family": "She",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Hong Kong University of Science and Technology, Hong Kong, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0007-2844-768X",
+              "authenticated-orcid": false,
+              "given": "Adam",
+              "family": "Storek",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, NY, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0008-0436-8183",
+              "authenticated-orcid": false,
+              "given": "Yuchong",
+              "family": "Xie",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Hong Kong University of Science and Technology, Hong Kong, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0006-2120-3570",
+              "authenticated-orcid": false,
+              "given": "Seoyoung",
+              "family": "Kweon",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, NY, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1868-4204",
+              "authenticated-orcid": false,
+              "given": "Prashast",
+              "family": "Srivastava",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, NY, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-3518-4877",
+              "authenticated-orcid": false,
+              "given": "Suman",
+              "family": "Jana",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, NY, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                9
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2023. AFL Seed Bank. https://github.com/AFLplusplus/AFLplusplus/tree/stable/testcases."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "Evaluation report of aflpp on the Fuzzbench dataset. (Dec 1",
+              "year": "2023",
+              "unstructured": "2023. Evaluation report of aflpp on the Fuzzbench dataset. (Dec 1 2023). https://www.fuzzbench.com/reports/experimental/2023--12-01-aflpp/index.html."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "2023. Fuzz introspector. https://github.com/ossf/fuzz-introspector."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "2023. FuzzBench AFL setup. https://github.com/google/fuzzbench/blob/master/fuzzers/aflplusplus/description.md."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "unstructured": "2023. Havoc mode mutation. https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/afl-fuzz_approach.md."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "unstructured": "2023. Magma lua bugs. https://github.com/HexHive/magma/tree/v1.2/targets/lua/patches/bugs."
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "2023. Magma openssl bugs. https://github.com/HexHive/magma/issues/68."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "unstructured": "2023. SBST'23 Fuzzing Competition (C/C Programs). https://sbft23.github.io/tools/fuzzing."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "unstructured": "2023. SBST'23 Fuzzing Competition (C/C Programs) Report. https://storage.googleapis.com/www.fuzzbench.com/reports/experimental/SBFT23/Final-Coverage/index.html."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "unstructured": "2023. Syzbot kernel bug tracker. https://syzkaller.appspot.com/upstream."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "unstructured": "2023. Syzbot kernel bug tracker. https://github.com/google/oss-fuzz."
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1985793.1985795"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "volume-title": "REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS.",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS."
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST53961.2022.00039"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409748"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510230"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Convex Optimization",
+              "author": "Boyd Stephen",
+              "unstructured": "Stephen Boyd and Lieven Vandenberghe. 2004. Convex Optimization. Cambridge University Press."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "first-page": "209",
+              "article-title": "Klee: Unassisted and automatic generation of high-coverage tests for complex systems programs",
+              "volume": "8",
+              "author": "Cadar Cristian",
+              "year": "2008",
+              "unstructured": "Cristian Cadar, Daniel Dunbar, Dawson R Engler, et al . 2008. Klee: Unassisted and automatic generation of high-coverage tests for complex systems programs.. In OSDI, Vol. 8. 209--224.",
+              "journal-title": "OSDI"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40000.2020.00002"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00082"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "Domencich and Daniel McFadden",
+              "author": "Thomas",
+              "year": "1975",
+              "unstructured": "Thomas A. Domencich and Daniel McFadden. 1975. Urban Travel Demand: A Behavioral Analysis : a Charles River Associates Research Study. North-Holland Publishing Company. Google-Books-ID: KwK3AAAAIAAJ."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "AFL: Combining Incremental Steps of Fuzzing Research. In USENIX Workshop on Offensive Technologies (WOOT).",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL: Combining Incremental Steps of Fuzzing Research. In USENIX Workshop on Offensive Technologies (WOOT)."
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2025113.2025179"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "volume-title": "29th USENIX security symposium (USENIX Security 20). 2577--2594.",
+              "author": "Gan Shuitao",
+              "unstructured": "Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xiaojun Qin, Dong Wu, and Zuoning Chen. 2020. {GREYONE}: Data flow sensitive fuzzing. In 29th USENIX security symposium (USENIX Security 20). 2577--2594."
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "first-page": "151",
+              "article-title": "Automated whitebox fuzz testing",
+              "volume": "8",
+              "author": "Godefroid Patrice",
+              "year": "2008",
+              "unstructured": "Patrice Godefroid, Michael Y Levin, David A Molnar, et al. 2008. Automated whitebox fuzz testing.. In NDSS, Vol. 8. 151--166.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Elad Hazan et al . 2016. Introduction to online convex optimization. Foundations and Trends® in Optimization (2016).",
+              "DOI": "10.1561/9781680831719"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428334"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "D.A. Hensher and P.R. Stopher. 2021. Behavioural Travel Modelling. Taylor & Francis. https://books.google.com/books?id=Z_UlEAAAQBAJ",
+              "DOI": "10.4324/9781003156055"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "volume-title": "DatAFLow: Toward a Data-Flow-Guided Fuzzer. ACM Transactions on Software Engineering and Methodology",
+              "author": "Herrera Adrian",
+              "year": "2022",
+              "unstructured": "Adrian Herrera, Mathias Payer, and Antony L Hosking. 2022. DatAFLow: Toward a Data-Flow-Guided Fuzzer. ACM Transactions on Software Engineering and Methodology (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2023.23159"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SSBSE.2010.21"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "Learning Seed-Adaptive Mutation Strategies for Greybox Fuzzing. In 2023 IEEE/ACM 45th International Conference on Software Engineering (ICSE). IEEE.",
+              "author": "Lee Myungho",
+              "year": "2023",
+              "unstructured": "Myungho Lee, Sooyoung Cha, and Hakjoo Oh. 2023. Learning Seed-Adaptive Mutation Strategies for Greybox Fuzzing. In 2023 IEEE/ACM 45th International Conference on Software Engineering (ICSE). IEEE."
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238176"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46214.2022.9833594"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP46214.2022.9833594"
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "SBFT Tool Competition 2023--Fuzzing Track. arXiv preprint arXiv:2304.10070",
+              "author": "Liu Dongge",
+              "year": "2023",
+              "unstructured": "Dongge Liu, Jonathan Metzman, Marcel Böhme, Oliver Chang, and Abhishek Arya. 2023. SBFT Tool Competition 2023--Fuzzing Track. arXiv preprint arXiv:2304.10070 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "volume-title": "28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Lyu Chenyang",
+              "year": "2019",
+              "unstructured": "Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and Raheem Beyah. 2019. {MOPT}: Optimized mutation scheduling for fuzzers. In 28th USENIX Security Symposium (USENIX Security 19)."
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSP53844.2022.00026"
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSTW.2011.100"
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "volume-title": "Illuminating search spaces by mapping elites. ArXiv abs/1504.04909",
+              "author": "Mouret Jean-Baptiste",
+              "year": "2015",
+              "unstructured": "Jean-Baptiste Mouret and Jeff Clune. 2015. Illuminating search spaces by mapping elites. ArXiv abs/1504.04909 (2015)."
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00069"
+            },
+            {
+              "key": "e_1_3_2_1_46_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3611643.3616308"
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Österlund Sebastian",
+              "year": "2020",
+              "unstructured": "Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. 2020. {ParmeSan}: Sanitizer-guided greybox fuzzing. In 29th USENIX Security Symposium (USENIX Security 20). 2289--2306."
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00052"
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "volume-title": "Effective Seed Scheduling for Fuzzing with Graph Centrality Analysis. 2022 IEEE Symposium on Security and Privacy (SP)",
+              "author": "She Dongdong",
+              "year": "2022",
+              "unstructured": "Dongdong She, Abhishek Shah, and Suman Jana. 2022. Effective Seed Scheduling for Fuzzing with Graph Centrality Analysis. 2022 IEEE Symposium on Security and Privacy (SP) (2022), 2194--2211."
+            },
+            {
+              "key": "e_1_3_2_1_50_1",
+              "volume-title": "FOX: Coverage-guided Fuzzing as Online Stochastic Control. arXiv",
+              "author": "She Dongdong",
+              "year": "2024",
+              "unstructured": "Dongdong She, Adam Storek, Yuchong Xie, Seoyoung Kweon, Prashast Srivastava, and Suman Jana. 2024. FOX: Coverage-guided Fuzzing as Online Stochastic Control. arXiv (2024). https://arxiv.org/abs/2406.04517"
+            },
+            {
+              "key": "e_1_3_2_1_51_1",
+              "volume-title": "AIFORE: Smart Fuzzing Based on Automatic Input Format Reverse Engineering. In 32nd USENIX Security Symposium (USENIX Security 23)",
+              "author": "Shi Ji",
+              "year": "2023",
+              "unstructured": "Ji Shi, Zhun Wang, Zhiyao Feng, Yang Lan, Shisong Qin, Wei You, Wei Zou, Mathias Payer, and Chao Zhang. 2023. AIFORE: Smart Fuzzing Based on Automatic Input Format Reverse Engineering. In 32nd USENIX Security Symposium (USENIX Security 23). USENIX Association, Anaheim, CA, 4967--4984. https://www.usenix.org/conference/usenixsecurity23/presentation/shi-ji"
+            },
+            {
+              "key": "e_1_3_2_1_52_1",
+              "first-page": "1",
+              "article-title": "Driller: Augmenting fuzzing through selective symbolic execution",
+              "volume": "16",
+              "author": "Stephens Nick",
+              "year": "2016",
+              "unstructured": "Nick Stephens, John Grosen, Christopher Salls, Andrew Dutcher, Ruoyu Wang, Jacopo Corbetta, Yan Shoshitaishvili, Christopher Kruegel, and Giovanni Vigna. 2016. Driller: Augmenting fuzzing through selective symbolic execution.. In NDSS, Vol. 16. 1--16.",
+              "journal-title": "NDSS"
+            },
+            {
+              "key": "e_1_3_2_1_53_1",
+              "unstructured": "László Szekeres and R Sekar. [n. d.]. Search-based Fuzzing. ([n. d.]). http://seclab.cs.stonybrook.edu/lszekeres/Papers/Szekeres-2017-SBF.pdf"
+            },
+            {
+              "key": "e_1_3_2_1_54_1",
+              "volume-title": "22nd International Symposium on Research in Attacks, Intrusions and Defenses (RAID",
+              "author": "Wang Jinghan",
+              "year": "2019",
+              "unstructured": "Jinghan Wang, Yue Duan, Wei Song, Heng Yin, and Chengyu Song. 2019. Be sensitive and collaborative: Analyzing impact of coverage metrics in greybox fuzzing. In 22nd International Symposium on Research in Attacks, Intrusions and Defenses (RAID 2019)."
+            },
+            {
+              "key": "e_1_3_2_1_55_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            },
+            {
+              "key": "e_1_3_2_1_56_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Yue Tai",
+              "year": "2020",
+              "unstructured": "Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu, Kai Lu, and Xu Zhou. 2020. {EcoFuzz}: Adaptive {Energy-Saving} greybox fuzzing as a variant of the adversarial {Multi-Armed} bandit. In 29th USENIX Security Symposium (USENIX Security 20). 2307--2324."
+            },
+            {
+              "key": "e_1_3_2_1_57_1",
+              "volume-title": "32nd USENIX Security Symposium (USENIX Security 23)",
+              "author": "Zheng Han",
+              "year": "2023",
+              "unstructured": "Han Zheng, Jiayuan Zhang, Yuhang Huang, Zezhong Ren, He Wang, Chunjie Cao, Yuqing Zhang, Flavio Toffalini, and Mathias Payer. 2023. FISHFUZZ: Catch Deeper Bugs by Throwing Larger Nets. In 32nd USENIX Security Symposium (USENIX Security 23). USENIX Association, Anaheim, CA, 1343--1360. https://www.usenix.org/conference/usenixsecurity23/presentation/zheng"
+            }
+          ],
+          "event": {
+            "name": "CCS '24: ACM SIGSAC Conference on Computer and Communications Security",
+            "location": "Salt Lake City UT USA",
+            "acronym": "CCS '24",
+            "sponsor": [
+              "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3670362",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3658644.3670362",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2025-08-22T05:54:31Z",
+            "timestamp": 1755842071000
+          },
+          "score": 59.54149,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3658644.3670362"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "references-count": 57,
+          "alternative-id": [
+            "10.1145/3658644.3670362",
+            "10.1145/3658644"
+          ],
+          "URL": "https://doi.org/10.1145/3658644.3670362",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                2
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-12-09",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                4,
+                11
+              ]
+            ],
+            "date-time": "2026-04-11T02:14:12Z",
+            "timestamp": 1775873652427,
+            "version": "3.50.1"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 7,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    4,
+                    14
+                  ]
+                ],
+                "date-time": "2024-04-14T00:00:00Z",
+                "timestamp": 1713052800000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                4,
+                14
+              ]
+            ]
+          },
+          "DOI": "10.1145/3643659.3648562",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                10
+              ]
+            ],
+            "date-time": "2024-09-10T15:08:27Z",
+            "timestamp": 1725980907000
+          },
+          "page": "57-58",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 1,
+          "title": [
+            "FOX: Coverage-guided Fuzzing as Online Stochastic Control"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0001-6655-0468",
+              "authenticated-orcid": false,
+              "given": "Dongdong",
+              "family": "She",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Hong Kong University of Science and Technology, Hong Kong, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0007-2844-768X",
+              "authenticated-orcid": false,
+              "given": "Adam",
+              "family": "Storek",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0008-0436-8183",
+              "authenticated-orcid": false,
+              "given": "Yuchong",
+              "family": "Xie",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Hong Kong University of Science and Technology, Hong Kong, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0006-2120-3570",
+              "authenticated-orcid": false,
+              "given": "Seoyoung",
+              "family": "Kweon",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1868-4204",
+              "authenticated-orcid": false,
+              "given": "Prashast",
+              "family": "Srivastava",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-3518-4877",
+              "authenticated-orcid": false,
+              "given": "Suman",
+              "family": "Jana",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Columbia University, New York, USA"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                10
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2023. Havoc mode mutation. https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/afl-fuzz_approach.md."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS.",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence.. In NDSS."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "DatAFLow: Toward a Data-Flow-Guided Fuzzer. ACM Transactions on Software Engineering and Methodology",
+              "author": "Herrera Adrian",
+              "year": "2022",
+              "unstructured": "Adrian Herrera, Mathias Payer, and Antony L Hosking. 2022. DatAFLow: Toward a Data-Flow-Guided Fuzzer. ACM Transactions on Software Engineering and Methodology (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "volume-title": "Illuminating search spaces by mapping elites. ArXiv abs/1504.04909",
+              "author": "Mouret Jean-Baptiste",
+              "year": "2015",
+              "unstructured": "Jean-Baptiste Mouret and Jeff Clune. 2015. Illuminating search spaces by mapping elites. ArXiv abs/1504.04909 (2015)."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00069"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "22nd International Symposium on Research in Attacks, Intrusions and Defenses (RAID",
+              "author": "Wang Jinghan",
+              "year": "2019",
+              "unstructured": "Jinghan Wang, Yue Duan, Wei Song, Heng Yin, and Chengyu Song. 2019. Be sensitive and collaborative: Analyzing impact of coverage metrics in greybox fuzzing. In 22nd International Symposium on Research in Attacks, Intrusions and Defenses (RAID 2019)."
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            }
+          ],
+          "event": {
+            "name": "SBFT '24: 17th ACM/IEEE International Workshop on Search-Based and Fuzz Testing",
+            "location": "Lisbon Portugal",
+            "acronym": "SBFT '24",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering",
+              "IEEE CS",
+              "Faculty of Engineering of University of Porto"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 17th ACM/IEEE International Workshop on Search-Based and Fuzz Testing"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3643659.3648562",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3643659.3648562",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                18
+              ]
+            ],
+            "date-time": "2025-06-18T22:50:29Z",
+            "timestamp": 1750287029000
+          },
+          "score": 59.316315,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3643659.3648562"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                4,
+                14
+              ]
+            ]
+          },
+          "references-count": 7,
+          "alternative-id": [
+            "10.1145/3643659.3648562",
+            "10.1145/3643659"
+          ],
+          "URL": "https://doi.org/10.1145/3643659.3648562",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                4,
+                14
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-09-10",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                26
+              ]
+            ],
+            "date-time": "2025-04-26T05:10:03Z",
+            "timestamp": 1745644203065,
+            "version": "3.40.4"
+          },
+          "reference-count": 37,
+          "publisher": "Institute of Electrical and Electronics Engineers (IEEE)",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    1,
+                    1
+                  ]
+                ],
+                "date-time": "2025-01-01T00:00:00Z",
+                "timestamp": 1735689600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/legalcode"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "short-container-title": [
+            "IEEE Access"
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          },
+          "DOI": "10.1109/access.2025.3561135",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                15
+              ]
+            ],
+            "date-time": "2025-04-15T17:38:02Z",
+            "timestamp": 1744738682000
+          },
+          "page": "68831-68840",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "CBGF: Callback Coverage Guided Fuzzing"
+          ],
+          "prefix": "10.1109",
+          "volume": "13",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0008-8665-4676",
+              "authenticated-orcid": false,
+              "given": "Ho",
+              "family": "Hwang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Korea University of Science and Technology, Daejeon, South Korea"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-9961-0401",
+              "authenticated-orcid": false,
+              "given": "Daesung",
+              "family": "Moon",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Information Security Research Division, Electronics and Telecommunications Research Institute, Daejeon, South Korea"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "volume-title": "PHP Callbacks/Callables",
+              "year": "2024",
+              "key": "ref1"
+            },
+            {
+              "volume-title": "TensorFlow Callbacks",
+              "year": "2024",
+              "key": "ref2"
+            },
+            {
+              "volume-title": "React UseCallback",
+              "year": "2024",
+              "key": "ref3"
+            },
+            {
+              "volume-title": "The Activity Lifecycle",
+              "year": "2024",
+              "key": "ref4"
+            },
+            {
+              "volume-title": "CVE-2022-48560",
+              "year": "2025",
+              "key": "ref5"
+            },
+            {
+              "volume-title": "CVE-2016-5768",
+              "year": "2025",
+              "key": "ref6"
+            },
+            {
+              "volume-title": "CVE-2021-21225",
+              "year": "2025",
+              "key": "ref7"
+            },
+            {
+              "volume-title": "CVE-2022-21882",
+              "year": "2025",
+              "key": "ref8"
+            },
+            {
+              "volume-title": "CVE-2023-52627",
+              "year": "2025",
+              "key": "ref9"
+            },
+            {
+              "volume-title": "CVE-2024-21338",
+              "year": "2025",
+              "key": "ref10"
+            },
+            {
+              "volume-title": "CVE-2022-22620",
+              "year": "2025",
+              "key": "ref11"
+            },
+            {
+              "volume-title": "Amer. Fuzzy Lop",
+              "year": "2025",
+              "key": "ref12"
+            },
+            {
+              "volume-title": "LibFuzzer",
+              "year": "2025",
+              "key": "ref13"
+            },
+            {
+              "volume-title": "Special-Method-Names",
+              "year": "2025",
+              "key": "ref14"
+            },
+            {
+              "key": "ref15",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "ref16",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00040"
+            },
+            {
+              "key": "ref17",
+              "first-page": "1",
+              "article-title": "Be sensitive and collaborative: Analyzing impact of coverage metrics in greybox fuzzing",
+              "volume-title": "Proc. Int. Symp. Res. Attacks Intrusions Defenses (RAID)",
+              "author": "Wang"
+            },
+            {
+              "key": "ref18",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00024"
+            },
+            {
+              "key": "ref19",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2020.24422"
+            },
+            {
+              "key": "ref20",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134020"
+            },
+            {
+              "key": "ref21",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243849"
+            },
+            {
+              "key": "ref22",
+              "first-page": "2289",
+              "article-title": "ParmeSan: Sanitizer-guided greybox fuzzing",
+              "volume-title": "Proc. 29th USENIX Secur. Symp. (USENIX Security)",
+              "author": "terlund"
+            },
+            {
+              "key": "ref23",
+              "first-page": "445",
+              "article-title": "Fuzzing with code fragments",
+              "volume-title": "Proc. 21st USENIX Secur. Symp. (USENIX Security)",
+              "author": "Holler"
+            },
+            {
+              "key": "ref24",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2017.23"
+            },
+            {
+              "key": "ref25",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23263"
+            },
+            {
+              "key": "ref26",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SecDev.2019.00018"
+            },
+            {
+              "key": "ref27",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978342"
+            },
+            {
+              "key": "ref28",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2023.24290"
+            },
+            {
+              "key": "ref29",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3650212.3652111"
+            },
+            {
+              "volume-title": "ATHERIS",
+              "year": "2025",
+              "key": "ref30"
+            },
+            {
+              "key": "ref31",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3576915.3623166"
+            },
+            {
+              "key": "ref32",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/QRS60937.2023.00040"
+            },
+            {
+              "article-title": "AFL+$: Combining incremental steps of fuzzing research",
+              "volume-title": "Proc. 14th USENIX Workshop Offensive Technol. (WOOT)",
+              "author": "Fioraldi",
+              "key": "ref33"
+            },
+            {
+              "key": "ref34",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.58496/bjml/2024/002"
+            },
+            {
+              "key": "ref35",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.58496/bjai/2023/003"
+            },
+            {
+              "key": "ref36",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597503.3639121"
+            },
+            {
+              "volume-title": "Dharma",
+              "year": "2025",
+              "key": "ref37"
+            }
+          ],
+          "container-title": [
+            "IEEE Access"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/6287639/10820123/10965623.pdf?arnumber=10965623",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                26
+              ]
+            ],
+            "date-time": "2025-04-26T04:45:54Z",
+            "timestamp": 1745642754000
+          },
+          "score": 33.00434,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/10965623/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          },
+          "references-count": 37,
+          "URL": "https://doi.org/10.1109/access.2025.3561135",
+          "ISSN": [
+            "2169-3536"
+          ],
+          "issn-type": [
+            {
+              "type": "electronic",
+              "value": "2169-3536"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

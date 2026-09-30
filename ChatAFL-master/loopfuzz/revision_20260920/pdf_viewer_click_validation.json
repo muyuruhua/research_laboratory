@@ -1,0 +1,45 @@
+{
+  "status": "PASS",
+  "viewer": "PDF Preview 1.2.2 (installed renderer)",
+  "method": "Trusted mouse press/release in a separate headless browser using the same installed viewer assets and exact manuscript PDF",
+  "pdf_sha256": "2b2d36220d6c724572dd6fc2badac0def37fb6721e41d0d39c615f3f3cc66dd2",
+  "results": [
+    {
+      "destination": "cite.aflnet",
+      "source_page": 1,
+      "expected_page": 20,
+      "actual_page": 20,
+      "before_scroll": 520,
+      "after_scroll": 27490,
+      "clicked_actual_anchor": true,
+      "passed": true
+    },
+    {
+      "destination": "figure.4",
+      "source_page": 10,
+      "expected_page": 12,
+      "actual_page": 12,
+      "before_scroll": 13514,
+      "after_scroll": 15689,
+      "clicked_actual_anchor": true,
+      "passed": true
+    },
+    {
+      "destination": "table.12",
+      "source_page": 11,
+      "expected_page": 11,
+      "actual_page": 11,
+      "before_scroll": 14630,
+      "after_scroll": 14523,
+      "clicked_actual_anchor": true,
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "workspace_association": {
+    "**/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/main.revised.pdf": "pdf.preview"
+  },
+  "other_workspace_settings_unchanged": true,
+  "manuscript_and_pdf_unchanged": true,
+  "live_viewer_reopened": true
+}

@@ -1,0 +1,564 @@
+         ON THE LIKELIHOOD THAT ONE UNKNOWN
+         PROBABILITY EXCEEDS ANOTHER IN VIEW
+           OF THE EVIDENCE OF TWO SAMPLES.
+
+     BY WILLIAM R. THOMPSON. From the Department of Pathology,
+                       Yale University.
+
+                                          Section 1.
+    IN elaborating the relations of the present conmmunicationinterest was not
+centred upon the interpretation of particular data, but grew out of a general
+interest in problems of research planning. From this point of view there can be no
+objection to the use of data, however meagre, as a guide to action required before
+more can be collected; although serious objection can otherwise be raised to argument
+based upon a small number of observations. Indeed, the fact that such objection
+can never be eliminated entirely-no matter how great the number of observations-
+suggested the possible value of seeking other modes of operation than that of taking
+a large number of observations before analysis or any attemipt to direct our course.
+This problem is more general than that treated in Section 2, and is directly con-
+cerned with any case where probability criteria may be established by means of
+which we judge whether one mode of operation is better than another in some
+given sense or not.
+    Thus, if, in this sense, P is the probability estimnate that one treatment of a
+certain class of individuals is better than a second, as judged by data at present
+available, then we might take some monotone increasing function of P, sayf(p),
+to fix the fraction of such individuals to be treated in the first manner; until more
+evidence may be utilised, where 0 <_fp) < 1; the remaining fraction of such
+individuals (1 -f(p)) to be treated in the second manner; or we may establish a
+probability of treatment by the two methods of f(p) and 1 -f(p), respectively. If
+such a discipline were adopted, even though it were not the best possible, it seems
+apparent that a considerable saving of individuals otherwise sacrificed to the inferior
+treatment might be effected. This would be imnportantin cases where either the
+rate of accumulation of data is slow or the individuals treated are valuable, or both.
+     If we arbitrarily decide to eliminate the second treatment in favour of the first
+at this time, then the expectation of sacrifice to the inferior treatment would be
+(1 - P) for all subsequently treated individuals; whereas, if, for example, we take
+f(p) = P, the expectation of such sacrifice would be temporartly
+
+
+
+
+          This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                           All use subject to JSTOR Terms and Conditions
+.286 Likelihood that OnteUnknown Probability exceeds Another
+
+where Q= 1 - P. Obviously, 2PQ < I and, if P $ i, then 2PQ < 1; whence a saving
+is made in contrast to the so-called alternate case method. In the long run, if a real
+preference exists between the two treatments, the expected saving by continued
+application of this method of apportionment rather than by making immediate final
+decision is sensibly 1 - P of individuals subsequently treated.
+    Obviously, if we are to operate in this manner, we need methods of evaluation
+of P for small as well as large numbers of observations. In the latter case many
+approximate methods are available in all fields although bounds to approximation
+have not been considered generally.
+     In Section 2 a sampling problem is treated, which is equivalent to a special case,
+where we are to judge between two rival treatments upon the basis of the proba-
+bility of occurrence of a given critical event following such treatment. These
+probabilities are assumed unknown, but denoted by P, and p2; and it is assumed
+that, independently for each of these, a priori Pi is equally likely to lie in either of
+any two equal intervals in its possible range, (0, 1). Our available experience
+consists solely of the data:
+   Of nl individuals treated by the first method, r1 experienced the critical event
+and s1 did not; and of n2 treated by the second, r2 and S2 were the corresponding
+numbers with respect to the critical evernt.
+    In any given case it must be decided whether these requirements are met or
+not, and whether we may apply the well-known Principle of Bayes to convert the
+problem to the form of Section 2. Statistical criteria are often employed, however,
+in situations in which certain deviations from the conditions required in their
+development can be tolerated, when a better procedure is not available.
+
+                                                 Section 2.
+    Consider the case of two infinite populations for which the unknown probabilities
+of occurrence of a given critical event are -i and p2, and the probability of obtaining
+a sample containing r critical occurrences and s failures in n = r + s trials is
+()   .r  (1 -0j0, where i = 1, 2, respectively. Furthermore, assume that one sample
+has been drawn at random from each population, the respective values of r and s
+being denoted by ri and si (where i= 1, 2) and ni= ri + si; and that independently
+for i = 1 or 2 the probability that pjilies in the interval (p, p + dp) is P(i) where
+     (1)                            pr)~~4~=     j.P?d2   .p   p'Sn\
+                                                               (n)           .   dp
+                                                                     .
+                                                                 ) P
+                                                                   pr8dp
+      (1 )
+                                            =
+                                  ~~~~~p,p+dp         -1
+                                                      Jr( ).pr.
+                                                               n       qs.       dp
+
+where      q-1-p,      r = ri,   s= si, and n =r +s. Then
+
+  (2)                 pW)        r+l )! Jlprqs            dp =E        (n         1)   pa. qn+l-a;
+
+
+
+
+               This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                                All use subject to JSTOR Terms and Conditions
+                                             WILLIAM                              R. THOMPSON                                                       287
+
+the last expressionhaving been indicatedby K. Pearson*in this relation. In the
+notation employed by him and by Miillert we may write
+
+      (
+      (3,                      ()~~~~),,p = Ij, ((u, v)
+                        1-p(i),-=,i,                    = Bp(u, v) = 1 -I I(V, u),
+                                                      Biv) (B(  v) j
+
+
+
+where ut = ri + 1 anid v = si + 1. The object of the present communication is to give
+a reduced+ rational algebraic evaluation of the probability (PF2>,p) that for the
+postulated systems P2 exceed pl, and to indicate certain relations between its value
+(later designated by I(rl,s ,r2,82)) and the sum of the first r2 + 1 terms of a hyper-
+geometric series which has appeared in the work of K. Pearson?11as well as in the
+Incomplete B- and I-functions* t of (3).
+      Obviously, we may write
+                             (n1+ 1 )!             (                                                     I                       d              (ii
+   (4)            -PP                                      Pin             ps.
+                                                                           (yII                                     I2 .   q2 2.     dP2. dpl       i
+                                 r1! Si! JI                                                 ?2         2J
+
+
+
+                                 r si         J Oa=O                         a /                                                                0
+                           _(ni-+-1)!.           E (nf2                            p
+                                                                             + J) (Ti+ a) (]u?;+a                                dp1a)          (iii)
+                             (n.l+ 1)                                   )
+                                                                       !n2+1                 (i -+a)! (sl?+2                 + 1-a)!
+                                 (??   z1+                 . =)0            a-l                        (nal+'2+              2)!
+
+
+                             (n1 +n1           (X2          + )!                            (T   1 +         !a)     (s2    +1 -         a)!    (iv)
+                                 (n,+1!. n2                            1                (r1 + r2- a)'.(s, 4- 82+1_+a)!,                           v
+                                 (tl1+         2+ 2)!                             a   77 r1!(r2-a)! S1'(S2+ 1+ a)!
+whence we have
+                                                        7' rl +?'2                     -a              Sl+S2+l             +a)
+                                              a=                            VI                                      Sl
+   (5)y
+   (/) p\                  1 P2>P1                       (r
+                                                       +a)0                         + n2 +
+                                                                             (t1 jai(s                   2)         Z 1
+
+
+                                                                                            i+1
+where, of course, ni = r, + si.
+   Now, it is obviousthat Ph2>h1                                       PP1            =P2           > 2=P2<q
+                                                                                                  Pill
+                                                                                                                             where
+                                                                                                                           q11-p,                   and
+thus in similar imannerwe have
+                                               St             .1           + 82        -a          71 +            '2 + I +a)
+                                                                             2                                      r2
+   (6)(())~~~~P            p-`         I      a-       (
+                                                                                  114+ 2?2+ 20
+                                                                                        it1 + 1
+
+Furthermnore,PP2>p1= 1-Pp1>p2, as the probability that l is exactly equal to p2 is
+zero by hypothesis. Hence we have two other similar sumnswvhichmay be used with
+this difference relation to evaluate the probability under consideration.
+   * Pearson, Karl: Biontetrika, Vol. xvi (1924), pp. 202-203.
+   t Muller, J. H.: Biometrika, Vol. xxii (1930-31), pp. 284-297.
+   t The earliest work directed to this end is discussed by Todhunter. Cf. A History o ttheMathematical
+Theory of Probabilty. Cambridge and London (1865), pp. 419-420.
+   ? Pearson, Karl: Philosophical Magazine, Series 6, Vol. 13 (1907), pp. 365-378.
+   IIPearson, Karl: Bioometrikat, Vol. xxA (1928), pp. 149-174.
+
+
+
+             This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                              All use subject to JSTOR Terms and Conditions
+288 Likelihtoodthat One Unknown Probability exceeds Another
+   In actual evaluation we may make use of the well-known pyramid fornm of
+tabulation of the binomial coefficients,
+
+
+                                                                                  1              2            1
+                                                                         1             3               3              1
+                                                                  1               4              6                4               1
+  (7)                                                      1              5            10 10 5 1
+                                                  1                 6             15     20 15 6 1
+                                         *                               0             *                  0               *           *            *
+
+                                   0               *                *             *               *           0                   *          *         *
+                      .........................................................
+
+
+which is readily constructed by the property that each entry except those on the
+boundaries (which are always unity) is the sum of the two nearest entries of the
+row next above*. The corresponding factors of the successive terms in the sum to
+be evaluated may be found in order on given diagonals, ascending in the case of the
+first and descending in the case of the second factor. The bouinding diagonals of
+units may be deleted in practice (as may all entries to the right of the middle
+column). Then the first factor of the first term of the sum in (5) is the r -th entry
+in the row whose first entry (at the left) is r1+ r2, and the corresponding factors of
+successive terms lie successively above on the diagonal through the first and parallel
+to the left-hand boundary. Similarly, the other factors are found, buit proceeding
+in the opposite direction on the appropriate diagonal.
+   Now, for any positive number, x, let Q(x)+1.                                                                                              Then, by Stirling's formula,
+we have
+
+  (8)                                                  ?nz!= Q(m). %/27r
+                                                                       . e-.                                                      e12n
+
+where 0 ? <9 1; whence (4) (v) gives
+                                                       41).ew                                     r2/l2               +1\
+  (9)       PP2>it
+                     = Q_                                       .                            .
+                                                                                                                                          Q(rj+r2-a)
+                                                                                                                                                                   8
+                                                                                                                                                                Q(81+82+1+u)
+                       Q(nL+n2+2)                       * Q(rL) * Q(1,)                          a=o r2 - a
+where                                                                 +
+                                                          112wl1< r1 1s1                                            1
+                                                                                                                  niL+1'
+which may be used to advantage in approximation of PP2>Pl whenl r1 and si are large
+and r2 small.
+    Now we may define 4(r1,sl,r2, 82) for any four rational integers (not negative) as
+identical with the right member of (5), where ni = ri + si > 0. Then we have shown
+several equivalent expressions of the same function and that
+                                                                    =                                         =       1       -
+  (1 0)                   *(rl,           81, r2.s2)                         k(82,     r2.       81,   rl)                            (81,       rl, as, r2)-
+
+   *
+      Glaisher, J. W. L.: "A Table of Binomial-Theorem Coefficients," A1essenger of Mathematics,
+Vol. 47 (1917), pp. 97-107.
+
+
+
+           This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                            All use subject to JSTOR Terms and Conditions
+                                              WILLIAM               R.      THOMPSON                                                 289
+
+From the conditions stated it may be expected that if we set p = r and q = 1 -p,
+then (provided 0 < p < 1),
+  (11)                                          limn           #(r1,S1,r2,S)                  -1
+                                                     l Iq (s2 + 1, r2 + 1)
+
+That this is true may be verified if we excluide the cases, p = 0, 1. Further bounds
+to approximation of this limit by the ratio (R) of these functions for given values
+of n1may be found as follows:
+    By (4) (iv) we may write
+                                                                           (ri + a)!           (s? + n2 + 1- a)!
+  (12)                  "fr(r1,s1,r2,s2) =
+                                                s      (n2+ 1)                  rl!                           SI!
+                                                                                              (01 + 1)!
+and by (2) and (3), introduicing the appropriate values of r                                                             =   2 and s =s2,
+we have
+  (13)                           Iq (S2 + 1, r-2 + 1)                          (n2+      1)        p'   qf2+l-a
+
+
+                  ri~~~S
+where p   =        anid q = s1 Obviously, therefore, as all termns of both suims in (12) and
+(13) are positive, if we exclude the special cases where p or q = 0, fRis bounded by
+the greatest and least values attainable for the ratio of a term in the surmof (12)
+to the corresponding term in (13). Thus we may define
+
+
+  (14)                  [i     Mm.       1 ) ( r81 1
+                                      L(r1~        )                                   K+ ll2+ 2
+                                                                                      11
+                                                                                                                    n2
+and                   (02   =Max.        r+ aa)          Os+
+                                                                     112   +
+                                                                                1-an21')xl2             (11
+
+
+
+
+for 0 < a < r2; and, obviouisly, then
+  (15)                                   W1<R<02,                    and lim [R]=l.
+
+    In the excluded cases it is also readily verified that
+
+  (16)                               lim [*(rl, -sl,r23-2)]                I(82        +      TX   1-2 +1)
+
+
+    The relation of this fuinction to the surn of a given number of consecutive terms
+of a hypergeometric series is particularly interesting in view of the occurrence of
+such series in the investigations of K. Pearson* t. By (4) (iv) we may write:
+
+                                      (,1   +       )+     2)      ! -                (rl +a) !(sn + 2 + 1-a)!
+  (17)        *(rl,   -q,   r2,82)   (it, +     n2 +      2) ! rl !s,           -)         ag! (n2+ 1-c a)!
+          * Pearson, Karl: Philosophical Magazine, Series 6, Vol. 13 (1907), pp. 365-378.
+          t Pearson, Karl: Biometrika, Vol. xxA (1928), pp. 149-174.
+
+
+
+               This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                                All use subject to JSTOR Terms and Conditions
+290 Likelihood that Oie UneknownProbability exceeds Another
+which is the sum of the first r2+ 1 terms of a hypergeometric series mnultipliedby
+a constant. Similarly, we may write
+     18
+  (18)
+                                         (??.1+ 1)!(n<2?                    1)!            t82       (sl?+ a)!('                + 'n2+l        -a)!
+          (sl, rl.   S2,   r2)                  -       )'                   !!           a=?
+
+
+
+
+                                         (rti+ I)! (n? 1)'                                          (r1      +r2+        1 + a)! (Sl + *S2-a)!
+                                           +V +
+                                       (n1?n2       2)' rl!s1!                           a=                   (7'2 + I+      a) I(82-a)!
+                                 = (il+1!-(                       [n2                                         (r1           )   !(Sl+     ?2     +    1-a)!
+                                       (ll     + n2 +2)!rl!                       si!                        L           a      ('l2+ 1-a)!
+obviously (as    712 =       2 + 82);            and by previous demonstration
+  (19)                                             h(rI,s,i,2,s2)                +      k(Si,r'i,'2s,r2)
+
+whence
+   (20)
+  (20)
+           ~          t+
+                     Ol          712+          2)! rl!s,                    712>+1            a) (sl+ 12 +1- a)!
+                                                                                          (7-1+ _
+
+                      (n1+         1)!(2+         a!(n2+ 1-a)!
+                                                             1)!             a=O
+
+    The last relatioin, demonstrated above by independent proof, has been
+established previously by Pearson*t (with different notation). Thus we may
+regard #(rl,si, r2,s2) as defined by the identity
+                                                                    r2
+                                                                            (r
+                                                                                         a
+                                                                                     + a)!           (SI     + 12+         1    - a)!
+                                                                    Y
+   (21)                                           _2,82            a=O             a ! (n2+ 1-a)!
+     (l~~~~~~'
+        )                        8(1           ,1's 2, 82)    -
+                                                                    2tl1     (r, + ag)! (ts, + n2 +                         I- a)!'
+                                     a=(      a!(n2+I-a)!
+extending the domainiof definition to include the value, r2 = 112 + 1; but retaining
+the restrictions,n, = rt + si > 0, and that - 1 be the least value of r1, si, r2, and s2
+(only one of which shall be admnitted to be negative). Then, by this extension,
+we have
+  (22)                      4(r1,sl,O,O)             -r           +b       +2X           and             g(r,81,n2+1,-1)                  1,
+
+which lie outside the domain of the initial discussion, and we extend to the new
+domrainthe relation of (10) formally; i.e.
+  (23)                                  #(r,     s, r', s') -              (s', r', s, r)            1   -       (s,r,     s', r')-
+
+    K. Pearsont has considered the problem of likelihood of various values of R and
+S, the number of marked members and urnmarkedmembers, respectively, in a finite
+universe of aggregate number, N = B + S; assuming N fixed and all values ot
+B, S 0 equally likely a priori and that our sole experience from which judgment
+is to be made is that a random sample has been drawn containing exactly r marked
+and s unmarked members (R and S being used here in place of Pearson's p and q
+to avoid confusion). Then by (iii) and (iv) of the articlet just mentioned, we have a
+means of evaluating the probability, PR, that the uiniverse contains no more than
+R marked members by the relation,
+  (24)                                                       PR -(r,                 , R-, N-R-S-1),
+          * Pearson,        Karl: Philosophical                     Magazine,                Series 6, Vol. 13 (1907), pp. 36.5-378.
+          t Pearson, Karl: Biometrika, Vol. XXA(1928), pp. 149-174.
+
+
+
+           This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                            All use subject to JSTOR Terms and Conditions
+                                        WILLIAM R. TtiHOMPSON                                                    291
+
+which may be verified readilv. Similarly, in the case of the problem considered
+earlier by Pearson*-having drawn one random sample from a certain infinite
+population, the sample containing exactly r' markedand s' unmarkedmembers, we
+are required to find the probability (under the given conditions) that if we draw
+another random sample of n" individuals from the same population it will contain
+no more than r" marked members-the required value is given for r" ?_n" by
+                                                   #(r', s', r",n"-r"-1)*
+    In the tabuilation of values of +   S) for ascending values of the arguments
+the work may be greatly simplified by certain relations in addition to those given
+in (22) and (2'3) in much the same manner as the binomial coefficients may be
+tabulatedt by mere summation of two values already given. To this end let us
+examine two functions defined by
+   (25)                      Ni9(rsr'8,)     _a -saj(r??r                 (s+s'+         1 +a)
+
+and         Do.,s,, se)-- D0, l)                      + ?2)          for n=r+s,           and n'=r'+s'.
+                                               it1 +   1/
+    Obviously, by the original definition of *0,s',",.1 extended in (21), (22) and
+(23), then
+   (26)                                       k(,s,    r ,s)s-D(r'            ')
+
+where we extend the definition of (25) for r, s, r', s' > 0 by
+  (27)              f(, s,j, s )                0, and         N(r, s,,)-1)        Do +,,
+and by (26) and (23) we have
+   (28)                    N(r, s re, se)   -=N(s,, re,s, r) =D( +*,'s')           - lv(R,r, s', ?'),
+
+as it is obvious that D(n,n') D(n',,). Furthermore, by the well-known relation,
+
+   (29)                                     (b)              D-      + (b-)
+                                        D(jj,7))       D(nz, Wn-i)    + D(?Z...,,,)I
+we have for s > 0 in (25)
+   (30)               N(r, s,r', se)           (         ;        ) L(si           1a) + (              s   )]
+
+whence we have in any case under its definition, obviously, by (20), (27) and (28),
+the identities
+  (31)                             AT(r,s, re,s)       -N(r, s-1, re,s') + lV(r,s, re,8s-1)
+                                                      -N(o,-      s, r', se) + 1A(r, s, r'-1, se)*
+
+   By (25) and (29), obviously, the satmierelation holds for the D-function; and
+we may write
+  (32)                                 N(rs,r,s)-N(r,ss-1,r')         + N(r,s,,s
+                                                    D(r, s-i, r', s') + D(r, s, r, s-1)
+   * Pearson, Karl: Philosophical Magazinie, Series 6, Vol. 13 (1907), pp. 365-378.
+   t Glaisher, J. W. L.: " A Table of Binomial-Theorem Coefficients," Mlessengerof Mathemlatics,Vol. 47
+(1917), pp. 97-107.
+
+
+
+             This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                              All use subject to JSTOR Terms and Conditions
+                                Probability exceeds Another
+292 Likelihood that OnteUnbknownt
+    By miieansof these relations it is evident that it suffices to tabulate the N and
+the D-functions by additions of corresponding pairs of values already listed or
+readily obtained by the relations of (28) if we proceed from the lowest values of
+the arguments upward; and we need list values only for the cases where r-+ s > r' + s'
+and ra s where all four variables may be restricted to positive values, as by (25)
+we have
+  (33)                                    NV(r,,,os)          D(s-1, s').
+   By (25) we may write
+                                                 2.,
+
+
+  (34)                    N(,, s, ht,s-          I      D(r-1, r'-l-a)   . D(s-,,s'+a)
+                                                a=O
+
+
+which is of value if D(n, t,is tabulated for nH n' through ascending values of n
+and n'. This may be done rapidly by means of (29) and the relation D(,n') =D(g,n)
+and is nmoreconvenient than the pyramid form of the corresponding binomial
+coefficients. In the tabulation we may restrict n and n' to the positive integers,
+employing the relation D(7,,o) it + 2. A short table of the N and D functions is
+appended as an illustration, the required probability being the ratio of these
+corresponding values.
+                                        Section 3.
+    If a system of operation such as suggested in Section 1 were adopted extensively
+for the case considered in Section 2, reference to values of (,s,, s) for small values
+of the arguments should be required frequently; and, accordingly, a sirmLple     method
+of formation of a table of these would be valuable. The method given in Section 2
+seems to serve this purpose; and, in conjunction with the relationis of (28), many
+values need not be listed. The short table is given merely in illustration. It really
+deals completely with all cases of n, n' < 5 although certain cases are not listed where
+the values are readily obtainable from those given and (28). The several general
+evaluations at the head of the table would permit deletion of many more, e.g. any
+instance where one of the four arguments is zero; but they have been retained for
+illustrative purposes.
+    The function, D( ,,)    =   (   +       +          2'), is readily tabutlated in a convenient form
+for increasing values of 'n>n'7 ? 1, as has beetn miientionedunder (34) above by
+adding to n + 2 successively the values of D(n-1,WI,already listed, and taking a sub-
+total after each addition, and finally doubling the last sub-total. These sub-totals
+and the final double are the required successive values of D , The value of such
+a table extends far beyond that of the immediate problem; and, by means of it and
+relation (34), # (r, s,r',s) may be calculated rapidly or approximated with any required
+precisionlfor considerably higher values of the arguments than it may be convenient
+to have tabulated NW, r',s') In accord with some prescribed tolerance and limited
+extent, a table of approximate values of the D-function could be miiadewith greater
+ease, but apparently not readily extensible within the same relative tolerance
+without revision. Just how far these tables should extend would depend upon
+demands for their use. All questions as to approximiate mnethodsshould be decided
+
+
+          This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                           All use subject to JSTOR Terms and Conditions
+                                                                     WILLIAM                 R. THOMPSON                                         293
+
+                  Short Table of N(ras,ir', )nd                                              D(n,        (n = r + s, and n' = r' + s')
+ r          s             r'          .                       N                      D          r          .N    r'     .s'        N        D
+
+ a          b               c          d                 _       N                   1          4          0     0      4           1      252
+ b          a               d          c                 D- !N                       D          4          0     1      3           6
+ d          c             b            a                      I                      D          4          0     2      2          21
+ r          s            -I            s'                      0                                4          0     3      1          56
+ r          0             0               0                      1               r+2            3          1      1     3          26
+ r          0             0            s'                   1                                   3          1      2     2          66
+ r          0             1        ,'                     r +2
+ r          s             0       0                       ,+1                   i+       2      5          0     0      1           1       28
+ r          s             0          D'                 D(81.)                                  5          0     1      0           7
+       __         _        _ _ _ _4                          _                                             1     0
+ _o__ __                         _      _                            __        __ __            4          1     1      0          13
+       0               -1              0                         0                1             3          2     0      1           6
+ o          0               0             0                      1                              3          2      1     0          18
+                                                                                     2
+
+            0               0             0                      1                   3          5          0     0      2
+                                                                                                                                    71
+ 1                                                                                                                                          84
+ O0         11              0             0                      2                             ~~~~50             1     1
+                                                                                                5   0             2     0          28
+ 1          0               0             1                      1                   6          4          1     0      2           4
+      1I     00             1_
+                             1            00                     3                              4          1     1      1          19
+                                                                          __         6          4          1     2      0          49
+ 2          0               0             1                      1                10            3          2      1           1    34
+ 2          0               1             0                      4                                         2            1          3
+ 1          1               0             1                      3                1             3          2     2      0          64
+
+  2         0                                                                                        5     0     0      3           1      210
+                            0             2                      1               20             5                1      2           7
+| 2         0               1?            1                      ]                              )5         0     2      1          28
+ 3          0               0          1                         1               15             5          0     3      0          84
+ 3          0               1          0                         5                              4          1     0      3           5
+ 2          1               0          1                         3                              4          1     1      2          25
+ 2          1               1          0                         9                              4          1     2      1          70
+                                              _______            ______         ______          4          1     3      0         140
+ 3          0               0          2                      1                  35             3          2     0      3          15
+ 3          0               1          1                      5                                 3          2     1      2          55
+ 3          0               2          0                      63
+                                                             15                                            2     2      1         115
+ 2          1               0          2                      4                                 3          2     3      0         1.735
+ 2          1               1          1                     13
+ 2          1               2          0                     25                                 5          0     0      4           1      462
+      4         0               05                                                                         0     1      3           7
+ 3          0               0          3                         1               70             5          0     2      2          28
+ 3          0               1          2                         5                              5          0     3      1          84
+ 3          0               2          1                     1m                                 5          0     4      0         210
+ 2          1               1          2                     17                                 4          1     0      4           6
+_ _ _ _ _ _ _ _       _ __ _ _ _ _   _ _ _ _ _ _ _           _ _ _ _ _ _ _     _ _ _ _ _ _ _    4          1     1      3          31
+ 4          0               0          1                      1                  21             4          1     2      2          91
+ 4          0               1          0                      6                                 4          1     3      1         196
+ 3          1               0          1                      3                                 4          1     4      0         3236
+ 3          1               1          0                     21                                 3          2     0                 21
+ 2          2               0          1                      6                                 3          2     1      3          81
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _-
+ 3_                                                                                             3          2     2      2         181
+ 4          0               0          2                      1                56               3          2     3      1         301
+ 4          0               1          1                      6                                 3          2     4      0         406
+ 4          0               2          0                     21
+ 3          1               0          2                      4                                 5          0     0      5           1     924
+ 3          1               1          1                     16                                 5          0     1      4           7
+ 3          1               2          0                     36                                 5          0     2      3          28
+ 2          2               0          2                     10                                 5          0     3      2          84
+ 2          2               1          1                     28                                 5          0     4      1         210
+                                                                                                4          1     1      4          37
+ 4          0             0    3      1         126                                             4          1     2      3         112
+ 4          0             1    2     6                                                          4          1     3      2         252
+ 4          0             2    1    21                                                          3          2     2      3         262
+ 4          0             3    0    56
+ 3          1             0    3      5
+ 3          1             This
+                          1 content
+                               2 downloaded
+                                    21       from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+ 3          1             2    1     All use subject to JSTOR Terms and Conditions
+                                    51
+294 Likelihood that One Unknown Probability exceeds Another
+by several statisticians in consultation at a time when a definite programme for the
+use of these methods is formed.
+   In (24) and the paragraph in which it stands is given the relation between the
+hypergeometricalseries studied by Pearson*t and* (r,8,qr,')                by means of which it
+is obvious that any approximation methods valid for estimation of PR in (24) are
+equally valid for the estimation of the corresponding *-function, several of which
+have been suggested by K. Pearson. The I-function of Pearson is related to the
+*-function by (11) to (15) also; and another approximation of *(rl, s, rM, 2) is given
+in (9) with indicated domain of validity.
+    A further treatment of the *-function and the method of apportionment will
+be provided in a later paper.
+         * Pearson, Karl: Philosophical Mlagazine, Series 6, Vol. 13 (1907), pp. 365-378.
+         t Pearson, Karl: Biometrika, Vol.XXA (1928), pp. 149-174.
+
+
+
+
+          This content downloaded from 128.95.155.147 on Mon, 31 Aug 2015 03:29:45 UTC
+                           All use subject to JSTOR Terms and Conditions
+

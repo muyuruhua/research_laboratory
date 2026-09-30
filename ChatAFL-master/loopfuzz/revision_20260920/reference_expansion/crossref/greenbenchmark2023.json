@@ -1,0 +1,399 @@
+{
+  "endpoint": "https://api.crossref.org/works/10.1145%2F3597926.3598144",
+  "response": {
+    "status": "ok",
+    "message-type": "work",
+    "message-version": "1.0.0",
+    "message": {
+      "indexed": {
+        "date-parts": [
+          [
+            2026,
+            8,
+            24
+          ]
+        ],
+        "date-time": "2026-08-24T00:26:24Z",
+        "timestamp": 1787531184293,
+        "version": "build-2736575974"
+      },
+      "publisher-location": "New York, NY, USA",
+      "reference-count": 29,
+      "publisher": "ACM",
+      "license": [
+        {
+          "start": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ],
+            "date-time": "2023-07-12T00:00:00Z",
+            "timestamp": 1689120000000
+          },
+          "content-version": "vor",
+          "delay-in-days": 0,
+          "URL": "https://creativecommons.org/licenses/by/4.0/"
+        }
+      ],
+      "content-domain": {
+        "domain": [
+          "dl.acm.org"
+        ],
+        "crossmark-restriction": true
+      },
+      "short-container-title": [],
+      "published-print": {
+        "date-parts": [
+          [
+            2023,
+            7,
+            12
+          ]
+        ]
+      },
+      "DOI": "10.1145/3597926.3598144",
+      "type": "proceedings-article",
+      "created": {
+        "date-parts": [
+          [
+            2023,
+            7,
+            13
+          ]
+        ],
+        "date-time": "2023-07-13T20:12:53Z",
+        "timestamp": 1689279173000
+      },
+      "page": "1396-1406",
+      "update-policy": "https://doi.org/10.1145/crossmark-policy",
+      "source": "Crossref",
+      "is-referenced-by-count": 7,
+      "title": [
+        "Green Fuzzer Benchmarking"
+      ],
+      "prefix": "10.1145",
+      "author": [
+        {
+          "given": "Jiradet",
+          "family": "Ounjai",
+          "sequence": "first",
+          "affiliation": [
+            {
+              "name": "MPI-SWS, Germany"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Valentin",
+          "family": "Wüstholz",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "ConsenSys, Austria"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Maria",
+          "family": "Christakis",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "TU Wien, Austria"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        }
+      ],
+      "member": "320",
+      "published-online": {
+        "date-parts": [
+          [
+            2023,
+            7,
+            13
+          ]
+        ]
+      },
+      "reference": [
+        {
+          "key": "e_1_3_2_1_1_1",
+          "unstructured": "[n. d.]. Empirical Evaluation Guidelines (ACM SIGPLAN).  http://www.sigplan.org/Resources/EmpiricalEvaluation \t\t\t\t  [n. d.]. Empirical Evaluation Guidelines (ACM SIGPLAN).  http://www.sigplan.org/Resources/EmpiricalEvaluation"
+        },
+        {
+          "key": "e_1_3_2_1_2_1",
+          "unstructured": "[n. d.]. FuzzBench: Fuzzer Benchmarking as a Service.  https://google.github.io/fuzzbench \t\t\t\t  [n. d.]. FuzzBench: Fuzzer Benchmarking as a Service.  https://google.github.io/fuzzbench"
+        },
+        {
+          "key": "e_1_3_2_1_3_1",
+          "unstructured": "[n. d.]. Honggfuzz: A Security-Oriented Feedback-Driven Evolutionary Easy-to-Use Fuzzer.  https://github.com/google/honggfuzz \t\t\t\t  [n. d.]. Honggfuzz: A Security-Oriented Feedback-Driven Evolutionary Easy-to-Use Fuzzer.  https://github.com/google/honggfuzz"
+        },
+        {
+          "key": "e_1_3_2_1_4_1",
+          "unstructured": "[n. d.]. LibFuzzer—A Library for Coverage-Guided Fuzz Testing.  https://llvm.org/docs/LibFuzzer.html \t\t\t\t  [n. d.]. LibFuzzer—A Library for Coverage-Guided Fuzz Testing.  https://llvm.org/docs/LibFuzzer.html"
+        },
+        {
+          "key": "e_1_3_2_1_5_1",
+          "unstructured": "[n. d.]. OSS-Fuzz: Continuous Fuzzing for Open Source Software.  https://google.github.io/oss-fuzz \t\t\t\t  [n. d.]. OSS-Fuzz: Continuous Fuzzing for Open Source Software.  https://google.github.io/oss-fuzz"
+        },
+        {
+          "key": "e_1_3_2_1_6_1",
+          "volume-title": "“Whitepaper",
+          "author": "Technical",
+          "unstructured": "[n. d.]. Technical “Whitepaper ” for AFL. http://lcamtuf.coredump.cx/afl/technical_details.txt [n. d.]. Technical “Whitepaper” for AFL. http://lcamtuf.coredump.cx/afl/technical_details.txt"
+        },
+        {
+          "key": "e_1_3_2_1_7_1",
+          "volume-title": "Briand",
+          "author": "Arcuri Andrea",
+          "year": "2011",
+          "unstructured": "Andrea Arcuri and Lionel C . Briand . 2011 . A Practical Guide for Using Statistical Tests to Assess Randomized Algorithms in Software Engineering. In ICSE. ACM , 1–10. Andrea Arcuri and Lionel C. Briand. 2011. A Practical Guide for Using Statistical Tests to Assess Randomized Algorithms in Software Engineering. In ICSE. ACM, 1–10."
+        },
+        {
+          "key": "e_1_3_2_1_8_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1002/stvr.1486"
+        },
+        {
+          "key": "e_1_3_2_1_9_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Dirk Beyer. 2012. Competition on Software Verification (SV-COMP).  https://sv-comp.sosy-lab.org \t\t\t\t  Dirk Beyer. 2012. Competition on Software Verification (SV-COMP).  https://sv-comp.sosy-lab.org",
+          "DOI": "10.1007/978-3-642-36742-7_43"
+        },
+        {
+          "key": "e_1_3_2_1_10_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Dirk Beyer. 2019. Competition on Software Testing (Test-COMP).  https://test-comp.sosy-lab.org \t\t\t\t  Dirk Beyer. 2019. Competition on Software Testing (Test-COMP).  https://test-comp.sosy-lab.org",
+          "DOI": "10.1007/978-3-030-17502-3_11"
+        },
+        {
+          "key": "e_1_3_2_1_11_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Marcel Böhme Valentin J. M. Manès and Sang Kil Cha. 2020. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In ESEC/FSE. ACM 678–689. \t\t\t\t  Marcel Böhme Valentin J. M. Manès and Sang Kil Cha. 2020. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In ESEC/FSE. ACM 678–689.",
+          "DOI": "10.1145/3368089.3409748"
+        },
+        {
+          "key": "e_1_3_2_1_12_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Marcel Böhme László Szekeres and Jonathan Metzman. 2022. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ICSE. ACM 1621–1633. \t\t\t\t  Marcel Böhme László Szekeres and Jonathan Metzman. 2022. On the Reliability of Coverage-Based Fuzzer Benchmarking. In ICSE. ACM 1621–1633.",
+          "DOI": "10.1145/3510003.3510230"
+        },
+        {
+          "key": "e_1_3_2_1_13_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Joshua Bundt Andrew Fasano Brendan Dolan-Gavitt William Robertson and Tim Leek. 2021. Evaluating Synthetic Bugs. In AsiaCCS. ACM 716–730. \t\t\t\t  Joshua Bundt Andrew Fasano Brendan Dolan-Gavitt William Robertson and Tim Leek. 2021. Evaluating Synthetic Bugs. In AsiaCCS. ACM 716–730.",
+          "DOI": "10.1145/3433210.3453096"
+        },
+        {
+          "key": "e_1_3_2_1_14_1",
+          "volume-title": "Grey-Box Concolic Testing on Binary Code",
+          "author": "Choi Jaeseung",
+          "unstructured": "Jaeseung Choi , Joonun Jang , Choongwoo Han , and Sang Kil Cha . 2019. Grey-Box Concolic Testing on Binary Code . In ICSE. IEEE Computer Society/ACM , 736–747. Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. 2019. Grey-Box Concolic Testing on Binary Code. In ICSE. IEEE Computer Society/ACM, 736–747."
+        },
+        {
+          "key": "e_1_3_2_1_15_1",
+          "volume-title": "LAVA: Large-Scale Automated Vulnerability Addition. In S&P",
+          "author": "Dolan-Gavitt Brendan",
+          "year": "2016",
+          "unstructured": "Brendan Dolan-Gavitt , Patrick Hulin , Engin Kirda , Tim Leek , Andrea Mambretti , William K. Robertson , Frederick Ulrich , and Ryan Whelan . 2016 . LAVA: Large-Scale Automated Vulnerability Addition. In S&P . IEEE Computer Society , 110–121. Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti, William K. Robertson, Frederick Ulrich, and Ryan Whelan. 2016. LAVA: Large-Scale Automated Vulnerability Addition. In S&P. IEEE Computer Society, 110–121."
+        },
+        {
+          "key": "e_1_3_2_1_16_1",
+          "volume-title": "Heiko Eiß feldt, and Marc Heuse",
+          "author": "Fioraldi Andrea",
+          "year": "2020",
+          "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eiß feldt, and Marc Heuse . 2020 . AFL++: Combining Incremental Steps of Fuzzing Research. In WOOT. USENIX. Andrea Fioraldi, Dominik Maier, Heiko Eiß feldt, and Marc Heuse. 2020. AFL++: Combining Incremental Steps of Fuzzing Research. In WOOT. USENIX."
+        },
+        {
+          "key": "e_1_3_2_1_17_1",
+          "volume-title": "An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561",
+          "author": "Geng Sijia",
+          "year": "2020",
+          "unstructured": "Sijia Geng , Yuekang Li , Yunlan Du , Jun Xu , Yang Liu , and Bing Mao . 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561 ( 2020 ). Sijia Geng, Yuekang Li, Yunlan Du, Jun Xu, Yang Liu, and Bing Mao. 2020. An Empirical Study on Benchmarks of Artificial Software Vulnerabilities. CoRR, abs/2003.09561 (2020)."
+        },
+        {
+          "key": "e_1_3_2_1_18_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3363824"
+        },
+        {
+          "key": "e_1_3_2_1_19_1",
+          "volume-title": "Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4",
+          "author": "Hazimeh Ahmad",
+          "year": "2020",
+          "unstructured": "Ahmad Hazimeh , Adrian Herrera , and Mathias Payer . 2020 . Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4 (2020), 49:1–49:29. Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-Truth Fuzzing Benchmark. Meas. Anal. Comput. Syst., 4 (2020), 49:1–49:29."
+        },
+        {
+          "key": "e_1_3_2_1_20_1",
+          "volume-title": "Hosking",
+          "author": "Herrera Adrian",
+          "year": "2021",
+          "unstructured": "Adrian Herrera , Hendra Gunadi , Shane Magrath , Michael Norrish , Mathias Payer , and Antony L . Hosking . 2021 . Seed Selection for Successful Fuzzing. In ISSTA. ACM , 230–243. Adrian Herrera, Hendra Gunadi, Shane Magrath, Michael Norrish, Mathias Payer, and Antony L. Hosking. 2021. Seed Selection for Successful Fuzzing. In ISSTA. ACM, 230–243."
+        },
+        {
+          "key": "e_1_3_2_1_21_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "George Klees Andrew Ruef Benji Cooper Shiyi Wei and Michael Hicks. 2018. Evaluating Fuzz Testing. In CCS. ACM 2123–2138. \t\t\t\t  George Klees Andrew Ruef Benji Cooper Shiyi Wei and Michael Hicks. 2018. Evaluating Fuzz Testing. In CCS. ACM 2123–2138.",
+          "DOI": "10.1145/3243734.3243804"
+        },
+        {
+          "key": "e_1_3_2_1_22_1",
+          "first-page": "1",
+          "article-title": "Fuzzle: Making a Puzzle for Fuzzers",
+          "volume": "45",
+          "author": "Lee Haeun",
+          "year": "2022",
+          "unstructured": "Haeun Lee , Soomin Kim , and Sang Kil Cha . 2022 . Fuzzle: Making a Puzzle for Fuzzers . In ASE. ACM , 45 : 1 – 45 :12. Haeun Lee, Soomin Kim, and Sang Kil Cha. 2022. Fuzzle: Making a Puzzle for Fuzzers. In ASE. ACM, 45:1–45:12.",
+          "journal-title": "ASE. ACM"
+        },
+        {
+          "key": "e_1_3_2_1_23_1",
+          "volume-title": "UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794.",
+          "author": "Li Yuwei",
+          "year": "2021",
+          "unstructured": "Yuwei Li , Shouling Ji , Yuan Chen , Sizhuang Liang , Wei-Han Lee , Yueyao Chen , Chenyang Lyu , Chunming Wu , Raheem Beyah , Peng Cheng , Kangjie Lu , and Ting Wang . 2021 . UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794. Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang, Wei-Han Lee, Yueyao Chen, Chenyang Lyu, Chunming Wu, Raheem Beyah, Peng Cheng, Kangjie Lu, and Ting Wang. 2021. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In Security. USENIX, 2777–2794."
+        },
+        {
+          "key": "e_1_3_2_1_24_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/TSE.2019.2946563"
+        },
+        {
+          "key": "e_1_3_2_1_25_1",
+          "volume-title": "Handbook of Model Checking",
+          "author": "McMillan Kenneth L.",
+          "unstructured": "Kenneth L. McMillan . 2018. Interpolation and Model Checking . In Handbook of Model Checking . Springer , 421–446. Kenneth L. McMillan. 2018. Interpolation and Model Checking. In Handbook of Model Checking. Springer, 421–446."
+        },
+        {
+          "key": "e_1_3_2_1_26_1",
+          "doi-asserted-by": "crossref",
+          "unstructured": "Jonathan Metzman László Szekeres Laurent Simon Read Sprabery and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ESEC/FSE. ACM 1393–1403. \t\t\t\t  Jonathan Metzman László Szekeres Laurent Simon Read Sprabery and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Benchmarking Platform and Service. In ESEC/FSE. ACM 1393–1403.",
+          "DOI": "10.1145/3468264.3473932"
+        },
+        {
+          "key": "e_1_3_2_1_27_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/96267.96279"
+        },
+        {
+          "key": "e_1_3_2_1_28_1",
+          "volume-title": "Explainable Fuzzer Evaluation. CoRR, abs/2212.09519",
+          "author": "Wolff Dylan",
+          "year": "2022",
+          "unstructured": "Dylan Wolff , Marcel Böhme , and Abhik Roychoudhury . 2022. Explainable Fuzzer Evaluation. CoRR, abs/2212.09519 ( 2022 ). Dylan Wolff, Marcel Böhme, and Abhik Roychoudhury. 2022. Explainable Fuzzer Evaluation. CoRR, abs/2212.09519 (2022)."
+        },
+        {
+          "key": "e_1_3_2_1_29_1",
+          "volume-title": "Xiangyu Zhang, and Bin Liang.",
+          "author": "You Wei",
+          "year": "2019",
+          "unstructured": "Wei You , Xuwei Liu , Shiqing Ma , David Mitchel Perry , Xiangyu Zhang, and Bin Liang. 2019 . SLF : Fuzzing Without Valid Seed Inputs. In ICSE. IEEE Computer Society/ACM , 712–723. Wei You, Xuwei Liu, Shiqing Ma, David Mitchel Perry, Xiangyu Zhang, and Bin Liang. 2019. SLF: Fuzzing Without Valid Seed Inputs. In ICSE. IEEE Computer Society/ACM, 712–723."
+        }
+      ],
+      "event": {
+        "name": "ISSTA '23: 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+        "location": "Seattle WA USA",
+        "acronym": "ISSTA '23",
+        "sponsor": [
+          "SIGSOFT ACM Special Interest Group on Software Engineering",
+          "AITO"
+        ]
+      },
+      "container-title": [
+        "Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis"
+      ],
+      "original-title": [],
+      "link": [
+        {
+          "URL": "https://dl.acm.org/doi/10.1145/3597926.3598144",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "text-mining"
+        },
+        {
+          "URL": "https://dl.acm.org/doi/pdf/10.1145/3597926.3598144",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "similarity-checking"
+        }
+      ],
+      "deposited": {
+        "date-parts": [
+          [
+            2025,
+            6,
+            17
+          ]
+        ],
+        "date-time": "2025-06-17T16:37:59Z",
+        "timestamp": 1750178279000
+      },
+      "score": 1,
+      "resource": {
+        "primary": {
+          "URL": "https://dl.acm.org/doi/10.1145/3597926.3598144"
+        }
+      },
+      "subtitle": [],
+      "short-title": [],
+      "issued": {
+        "date-parts": [
+          [
+            2023,
+            7,
+            12
+          ]
+        ]
+      },
+      "references-count": 29,
+      "alternative-id": [
+        "10.1145/3597926.3598144",
+        "10.1145/3597926"
+      ],
+      "URL": "https://doi.org/10.1145/3597926.3598144",
+      "relation": {},
+      "subject": [],
+      "published": {
+        "date-parts": [
+          [
+            2023,
+            7,
+            12
+          ]
+        ]
+      },
+      "assertion": [
+        {
+          "value": "2023-07-13",
+          "order": 2,
+          "name": "published",
+          "label": "Published",
+          "group": {
+            "name": "publication_history",
+            "label": "Publication History"
+          }
+        }
+      ]
+    }
+  }
+}

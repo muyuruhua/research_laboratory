@@ -1,0 +1,32 @@
+{
+  "key": "davis2006pr",
+  "title": "The relationship between {Precision-Recall} and {ROC} curves",
+  "status": "fulltext_downloaded",
+  "attempts": [
+    {
+      "url": "https://dl.acm.org/doi/pdf/10.1145/1143844.1143874",
+      "status": 403,
+      "final_url": "https://dl.acm.org/doi/pdf/10.1145/1143844.1143874",
+      "bytes": 5600
+    },
+    {
+      "url": "https://api.openalex.org/works/https://doi.org/10.1145/1143844.1143874",
+      "status": 429
+    },
+    {
+      "url": "https://lirias.kuleuven.be/retrieve/4d31f86a-d811-4938-87c7-a8bb4441aa6c",
+      "error": "HTTPSConnectionPool(host='lirias.kuleuven.be', port=443): Read timed out. (read timeout=5)"
+    },
+    {
+      "url": "https://pages.cs.wisc.edu/~jdavis/davisgoadrichcamera2.pdf",
+      "status": 404,
+      "final_url": "https://pages.cs.wisc.edu/~jdavis/davisgoadrichcamera2.pdf",
+      "bytes": 13865
+    }
+  ],
+  "retrieved_utc": "2026-09-30T09:11:10.318136+00:00",
+  "source": "https://ftp.cs.wisc.edu/machine-learning/shavlik-group/davis.icml06.pdf",
+  "sha256": "94b4a112df164ef28f70a862198c7a7b3c85b1c87c799a51394d3631fa7f3908",
+  "pages": 8,
+  "identity_check": "Original title, authors, and paper body verified"
+}

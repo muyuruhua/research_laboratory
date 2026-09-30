@@ -1,0 +1,506 @@
+{
+  "baseline_references": 25,
+  "minimum_cited_references": 50,
+  "backup": "before_reference_expansion",
+  "requirements_sha256": "ca3d8b7ce23bcf2462fc9c85e40352b671eafa8986e0053edbc1e21deab4063b",
+  "sources": [
+    {
+      "key": "aflnet5years2025",
+      "title": "AFLNet Five Years Later: On Coverage-Guided Protocol Fuzzing",
+      "year": 2025,
+      "venue": "IEEE Transactions on Software Engineering",
+      "doi": "10.1109/tse.2025.3535925",
+      "source": "https://api.crossref.org/works?query.title=AFLNet+Five+Years+Later+On+Coverage-Guided+Protocol+Fuzzing&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/aflnet5years2025.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 136,
+          "paragraph": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM, whereas StateAFL and NSFuzz use different internal observations. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses."
+        }
+      ],
+      "claim_scope": "覆盖引导协议模糊测试及 AFLNet 后续研究"
+    },
+    {
+      "key": "nyxnet2022",
+      "title": "Nyx-net: network fuzzing with incremental snapshots",
+      "year": 2022,
+      "venue": "Proceedings of the Seventeenth European Conference on Computer Systems",
+      "doi": "10.1145/3492321.3519591",
+      "source": "https://api.crossref.org/works?query.title=Nyx-Net+Network+Fuzzing+with+Incremental+Snapshots&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/nyxnet2022.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 139,
+          "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+        }
+      ],
+      "claim_scope": "增量快照与网络模糊测试的执行条件"
+    },
+    {
+      "key": "snapfuzz2022",
+      "title": "SnapFuzz: high-throughput fuzzing of network applications",
+      "year": 2022,
+      "venue": "Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis",
+      "doi": "10.1145/3533767.3534376",
+      "source": "https://api.crossref.org/works?query.title=SnapFuzz+High-Efficiency+and+Fidelity+Fuzzing+of+Network+Applications&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/snapfuzz2022.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 139,
+          "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+        }
+      ],
+      "claim_scope": "网络应用测试的执行吞吐量"
+    },
+    {
+      "key": "fuzztructionnet2024",
+      "title": "No Peer, no Cry: Network Application Fuzzing via Fault Injection",
+      "year": 2024,
+      "venue": "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security",
+      "doi": "10.1145/3658644.3690274",
+      "source": "https://api.crossref.org/works?query.title=No+Peer+no+Cry+Network+Application+Fuzzing+via+Fault+Injection&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/fuzztructionnet2024.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 139,
+          "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+        }
+      ],
+      "claim_scope": "通过故障注入构造网络协议交互"
+    },
+    {
+      "key": "fox2024",
+      "title": "FOX: Coverage-guided Fuzzing as Online Stochastic Control",
+      "year": 2024,
+      "venue": "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security",
+      "doi": "10.1145/3658644.3670362",
+      "source": "https://api.crossref.org/works?query.title=FOX+Coverage-guided+Fuzzing+as+Online+Stochastic+Control&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/fox2024.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 145,
+          "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}; Thompson-sampling seed scheduling~\\cite{zhang2026thompson} and state-significance-guided protocol fuzzing~\\cite{ssgfuzz2026} further delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz studies two-dimensional scheduling for blackbox protocol testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+        }
+      ],
+      "claim_scope": "把覆盖引导模糊测试建模为在线随机控制"
+    },
+    {
+      "key": "prophetfuzz2024",
+      "title": "ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations with Only Documentation via Large Language Model",
+      "year": 2024,
+      "venue": "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security",
+      "doi": "10.1145/3658644.3690231",
+      "source": "https://api.crossref.org/works?query.title=ProphetFuzz+Fully+Automated+Prediction+and+Fuzzing+of+High-Risk+Option+Combinations+with+Only+Documentation+via+Large+Language+Model&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/prophetfuzz2024.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 143,
+          "paragraph": "LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+        }
+      ],
+      "claim_scope": "基于文档预测高风险选项组合"
+    },
+    {
+      "key": "whitefox2024",
+      "title": "WhiteFox: White-Box Compiler Fuzzing Empowered by Large Language Models",
+      "year": 2024,
+      "venue": "Proceedings of the ACM on Programming Languages",
+      "doi": "10.1145/3689736",
+      "source": "https://api.crossref.org/works?query.title=WhiteFox+White-Box+Compiler+Fuzzing+Empowered+by+Large+Language+Models&rows=3",
+      "cache": "reference_expansion/crossref/whitefox2024.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "Compiler correctness is crucial, as miscompilation can falsify program behaviors, leading to serious consequences over the software supply chain. In the literature, fuzzing has been extensively studied to uncover compiler defects. However, compiler fuzzing remains challenging: Existing arts focus on black- and grey-box fuzzing, which generates test programs without sufficient understanding of internal compiler behaviors. As such, they often fail to construct test programs to exercise intricate optimizations. Meanwhile, traditional white-box techniques, such as symbolic execution, are computationally inapplicable to the giant codebase of compiler systems. Recent advances demonstrate that Large Language Models (LLMs) excel in code generation/understanding tasks and even have achieved state-of-the-art performance in black-box fuzzing. Nonetheless, guiding LLMs with compiler source-code information remains a missing piece of research in compiler testing. To this end, we propose W hite F ox , the first white-box compiler fuzzer using LLMs with source-code information to test compiler optimization, with a spotlight on detecting deep logic bugs in the emerging deep learning (DL) compilers. W hite F ox adopts a multi-agent framework: (i) an LLM-based analysis agent examines the low-level optimization source code and produces requirements on the high-level test programs that can trigger the optimization; (ii) an LLM-based generation agent produces test programs based on the summarized requirements. Additionally, optimization-triggering tests are also used as feedback to further enhance the test generation prompt on the fly. Our evaluation on the three most popular DL compilers ( i.e ., PyTorch Inductor, TensorFlow-XLA, and TensorFlow Lite) shows that W hite F ox can generate high-quality test programs to exercise deep optimizations requiring intricate conditions, practicing up to 8 times more optimizations than state-of-the-art fuzzers. To date, W hite F ox has found in total 101 bugs for the compilers under test, with 92 confirmed as previously unknown and 70 already fixed. Notably, W hite F ox has been recently acknowledged by the PyTorch team, and is in the process of being incorporated into its development workflow. Finally, beyond DL compilers, W hite F ox can also be adapted for compilers in different domains, such as LLVM, where WHiteFox has already found multiple bugs.",
+      "cited_in": [
+        {
+          "line": 143,
+          "paragraph": "LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+        }
+      ],
+      "claim_scope": "利用编译器源码信息引导优化触发测试"
+    },
+    {
+      "key": "fuzzgpt2024",
+      "title": "Large Language Models are Edge-Case Generators: Crafting Unusual Programs for Fuzzing Deep Learning Libraries",
+      "year": 2024,
+      "venue": "Proceedings of the IEEE/ACM 46th International Conference on Software Engineering",
+      "doi": "10.1145/3597503.3623343",
+      "source": "https://api.crossref.org/works?query.title=Large+Language+Models+are+Edge-Case+Generators+Crafting+Unusual+Programs+for+Fuzzing+Deep+Learning+Libraries&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/fuzzgpt2024.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 143,
+          "paragraph": "LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+        }
+      ],
+      "claim_scope": "生成深度学习库的异常边界程序"
+    },
+    {
+      "key": "formatfuzzer",
+      "title": "FormatFuzzer: Effective Fuzzing of Binary File Formats",
+      "year": 2024,
+      "venue": "ACM Transactions on Software Engineering and Methodology",
+      "doi": "10.1145/3628157",
+      "source": "https://api.crossref.org/works?query.title=FormatFuzzer+Effective+Fuzzing+of+Binary+File+Formats&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/formatfuzzer.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "Effective fuzzing of programs that process structured binary inputs, such as multimedia files, is a challenging task, since those programs expect a very specific input format. Existing fuzzers, however, are mostly format-agnostic, which makes them versatile, but also ineffective when a specific format is required. We present FormatFuzzer , a generator for format-specific fuzzers . FormatFuzzer takes as input a binary template (a format specification used by the 010 Editor) and compiles it into C++ code that acts as parser, mutator, and highly efficient generator of inputs conforming to the rules of the language. The resulting format-specific fuzzer can be used as a standalone producer or mutator in black-box settings, where no guidance from the program is available. In addition, by providing mutable decision seeds, it can be easily integrated with arbitrary format-agnostic fuzzers such as AFL to make them format-aware. In our evaluation on complex formats such as MP4 or ZIP, FormatFuzzer showed to be a highly effective producer of valid inputs that also detected previously unknown memory errors in ffmpeg and timidity .",
+      "cited_in": [
+        {
+          "line": 141,
+          "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron and CarpetFuzz exploit grammars and documented constraints~\\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+        }
+      ],
+      "claim_scope": "由二进制格式规范构造解析器、变异器和生成器"
+    },
+    {
+      "key": "fuzzbench2021",
+      "title": "FuzzBench: an open fuzzer benchmarking platform and service",
+      "year": 2021,
+      "venue": "Proceedings of the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering",
+      "doi": "10.1145/3468264.3473932",
+      "source": "https://api.crossref.org/works?query.title=FuzzBench+an+open+fuzzer+benchmarking+platform+and+service&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/fuzzbench2021.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 149,
+          "paragraph": "Evaluation methodology is a further boundary. ProFuzzBench and FuzzBench provide structured evaluation settings for protocol and general-purpose fuzzers~\\cite{profuzzbench_benchmark_stateful_protocol_2021,fuzzbench2021}. Reliability analyses and prudent evaluation practices require care when interpreting coverage, repeated trials, and resource controls~\\cite{reliability_benchmarking_2022,sok_prudent_evaluation_practices_2024}. Our protocol adopts these concerns while keeping available retrospective observations distinct from the unfinished confirmatory comparisons. Candidate-level, episode-level, and controlled rediscovery measurements remain necessary to establish the proposed mechanisms."
+        }
+      ],
+      "claim_scope": "通用模糊测试器的结构化评测"
+    },
+    {
+      "key": "benchmarkproperties",
+      "title": "Fuzzing: On Benchmarking Outcome as a Function of Benchmark Properties",
+      "year": 2026,
+      "venue": "ACM Transactions on Software Engineering and Methodology",
+      "doi": "10.1145/3732936",
+      "source": "https://api.crossref.org/works?query.title=Fuzzing+On+Benchmarking+Outcome+as+a+Function+of+Benchmark+Properties&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/benchmarkproperties.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "In a typical experimental design in fuzzing, we would run two or more fuzzers on an appropriate set of benchmark programs plus seed corpora and consider their ranking in terms of code coverage or bugs found as outcomes. However, the specific characteristics of the benchmark setup clearly can have some impact on the benchmark outcome. If the programs were larger, or these initial seeds were chosen differently, the same fuzzers may be ranked differently; the benchmark outcome would change. In this article, we explore two methodologies to quantify the impact of the specific properties on the benchmarking outcome . This allows us to report the benchmarking outcome counter-factually, e.g., “If the benchmark had larger programs, this fuzzer would outperform all others.” Our first methodology is the controlled experiment to identify a causal relationship between a single property in isolation and the benchmarking outcome. The controlled experiment requires manually altering the fuzzer or system under test to vary that property while holding all other variables constant. By repeating this controlled experiment for multiple fuzzer implementations, we can gain detailed insights into the different effects this property has on various fuzzers. However, due to the large number of properties and the difficulty of realistically manipulating one property exactly, control may not always be practical or possible. Hence, our second methodology is randomization and non-parametric regression to identify the strength of the relationship between arbitrary benchmark properties (i.e., covariates) and outcome. Together, these two fundamental aspects of experimental design, control and randomization , can provide a comprehensive picture of the impact of various properties of the current benchmark on the fuzzer ranking. These analyses can be used to guide fuzzer developers towards areas of improvement in their tools and allow researchers to make more nuanced claims about fuzzer effectiveness. We instantiate each approach on a subset of properties suspected of impacting the relative effectiveness of fuzzers and quantify the effects of these properties on the evaluation outcome. In doing so, we identify multiple properties, such as the coverage of the initial seed-corpus and the program execution speed, which can have a statistically significant effect on the relative effectiveness of fuzzers.",
+      "cited_in": [
+        {
+          "line": 816,
+          "paragraph": "Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes."
+        }
+      ],
+      "claim_scope": "初始语料和执行速度对模糊测试排名的影响"
+    },
+    {
+      "key": "stateinspector2022",
+      "title": "The Closer You Look, The More You Learn: A Grey-box Approach to Protocol State Machine Learning",
+      "year": 2022,
+      "venue": "Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security",
+      "doi": "10.1145/3548606.3559365",
+      "source": "https://api.crossref.org/works?query.title=The+Closer+You+Look+The+More+You+Learn+A+Grey-box+Approach+to+Protocol+State+Machine+Learning&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/stateinspector2022.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 136,
+          "paragraph": "\\section{Related Work and Novelty Boundary}\nStateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM, whereas StateAFL and NSFuzz use different internal observations. The subsequent AFLNet study revisits coverage-guided protocol fuzzing~\\cite{aflnet5years2025}, while greybox protocol-state learning investigates how internal observations inform inferred models~\\cite{stateinspector2022}. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to originate state inference or to first identify misleading responses."
+        }
+      ],
+      "claim_scope": "内部观察与灰盒协议状态机学习"
+    },
+    {
+      "key": "wingmuzz2025",
+      "title": "WingMuzz: Blackbox Testing of IoT Protocols via Two-dimensional Fuzzing Schedule",
+      "year": 2025,
+      "venue": "2025 40th IEEE/ACM International Conference on Automated Software Engineering (ASE)",
+      "doi": "10.1109/ase63991.2025.00212",
+      "source": "https://api.crossref.org/works/10.1109%2FASE63991.2025.00212",
+      "cache": "reference_expansion/crossref/wingmuzz2025.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 145,
+          "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}; Thompson-sampling seed scheduling~\\cite{zhang2026thompson} and state-significance-guided protocol fuzzing~\\cite{ssgfuzz2026} further delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz studies two-dimensional scheduling for blackbox protocol testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+        }
+      ],
+      "claim_scope": "黑盒协议测试中的二维调度"
+    },
+    {
+      "key": "hybridllm2026",
+      "title": "Large Language Model Assisted Hybrid Fuzzing",
+      "year": 2026,
+      "venue": "IEEE Transactions on Software Engineering",
+      "doi": "10.1109/tse.2026.3694408",
+      "source": "https://api.crossref.org/works/10.1109%2FTSE.2026.3694408",
+      "cache": "reference_expansion/crossref/hybridllm2026.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 143,
+          "paragraph": "LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+        }
+      ],
+      "claim_scope": "LLM 辅助混合模糊测试的研究范围"
+    },
+    {
+      "key": "hgfuzzer2026",
+      "title": "HGFuzzer: Directed Greybox Fuzzing via Large Language Model",
+      "year": 2026,
+      "venue": "ACM Transactions on Software Engineering and Methodology",
+      "doi": "10.1145/3841476",
+      "source": "https://api.crossref.org/works/10.1145%2F3841476",
+      "cache": "reference_expansion/crossref/hgfuzzer2026.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "Directed Greybox Fuzzing (DGF) aims to efficiently test specific code locations, but its effectiveness is often hampered by its reliance on a syntax-driven strategy. This approach leads to an intractable search space during exploration and inefficient, semantically unaware mutations during exploitation. To address these limitations, we introduce HGFuzzer, an automated framework that augments DGF with predicate-guided execution synthesis. HGFuzzer first infers the execution predicates required to traverse a feasible call chain to the target, and then uses these predicates as a shared specification for generating coordinated fuzzing components. Through semantic analysis of the code, it constructs a purpose-built harness to govern control flow, a target-reachable seed generator to materialize the required data constraints, and a constraint-aware mutator that preserves reachability conditions while mutating bug-triggering fields. Our evaluation of HGFuzzer on 23 real-world bugs demonstrates its superior performance. It successfully triggered 19 bugs, with 11 of them discovered in under 1,000 seconds, and achieved a speedup of at most 24.1 \\(\\times\\) over state-of-the-art fuzzers. Furthermore, HGFuzzer unearthed 9 previously unknown, CVE-assigned bugs, confirming its efficacy in real-world security auditing.",
+      "cited_in": [
+        {
+          "line": 143,
+          "paragraph": "LLM-assisted fuzzing extends generation to protocol interactions, device inputs, and programs~\\cite{chatafl,llmif_augmented_large_language_2024,fuzz4all_universal_fuzzing_large_2024}. FuzzGPT studies unusual programs for deep-learning libraries~\\cite{fuzzgpt2024}, and WhiteFox uses compiler source information to guide optimization-triggering tests~\\cite{whitefox2024}. ProphetFuzz predicts high-risk option combinations from documentation~\\cite{prophetfuzz2024}. Recent studies also address LLM-assisted hybrid fuzzing~\\cite{hybridllm2026} and predicate-guided synthesis for directed testing~\\cite{hgfuzzer2026}. These varied generation objectives reinforce the distinction between a model's proposal and evidence obtained by executing it. The comparison specified here preserves ChatAFL's scheduling lineage. Admission and calibration require separate controlled contrasts."
+        }
+      ],
+      "claim_scope": "定向测试中的谓词引导执行合成"
+    },
+    {
+      "key": "greenbenchmark2023",
+      "title": "Green Fuzzer Benchmarking",
+      "year": 2023,
+      "venue": "Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+      "doi": "10.1145/3597926.3598144",
+      "source": "https://api.crossref.org/works/10.1145%2F3597926.3598144",
+      "cache": "reference_expansion/crossref/greenbenchmark2023.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 478,
+          "paragraph": "Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. Trial order is randomized within machine blocks and balanced across machines and time periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost. Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\\cite{greenbenchmark2023}. The proposed analysis therefore distinguishes allocated CPU-hours, measured consumption, and actual search exposure."
+        }
+      ],
+      "claim_scope": "可靠评测的资源成本"
+    },
+    {
+      "key": "protocolguard2026",
+      "title": "ProtocolGuard: Detecting Protocol Non-compliance Bugs via LLM-guided Static Analysis and Dynamic Verification",
+      "year": 2026,
+      "venue": "Proceedings 2026 Network and Distributed System Security Symposium",
+      "doi": "10.14722/ndss.2026.240521",
+      "source": "https://api.crossref.org/works?query.title=ProtocolGuard+Detecting+Protocol+Non-compliance+Bugs+via+LLM-guided+Static+Analysis+and+Dynamic+Verification&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/protocolguard2026.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 147,
+          "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+        }
+      ],
+      "claim_scope": "规范一致性检查与动态验证"
+    },
+    {
+      "key": "bsfuzzer2026",
+      "title": "BSFuzzer: Context-Aware Semantic Fuzzing for BLE Logic Flaw Detection",
+      "year": 2026,
+      "venue": "Proceedings 2026 Network and Distributed System Security Symposium",
+      "doi": "10.14722/ndss.2026.240094",
+      "source": "https://api.crossref.org/works?query.title=BSFuzzer+Context-Aware+Semantic+Fuzzing+for+BLE+Logic+Flaw+Detection&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/bsfuzzer2026.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 147,
+          "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+        }
+      ],
+      "claim_scope": "BLE 语义测试与逻辑缺陷"
+    },
+    {
+      "key": "mercuriuzz2026",
+      "title": "Identifying Logical Vulnerabilities in QUIC Implementations",
+      "year": 2026,
+      "venue": "Proceedings 2026 Network and Distributed System Security Symposium",
+      "doi": "10.14722/ndss.2026.231777",
+      "source": "https://api.crossref.org/works?query.title=Identifying+Logical+Vulnerabilities+in+QUIC+Implementations&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/mercuriuzz2026.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 147,
+          "paragraph": "Protocol correctness also requires an oracle beyond apparent acceptance. ProtocolGuard combines specification-derived checks with dynamic verification of non-compliance~\\cite{protocolguard2026}; BSFuzzer uses context-aware semantic testing for BLE logic flaws~\\cite{bsfuzzer2026}; MerCuriuzz targets logical vulnerabilities in QUIC implementations~\\cite{mercuriuzz2026}. These studies examine semantic violations, whereas the proposed calibration reward targets code productivity. A response-state transition or positive code reward therefore does not certify security impact. Magma's ground-truth bug conditions motivate distinguishing bug-related reachability from triggering~\\cite{magma2020}; our historical vulnerability protocol additionally requires patch validation and controlled information exposure."
+        }
+      ],
+      "claim_scope": "QUIC 实现的逻辑漏洞"
+    },
+    {
+      "key": "distfuzz2025",
+      "title": "Blackbox Fuzzing of Distributed Systems with Multi-Dimensional Inputs and Symmetry-Based Feedback Pruning",
+      "year": 2025,
+      "venue": "Proceedings 2025 Network and Distributed System Security Symposium",
+      "doi": "10.14722/ndss.2025.241912",
+      "source": "https://api.crossref.org/works?query.title=Blackbox+Fuzzing+of+Distributed+Systems+with+Multi-Dimensional+Inputs+and+Symmetry-Based+Feedback+Pruning&rows=3&filter=until-pub-date%3A2026-09-29",
+      "cache": "reference_expansion/crossref/distfuzz2025.json",
+      "verification": "Publisher-deposited Crossref metadata; exact DOI matched",
+      "claim_evidence": "Study scope from verified title; abstract used where present; no imported efficacy estimates",
+      "abstract": "",
+      "cited_in": [
+        {
+          "line": 139,
+          "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+        }
+      ],
+      "claim_scope": "事件、故障、时间与消息序列反馈"
+    },
+    {
+      "key": "blueman2025",
+      "title": "BLuEMan: A Stateful Simulation-based Fuzzing Framework for Open-Source RTOS Bluetooth Low Energy Protocol Stacks",
+      "year": 2025,
+      "venue": "USENIX Security",
+      "source": "https://www.usenix.org/conference/usenixsecurity25/presentation/kao",
+      "cache": "reference_expansion/primary/blueman2025.bib",
+      "verification": "Official conference abstract and BibTeX",
+      "claim_evidence": "Official conference abstract",
+      "cited_in": [
+        {
+          "line": 139,
+          "paragraph": "Execution control and feedback interpretation address complementary problems. Nyx-Net uses incremental snapshots for network fuzzing~\\cite{nyxnet2022}; SnapFuzz targets high-throughput execution of network applications~\\cite{snapfuzz2022}; fault-injection-based network fuzzing provides another approach to exercising protocol interactions~\\cite{fuzztructionnet2024}. BLuEMan simulates interactions between actual Bluetooth Low Energy (BLE) stacks~\\cite{blueman2025}. DistFuzz combines events, faults, and timing with message-sequence feedback and symmetry-based pruning for distributed systems~\\cite{distfuzz2025}. These studies motivate treating execution conditions and observable feedback as separate design choices. Their protocol domains and execution mechanisms are not evidence that LoopFuzz generalizes beyond its evaluated servers."
+        }
+      ],
+      "claim_scope": "BLE 协议栈的模拟执行条件"
+    },
+    {
+      "key": "fishfuzz2023",
+      "title": "FISHFUZZ: Catch Deeper Bugs by Throwing Larger Nets",
+      "year": 2023,
+      "venue": "USENIX Security",
+      "source": "https://www.usenix.org/conference/usenixsecurity23/presentation/zheng",
+      "cache": "reference_expansion/primary/fishfuzz2023.bib",
+      "verification": "Official conference abstract and BibTeX",
+      "claim_evidence": "Official conference abstract",
+      "cited_in": [
+        {
+          "line": 145,
+          "paragraph": "Adaptive resource allocation is established in fuzzing. The Bandit's States models protocol-state selection as a bandit problem~\\cite{bandits_states2023}; Thompson-sampling seed scheduling~\\cite{zhang2026thompson} and state-significance-guided protocol fuzzing~\\cite{ssgfuzz2026} further delimit the contribution. FOX formulates coverage-guided fuzzing as online stochastic control~\\cite{fox2024}, while FISHFUZZ dynamically prioritizes targets and seeds using distance information~\\cite{fishfuzz2023}. WingMuzz studies two-dimensional scheduling for blackbox protocol testing~\\cite{wingmuzz2025}. Thus neither adaptive selection nor a productivity score is novel by itself. The distinction here is the combination of a response-derived proxy, an independent code-progress target, provisional and durable LLM-candidate admission, and traceable episode-level evidence."
+        }
+      ],
+      "claim_scope": "距离信息驱动的目标与种子优先级"
+    },
+    {
+      "key": "miner2023",
+      "title": "MINER: A Hybrid Data-Driven Approach for REST API Fuzzing",
+      "year": 2023,
+      "venue": "USENIX Security",
+      "source": "https://www.usenix.org/conference/usenixsecurity23/presentation/lyu",
+      "cache": "reference_expansion/primary/miner2023.bib",
+      "verification": "Official conference abstract and BibTeX",
+      "claim_evidence": "Official conference abstract",
+      "cited_in": [
+        {
+          "line": 141,
+          "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron and CarpetFuzz exploit grammars and documented constraints~\\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+        }
+      ],
+      "claim_scope": "有效请求序列模板与参数学习"
+    },
+    {
+      "key": "mutationassessment2023",
+      "title": "Systematic Assessment of Fuzzers using Mutation Analysis",
+      "year": 2023,
+      "venue": "USENIX Security",
+      "source": "https://www.usenix.org/conference/usenixsecurity23/presentation/gorz",
+      "cache": "reference_expansion/primary/mutationassessment2023.bib",
+      "verification": "Official conference abstract and BibTeX",
+      "claim_evidence": "Official conference abstract",
+      "cited_in": [
+        {
+          "line": 816,
+          "paragraph": "Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes."
+        }
+      ],
+      "claim_scope": "基于变异分析的故障导向评测"
+    },
+    {
+      "key": "fuzztruction2023",
+      "title": "Fuzztruction: Using Fault Injection-based Fuzzing to Leverage Implicit Domain Knowledge",
+      "year": 2023,
+      "venue": "USENIX Security",
+      "source": "https://www.usenix.org/conference/usenixsecurity23/presentation/bars",
+      "cache": "reference_expansion/primary/fuzztruction2023.bib",
+      "verification": "Official conference abstract and BibTeX",
+      "claim_evidence": "Official conference abstract",
+      "cited_in": [
+        {
+          "line": 141,
+          "paragraph": "Structured generation reduces the difficulty of producing admissible inputs. Gramatron and CarpetFuzz exploit grammars and documented constraints~\\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. FormatFuzzer derives parsers, mutators, and generators from binary-format specifications~\\cite{formatfuzzer}; Fuzztruction instead injects faults into a generating program to retain implicit format knowledge~\\cite{fuzztruction2023}. MINER uses valid sequence templates and learned request parameters to guide later requests~\\cite{miner2023}. These approaches concern how candidates are constructed. Our admission rule asks a subsequent question: whether a candidate has enough independently observed code value to acquire durable queue resources."
+        }
+      ],
+      "claim_scope": "在生成程序中注入故障以保留格式约束"
+    }
+  ],
+  "selected_new_references": 25,
+  "total_bibliography_entries": 50,
+  "metadata_cutoff": "2026-09-29",
+  "excluded": [
+    {
+      "candidate": "ELFuzz",
+      "reason": "Guessed author URL resolved to unrelated GradEscape; excluded."
+    },
+    {
+      "candidate": "WhiteFox DOI 10.1145/3689780",
+      "reason": "Resolved to Rustlantis; replaced with verified WhiteFox DOI 10.1145/3689736."
+    },
+    {
+      "candidate": "ChatHTTPFuzz",
+      "reason": "Publication venue differed from initial candidate description; not included."
+    },
+    {
+      "candidate": "Morest",
+      "reason": "Search returned an industry-practice paper; not included."
+    },
+    {
+      "candidate": "Evaluating Synthetic Bugs",
+      "reason": "Correct record is ASIACCS 2021, not alleged CCS 2022; not included."
+    },
+    {
+      "candidate": "G2Fuzz",
+      "reason": "Official presentation identified, but source retrieval did not complete; excluded rather than added without complete verification."
+    }
+  ],
+  "unique_actual_citations": 50,
+  "related_work_words": 560,
+  "final_tex_sha256": "5d51c2dfd1b832d08fc0352e024e5cc552c891ed2c76faf6f6d796667c9d7018",
+  "final_pdf_sha256": "3c44717917ef6b776b9a7545ecd5c51d77b97fe26fb517ca8188e25c22767734"
+}

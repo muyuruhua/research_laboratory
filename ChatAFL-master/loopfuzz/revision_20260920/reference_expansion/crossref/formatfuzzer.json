@@ -1,0 +1,1531 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=FormatFuzzer+Effective+Fuzzing+of+Binary+File+Formats&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 605284,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                12
+              ]
+            ],
+            "date-time": "2026-09-12T02:17:20Z",
+            "timestamp": 1789179440121,
+            "version": "build-2803163510"
+          },
+          "reference-count": 58,
+          "publisher": "Association for Computing Machinery (ACM)",
+          "issue": "2",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2023,
+                    12,
+                    22
+                  ]
+                ],
+                "date-time": "2023-12-22T00:00:00Z",
+                "timestamp": 1703203200000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "short-container-title": [
+            "ACM Trans. Softw. Eng. Methodol."
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                29
+              ]
+            ]
+          },
+          "abstract": "<jats:p>\n            Effective fuzzing of programs that process structured binary inputs, such as multimedia files, is a challenging task, since those programs expect a very specific input format. Existing fuzzers, however, are mostly\n            <jats:italic>format-agnostic,</jats:italic>\n            which makes them versatile, but also ineffective when a specific format is required.\n          </jats:p>\n          <jats:p>\n            We present\n            <jats:sc>FormatFuzzer</jats:sc>\n            , a generator for\n            <jats:italic>format-specific fuzzers</jats:italic>\n            .\n            <jats:sc>FormatFuzzer</jats:sc>\n            takes as input a\n            <jats:italic>binary template</jats:italic>\n            (a format specification used by the 010 Editor) and compiles it into C++ code that acts as\n            <jats:italic>parser,</jats:italic>\n            <jats:italic>mutator,</jats:italic>\n            and highly efficient\n            <jats:italic>generator</jats:italic>\n            of inputs conforming to the rules of the language.\n          </jats:p>\n          <jats:p>\n            The resulting format-specific fuzzer can be used as a standalone producer or mutator in black-box settings, where no guidance from the program is available. In addition, by providing mutable\n            <jats:italic>decision seeds,</jats:italic>\n            it can be easily\n            <jats:italic>integrated</jats:italic>\n            with arbitrary\n            <jats:italic>format-agnostic fuzzers</jats:italic>\n            such as AFL to make them format-aware. In our evaluation on complex formats such as MP4 or ZIP,\n            <jats:sc>FormatFuzzer</jats:sc>\n            showed to be a highly effective producer of valid inputs that also detected previously unknown memory errors in\n            <jats:monospace>ffmpeg</jats:monospace>\n            and\n            <jats:monospace>timidity</jats:monospace>\n            .\n          </jats:p>",
+          "DOI": "10.1145/3628157",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                10,
+                17
+              ]
+            ],
+            "date-time": "2023-10-17T21:34:33Z",
+            "timestamp": 1697578473000
+          },
+          "page": "1-29",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 13,
+          "title": [
+            "<scp>FormatFuzzer</scp>\n            : Effective Fuzzing of Binary File Formats"
+          ],
+          "prefix": "10.1145",
+          "volume": "33",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-3755-6497",
+              "authenticated-orcid": false,
+              "given": "Rafael",
+              "family": "Dutra",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-9953-0930",
+              "authenticated-orcid": false,
+              "given": "Rahul",
+              "family": "Gopinath",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Sydney, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-4719-8803",
+              "authenticated-orcid": false,
+              "given": "Andreas",
+              "family": "Zeller",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2023,
+                12,
+                22
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_2_2",
+              "unstructured": "2021. Wikipedia: ffmpeg. Retrieved from https://en.wikipedia.org/wiki/FFmpeg. Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_3_2",
+              "unstructured": "2021. Wikipedia: List of File Formats. Retrieved from https://en.wikipedia.org/wiki/List_of_file_formats. Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_4_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23412"
+            },
+            {
+              "key": "e_1_3_2_5_2",
+              "volume-title": "Proceedings of the 11th Symposium on Operating Systems Design and Implementation",
+              "author": "Bangert Julian",
+              "year": "2014",
+              "unstructured": "Julian Bangert and Nickolai Zeldovich. 2014. Nail: A practical tool for parsing and generating data formats. In Proceedings of the 11th Symposium on Operating Systems Design and Implementation. 615–628."
+            },
+            {
+              "key": "e_1_3_2_6_2",
+              "first-page": "1985",
+              "volume-title": "Proceedings of the 28th Security Symposium",
+              "author": "Blazytko Tim",
+              "year": "2019",
+              "unstructured": "Tim Blazytko, Cornelius Aschermann, Moritz Schlögel, Ali Abbasi, Sergej Schumilo, Simon Wörner, and Thorsten Holz. 2019. \\(\\lbrace\\) GRIMOIRE \\(\\rbrace\\) : Synthesizing structure while fuzzing. In Proceedings of the 28th Security Symposium. 1985–2002."
+            },
+            {
+              "key": "e_1_3_2_7_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/BF02235512"
+            },
+            {
+              "key": "e_1_3_2_8_2",
+              "volume-title": "Proceedings of the 42nd IEEE Symposium on Security and Privacy",
+              "author": "Chen Yongheng",
+              "year": "2021",
+              "unstructured": "Yongheng Chen, Rui Zhong, Hong Hu, Hangfan Zhang, Yupeng Yang, Dinghao Wu, and Wenke Lee. 2021. One engine to fuzz ’em All: Generic language processor testing with semantic validation (to appear). In Proceedings of the 42nd IEEE Symposium on Security and Privacy. San Francisco, CA."
+            },
+            {
+              "key": "e_1_3_2_9_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.3390/app12189350"
+            },
+            {
+              "key": "e_1_3_2_10_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TIT.1956.1056813"
+            },
+            {
+              "key": "e_1_3_2_11_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1988042.1988046"
+            },
+            {
+              "key": "e_1_3_2_12_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1155/2014/762891"
+            },
+            {
+              "key": "e_1_3_2_13_2",
+              "article-title": "GitHub - d0c-s4vage/pfp: pfp - Python Format Parser - a Python-based 010 Editor Template Interpreter",
+              "author": "Johnson James ”d0c_s4vage”",
+              "year": "2020",
+              "unstructured": "James ”d0c_s4vage” Johnson. 2020. GitHub - d0c-s4vage/pfp: pfp - Python Format Parser - a Python-based 010 Editor Template Interpreter. Retrieved August 1, 2021 from https://github.com/d0c-s4vage/pfp. (2020).",
+              "journal-title": "Retrieved August 1, 2021 from https://github.com/d0c-s4vage/pfp"
+            },
+            {
+              "key": "e_1_3_2_14_2",
+              "article-title": "GitHub - d0c-s4vage/py010parser: A Modified Pycparser to Parse 010 Templates",
+              "author": "Johnson James ”d0c_s4vage”",
+              "year": "2020",
+              "unstructured": "James ”d0c_s4vage” Johnson. 2020. GitHub - d0c-s4vage/py010parser: A Modified Pycparser to Parse 010 Templates. Retrieved August 1, 2021 from https://github.com/d0c-s4vage/py010parser. (2020).",
+              "journal-title": "Retrieved August 1, 2021 from https://github.com/d0c-s4vage/py010parser"
+            },
+            {
+              "key": "e_1_3_2_15_2",
+              "article-title": "Portable Network Graphics (PNG) Specification (Second Edition)",
+              "author": "Duce Oxford Brookes University (Second Edition) David",
+              "year": "2003",
+              "unstructured": "Oxford Brookes University (Second Edition) David Duce. 2003. Portable Network Graphics (PNG) Specification (Second Edition). Retrieved November 15, 2021 from https://www.w3.org/TR/PNG/. (2003).",
+              "journal-title": "Retrieved November 15, 2021 from https://www.w3.org/TR/PNG/"
+            },
+            {
+              "key": "e_1_3_2_16_2",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Kyle Dewey Jared Roesch and Ben Hardekopf. 2014. Language fuzzing using constraint logic programming. Proceedings of the 29th ACM/IEEE International Conference on Automated Software Engineering . 725–730.",
+              "DOI": "10.1145/2642937.2642963"
+            },
+            {
+              "key": "e_1_3_2_17_2",
+              "article-title": "Crowbar",
+              "author": "Dolan Stephen",
+              "year": "2021",
+              "unstructured": "Stephen Dolan. 2021. Crowbar. Retrieved November 15, 2021 from https://github.com/stedolan/crowbar. (2021).",
+              "journal-title": "Retrieved November 15, 2021 from https://github.com/stedolan/crowbar"
+            },
+            {
+              "key": "e_1_3_2_18_2",
+              "unstructured": "2018. Peach Fuzzer: Discover unknown vulnerabilities. Retrieved from https://www.peach.tech/. Accessed 29 August 2018."
+            },
+            {
+              "key": "e_1_3_2_19_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3395363.3397372"
+            },
+            {
+              "key": "e_1_3_2_20_2",
+              "volume-title": "Proceedings of the 14th USENIX Workshop on Offensive Technologies",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++: Combining incremental steps of fuzzing research. In Proceedings of the 14th USENIX Workshop on Offensive Technologies. USENIX Association."
+            },
+            {
+              "key": "e_1_3_2_21_2",
+              "unstructured": "Ivan Fratric. 2019. Domato A DOM Fuzzer. (2019). Retrieved from https://github.com/googleprojectzero/domato. Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_22_2",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Patrice Godefroid Adam Kiezun and Michael Y. Levin. 2008. Grammar-based whitebox fuzzing. ACM New York NY USA 206–215.",
+              "DOI": "10.1145/1379022.1375607"
+            },
+            {
+              "issue": "6",
+              "key": "e_1_3_2_23_2",
+              "article-title": "Parsing randomness",
+              "author": "Goldstein Harrison",
+              "year": "2022",
+              "unstructured": "Harrison Goldstein and Benjamin C. Pierce. 2022. Parsing randomness. Proceedings of the ACM on Programming Languages6, OOPSLA (2022), 89–113.",
+              "journal-title": "Proceedings of the ACM on Programming Languages"
+            },
+            {
+              "key": "e_1_3_2_24_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409679"
+            },
+            {
+              "key": "e_1_3_2_25_2",
+              "volume-title": "The Application of Theorem Proving to Question-answering Systems",
+              "author": "Green Claude Cordell",
+              "year": "1970",
+              "unstructured": "Claude Cordell Green. 1970. The Application of Theorem Proving to Question-answering Systems. Number 96. Management Information Services."
+            },
+            {
+              "key": "e_1_3_2_26_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICoIA.2013.6650258"
+            },
+            {
+              "key": "e_1_3_2_27_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1147/sj.94.0242"
+            },
+            {
+              "key": "e_1_3_2_28_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2019.00027"
+            },
+            {
+              "key": "e_1_3_2_29_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3278186.3278193"
+            },
+            {
+              "key": "e_1_3_2_30_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/2362793.2362831"
+            },
+            {
+              "key": "e_1_3_2_31_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3009837.3009868"
+            },
+            {
+              "key": "e_1_3_2_32_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3360607"
+            },
+            {
+              "key": "e_1_3_2_33_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SPW.2014.35"
+            },
+            {
+              "key": "e_1_3_2_34_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3314221.3314651"
+            },
+            {
+              "key": "e_1_3_2_35_2",
+              "unstructured": "Mozilla. 2019. Dharma: A Generation-based Context-free Grammar Fuzzer. (2019). Retrieved from https://blog.mozilla.org/security/2015/06/29/dharma/. Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_36_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3293882.3339002"
+            },
+            {
+              "key": "e_1_3_2_37_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3293882.3330576"
+            },
+            {
+              "key": "e_1_3_2_38_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.4304/jsw.8.3.645-651"
+            },
+            {
+              "key": "e_1_3_2_39_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2970276.2970316"
+            },
+            {
+              "key": "e_1_3_2_40_2",
+              "article-title": "Smart greybox fuzzing",
+              "author": "Pham Van-Thuan",
+              "year": "2019",
+              "unstructured": "Van-Thuan Pham, Marcel Böhme, Andrew Edward Santosa, Alexandru Razvan Caciulescu, and Abhik Roychoudhury. 2019. Smart greybox fuzzing. IEEE Transactions on Software Engineering 47, 9 (2019), 1980–1997.",
+              "journal-title": "IEEE Transactions on Software Engineering"
+            },
+            {
+              "key": "e_1_3_2_41_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/BF01932308"
+            },
+            {
+              "key": "e_1_3_2_42_2",
+              "unstructured": "Jesse Ruderman. 2007. Introducing Jsfunfuzz. (2007). Retrieved from http://www.squarefree.com/2007/08/02/introducing-jsfunfuzz/. Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_43_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1081706.1081750"
+            },
+            {
+              "key": "e_1_3_2_44_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SecDev.2016.043"
+            },
+            {
+              "key": "e_1_3_2_45_2",
+              "unstructured": "2021. GitHub - google/libprotobuf-mutator: Library for structured fuzzing with protobuffers. Retrieved from https://github.com/google/libprotobuf-mutator. (2021). Accessed: 13 August 2021."
+            },
+            {
+              "key": "e_1_3_2_46_2",
+              "article-title": "010 Editor - Binary Template Repository - Download Binary Templates",
+              "author": "Software SweetScape",
+              "year": "2021",
+              "unstructured": "SweetScape Software. 2021. 010 Editor - Binary Template Repository - Download Binary Templates. Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/repository/templates/. (2021).",
+              "journal-title": "Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/repository/templates/"
+            },
+            {
+              "key": "e_1_3_2_47_2",
+              "article-title": "010 Editor - Binary Templates - Parsing Binary Files",
+              "author": "Software SweetScape",
+              "year": "2021",
+              "unstructured": "SweetScape Software. 2021. 010 Editor - Binary Templates - Parsing Binary Files. Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/templates.html. (2021).",
+              "journal-title": "Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/templates.html"
+            },
+            {
+              "key": "e_1_3_2_48_2",
+              "article-title": "010 Editor - Pro Text/Hex Editor | Edit 160+ Formats | Fast & Powerful",
+              "author": "Software SweetScape",
+              "year": "2021",
+              "unstructured": "SweetScape Software. 2021. 010 Editor - Pro Text/Hex Editor | Edit 160+ Formats | Fast & Powerful. Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/. (2021).",
+              "journal-title": "Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/"
+            },
+            {
+              "key": "e_1_3_2_49_2",
+              "article-title": "010 Editor Manual - Writing Templates",
+              "author": "Software SweetScape",
+              "year": "2021",
+              "unstructured": "SweetScape Software. 2021. 010 Editor Manual - Writing Templates. Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/manual/IntroTemplates.htm. (2021).",
+              "journal-title": "Retrieved August 1, 2021 from https://www.sweetscape.com/010editor/manual/IntroTemplates.htm"
+            },
+            {
+              "key": "e_1_3_2_50_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2020.3013716"
+            },
+            {
+              "key": "e_1_3_2_51_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-031-19992-9_5"
+            },
+            {
+              "key": "e_1_3_2_52_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.2218/ijdc.v7i1.217"
+            },
+            {
+              "key": "e_1_3_2_53_2",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Junjie Wang Bihuan Chen Lei Wei and Yang Liu. 2017. Skyfire: Data-driven seed generation for fuzzing. In Proceedings of the 2017 IEEE Symposium on Security and Privacy . IEEE 579–594.",
+              "DOI": "10.1109/SP.2017.23"
+            },
+            {
+              "key": "e_1_3_2_54_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00081"
+            },
+            {
+              "key": "e_1_3_2_55_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1155/2017/7819590"
+            },
+            {
+              "key": "e_1_3_2_56_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/872734.806939"
+            },
+            {
+              "key": "e_1_3_2_57_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/sec.714"
+            },
+            {
+              "key": "e_1_3_2_58_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1993498.1993532"
+            },
+            {
+              "key": "e_1_3_2_59_2",
+              "article-title": "American Fuzzy Lop",
+              "author": "Zalewski Michał",
+              "year": "2016",
+              "unstructured": "Michał Zalewski. 2016. American Fuzzy Lop. Retrieved October 1, 2016 from http://lcamtuf.coredump.cx/afl. (2016).",
+              "journal-title": "Retrieved October 1, 2016 from http://lcamtuf.coredump.cx/afl"
+            }
+          ],
+          "container-title": [
+            "ACM Transactions on Software Engineering and Methodology"
+          ],
+          "language": "en",
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3628157",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3628157",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                18
+              ]
+            ],
+            "date-time": "2025-06-18T22:49:01Z",
+            "timestamp": 1750286941000
+          },
+          "score": 62.504196,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3628157"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2023,
+                12,
+                22
+              ]
+            ]
+          },
+          "references-count": 58,
+          "journal-issue": {
+            "issue": "2",
+            "published-print": {
+              "date-parts": [
+                [
+                  2024,
+                  2,
+                  29
+                ]
+              ]
+            }
+          },
+          "alternative-id": [
+            "10.1145/3628157"
+          ],
+          "URL": "https://doi.org/10.1145/3628157",
+          "ISSN": [
+            "1049-331X",
+            "1557-7392"
+          ],
+          "issn-type": [
+            {
+              "value": "1049-331X",
+              "type": "print"
+            },
+            {
+              "value": "1557-7392",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                12,
+                22
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2021-08-13",
+              "order": 0,
+              "name": "received",
+              "label": "Received",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2023-09-18",
+              "order": 1,
+              "name": "accepted",
+              "label": "Accepted",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2023-12-22",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                1,
+                11
+              ]
+            ],
+            "date-time": "2025-01-11T05:34:27Z",
+            "timestamp": 1736573667202,
+            "version": "3.32.0"
+          },
+          "reference-count": 56,
+          "publisher": "IEEE",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    10,
+                    28
+                  ]
+                ],
+                "date-time": "2024-10-28T00:00:00Z",
+                "timestamp": 1730073600000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-029"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    10,
+                    28
+                  ]
+                ],
+                "date-time": "2024-10-28T00:00:00Z",
+                "timestamp": 1730073600000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-037"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100000001",
+              "name": "National Science Foundation",
+              "doi-asserted-by": "publisher",
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                28
+              ]
+            ]
+          },
+          "DOI": "10.1109/issre62328.2024.00037",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                3
+              ]
+            ],
+            "date-time": "2024-12-03T18:55:29Z",
+            "timestamp": 1733252129000
+          },
+          "page": "295-306",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Multi-level Fuzzing for Document File Formats with Intermediate Representations"
+          ],
+          "prefix": "10.1109",
+          "author": [
+            {
+              "given": "Yifan",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Stevens Institute of Technology,Computer Science Department"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Jun",
+              "family": "Xu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "The University of Utah,Kahlert School of Computing"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "year": "2022",
+              "key": "ref1",
+              "article-title": "Do you know how many pdf documents exist in the world?"
+            },
+            {
+              "year": "2020",
+              "key": "ref2",
+              "article-title": "Adobe acrobat reader : List of security vulnerabilities"
+            },
+            {
+              "key": "ref3",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2946563"
+            },
+            {
+              "article-title": "American fuzzy lop",
+              "year": "2014",
+              "author": "Zalewski",
+              "key": "ref4"
+            },
+            {
+              "year": "2022",
+              "key": "ref5",
+              "article-title": "Afl++"
+            },
+            {
+              "key": "ref6",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3372297.3423340"
+            },
+            {
+              "article-title": "Domato",
+              "year": "2017",
+              "author": "Fratric",
+              "key": "ref7"
+            },
+            {
+              "key": "ref8",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2017.23"
+            },
+            {
+              "key": "ref9",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2017.8115618"
+            },
+            {
+              "key": "ref10",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23412"
+            },
+            {
+              "key": "ref11",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3464814"
+            },
+            {
+              "year": "2022",
+              "key": "ref12",
+              "article-title": "Foxit pdf sdk libraries"
+            },
+            {
+              "year": "2022",
+              "key": "ref13",
+              "article-title": "Webtoolkit libraries"
+            },
+            {
+              "key": "ref14",
+              "article-title": "Analysis of mutation and generation-based fuzzing",
+              "volume": "4",
+              "author": "Miller",
+              "year": "2007",
+              "journal-title": "Independent Security Evaluators"
+            },
+            {
+              "key": "ref15",
+              "article-title": "Pdf reference: Adobe portable document format version 1.4",
+              "author": "Preface",
+              "year": "2001",
+              "journal-title": "Version 1.4"
+            },
+            {
+              "year": "2021",
+              "key": "ref16",
+              "article-title": "Welcome to the open xml sdk 2.5 for office"
+            },
+            {
+              "year": "2018",
+              "key": "ref17",
+              "article-title": "Convert raw api data into beautiful webpages"
+            },
+            {
+              "year": "2008",
+              "key": "ref18",
+              "article-title": "Portable document format"
+            },
+            {
+              "year": "2023",
+              "key": "ref19",
+              "article-title": "Html standard"
+            },
+            {
+              "year": "2011",
+              "key": "ref20",
+              "article-title": "Home page for the pypdf2 project"
+            },
+            {
+              "year": "2021",
+              "key": "ref21",
+              "article-title": "Beautiful soup documentation"
+            },
+            {
+              "year": "2023",
+              "key": "ref22",
+              "article-title": "Modifier operations and mutations"
+            },
+            {
+              "year": "2020",
+              "key": "ref24",
+              "article-title": "Mupdf"
+            },
+            {
+              "year": "2020",
+              "key": "ref25",
+              "article-title": "Testcase of pdf"
+            },
+            {
+              "year": "2020",
+              "key": "ref26",
+              "article-title": "Testcases of pdf"
+            },
+            {
+              "year": "2021",
+              "key": "ref27",
+              "article-title": "Pdfium"
+            },
+            {
+              "year": "2020",
+              "key": "ref28",
+              "article-title": "Xpdfreader"
+            },
+            {
+              "year": "2020",
+              "key": "ref29",
+              "article-title": "Podofo"
+            },
+            {
+              "article-title": "Wrapper of qpdf-fuzzer",
+              "year": "2020",
+              "author": "Berkenbilt",
+              "key": "ref30"
+            },
+            {
+              "article-title": "Qpdf",
+              "year": "2020",
+              "author": "Berkenbilt",
+              "key": "ref31"
+            },
+            {
+              "year": "2023",
+              "key": "ref32",
+              "article-title": "The official github mirror of the chromium source"
+            },
+            {
+              "year": "2022",
+              "key": "ref33",
+              "article-title": "Testcases of html"
+            },
+            {
+              "year": "2022",
+              "key": "ref34",
+              "article-title": "Testcases of html"
+            },
+            {
+              "year": "2022",
+              "key": "ref35",
+              "article-title": "tidy-html5"
+            },
+            {
+              "year": "2022",
+              "key": "ref36",
+              "article-title": "libxml2 source code"
+            },
+            {
+              "key": "ref37",
+              "first-page": "309",
+              "article-title": "Addresssanitizer: A fast address sanity checker",
+              "volume-title": "2012 USENIX Annual Technical Conference (USENIX ATC 12)",
+              "author": "Serebryany"
+            },
+            {
+              "year": "2020",
+              "key": "ref38",
+              "article-title": "Grammar based fuzzing pdfs with domato"
+            },
+            {
+              "year": "2019",
+              "key": "ref39",
+              "article-title": "Dom fuzzers"
+            },
+            {
+              "key": "ref40",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40000.2020.00067"
+            },
+            {
+              "year": "2019",
+              "key": "ref41",
+              "article-title": "A collection of fuzzers in a harness for testing the spidermonkey javascript engine"
+            },
+            {
+              "key": "ref42",
+              "first-page": "445",
+              "article-title": "Fuzzing with code fragments",
+              "volume-title": "21st USENIX Security Symposium (USENIX Security 12)",
+              "author": "Holler"
+            },
+            {
+              "key": "ref43",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2021.24224"
+            },
+            {
+              "key": "ref44",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1609/aaai.v33i01.33011044"
+            },
+            {
+              "key": "ref45",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1375581.1375607"
+            },
+            {
+              "key": "ref46",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40001.2021.00071"
+            },
+            {
+              "year": "2015",
+              "key": "ref47",
+              "article-title": "Afl-tmin"
+            },
+            {
+              "key": "ref48",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3106237.3106295"
+            },
+            {
+              "key": "ref49",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00040"
+            },
+            {
+              "key": "ref50",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3321705.3329828"
+            },
+            {
+              "key": "ref51",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            },
+            {
+              "key": "ref52",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2017.23404"
+            },
+            {
+              "article-title": "GREYONE: Data flow sensitive fuzzing",
+              "volume-title": "Proceedings of the 29th USENIX Security Symposium",
+              "author": "Gan",
+              "key": "ref53"
+            },
+            {
+              "key": "ref54",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23371"
+            },
+            {
+              "key": "ref55",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "article-title": "Fuzzing closed source pdf viewers",
+              "year": "2019",
+              "author": "Feldmann",
+              "key": "ref56"
+            },
+            {
+              "article-title": "50 cves in 50 days: Fuzzing adobe reader",
+              "year": "2018",
+              "author": "Alon",
+              "key": "ref57"
+            }
+          ],
+          "event": {
+            "name": "2024 IEEE 35th International Symposium on Software Reliability Engineering (ISSRE)",
+            "start": {
+              "date-parts": [
+                [
+                  2024,
+                  10,
+                  28
+                ]
+              ]
+            },
+            "location": "Tsukuba, Japan",
+            "end": {
+              "date-parts": [
+                [
+                  2024,
+                  10,
+                  31
+                ]
+              ]
+            }
+          },
+          "container-title": [
+            "2024 IEEE 35th International Symposium on Software Reliability Engineering (ISSRE)"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/10771156/10771177/10771458.pdf?arnumber=10771458",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                1,
+                10
+              ]
+            ],
+            "date-time": "2025-01-10T19:57:58Z",
+            "timestamp": 1736539078000
+          },
+          "score": 30.671501,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/10771458/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                28
+              ]
+            ]
+          },
+          "references-count": 56,
+          "URL": "https://doi.org/10.1109/issre62328.2024.00037",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                28
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                23
+              ]
+            ],
+            "date-time": "2026-09-23T12:27:16Z",
+            "timestamp": 1790166436817,
+            "version": "4.1.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 37,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2020,
+                    7,
+                    18
+                  ]
+                ],
+                "date-time": "2020-07-18T00:00:00Z",
+                "timestamp": 1595030400000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2020,
+                7,
+                18
+              ]
+            ]
+          },
+          "DOI": "10.1145/3395363.3397372",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2020,
+                7,
+                13
+              ]
+            ],
+            "date-time": "2020-07-13T21:44:18Z",
+            "timestamp": 1594676658000
+          },
+          "page": "1-13",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 59,
+          "title": [
+            "WEIZZ: automatic grey-box fuzzing for structured binary formats"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Andrea",
+              "family": "Fioraldi",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Sapienza University of Rome, Italy"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Daniele Cono",
+              "family": "D'Elia",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Sapienza University of Rome, Italy"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Emilio",
+              "family": "Coppa",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Sapienza University of Rome, Italy"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2020,
+                7,
+                18
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "volume-title": "Circumventing Fuzzing Roadblocks with Compiler Transformations. https://lafintel.wordpress.com/ 2016 /08/15/circumventing-fuzzingroadblocks-with-compiler-transformations/. [Online",
+              "year": "2019",
+              "unstructured": "2016. Circumventing Fuzzing Roadblocks with Compiler Transformations. https://lafintel.wordpress.com/ 2016 /08/15/circumventing-fuzzingroadblocks-with-compiler-transformations/. [Online ; accessed 10- Sep- 2019 ]. 2016. Circumventing Fuzzing Roadblocks with Compiler Transformations. https://lafintel.wordpress.com/ 2016 /08/15/circumventing-fuzzingroadblocks-with-compiler-transformations/. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "Google OSS-Fuzz: continuous fuzzing of open source software. https: //github.com/google/oss-fuzz. [Online",
+              "year": "2019",
+              "unstructured": "2019. Google OSS-Fuzz: continuous fuzzing of open source software. https: //github.com/google/oss-fuzz. [Online ; accessed 10- Sep- 2019 ]. 2019. Google OSS-Fuzz: continuous fuzzing of open source software. https: //github.com/google/oss-fuzz. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "The Advantages of Block-Based Protocol Analysis for Security Testing. https://www.immunitysec.com/downloads/advantages_of_block_based_analysis.html. [Online",
+              "author": "Aitel Dave",
+              "year": "2019",
+              "unstructured": "Dave Aitel . 2002. The Advantages of Block-Based Protocol Analysis for Security Testing. https://www.immunitysec.com/downloads/advantages_of_block_based_analysis.html. [Online ; accessed 10- Sep- 2019 ]. Dave Aitel. 2002. The Advantages of Block-Based Protocol Analysis for Security Testing. https://www.immunitysec.com/downloads/advantages_of_block_based_analysis.html. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Cornelius Aschermann Tommaso Frassetto Thorsten Holz Patrick Jauernig Ahmad-Reza Sadeghi and Daniel Teuchert. 2019. NAUTILUS: Fishing for Deep Bugs with Grammars. In 26th Annual Network and Distributed System Security Symposium NDSS. https://www.ndss-symposium.org/ndss-paper/nautilusifshing-for-deep-bugs-with-grammars/  Cornelius Aschermann Tommaso Frassetto Thorsten Holz Patrick Jauernig Ahmad-Reza Sadeghi and Daniel Teuchert. 2019. NAUTILUS: Fishing for Deep Bugs with Grammars. In 26th Annual Network and Distributed System Security Symposium NDSS. https://www.ndss-symposium.org/ndss-paper/nautilusifshing-for-deep-bugs-with-grammars/",
+              "DOI": "10.14722/ndss.2019.23412"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Cornelius Aschermann Sergej Schumilo Tim Blazytko Robert Gawlik and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence. In 26th Annual Network and Distributed System Security Symposium NDSS. https://www.ndss-symposium.org/ndss-paper/redqueen-fuzzing-withinput-to-state-correspondence/  Cornelius Aschermann Sergej Schumilo Tim Blazytko Robert Gawlik and Thorsten Holz. 2019. REDQUEEN: Fuzzing with Input-to-State Correspondence. In 26th Annual Network and Distributed System Security Symposium NDSS. https://www.ndss-symposium.org/ndss-paper/redqueen-fuzzing-withinput-to-state-correspondence/",
+              "DOI": "10.14722/ndss.2019.23371"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3182657"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "http://phrack.org/issues/66/10. html. [Online",
+              "author": "MALLOC",
+              "year": "2019",
+              "unstructured": "Blackngel. 2019. MALLOC DES-MALEFICARUM. http://phrack.org/issues/66/10. html. [Online ; accessed 10- Sep- 2019 ]. Blackngel. 2019. MALLOC DES-MALEFICARUM. http://phrack.org/issues/66/10. html. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Blazytko Tim",
+              "year": "2019",
+              "unstructured": "Tim Blazytko , Cornelius Aschermann , Moritz Schlögel , Ali Abbasi , Sergej Schumilo , Simon Wörner , and Thorsten Holz . 2019 . GRIMOIRE: Synthesizing Structure while Fuzzing . In 28th USENIX Security Symposium (USENIX Security 19) . 1985-2002. https://www.usenix.org/system/files/sec19-blazytko.pdf Tim Blazytko, Cornelius Aschermann, Moritz Schlögel, Ali Abbasi, Sergej Schumilo, Simon Wörner, and Thorsten Holz. 2019. GRIMOIRE: Synthesizing Structure while Fuzzing. In 28th USENIX Security Symposium (USENIX Security 19). 1985-2002. https://www.usenix.org/system/files/sec19-blazytko.pdf"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "Smallest possible syntactically valid files of diferent types. https://github.com/mathiasbynens/small. [Online",
+              "author": "Bynens Mathias",
+              "year": "2019",
+              "unstructured": "Mathias Bynens . 2019. Smallest possible syntactically valid files of diferent types. https://github.com/mathiasbynens/small. [Online ; accessed 10- Sep- 2019 ]. Mathias Bynens. 2019. Smallest possible syntactically valid files of diferent types. https://github.com/mathiasbynens/small. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00082"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1455770.1455820"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3321705.3329819"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1002/spe.2348"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "Peach fuzzing platform. https://web.archive.org/web/ 20180621074520/http://community.peachfuzzer.com/WhatIsPeach.html. [Online",
+              "author": "Eddington M.",
+              "year": "2019",
+              "unstructured": "M. Eddington . [n.d.]. Peach fuzzing platform. https://web.archive.org/web/ 20180621074520/http://community.peachfuzzer.com/WhatIsPeach.html. [Online ; accessed 10- Sep- 2019 ]. M. Eddington. [n.d.]. Peach fuzzing platform. https://web.archive.org/web/ 20180621074520/http://community.peachfuzzer.com/WhatIsPeach.html. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "https://github. com/vanhauser-thc/AFLplusplus. [Online",
+              "author": "Heuse Marc",
+              "year": "2019",
+              "unstructured": "Marc Heuse , Heiko Eißfeldt , and Andrea Fioraldi . 2019. AFL++. https://github. com/vanhauser-thc/AFLplusplus. [Online ; accessed 10- Sep- 2019 ]. Marc Heuse, Heiko Eißfeldt, and Andrea Fioraldi. 2019. AFL++. https://github. com/vanhauser-thc/AFLplusplus. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/2362793.2362831"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2970276.2970321"
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE-C.2017.14"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "volume-title": "https://github.com/googleprojectzero/ CompareCoverage/. [Online",
+              "author": "Jurczyk Mateusz",
+              "year": "2019",
+              "unstructured": "Mateusz Jurczyk . 2019. CompareCoverage. https://github.com/googleprojectzero/ CompareCoverage/. [Online ; accessed 10- Sep- 2019 ]. Mateusz Jurczyk. 2019. CompareCoverage. https://github.com/googleprojectzero/ CompareCoverage/. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3106237.3106295"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "unstructured": "Tavis Ormandy. 2009. Making Software Dumberer. http://taviso.decsystem.org/ making_software_dumber.pdf. [Online; accessed 10-Sep-2019].  Tavis Ormandy. 2009. Making Software Dumberer. http://taviso.decsystem.org/ making_software_dumber.pdf. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00056"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2941681"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "volume-title": "24th Annual Network and Distributed System Security Symposium, NDSS. https://www.ndss-symposium.org/ndss2017/ndss-2017-programme/ vuzzer-application-aware-evolutionary-fuzzing/",
+              "author": "Rawat Sanjay",
+              "unstructured": "Sanjay Rawat , Vivek Jain , Ashish Kumar , Lucian Cojocar , Cristiano Giuffrida , and Herbert Bos . 2017. VUzzer: Application-aware Evolutionary Fuzzing . In 24th Annual Network and Distributed System Security Symposium, NDSS. https://www.ndss-symposium.org/ndss2017/ndss-2017-programme/ vuzzer-application-aware-evolutionary-fuzzing/ Sanjay Rawat, Vivek Jain, Ashish Kumar, Lucian Cojocar, Cristiano Giuffrida, and Herbert Bos. 2017. VUzzer: Application-aware Evolutionary Fuzzing. In 24th Annual Network and Distributed System Security Symposium, NDSS. https://www.ndss-symposium.org/ndss2017/ndss-2017-programme/ vuzzer-application-aware-evolutionary-fuzzing/"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.26"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2016.23368"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "honggfuzz. https://github.com/google/honggfuzz. [Online",
+              "author": "Swiecki Robert",
+              "year": "2019",
+              "unstructured": "Robert Swiecki . 2017. honggfuzz. https://github.com/google/honggfuzz. [Online ; accessed 10- Sep- 2019 ]. Robert Swiecki. 2017. honggfuzz. https://github.com/google/honggfuzz. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "Fuzzing for Software Security Testing and Quality Assurance",
+              "author": "Takanen Ari",
+              "unstructured": "Ari Takanen , Jared D. Demott , and Charles Miller . 2018. Fuzzing for Software Security Testing and Quality Assurance ( 2 nd ed.). Artech House, Inc. , Norwood, MA, USA . Ari Takanen, Jared D. Demott, and Charles Miller. 2018. Fuzzing for Software Security Testing and Quality Assurance (2nd ed.). Artech House, Inc., Norwood, MA, USA.",
+              "edition": "2"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00081"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SCAM.2014.43"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2015.47"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00080"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "Proceedings of the 27th USENIX Conference on Security Symposium (SEC'18)",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun , Sangho Lee , Meng Xu , Yeongjin Jang , and Taesoo Kim . 2018 . QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing . In Proceedings of the 27th USENIX Conference on Security Symposium (SEC'18) . 745-761. http://dl.acm.org/citation.cfm?id= 3277203. 3277260 Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. 2018. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In Proceedings of the 27th USENIX Conference on Security Symposium (SEC'18). 745-761. http://dl.acm.org/citation.cfm?id= 3277203. 3277260"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "volume-title": "American Fuzzy Lop. https://github.com/Google/AFL. [Online",
+              "author": "Zalewski Michał",
+              "year": "2019",
+              "unstructured": "Michał Zalewski . 2019. American Fuzzy Lop. https://github.com/Google/AFL. [Online ; accessed 10- Sep- 2019 ]. Michał Zalewski. 2019. American Fuzzy Lop. https://github.com/Google/AFL. [Online; accessed 10-Sep-2019]."
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "unstructured": "A. Zeller R. Gopinath M. Böhme G. Fraser and C. Holler. 2019. The Fuzzing Book. https://www.fuzzingbook.org/. [Online; accessed 10-Sep-2019].  A. Zeller R. Gopinath M. Böhme G. Fraser and C. Holler. 2019. The Fuzzing Book. https://www.fuzzingbook.org/. [Online; accessed 10-Sep-2019]."
+            }
+          ],
+          "event": {
+            "name": "ISSTA '20: 29th ACM SIGSOFT International Symposium on Software Testing and Analysis",
+            "location": "Virtual Event USA",
+            "acronym": "ISSTA '20",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 29th ACM SIGSOFT International Symposium on Software Testing and Analysis"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3395363.3397372",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3395363.3397372",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T22:38:44Z",
+            "timestamp": 1750199924000
+          },
+          "score": 30.622925,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3395363.3397372"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2020,
+                7,
+                18
+              ]
+            ]
+          },
+          "references-count": 37,
+          "alternative-id": [
+            "10.1145/3395363.3397372",
+            "10.1145/3395363"
+          ],
+          "URL": "https://doi.org/10.1145/3395363.3397372",
+          "published": {
+            "date-parts": [
+              [
+                2020,
+                7,
+                18
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2020-07-18",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

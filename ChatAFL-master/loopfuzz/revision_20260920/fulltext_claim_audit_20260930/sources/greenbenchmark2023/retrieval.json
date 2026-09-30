@@ -1,0 +1,35 @@
+{
+  "key": "greenbenchmark2023",
+  "title": "{Green Fuzzer Benchmarking}",
+  "status": "fulltext_downloaded",
+  "attempts": [
+    {
+      "url": "https://dl.acm.org/doi/pdf/10.1145/3597926.3598144",
+      "status": 403,
+      "final_url": "https://dl.acm.org/doi/pdf/10.1145/3597926.3598144",
+      "bytes": 5600
+    },
+    {
+      "url": "https://api.openalex.org/works/https://doi.org/10.1145/3597926.3598144",
+      "status": 429
+    },
+    {
+      "url": "https://mariachris.github.io/Pubs/ISSTA-2023-GreenBench.pdf",
+      "error": "HTTPSConnectionPool(host='mariachris.github.io', port=443): Max retries exceeded with url: /Pubs/ISSTA-2023-GreenBench.pdf (Caused by ConnectTimeoutError(<HTTPSConnection(host='mariachris.github.io', "
+    },
+    {
+      "url": "https://repositum.tuwien.at/bitstream/20.500.12708/188021/3/Ounjai-2023-Green%20Fuzzer%20Benchmarking-vor.pdf",
+      "status": 200,
+      "final_url": "https://repositum.tuwien.at/bitstream/20.500.12708/188021/3/Ounjai-2023-Green%20Fuzzer%20Benchmarking-vor.pdf",
+      "bytes": 314592
+    }
+  ],
+  "retrieved_utc": "2026-09-30T09:11:10.582775+00:00",
+  "source": "https://repositum.tuwien.at/bitstream/20.500.12708/188021/3/Ounjai-2023-Green%20Fuzzer%20Benchmarking-vor.pdf",
+  "pdf": "fulltext_claim_audit_20260930/sources/greenbenchmark2023/paper.pdf",
+  "text": "fulltext_claim_audit_20260930/sources/greenbenchmark2023/paper.txt",
+  "pages": 11,
+  "characters": 113907,
+  "sha256": "e34845f6d69d9c8c9b0c06853ebf9e335403fc46068258d430c3810e0d1eb1b1",
+  "title_token_overlap": 1.0
+}

@@ -1,0 +1,515 @@
+{
+  "aflnet": {
+    "pages": [
+      3,
+      4
+    ],
+    "section": "II, State Machine Learner / Sequence Mutator",
+    "assessment": "supported",
+    "note": "Response status codes form observed state transitions; independent code-coverage instrumentation remains required. Does not establish complete semantic states."
+  },
+  "stateafl": {
+    "pages": [
+      3,
+      5,
+      6
+    ],
+    "section": "Introduction; related work; approach",
+    "assessment": "supported",
+    "note": "Long-lived memory snapshots and locality-sensitive hashing infer states; explicitly describes poor information in response codes. Confirms prior recognition of proxy limitations."
+  },
+  "sgf_usenix22": {
+    "pages": [
+      2,
+      3,
+      5
+    ],
+    "section": "Introduction; state identification",
+    "assessment": "supported",
+    "note": "Tracks sequences of assigned named constants in state variables, usually enums. Grouped stateful-fuzzing sentence is supported."
+  },
+  "chatafl": {
+    "pages": [
+      2,
+      5,
+      8,
+      9
+    ],
+    "section": "IV, LLM-guided protocol fuzzing",
+    "assessment": "supported",
+    "note": "Grammar extraction, initial-seed message enrichment, and plateau-triggered message generation support both occurrences. Does not validate LoopFuzz admission effects."
+  },
+  "aflnet5years2025": {
+    "pages": [
+      3,
+      5,
+      6
+    ],
+    "section": "III, design and interesting sequences",
+    "assessment": "supported",
+    "note": "Extended AFLNet combines code and state feedback; the manuscript makes only a bounded background claim."
+  },
+  "stateinspector2022": {
+    "pages": [
+      3,
+      4,
+      5
+    ],
+    "section": "3--4, limitations and greybox architecture",
+    "assessment": "supported",
+    "note": "Internal memory/execution observations supplement state-model learning. Requires specific learning assumptions; no generalization to LoopFuzz inferred."
+  },
+  "nyxnet2022": {
+    "pages": [
+      2,
+      6
+    ],
+    "section": "Design, incremental snapshots",
+    "assessment": "supported",
+    "note": "Incremental snapshots skip shared message prefixes; snapshot design is not evidence of LoopFuzz portability."
+  },
+  "snapfuzz2022": {
+    "pages": [
+      4,
+      5,
+      6
+    ],
+    "section": "3.2--3.5, network protocol / file system / rewriting",
+    "assessment": "supported",
+    "note": "Execution synchronization, in-memory file system and snapshots support high-throughput network fuzzing claim."
+  },
+  "fuzztructionnet2024": {
+    "pages": [
+      4,
+      5,
+      6
+    ],
+    "section": "3.1--3.5, fault injection into protocol peer",
+    "assessment": "supported",
+    "note": "Mutates peer program operations while retaining session/integrity handling; manuscript claim stays at mechanism level."
+  },
+  "guo2017calibration": {
+    "pages": [
+      2,
+      3
+    ],
+    "section": "2, Definitions; Eqs. (1)--(3)",
+    "assessment": "adaptation_clarified",
+    "note": "Original ECE compares predicted-label confidence with classification accuracy. Manuscript now explicitly adapts binning to binary reward probabilities versus observed reward frequencies; ten bins is a manuscript choice."
+  },
+  "blueman2025": {
+    "pages": [
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Design overview; simulated BLE boards",
+    "assessment": "supported",
+    "note": "真实 BLE 协议栈在物理层仿真环境中交互；保留 simulations 的限定，不将其写成物理硬件实测。"
+  },
+  "distfuzz2025": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Table I and architecture",
+    "assessment": "supported",
+    "note": "常规事件、故障事件和时间间隔；消息序列反馈与对称性剪枝。原句各机制均有全文支持。"
+  },
+  "gramatron_effective_grammar_aware_2021": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Sections 2--3, grammar automata",
+    "assessment": "attribution_split",
+    "note": "将 CFG 转为自动机进行生成和变异；已拆开与 CarpetFuzz 的合并引证，避免两篇都支持同一组机制的歧义。"
+  },
+  "carpetfuzz_documentation_2023": {
+    "pages": [
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Challenges and option constraints",
+    "assessment": "attribution_split",
+    "note": "从自然语言文档抽取选项冲突/依赖关系；已单独陈述，未将其误归为通用语法自动机。"
+  },
+  "formatfuzzer": {
+    "pages": [
+      2,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Binary templates and format-aware fuzzing",
+    "assessment": "supported",
+    "note": "输入为二进制格式模板，可构建生成器、解析器和变异器；不据此主张无须人工模板精化。"
+  },
+  "fuzztruction2023": {
+    "pages": [
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Sections 2--3, generator fault injection",
+    "assessment": "supported",
+    "note": "在输入生成程序中注入故障，利用隐含格式约束生成测试输入；原句为机制描述。"
+  },
+  "miner2023": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Overview; REST API sequence generation",
+    "assessment": "supported",
+    "note": "保留有效请求序列作为模板并偏向较长序列；学习关键请求参数。原句未将其等同长期队列代码收益验证。"
+  },
+  "llmif_augmented_large_language_2024": {
+    "pages": [
+      2,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Specification extraction and algorithm overview",
+    "assessment": "attribution_split",
+    "note": "抽取消息格式、字段值、头部结构及依赖来生成设备测试输入；已与 ChatAFL/Fuzz4All 分开逐项引证。"
+  },
+  "fuzz4all_universal_fuzzing_large_2024": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Autoprompting and fuzzing loop",
+    "assessment": "attribution_split",
+    "note": "跨多种程序输入语言，以自动提示、生成和变异开展测试；不声称已验证所有协议类型。"
+  },
+  "fuzzgpt2024": {
+    "pages": [
+      2,
+      3,
+      5
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Historical bug programs; in-context learning/fine-tuning",
+    "assessment": "version_limited",
+    "note": "可用 2023 作者稿题名不同但六位作者及 FuzzGPT 方法对应；支持当前 unusual programs 的窄表述。正式 ICSE 2024 版尚未逐页比对。"
+  },
+  "whitefox2024": {
+    "pages": [
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Motivating example; source-derived requirements",
+    "assessment": "supported",
+    "note": "利用优化器源代码总结触发条件并生成相应测试；原句获得支持，不推出 LoopFuzz 性能。"
+  },
+  "prophetfuzz2024": {
+    "pages": [
+      2,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Documentation constraints and few-shot option prediction",
+    "assessment": "supported",
+    "note": "依据文档及示例预测高风险选项组合；当前表述没有声称纯零样本或未经验证即可认定漏洞。"
+  },
+  "hybridllm2026": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Section III, LLM-assisted concolic execution",
+    "assessment": "supported",
+    "note": "HyLLfuzz 在灰盒覆盖平台期使用 LLM 辅助 concolic 执行；当前 hybrid fuzzing 概述得到支持，来源为作者稿。"
+  },
+  "hgfuzzer2026": {
+    "pages": [
+      2,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Path conditions, harness generation, target-specific mutators",
+    "assessment": "version_limited",
+    "note": "取得 2025 三作者预印本，正式 2026 条目为四作者。已删除更具体的 predicate-guided synthesis，保留 LLM-assisted directed greybox fuzzing；正式版机制仍待比对。"
+  },
+  "bandits_states2023": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Sections 3--4, state-selection bandit formulation",
+    "assessment": "novelty_boundary_clarified",
+    "note": "已有协议状态 bandit 建模，讨论非平稳奖励，初步结果弱于 AFLNet。本文不得将 bandit 或代码反馈本身称为创新；表格已改为组合边界。"
+  },
+  "tscheduler2024": {
+    "pages": [
+      1,
+      4,
+      5
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Section 3.2; Algorithm 1",
+    "assessment": "required_prior_work_added",
+    "note": "要求文件所指为 Luo 等 AsiaCCS 2024，非 Zhang 2026。Beta 参数更新、Thompson 抽样及覆盖特征稀有度修正在算法中明确；已补入正文及边界表，正式元数据由 Crossref 核对。"
+  },
+  "fox2024": {
+    "pages": [
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Section 2, online stochastic control formulation",
+    "assessment": "supported",
+    "note": "将覆盖引导变异模糊测试建模为在线优化/随机控制，目标为期望代码覆盖收益；原句准确。"
+  },
+  "fishfuzz2023": {
+    "pages": [
+      2,
+      3
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Overview of multi-distance and dynamic prioritization",
+    "assessment": "supported",
+    "note": "多距离指标、动态目标排序和队列裁剪共同引导探索/利用；原句的距离优先化表述可保留。"
+  },
+  "protocolguard2026": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Specification rules and dynamic verification",
+    "assessment": "supported",
+    "note": "规范性要求形成规则，结合代码分析定位不一致，再进行动态验证；当前表述支持语义正确性与覆盖奖励的区分。"
+  },
+  "bsfuzzer2026": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Semantic extraction and state-machine violations",
+    "assessment": "supported",
+    "note": "从 BLE 规范提取语义约束、状态信息，并合成上下文感知测试检测逻辑缺陷；原句范围准确。"
+  },
+  "mercuriuzz2026": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Section IV; QUIC logical vulnerabilities",
+    "assessment": "supported",
+    "note": "目标为 QUIC 实现逻辑漏洞，区分响应违例、资源异常与通用内存崩溃；不能将覆盖增长视为漏洞证明。"
+  },
+  "magma2020": {
+    "pages": [
+      2,
+      8,
+      10
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Sections 4 and 4.3, ground-truth metrics",
+    "assessment": "supported",
+    "note": "原文区分 reached、triggered 与 detected；故障位置被覆盖不等于触发。补丁配对和提示信息控制属于本文协议，未归为 Magma 原有规则。"
+  },
+  "profuzzbench_benchmark_stateful_protocol_2021": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Benchmark workflow and reproducibility",
+    "assessment": "supported",
+    "note": "协议目标、构建/运行/分析流程及确定性挑战支持协议 fuzzer 评测平台的陈述。"
+  },
+  "fuzzbench2021": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Section 2, benchmark methodology",
+    "assessment": "supported",
+    "note": "提供可重复实验、重复 trial 和统计报告。正文未把默认配置当作所有实验的唯一规范。"
+  },
+  "reliability_benchmarking_2022": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Research questions and proxy reliability",
+    "assessment": "supported",
+    "note": "区别相关性与排名一致性；覆盖与漏洞数高度相关并不保证比较排序一致。当前谨慎解释覆盖的表述获得支持。"
+  },
+  "sok_prudent_evaluation_practices_2024": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Recommendations 4--5; evaluation review",
+    "assessment": "supported",
+    "note": "不以覆盖/栈哈希单独充当漏洞结果，强调统计评估、重复和实验可重复性；不能替代本文尚未完成实验。"
+  },
+  "greenbenchmark2023": {
+    "pages": [
+      4,
+      7,
+      9
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Benchmark construction; resource/accuracy trade-off",
+    "assessment": "supported",
+    "note": "以较短任务和随机化初始条件研究降低评测成本；正文只据此说明成本需要报告，没有把其流程当成本研究已执行。"
+  },
+  "benchmarkproperties": {
+    "pages": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Controlled covariates and holistic benchmarking",
+    "assessment": "supported",
+    "note": "初始种子覆盖和执行速度会影响相对表现与排名；正文不将其推广为任何不受控 endpoint 都能给因果解释。"
+  },
+  "mutationassessment2023": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Mutation analysis and fault detection",
+    "assessment": "supported",
+    "note": "评估检测注入故障的能力，补充覆盖度指标；本文未声称自己已完成 mutation-based 实验。"
+  },
+  "thompson1933": {
+    "pages": [
+      1,
+      2,
+      8
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Sections 1--3",
+    "assessment": "adaptation_clarified",
+    "note": "原文以证据形成概率并据此随机分配；不证明本文的折扣、frontier 加权或比例采样形式。已明确这些是本文的适配。"
+  },
+  "davis2006pr": {
+    "pages": [
+      1,
+      2,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "ROC/PR relation and interpolation",
+    "assessment": "metric_distinction_fixed",
+    "note": "原文强调 PR 分析及非线性插值；不证明任意 AUPRC 与非插值 AP 恒等。已统一报告实际实现的 AP，并写明与梯形积分不同。"
+  },
+  "efron1979": {
+    "pages": [
+      2,
+      3,
+      4
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Original pp. 1--3, Section 2 and Eqs. (2.1)--(2.5)",
+    "assessment": "resampling_scope_clarified",
+    "note": "原文从独立样本的经验分布有放回重抽样以近似抽样分布。95% 百分位区间、整 run 和分层设计为本文选择，不能宣称原文保证当前依赖数据的覆盖率。扫描正文通过页面图像审阅。"
+  },
+  "benjamini1995": {
+    "pages": [
+      2,
+      6,
+      12
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Theorem 1 and Appendix A",
+    "assessment": "guarantee_qualified",
+    "note": "原始 FDR 保证针对独立检验统计量。本文共享比较组/相关覆盖终点未证明该条件；改为 nominal q 并删除无条件控制承诺。"
+  },
+  "kaplan1958": {
+    "pages": [
+      2,
+      3
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Original pp. 457--458; Section 1.1",
+    "assessment": "assumption_added",
+    "note": "观察时限须独立于生存/触发时间的标准设定已核对；正文补入非信息性右删失限定并保留故障中断警告。"
+  },
+  "mann1947": {
+    "pages": [
+      2,
+      3
+    ],
+    "page_kind": "PDF page including cover",
+    "section": "Original pp. 50--51; Section 1",
+    "assessment": "inference_scope_clarified",
+    "note": "原文对两个独立连续分布的随机样本定义 U 统计量，非一般中位数差检验。协议现在明确 run 层独立性及并列值处理；全文通过浏览工具读取，未声称本地下载成功。"
+  },
+  "cliff1993": {
+    "pages": [
+      494,
+      495,
+      496
+    ],
+    "page_kind": "printed journal pages",
+    "section": "Original article pp. 494--496, independent-group dominance",
+    "assessment": "effect_definition_clarified",
+    "note": "原文将组间优势定义为两方向概率之差，并讨论并列值及分布假设。正文明确 δ 的方向；所审为全文镜像转录，出版社 PDF 仍未取得。"
+  },
+  "nsfuzz": {
+    "pages": [],
+    "section": null,
+    "assessment": "fulltext_unresolved",
+    "note": "出版记录已核实，但完整原文仍未取得；不得将题名/摘要/项目说明当作全文审查通过。保留窄范围已知表述，待原文补证。"
+  },
+  "ssgfuzz2026": {
+    "pages": [],
+    "section": null,
+    "assessment": "fulltext_unresolved",
+    "note": "出版记录已核实，但完整原文仍未取得；不得将题名/摘要/项目说明当作全文审查通过。保留窄范围已知表述，待原文补证。"
+  },
+  "wingmuzz2025": {
+    "pages": [],
+    "section": null,
+    "assessment": "fulltext_unresolved",
+    "note": "出版记录已核实，但完整原文仍未取得；不得将题名/摘要/项目说明当作全文审查通过。保留窄范围已知表述，待原文补证。"
+  },
+  "zhang2026thompson": {
+    "pages": [],
+    "section": null,
+    "assessment": "fulltext_unresolved",
+    "note": "出版记录已核实，但完整原文仍未取得；不得将题名/摘要/项目说明当作全文审查通过。保留窄范围已知表述，待原文补证。"
+  },
+  "brier1950": {
+    "pages": [],
+    "section": null,
+    "assessment": "fulltext_unresolved",
+    "note": "出版记录已核实，但完整原文仍未取得；不得将题名/摘要/项目说明当作全文审查通过。保留窄范围已知表述，待原文补证。"
+  }
+}

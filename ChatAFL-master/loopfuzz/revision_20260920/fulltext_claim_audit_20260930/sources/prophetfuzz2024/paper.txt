@@ -1,0 +1,1239 @@
+                                               ProphetFuzz: Fully Automated Prediction and Fuzzing of
+                                            High-Risk Option Combinations with Only Documentation via
+                                                               Large Language Model
+                                                             Dawei Wang                                   Geng Zhou                                         Li Chen∗
+                                                   Zhongguancun Laboratory                        Zhongguancun Laboratory                         Zhongguancun Laboratory
+                                                        Beijing, China                                  Beijing, China                                  Beijing, China
+                                                    wangdw@zgclab.edu.cn                           zhougeng@zgclab.edu.cn                           lichen@zgclab.edu.cn
+
+                                                                                     Dan Li                                       Yukai Miao
+arXiv:2409.00922v1 [cs.CR] 2 Sep 2024
+
+
+
+
+                                                                             Tsinghua University                          Zhongguancun Laboratory
+                                                                                 Beijing, China                                Beijing, China
+                                                                           tolidan@tsinghua.edu.cn                         miaoyk@zgclab.edu.cn
+
+                                        Abstract                                                                      out all invalid combinations of options. These efforts have proven
+                                        Vulnerabilities related to option combinations pose a significant             to be more effective in testing program paths related to option com-
+                                        challenge in software security testing due to their vast search space.        binations than traditional fuzzers (e.g., AFL++ [9]). However, they
+                                        Previous research primarily addressed this challenge through mu-              are still limited in the following aspects: L1- Lack of Prioritization:
+                                        tation or filtering techniques, which inefficiently treated all option        These approaches test each generated combination equally, yet the
+                                        combinations as having equal potential for vulnerabilities, thus              risk of vulnerabilities varies among different combinations. For
+                                        wasting considerable time on non-vulnerable targets and resulting             example, combinations that involve file parsing options are more
+                                        in low testing efficiency. In this paper, we utilize carefully designed       likely to have vulnerabilities than combinations that affect only the
+                                        prompt engineering to drive the large language model (LLM) to                 user interface settings. Excessively testing low-risk combinations
+                                        predict high-risk option combinations (i.e., more likely to contain           (i.e., unlikely to contain vulnerabilities) will reduce the efficiency
+                                        vulnerabilities) and perform fuzz testing automatically without               of fuzz testing. L2- Semantic Mismatch: Every component of an
+                                        human intervention. We developed a tool called ProphetFuzz and                executable command, such as options, values, and files, is inter-
+                                        evaluated it on a dataset comprising 52 programs collected from               connected, requiring adherence not just to the correct format and
+                                        three related studies. The entire experiment consumed 10.44 CPU               structure (syntactic correctness), but, more importantly, to semantic
+                                        years. ProphetFuzz successfully predicted 1748 high-risk option               matching and collaboration to ensure the command executes as
+                                        combinations at an average cost of only $8.69 per program. Re-                intended. Consider the option “-f avi”, which specifies that the input
+                                        sults show that after 72 hours of fuzzing, ProphetFuzz discovered             must be in AVI format; accordingly, the command with this option
+                                        364 unique vulnerabilities associated with 12.30% of the predicted            functions properly only with inputs in AVI format, and using any
+                                        high-risk option combinations, which was 32.85% higher than that              other format leads to execution errors. However, in existing propos-
+                                        found by state-of-the-art in the same timeframe. Additionally, us-            als, the components of generated commands originate primarily
+                                        ing ProphetFuzz, we conducted persistent fuzzing on the latest                from random mutations or simplistic selections, leading to a lack of
+                                        versions of these programs, uncovering 140 vulnerabilities, with 93           coherent and meaningful interaction between components, thereby
+                                        confirmed by developers and 21 awarded CVE numbers.                           causing semantic mismatches. L3- Reliance on Expertise: These ap-
+                                                                                                                      proaches require extensive manual effort in the setup stages, such as
+                                                                                                                      assembling commands, assigning values, and collecting input files,
+                                        1    Introduction
+                                                                                                                      with a strong dependence on the deep expertise of software testers.
+                                        The growth in software complexity has led to a significant increase           This not only limits the methods’ ability to scale for comprehensive
+                                        in the number of program options and combinations. For example,               testing, but also raises the barrier of entry.
+                                        ImageMagick has 305 options, leading to 2305 possible combinations,               If it were possible to incorporate the expertise of security test-
+                                        ignoring the different values that each option’s parameters can take.         ing experts into an automated tool for predicting high-risk option
+                                        This exponential increase in combinations creates many unique                 combinations and configuring fuzz tests, it could address all the
+                                        execution paths, expanding the search space for vulnerabilities.              limitations mentioned above. This is because reports indicate that
+                                        These paths are only active with specific combinations, challenging           experienced security professionals are often able to predict high-
+                                        traditional mutation-based fuzzing techniques.                                risk targets by analyzing documentation and crafting appropriate
+                                           In recent years, there has been continuous effort to develop               commands and fuzzing configurations based on the semantic con-
+                                        fuzzing methods focused on exploring option combinations. POW-                text of these targets [2, 21, 33].
+                                        ER [15] and ConfigFuzz [43] increase path coverage by mutating                    We believe that the recent advancement of large language mod-
+                                        the options and their values under test. CarpetFuzz [34] aims to tra-         els (LLMs) has made this idea possible. Trained on extensive text
+                                        verse the complete list of fuzzing combinations by initially filtering        datasets with up to 500 billion tokens [4], these models grasp the
+                                        ∗ Corresponding
+                                                                                                                      complex structures and patterns of language, amassing a wide range
+                                                          author.
+                                                                                                                  1
+                                                                                                                        Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+of knowledge and the capacity for text comprehension and genera-                            constraints between options based on these details. To ensure the
+tion [1, 26, 30, 31]. This equips them for a range of sophisticated                         precision of these identifications, we develop a self-check approach
+language understanding and generation tasks. Recent studies show                            utilizing bidirectional reasoning (C1). The intuition behind this
+that LLMs can detect hidden patterns in text and even surpass ex-                           approach is that consistent answers from different perspectives
+perts in some predictive tasks [18, 38]. Motivated by these findings,                       suggest higher correctness, similar to methods used in verifying
+we sought to apply LLMs to address the limitations described here.                          mathematical reasoning [10, 13]. Specifically, this method employs
+    However, our initial efforts reveal that direct application of                          both direct proof and counterproof to assist the LLM in uncovering
+these models did not achieve our expected results (discussed in                             contradictions in its reasoning, thus allowing for the elimination
+Section 5.5), which presented the following challenges:                                     of inaccuracies in the results identified. Guided by the constraints
+Challenges. C1: LLMs tend to identify option combinations that                              identified, ProphetFuzz predicts high-risk combinations based on
+violate constraints (i.e., conflicts and dependencies) as high-risk tar-                    the descriptions of the options. To address the knowledge gap re-
+gets, leading to premature program termination and hindering the                            garding the relationship between documentation and historical
+exploration of program paths. Therefore, informing the LLM of the                           high-risk combinations, we design a few-shot learning method to
+correct constraints in advance is essential to prevent the generation                       bridge these gaps and an automated few-shot corpus generation
+of invalid combinations. While CarpetFuzz can automatically ex-                             method to create analysis examples as supplementary knowledge
+tract such constraints from documentation using natural language                            for the LLM (C2). This method creates eight analysis examples from
+processing (NLP) techniques, its reliance on heuristic rules limits                         29 historical high-risk combinations across eight different programs.
+its scalability (discussed in Section 5.3). In contrast, the use of LLMs                    Note that the creation of these examples does not require expert par-
+for constraint extraction offers broader applicability, but also en-                        ticipation. For the predicted high-risk combinations, ProphetFuzz
+counters the challenge of LLM “hallucinations” [41] (i.e., generating                       initially guides the LLM to comprehend the collective semantics
+inaccurate or fictitious information). Ensuring the precision of the                        of the option combination and leverage this understanding to al-
+constraints extracted by LLMs poses a significant challenge. C2: Al-                        locate option values and files with consistent semantics, thereby
+though LLMs are adept at understanding and generating natural                               generating semantically matched commands. Specifically for con-
+language, they have not been explicitly trained to recognize the                            figuration and input files, instead of directly generating these files,
+relationships between documentation descriptions and historical                             ProphetFuzz creates Python scripts capable of generating these files
+high-risk combinations. This gap can lead to a deficiency in spe-                           and executes these scripts within a sandbox environment to obtain
+cialized knowledge and deep comprehension when handling such                                the required files (C3). Finally, ProphetFuzz inputs all generated
+tasks. A common strategy to bridge this knowledge gap, known as                             commands and corresponding files into the fuzzer to carry out fuzz
+few-shot learning [4], involves enhancing the model’s inference                             testing on the high-risk option combinations.
+with a few analysis examples. However, the effectiveness of this                               We implement a prototype of ProphetFuzz on GPT-4 Turbo,
+strategy depends on the availability of such examples, which re-                            which is currently recognized as the most powerful LLM [17]. We
+quires manual analysis by experienced security professionals and is                         conduct a thorough evaluation of ProphetFuzz across 52 open-
+therefore constrained by the availability of expert resources. Conse-                       source programs collected from datasets used in three previous
+quently, establishing such relationships without direct intervention                        studies. Within these programs, ProphetFuzz predicted 1748 high-
+from experts remains a significant challenge. C3: To match the                              risk option combinations, assembling 7614 commands, and discov-
+semantics of other components within the commands, it may be                                ered 364 unique vulnerabilities during 72 hours of fuzzing. Of these
+necessary to produce configuration files and input files in various                         combinations, 12.30% were successfully associated with the vul-
+formats. However, LLMs are primarily skilled in generating text-                            nerabilities. This entire process required an average cost of just
+based inputs. Although the latest multimodal LLMs [23, 30] can                              $8.69 per program. Compared to the current state-of-the-art (SOTA)
+handle inputs such as images, videos, and sounds, they generally                            tool, CarpetFuzz, ProphetFuzz utilized fewer commands (0.2×) yet
+do not accommodate the wide range of input formats that different                           identified more unique vulnerabilities (1.3×), including 224 unique
+software requires, such as network traffic packets, compressed files,                       vulnerabilities that CarpetFuzz failed to find. During the process,
+or Executable and Linkable Format (ELF) files. Therefore, effec-                            ProphetFuzz extracted 633 constraints from the documentation with
+tively enabling models to generate these diverse, non-textual input                         an overall precision of 94.00% and an average precision of 92.48%,
+formats presents a considerable challenge.                                                  outperforming CarpetFuzz, which extracted 447 constraints with
+Our Approach. In this paper, we design ProphetFuzz, an LLM-                                 76.73% and 69.72%. Furthermore, our ablation studies on the option
+based, fully automated fuzzing tool for option combination testing.                         values and files generated by ProphetFuzz indicated that integrat-
+ProphetFuzz can predict and conduct fuzzing on high-risk option                             ing these elements led to the discovery of 34.65% and 17.24% more
+combinations 1 with only documentation, and the entire process                              unique vulnerabilities, respectively. We employ ProphetFuzz to per-
+operates without manual intervention. Given a program’s docu-                               form persistent fuzzing on the latest versions of these programs.
+mentation, ProphetFuzz begins by extracting essential details such                          To date, ProphetFuzz has uncovered 140 zero-day or half-day 2
+as the program’s name, description, usage synopsis, and option                              vulnerabilities, 93 of which have been confirmed by the developers,
+descriptions through keyword matching, which is sufficient for this                         earning 21 CVE numbers. Investigations into other reported issues
+task and cost-effective. It then leverages the LLM to identify the
+1 Due  to the nature of fuzzing, this paper focuses on memory corruption vulnerabili-
+ties. “High-risk option combinations” refer to “high-risk memory-corruption option
+combinations” in the following text.                                                        2 Vulnerabilities   that have been exposed but have not yet been patched.
+                                                                                        2
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+are ongoing. Lastly, we analyze how ProphetFuzz predicts high-                         dynamically adjusting and applying the test option combinations on
+risk combinations and reveal 15 pieces of knowledge for predicting                     the fly to explore the coverage of different test cases under various
+high-risk combinations from documentation descriptions.                                option combinations. However, due to the vast search space of op-
+Responsible Disclosure. To prevent malicious exploitation, all                         tion combinations, thoroughly exploring the coverage under all op-
+vulnerabilities discovered in this study were promptly disclosed to                    tion combinations is unrealistic. To avoid missing vulnerabilities in
+relevant developers and the CVE organization. So far, 26 vulnera-                      any potential option combination as much as possible, researchers
+bilities have been addressed and rectified.                                            have developed two categories of option-aware fuzzing techniques:
+Contributions. Our contributions are summarized as follows:                            mutation-based [3, 15, 35, 43] and filter-based [29, 34]. Mutation-
+   •New technique. We introduce a novel, LLM-based technique                           based option-aware fuzzing techniques introduce changes to option
+for fully automated prediction and fuzz testing of high-risk option                    combinations via mutations, with the aim of uncovering unexpected
+combinations. We address several critical challenges faced by out-                     vulnerabilities through randomness. AFLargv [3] grants fuzzers
+of-the-box LLMs, such as hallucination and knowledge gaps. To                          the capability to mutate test options by treating specific bytes in
+tackle these issues, we develop a self-check technique for error                       test cases as options, but introduces a large number of invalid
+correction, a few-shot learning method to bridge knowledge gaps                        options. Addressing this issue, Tofu [35] employs structured mu-
+in predicting high-risk combinations, and an automated method to                       tations to alter the presence of each option, while POWER [15]
+generate few-shot corpora without expert input. This technique,                        builds on this with three mutation operators to further enhance
+leveraging only documentation, predicts high-risk combinations                         the exploration of unexpected option combinations. Unlike these
+without the need for code information and conducts fuzz testing                        methods, ConfigFuzz [43] also considers the impact of the option
+on these combinations entirely automatically through our carefully                     values and improves the exploration of combination-related paths
+designed prompts. The entire process, which includes document                          by mutating both the options and their values. Unlike mutation-
+parsing, constraint extraction, target prediction, command assem-                      based approaches, filter-based option-aware fuzzing techniques
+bly, file generation, and execution of fuzz tests, requires no manual                  prune the search space by filtering out invalid option combina-
+intervention, with an average cost of only $8.69 per program.                          tions. CrFuzz [29] introduces a clustering-based validity checker,
+   •Implementation and new findings. We develop the prototype                          which determines the validity of input options based on the output
+tool ProphetFuzz and thoroughly evaluate its performance across                        of the program. CarpetFuzz [34], on the other hand, employs an
+52 programs gathered from datasets in three prior studies, an effort                   NLP-based method to extract constraints between options from the
+that consumed a total of 10.44 CPU years. ProphetFuzz predicts                         program documentation and filters out invalid option combinations
+1748 high-risk option combinations, identifies 364 vulnerabilities,                    that do not satisfy these constraints. However, the methods above
+and discovers 140 unique vulnerabilities in the latest versions of                     do not account for the varying likelihood of vulnerabilities in dif-
+these programs, 93 of which have been confirmed by the developers,                     ferent combinations of options and treat all combinations equally.
+earning 21 CVE numbers. Moreover, our analysis of ProphetFuzz’s                        This oversight could lead to excessive testing of low-risk option
+prediction process highlights 15 key pieces of knowledge for pre-                      combinations, thereby reducing the opportunities for high-risk
+dicting high-risk option combinations, offering insights that are                      combinations to be tested. As a solution, this paper introduces an
+beneficial for further development in this field. We have open-                        option-aware fuzzing technique based on the prediction of high-risk
+sourced ProphetFuzz and the related datasets to encourage further                      option combinations, effectively enhancing fuzzing efficiency.
+exploration and research within the community 3 .
+
+2     Background and Related Work                                                      2.2    Large Language Model
+                                                                                       In recent years, large language models (LLMs) such as OpenAI’s
+2.1      Option-Aware Fuzzing                                                          GPT-4 Turbo have made remarkable advances in NLP. These models
+The options define the behavior and functionality of the software, al-                 benefit from training on massive text datasets, such as 500 billion
+lowing users to customize the software to meet their specific needs.                   tokens [4], which allows them to accumulate extensive knowledge
+This customization maximizes software efficiency across diverse                        and experience. As a result, they can perform a wide range of com-
+uses and environments. These options encompass a broad range                           plex downstream tasks without the need for fine-tuning, excelling
+of scenarios, including network settings, resource allocations, and                    in numerous linguistic tasks [17]. Users can guide LLMs to generate
+user interface preferences. Although such flexibility markedly im-                     outputs aligned with particular intentions by providing prompts
+proves software usability and the user experience, it also introduces                  in natural language. A prompt is a concise query or task posed to
+complexity and amplifies the challenges associated with software                       the model designed to elicit goal-oriented responses or content,
+testing. Each option can influence the behavior of the software,                       which is often phrased as a question, statement, or description.
+and the combination of multiple options may result in unexpected                       When encountering gaps in knowledge, users can supplement the
+behavior or security vulnerabilities, particularly without thorough                    required information by incorporating a few examples into the
+testing. Therefore, understanding and examining these options and                      prompts, a strategy known as “few-shot learning [4].” This strat-
+their interplay is vital to ensuring software quality and security.                    egy has been proven to effectively direct LLMs in solving various
+    Option-aware fuzzing is tailor-made for this specific requirement.                 complex problems, such as olympiad geometry [32].
+It considers the impact of software options and their combinations,                       In the field of fuzzing, inspired by the outstanding capabilities
+                                                                                       of LLMs in text generation and understanding, researchers have
+3 Available   in https://github.com/NASP-THU/ProphetFuzz                               started investigating novel methods for using LLMs to improve
+                                                                                 3
+                                                                                                                                             Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+fuzzing. Using knowledge from vast text datasets, LLMs can effi-                                                         to prevent creating invalid combinations (step 3). Specifically, we
+ciently produce code and structured inputs applicable across vari-                                                       manually collect 29 historical high-risk option combinations across
+ous domains, significantly improving fuzzing efficiency and cov-                                                         eight programs and employ an AutoCoT-based method to gener-
+erage. Tools such as Codamosa [16], TitanFuzz [5], FuzzGPT [6],                                                          ate eight analysis examples as the few-shot (i.e., 8-shot) corpus to
+CovRL [8], Oliinyk et al. [22], and Fuzz4All [37] have demonstrated                                                      assist ProphetFuzz in learning to predict high-risk combinations.
+the potential of LLMs in the generation of programming language                                                          Importantly, generating these analysis examples does not require
+code. Moreover, ChatFuzz [12] and KernelGPT [40] have delved                                                             expert participation. ProphetFuzz then constructs the appropriate
+into LLM applications to generate format-conforming input and                                                            commands for each identified high-risk combination by selecting
+syscalls, respectively. PromptFuzz [19] has revealed the potential                                                       suitable option values, guided by the synopsis and option details,
+of LLMs to generate fuzz drivers for testing frameworks such as                                                          and generates Python code to produce the required files (such as
+libfuzzer [27]. While these efforts have showcased the potential of                                                      configuration and input files) that match these commands seman-
+LLMs in understanding and generating text inputs, utilizing LLMs                                                         tically (step 4). Finally, ProphetFuzz executes the Python code to
+to generate non-text inputs, like PDF or ELF files, remains unex-                                                        produce the files (step 5) and puts them, along with the assembled
+plored. The challenge primarily stems from the complexity and                                                            commands, into the fuzzer for automated fuzzing (step 6).
+structure of non-textual inputs, which exceed LLMs’ current gener-                                                       Example. Figure 2 illustrates the process by which ProphetFuzz
+ation capabilities. To address this challenge, we propose a method                                                       automatically predicts and executes fuzzing, using the manpage
+that leverages LLMs to generate code that produces the required                                                          of the well-known video processing software ffmpeg as input. Ini-
+inputs. By executing the generated code, we indirectly create the                                                        tially, ProphetFuzz extracts the required sections from the ffmpeg
+required inputs, effectively circumventing the limitations of LLMs                                                       manpage through keyword matching and stores them as formatted
+in generating non-text inputs directly.                                                                                  text (JSON) for later use. It then guides the LLM to extract con-
+   Beyond generating text input, LLMs are also employed to extract                                                       straints based on option descriptions. Due to the LLM’s inherent
+valuable information from external documents, further optimizing                                                         hallucination issues, some extracted constraints might be incorrect,
+the fuzzing process. For instance, ChatAFL [20] utilizes LLMs to                                                         such as a conflict between “-start_at_zero” and “-copyts.” To address
+analyze RFC documents to extract network protocol specifications,                                                        this, ProphetFuzz employs a self-check mechanism to scrutinize
+enhancing the exploration efficiency of protocol states and code.                                                        all extracted constraints and filter out erroneous results. Based
+In this paper, we study an approach to leverage LLMs to extract                                                          on the document content and constraints, ProphetFuzz predicts
+option descriptions from program documentation to predict high-                                                          high-risk option combinations that do not violate these constraints,
+risk option combinations and integrate synopsis to automatically                                                         such as“-copyts -start_at_zero -y -itsoffset offset -itsscale scale -ss
+construct fuzzing configurations for these high-risk combinations.                                                       position -sseof position -i url.” Since no specific values are given
+This approach enables a fully automated fuzzing process, from                                                            for the options, these predicted combinations are not executable.
+target prediction and command assembly to file generation and fuzz                                                       ProphetFuzz subsequently uses the LLM to generate appropriate
+execution, effectively simplifying the complexity of fuzz testing.                                                       commands based on the semantic information of the combinations,
+                                                                                                                         along with the Python code needed to create the required files.
+                                                                            CMDs +                CMDs +
+                                                                                                                         Finally, ProphetFuzz generates the seed corpus by executing the file
+                                                         High-Risk
+              Content                Constraints       Combinations          Code                  files
+                                                                                                                         generation code, modifies the assembled command to be suitable
+                                                                                                                         for fuzzing, and executes the fuzzing process.
+    Documentation       Constraint             High-Risk         Command                File               Fuzzing
+       Parsing          Extraction            Combination        Assembly            Generation              ⑥
+         ①                  ②                  Prediction             ④                  ⑤
+                                                   ③
+                                                         Driven by LLM
+                                                                                                                         3.2    Constraint Extraction
+                                                                                                                         As noted previously, option combinations that violate constraints
+                    Figure 1: Overview of ProphetFuzz.                                                                   between options can cause premature program termination, hin-
+                                                                                                                         dering the fuzzer from exploring paths continuously. To prevent
+                                                                                                                         the generation of such combinations, we first utilize LLM to ex-
+3     Design                                                                                                             tract constraints between options from the program documentation
+                                                                                                                         before predicting high-risk combinations. Specifically, we provide
+3.1     Overview                                                                                                         the LLM with the program description and the option descriptions
+As previously stated, ProphetFuzz relies exclusively on documenta-                                                       found in the program documentation. We select this information for
+tion for input. Figure 1 illustrates the process in which ProphetFuzz                                                    a couple of reasons. First, to prevent incorrect user configuration of
+first parses essential documentation content, such as the program                                                        options, authors may have included explicit cues about constraints
+description, synopsis, and option details (step 1). Considering that                                                     within this information, such as “The -alpha flag cannot be used
+document parsing is a simple task, ProphetFuzz employs keyword                                                           with -mono.” Secondly, these descriptions also assist LLM in under-
+matching instead of using direct LLM parsing, as keyword matching                                                        standing the program’s and its options’ functionalities, allowing it
+is both sufficient and cost-effective. It then identifies the constraints                                                to infer constraints not explicitly mentioned by the authors based
+between options and performs a self-check to eliminate erroneous                                                         on potential conflicts and dependencies between functionalities.
+findings (step 2). In the next phase, ProphetFuzz utilizes a few-shot                                                    Some option keys, such as “-r, -R, –recurse-limit, –no-recurse-limit,
+learning approach to predict high-risk option combinations based                                                         –recursion-limit, –no-recursion-limit” may encompass multiple sub-
+on the option descriptions while adhering to identified constraints                                                      options, which could be different aliases for the same option or
+                                                                                                                     4
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+          ① Documentation Parsing                                          ② Constraint Extraction                                             ④ Command Assembly
+           NAME
+                                                                              Guide LLM to extract potential conflict/dependency                  Generate proper commands and file generation code
+              ffmpeg - ffmpeg video converter
+           DESCRIPTION
+              ffmpeg is a very fast video and audio converter …             Conflict:
+           SYNOPSIS                                                         • -copyts ⊗ -start_at_zero # Erroneous constraint                      Command:
+                                                                                                                                                 Command:
+                                                                                                                                               Command:
+              ffmpeg [global_options] {[input_file_options] –i ...          • -n (global) ⊗ -y (global)                                            ffmpeg-copyts
+                                                                                                                                                            -copyts-start_at_zero
+                                                                                                                                                                     -start_at_zero-y-y-itsoffset
+                                                                                                                                                                                             -itsoffset0.5  0.5-itsscale
+                                                                                                                                                                                                                 -itsscale0.75
+                                                                                                                                                                                                                           0.75
+                                                                                                                                                 ffmpeg
+                                                                                                                                               ffmpeg    -copyts -sseof
+                                                                                                                                                                  -start_at_zero       -y -itsoffset    0.5 -itsscale    0.75
+           Options                                                                                                                                 -ss00:01:00
+                                                                                                                                                       00:01:00
+                                                                            • …                                                                  -ss
+                                                                                                                                               -ss              -sseof-5-5-5
+                                                                                                                                                    00:01:00 -sseof
+                                                                                                                                                                               -iinput.mp4
+                                                                                                                                                                                   input.mp4
+                                                                                                                                                                          -i-iinput.mp4
+                                                                                                                                                                                                output.mp4
+                                                                                                                                                                                              output.mp4
+                                                                                                                                                                                             output.mp4
+              -i url (input)
+                 input file url                                             Dependency                                                             Code:
+                                                                                                                                                 Code:
+                                                                                                                                               Code:
+              -sseof position (input)                                       • -start_at_zero → -copyts                                                 importsubprocess
+                                                                                                                                                      import   subprocess
+                                                                                                                                                    import   subprocess
+                                                                                                                                                       defgenerate_minimal_mp4(file_name):
+                                                                                                                                                           generate_minimal_mp4(file_name):
+                 Like the "-ss" option but relative to the "end of …        • -sseof position (input) → -i url (input)                                def
+                                                                                                                                                    def generate_minimal_mp4(file_name):
+                                                                                                                                                        command     =f“ffmpeg
+                                                                                                                                                                       f“ffmpeg–y–y–f–flavfilavfi –i-c:v
+                                                                                                                                                                                                       -c:vlibx264
+                                                                                                                                                                                                             libx264–t–t11
+              -copyts                                                       • …
+                                                                                                                                                      command ==f“ffmpeg
+                                                                                                                                                       command                     –y –f lavfi –i–i-c:v
+                                                                                                                                                   color=size=320x240:rate=1:duration=1                 –flibx264    –t 1
+                                                                                                                                                                                                            mp4{file_name}”
+                                                                                                                                                                                                                   {file_name}”
+                 Do not process input timestamps, but keep …                                                                                     color=size=320x240:rate=1:duration=1
+                                                                                                                                               color=size=320x240:rate=1:duration=1                 –f–fmp4
+                                                                                                                                                                                                          mp4  {file_name}”
+              -start_at_zero                                                                                                                            subprocess.run(command,check=True,
+                                                                                                                                                       subprocess.run(command,              check=True,        shell=True)
+                                                                                                                                                                                                             shell=True)
+                                                                                                                                                      subprocess.run(command, check=True, shell=True)
+                 When used with copyts, shift input timestamps …             Self-check for incorrect constraints and filter them out                  generate_minimal_mp4('file0.mp4’)
+                                                                                                                                                      generate_minimal_mp4('file0.mp4’)
+                                                                                                                                                    generate_minimal_mp4('file0.mp4’)
+              -y (global)
+                 Overwrite output files without asking.
+              …                                                             Conflict:
+                                                                            • -n (global) ⊗ -y (global)                                        ⑤ File Generation
+                                                                            • …
+                Parsing document content into structured data                                                                                     Execute the code to produce the files in the sandbox
+                                                                            Dependency
+                                                                            • -start_at_zero → -copyts
+                                                                            • -sseof position (input) → -i url (input)                          Fuzzing commands:
+           {                                                                • …                                                                 • ffmpeg -copyts -start_at_zero -y -itsoffset 0.5 -itsscale
+               ”name”: “ffmpeg”,
+                                                                                                                                                   0.75 -ss 00:01:00 -sseof -5 -i @@ output.mp4
+               “description”: “ffmpeg is a ……”,                            ③ High-Risk Combination Prediction                                   • …
+               ”synopsis”: “ffmpeg [global_options] ……”,
+               “options”: [                                                    Predict high-risk combinations while adhering to                 Seed corpus:
+                     “-i url (input)”: “input file url”,                                                                                        • seed1
+                                                                                             identified constraints
+                     “-sseof position (input)”: ” Like the \”-ss\” …”,                                                                          • seed2
+                     “-copyts”: “Do not process input timestamps …”,                                                                            • …
+                     “-start_at_zero”: “When used with copyts, shift …”,    Combinations:
+                     “-y (global)”: “Overwrite output files without …”,     • -copyts -start_at_zero -y (global) -itsoffset offset (input) -
+                     …                                                        itsscale scale (input,per-stream) -ss position
+                                                                                                                                               ⑥ Fuzzing
+               ]                                                              (input/output) -sseof position (input) -i url (input)
+           }                                                                • …                                                                                   Perform option-aware fuzzing
+
+
+
+
+                                                                           Figure 2: Example of ProphetFuzz.
+
+
+entirely distinct options. This ambiguity could affect the LLM’s                                                 Table 1: Bidirectional questions for conflict and dependency.
+judgment. Consequently, we initially submit keys with more than                                                  Here, “-A” and “-B” represent the subjects of the constraint,
+two sub-options to the LLM for assessment, as this usually indicates                                             indicating either “-A conflicts with -B” or “-A depends on -B.”
+that they are distinct options. The prompt is: “Please separate the
+options and create individual descriptions for each option based on the                                                       Constraint            Type                                 Question
+                                                                                                                                Conflict         Verification                   Must -A be used without -B?
+original description.” Following this directive, different sub-options                                                          Conflict       Counterexample                    Can -A be used with -B?
+are separated, and their descriptions are adjusted accordingly. These                                                         Dependency         Verification                    Must -A be used with -B?
+                                                                                                                              Dependency       Counterexample                   Can -A be used without -B?
+updated data are then provided to the LLM for the subsequent steps.
+    We then direct the LLM to extract all constraints with the prompt:
+“Please find any options that are mutually exclusive or logically con-
+flicting when selected together and find any options that have depen-
+dencies on other options.” We further constrain the LLM’s output                                                 Specifically, for each type of constraint, we formulate a verification
+to a specific format by instructing “Ensure that the output strictly                                             question based on its specific definition to confirm its validity and
+conforms to JSON format standards, like ...” to facilitate the automa-                                           a counterexample question to challenge it, as illustrated in Table 1.
+tion of subsequent processes. To minimize the risk that the LLM                                                  These questions are designed to assess the validity of a constraint
+overlooks any constraints, we increase the randomness of the out-                                                from two distinct angles, enabling the LLM to consider the problem
+puts by adjusting the temperature setting of the LLM, which is                                                   comprehensively. The process of this self-check method is shown in
+a sampling parameter ranging from 0 to 1, where higher values                                                    Figure 3. After extracting all constraints, ProphetFuzz automatically
+indicate a stronger randomness of the output [24]. Note that the                                                 generates the corresponding bidirectional questions for each con-
+temperature is an internal hyperparameter of the model, which                                                    straint based on its type. Subsequently, these questions, along with
+allows us to make adjustments without modifying the model itself.                                                descriptions of the options involved, are sent to the LLM for analysis
+Additionally, we instruct the LLM to make multiple inferences for                                                and evaluation, and responses are obtained for each. A constraint
+each program and retain the union of the results of each inference                                               is deemed valid if the verification question receives a “yes” while
+to ensure that the extracted constraints are as complete as possible.                                            the counterexample question receives a “no.” To further mitigate
+    However, the inherent hallucinations of LLMs can lead to false                                               the impact of random hallucinations, we adjust the temperature to
+positives during constraint extraction, potentially causing high-risk                                            decrease its randomness and subject each constraint to multiple
+combinations to be mistakenly excluded. Thus, it is crucial to thor-                                             separate evaluations by the LLM. Each evaluation occurs in a new
+oughly validate these constraints, even though the validation pro-                                               session to prevent biases from prior communications, enhancing
+cess is also susceptible to hallucination problems. In response, we                                              the reliability of the outcomes. A constraint is only considered valid
+introduce a self-check approach based on bidirectional reasoning.                                                if more than half of the evaluations affirm its correctness.
+                                                                                                          5
+                                                                                                                                 Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+                                                                           “1. Yes 2. No”
+
+                         1. Must -A be used
+                                                                               > 50%
+                                                                                        True Positive
+                                                                                                             practice that ensures that the output of each step provides contex-
+                                                    1.
+                                                    1. Yes
+                                                        Yes  2.
+                                                             2. No
+                                                                 No
+                                              LLM    1. Yes   2.  No
+        -A is conflict      without –B?              1.1.
+                                                       1.
+                                                        1.
+                                                          Yes
+                                                          Yes
+                                                           Yes
+                                                            Yes
+                                                               2.
+                                                                2.
+                                                                2.
+                                                                 2.
+                                                                   No
+                                                                   No
+                                                                    No
+                                                                                                             tual information for subsequent steps, thereby fostering coherent
+           with -B       2. Can –A be used              1.1.Yes   2. No
+                                                                     No        else
+                            with –B?                       1. Yes2.
+                                                             Yes   2.No
+                                                                      No                False Positive       reasoning by the LLM and increasing the validity of its judgments.
+         Extracted         Bidirectional                Multiple                            Check               To help the LLM analyze high-risk combinations from the docu-
+         Constraint         Questions                  Evaluations                          Result
+                                                                                                             mentation more effectively, we present examples of analysis pro-
+                                                                                                             cesses. Ideally, these examples are created manually by human ex-
+      Figure 3: Workflow of the Self-Check approach.
+                                                                                                             perts (manual-CoT), as expert analyses are most effective in guiding
+                                                                                                             LLMs. However, due to the scarcity of high-level expert resources,
+                                                                                                             we devise an automated method for generating few-shot examples
+                                                                                                             (Auto-CoT) as an alternative. Unlike directly predicting high-risk
+   The evaluation results in Section 5.3 reveal that, with the support
+                                                                                                             combinations from documentation, the essence of Auto-CoT lies in
+of the self-check method, ProphetFuzz extracts 633 constraints from
+                                                                                                             directing the LLM to identify potential high-risk factors from the
+the documentation of 52 programs with an overall precision of
+                                                                                                             documentation based on historical data. To gather this historical
+94.00%, and an average precision of 92.48% per program.
+                                                                                                             data, we review vulnerability reports in GitHub Issues for all pop-
+                                                                                                             ular C/C++ projects with over 100 stars, collecting every related
+3.3    High-Risk Combination Prediction                                                                      unique combination involving two or more options. From this ex-
+Predicting high-risk combinations is a complex task involving multi-                                         tensive review, we identify 29 high-risk combinations known to
+ple steps, including understanding descriptions, traversing combina-                                         have historical vulnerabilities across eight distinct programs, which
+tions, and assessing risk, which poses a challenge to the capabilities                                       represent all the historical high-risk combinations that met our cri-
+of LLMs. A practical solution to this is the use of chain-of-thought                                         teria. Subsequently, we present the LLM with the documentation
+(CoT) prompts. A CoT consists of a series of consecutive reasoning                                           of these programs and extracted constraints, enabling it to under-
+steps, which has been proven to significantly improve the ability                                            stand program functions and option roles and remember relevant
+of LLMs to tackle complex problems [36]. As demonstrated in the                                              constraints, similar to the initial three steps of the prediction task.
+prompt for prediction shown in Figure 4, we break down the pre-                                              To create analysis examples that can serve as few-shot corpus, we
+diction process into six steps using the CoT method to assist the                                            modified steps 4-5 in the prediction prompt to ensure the outputs
+LLM in progressively completing the task. Initially, based on the                                            meet our requirements, as illustrated in the boxed area of Figure 4.
+program name and description, we guide the LLM in understanding                                              Specifically, starting with historical high-risk combinations, we
+the program’s core functionality, providing a macroscopic under-                                             guide the LLM to hypothetically analyze why these combinations
+standing of it (step 1). Next, the LLM analyzes each option and its                                          are susceptible to buffer vulnerabilities and summarize which com-
+effects to develop an understanding of the options (step 2). Subse-                                          binations might lead to deep memory corruption vulnerabilities
+quently, we remind the LLM of the previously extracted constraints                                           while appearing to function normally. Additionally, we instruct the
+to avoid generating invalid combinations that do not comply with                                             LLM to explore options that could indirectly facilitate the trigger-
+these constraints in later predictions (step 3). This step does not                                          ing of vulnerabilities. The outputs from these two steps precisely
+involve a specific task for the model; rather, it serves as a reminder                                       fulfill the requirements for examples in steps 4-5 of the prediction
+to ensure that the model does not forget the constraints identified                                          task. Ultimately, the LLM outputs the final result in JSON format,
+in earlier steps. Upon completing the preparatory steps above, the                                           facilitating our ability to extract and incorporate it into the pre-
+LLM examines all combinations and identifies those that may pose                                             diction prompts automatically. Notably, while collecting historical
+vulnerabilities (step 4). During this process, we encourage the LLM                                          high-risk combinations requires manual effort, it is a one-time job
+to make bold guesses, using the term “Hypothetically.” We define                                             that does not need to be repeated. This approach reduces reliance
+high-risk option combinations as “when used together, they could                                             on human experts and leverages the LLM’s robust capabilities to
+lead to vulnerabilities in deep memory corruption while functioning                                          automatically generate helpful analysis examples, enriching the
+correctly.” This definition emphasizes that the goal of prediction                                           context for predicting high-risk combinations.
+is not to identify errors that cause apparent malfunctions, but to                                              Ultimately, ProphetFuzz predicts 1748 high-risk combinations
+uncover hidden risks that could lead to deep memory corruption.                                              across 52 programs and successfully identifies vulnerabilities in
+We pay special attention to memory corruption vulnerabilities, as                                            12.30% of these combinations, including 364 unique vulnerabilities.
+fuzzers primarily target such issues. Experience shows that some
+options, while not directly causing vulnerabilities, can reduce the
+difficulty of triggering them. Therefore, once the LLM predicts
+a combination that includes a memory vulnerability, we further
+guide the LLM to attempt to add other options that could facilitate                                          3.4    Command Assembly
+triggering the vulnerability (step 5). Finally, we specify that the                                          After obtaining the predicted high-risk option combinations, the
+LLM outputs the results in JSON format, easing the automation of                                             next step is to assemble these combinations into executable com-
+subsequent processes (step 6). Following these six steps, we prompt                                          mands for fuzzing. This involves assigning specific values to op-
+the LLM with the instruction, “Let’s take a deep breath and think                                            tions and placeholders, setting up necessary configuration files, and
+step by step,” to encourage careful reasoning. This technique has                                            specifying input and output files. Typically, this requires manual
+been shown to significantly enhance LLM performance [39]. Ad-                                                effort using detailed documentation. To streamline this process, we
+ditionally, we request that the LLM displays its thought process, a                                          develop an LLM-based method for automated command assembly.
+                                                                                                         6
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+
+                                           Prompt for Prediction                                                            Prompt for Example Generation
+                   Here is the document of [Program name],                                                   Here is the document of [Program name],
+                   ```                                                                                       ```
+                   {“name”: [Program name], “description”: [Program description], “options”:                 {“name”: [Program name], “description”: [Program description], “options”:
+                   [Option descriptions], “requirement”: [Constraints]}                                      [Option descriptions], “requirement”: [Constraints]}
+                   ```                                                                                       ```
+                   Instructions:                                                                             Buffer vulnerabilities have occurred in the following option combinations,
+                   1. Understand the core functionality of the program from the "name" and                   [Put combinations here]
+                   "description" fields.                                                                     Instructions:
+                   2. Analyze individual options and their respective roles from the "options" field.        1. Understand the core functionality of the program from the "name" and
+                   3. Remember the constraints in “requirements” field and use them to guide                 "description" fields.
+                   subsequent steps.                                                                         2. Analyze all the listed options in the "options" field and their respective roles.
+                   4. Hypothetically analyze all combinations of any options that, when used                 3. Remember the constraints in "requirements" field and use them to guide
+                   together, could lead to deep memory corruption vulnerabilities while                      subsequent steps.
+                   functioning correctly.                                                                    4. Hypothetically analyze why these option combinations are susceptible to
+                   5. Add more options in the combination to make it easier to trigger the                   buffer vulnerabilities and summarize what kind of combinations of any options
+                   vulnerability.                                                                            that, when used together, could lead to deep memory corruption vulnerabilities
+                   6. Provide the final results in JSON format.                                              while functioning correctly.
+                   Let's take a deep breath and think step by step. Please show your thoughts in             5. Examine whether any options in the combination, while not directly causing
+                   each step.                                                                                the vulnerability, might facilitate its trigger.
+                   Examples:                                                                                 6. Provide the final results in JSON format.
+                   [Put Examples here]                                                                       Let's take a deep breath and think step by step. Please show your thoughts in
+                                                                                                             each step.
+
+
+
+
+Figure 4: Prompts for prediction and example generation. The boxed area indicates the distinct steps within the two prompts.
+The content enclosed in brackets denotes the need for specific input.
+
+
+    Besides providing the program name, description, and option                                             this, we instruct the LLM to replace all placeholders in the code
+details, we also supply the LLM with the “synopsis,” which out-                                             with content it deems appropriate. Finally, we direct the LLM to
+lines specific program usage. Initially, we identify the options to be                                      specify in the generated code that files be saved in the working
+combined and guide the LLM to generate preliminary executable                                               directory using the given name to facilitate their integration into
+commands based on this synopsis. We particularly emphasize the                                              subsequent automated processes.
+need for these commands to adhere to exclusivity, preventing the                                               In Section 5.6, we randomly select 25 programs for ablation
+LLM from concatenating multiple commands with operators like                                                studies to evaluate the effectiveness of the values and files generated
+“&&”, which is unsuitable for fuzzers. The LLM is then tasked with                                          by the command assembly module. The results indicate that with
+determining which options require values, and cross-verifying this                                          the adoption of these values and files, ProphetFuzz can identify
+with the synopsis. Next, the LLM needs to understand each com-                                              34.65% and 17.24% more vulnerabilities, respectively.
+mand’s specific intent and generate valid values for all options
+that need to be assigned. For other placeholders, we encourage the
+LLM to creatively assign hypothetical values. To clarify the use
+of files in commands, we guide the LLM to represent the primary                                             3.5       File Generation and Fuzzing
+input file as “file0” and use sequential placeholders like “fileN” for                                      Before fuzzing, we execute all generated Python code in a sandbox
+additional necessary files. Since fuzzers typically process only one                                        to create the required files for each command. Next, we compare the
+primary input file at a time, we ensure that “file0” is used exclusively                                    generated files with the file placeholders provided by the LLM. If
+in each command, with other required files labeled sequentially                                             fewer files are generated than placeholders, it suggests that crucial
+from “file1” onwards as needed. Finally, we ask the LLM to review                                           files are missing, making the command unexecutable, and such com-
+each file placeholder to prevent false placeholders from disrupting                                         mands are excluded. However, if the file count matches or exceeds
+subsequent processing steps.                                                                                the placeholders but not all placeholders are represented in the gen-
+    After assembling the commands and identifying file placeholders,                                        erated file list, it indicates that some files have unexpected names.
+we further guide the LLM in generating Python code that “conjures”                                          In these cases, we employ a heuristic rule for name correction: if a
+files corresponding to each placeholder out of thin air. Initially, we                                      generated file’s name starts with the same prefix as a placeholder,
+direct the LLM to identify the expected format of each file place-                                          we consider that file to match the placeholder. Commands that
+holder, a critical step for selecting the file generation strategy. To                                      cannot be corrected by this rule are also excluded.
+avoid incorrect formats, we encourage the LLM to leverage third-                                                For commands that pass this filtering, we further look for place-
+party libraries to generate files with complex formats. The LLM                                             holders corresponding to input files and replace them with “@@” to
+then needs to consider the values of other options to determine                                             meet fuzzer specifications. Typically, the placeholder for the input
+constraints on the file content, ensuring that the generated files are                                      file is “file0,” as set in our prompts. For commands deviating from
+semantically consistent with the command. Additionally, we spec-                                            this norm, we search for file placeholders containing key terms like
+ify that the size of “file0” should ideally remain under 1KB, while                                         “input,” “test,” or “source,” which are commonly used by LLMs to
+guaranteeing that the command explores as many program behav-                                               denote input files. Placeholders with these specific keywords are
+iors as possible, aligning with fuzzer-recommended practices [11].                                          considered indicative of input files. If a command lacks these key-
+We have noticed that the LLM occasionally leaves placeholders in                                            words but has only one file placeholder, we consider this the input
+the code, expecting users to replace them, such as “your avi file,”                                         file. Commands failing to meet any of these criteria are excluded
+which can hinder our automated generation process. To address                                               from further processing.
+                                                                                                        7
+                                                                                                    Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+   After filtering the commands and files, we input them into the              128GB of RAM. No GPU is needed since we do not use local LLM
+fuzzer to initiate fuzz testing. First, we merge all the input files for       models. These servers run Ubuntu 20.04.
+each program to create an initial corpus. Then, we utilize the corpus          Dataset. To comprehensively evaluate ProphetFuzz’s performance
+minimization tool, a tool designed to refine the initial corpus by             across different types of programs, we integrate datasets from re-
+eliminating redundant test cases, to produce the minimized corpus              lated studies [15, 34, 43] to form an evaluation dataset, which in-
+tailored to each command and obtain the final minimized corpus                 cludes 52 popular open-source programs from 40 packages. The
+for each program by combining them. Finally, we load these corpus              program versions in our dataset align with those specified in the
+and commands into the option-aware fuzzer to begin fuzz testing.               cited studies. The selected programs encompass 26 different input
+                                                                               formats, covering text (such as BNF, C code, Markdown, Mangled
+4     Implementation                                                           Name, PostScript, JSON, ASM, PEM, SAV, TXT, XML, Rule), video
+We implement a prototype of ProphetFuzz with about 3k lines                    (AVI, WAV ), audio (MPG, OGG, SPX ), images (JPG, EXI, GIF, PNG,
+of Python code, including modules for document parsing, LLM                    TIFF), and other other binary inputs (PCAP, ELF, LRZ, PDF).
+interaction, code interpretation, and fuzzing.                                 Experiment Setup. We select CarpetFuzz as our comparison bench-
+Document Parsing: We use Groff documents, a standard docu-                     mark, because it is recognized as the state-of-the-art (SOTA) tool
+mentation format for command-line programs, as our input. We                   in the field. We initialize its seed corpus using default seed input
+locate program names using the “.TH” control sequence and cate-                files sourced from the datasets mentioned above. To ensure fair
+gorize sections like program descriptions, option descriptions, and            comparison, both CarpetFuzz and ProphetFuzz are run for equal du-
+synopses with the “.SH” control sequence, identifying them by titles           rations in the same operating environment. Each fuzzing instance
+such as “DESCRIPTION”, “OPTIONS”, and “SYNOPSIS”. Option de-                   is run for 72 hours and repeated five times to mitigate the impact
+scriptions are extracted using sequences like “.TP”, “.PP”, “.RS”, and         of the inherent randomness associated with fuzzing on the results.
+“.sp”. We convert Groff-formatted text into plain, readable natural            Overall, the experiments consume 10.44 CPU years.
+language using the “col -b” command.                                           Metrics. To evaluate the performance of ProphetFuzz, we employ
+LLM Interaction: We select GPT-4 Turbo (gpt-4-1106-preview) as                 edge coverage and the number of unique vulnerabilities as metrics.
+the LLM backbone for ProphetFuzz, one of the most powerful LLMs                Edge coverage is calculated using the afl-showmap tool. The identi-
+currently recognized. Notably, ProphetFuzz’s design can adapt to fu-           fication of unique vulnerabilities is based on the first three entries
+ture LLM improvements, enhancing its performance over time. For                in call stack reports generated by ASAN and GDB, as suggested
+automation, we interact with the LLM via the OpenAI API [24]. We               in [14]. A unique vulnerability is defined by a distinct combination
+adjust the LLM’s temperature settings to tailor its output [24]: 0.7           of the first three entries in its call stack. If two vulnerabilities share
+for tasks needing diverse outcomes, like constraint extraction and             the same first three entries, they are considered the same unique
+command assembly, and 0.2 for precision tasks like self-checking.              vulnerability. Additionally, to highlight the differences in vulnera-
+For constraint extraction and high-risk option combination predic-             bilities discovered by ProphetFuzz and CarpetFuzz, we introduce
+tion, we set the LLM’s parameter 𝑛 to 10, allowing the LLM to make             a specific metric for unique vulnerabilities—exclusive vulnerabil-
+ten inferences each time. When generating few-shot examples, we                ities, referring to those found by only one tool within the same
+set 𝑛 = 1, as we only need a set of examples. During command                   timeframe. To represent the upper limit of each tool’s capability,
+assembly, to ensure diverse outputs and prevent redundancy, we                 we take the union of the results from the five repetitions.
+set 𝑛 to 3 times the number of options needing assignment (𝑁 ),                Research Questions. The following sub-sections explore Prophet-
+thus 𝑛 = 3 × 𝑁 .                                                               Fuzz’s performance, focusing on these key research questions:
+File Generation and Fuzzing: Within a Docker container, we set                 RQ1: What is ProphetFuzz’s end-to-end performance?
+up a Python sandbox using virtualenv and pre-install 33 commonly               RQ2: How accurate is the constraint extraction module?
+used Python third-party libraries along with 36 command-line tools             RQ3: How do the self-check and few-shot methods contribute to
+(for subprocess calls) to support the execution requirements of LLM-           the performance of high-risk option combination predictions?
+generated code. These pre-installed libraries and tools have been              RQ4: How does an out-of-the-box LLM perform in predicting high-
+verified to support the code execution for the 52 programs men-                risk option combinations?
+tioned in Section 5.1. Note that setting up this environment is a              RQ5: How does the command assembly module contribute to the
+one-time job. If there is a need for additional libraries and tools not        overall performance?
+yet installed, incorporating them is straightforward and easy with             RQ6: What is ProphetFuzz’s effectiveness in finding zero-day vul-
+the commands apt and pip to satisfy evolving requirements. For                 nerabilities?
+fuzzing, we use afl-cmin to minimize the corpus and CarpetFuzz-                RQ7: What knowledge does ProphetFuzz use to predict high-risk
+fuzzer as the option-aware fuzzer, which modifies how the target               option combinations?
+program reads options from command-line to file, facilitating dy-
+namic command adjustments through file changes
+                                                                               5.2    End-to-end Performance (RQ1)
+5     Evaluation                                                               In analyzing the documentation of these 52 programs, ProphetFuzz
+                                                                               successfully extracts 643 constraints between options. Based on
+5.1    Experiment Setting                                                      these constraints, ProphetFuzz further predicts 1748 high-risk op-
+Platform. Our experiments are conducted on servers powered by                  tion combinations, assembles 7614 unique executable commands,
+Intel(R) Xeon(R) CPU E5-2630 v3 @ 2.40GHz with 32 cores and                    and generates a minimized seed corpus comprising 2656 seed files.
+                                                                           8
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+We subject these commands and seed files to 72 hours of fuzz testing,                  than ProphetFuzz. Analysis reveals that in the POWER dataset, the
+with detailed results presented in Table 2.                                            initial command for vim is “-u NONE -X -Z -e -s -S @@ -C ‘:qa!”’,
+   Within these 52 programs, ProphetFuzz identifies 364 unique                         indicating that the fuzzer is mutating the value of the -S option
+vulnerabilities, which is 1.33 times more than that of CarpetFuzz                      (a vim script) rather than the input file. CarpetFuzz includes these
+(274 vulnerabilities discovered) under the same conditions. Benefit-                   options in every command generated. In contrast, the LLM behind
+ing from ProphetFuzz’s precise capabilities in predicting high-risk                    ProphetFuzz does not know this. It continues to treat the input file
+option combinations and assembling commands (see Sections 5.4                          as the mutation target. In the vim commands, the majority involve
+and 5.6), it identifies 224 vulnerabilities that CarpetFuzz fails to de-               only reading operations on the input file. Regardless of how the
+tect, representing 61.54% of all vulnerabilities found, which demon-                   input file is mutated, the range of executable operations remains
+strates ProphetFuzz’s efficiency in vulnerability detection. Note                      limited, thus covering fewer paths compared to mutations applied
+that CarpetFuzz also identifies 134 vulnerabilities that ProphetFuzz                   to the vim script (-S). In future research, to address this issue, we
+misses, especially in avconv, c++filt, tiffcrop, and xmllint, which                    plan to allow the LLM to autonomously choose the most suitable
+accounts for 60%. We analyze cases from these four programs and                        file for mutation rather than strictly mutating the input file.
+identify the following reasons for ProphetFuzz’s omissions.                                Furthermore, ProphetFuzz outperforms CarpetFuzz (>2×) in cov-
+   Thirty-seven missed vulnerabilities (7 in avconv, 2 in c++filt, 27                  erage on three programs (pdftotext, pdftops, and podofoencrypt),
+in tiffcrop, and 1 in xmllint) arise because ProphetFuzz focuses on                    with the coverage on podofoencrypt being ten times that of Car-
+predicting high-risk combinations rather than exhaustively explor-                     petFuzz. We attribute this to the fact that these programs perform
+ing all possibilities like CarpetFuzz. When queried, the backend                       strict checks on input formats, while CarpetFuzz uses inherently
+LLM identifies 92.86% of these combinations as high-risk, indicating                   corrupted default PDF seeds in the dataset, which are from the
+ProphetFuzz’s potential to predict most of these overlooked combi-                     AFL project [7] and are widely used in many studies [25, 34, 42].
+nations. Due to cost and performance considerations, ProphetFuzz                       These corrupted seeds cause programs to exit early, leading to low
+consolidates predictions from only ten inferences, which may limit                     coverage. PDF is a highly structured format, and simply mutating it
+the coverage of potential combinations. Expanding the number of                        is often insufficient to repair format damage. In contrast, Prophet-
+inferences could help reduce these misses. Thirty-eight vulnera-                       Fuzz instructs the LLM to generate seeds that meet complex format
+bilities occur because ProphetFuzz, while successfully predicting                      requirements by calling third-party libraries (e.g. pyFPDF [28]),
+high-risk combinations, fails to specify the necessary values to trig-                 achieving higher coverage on these programs. While manually col-
+ger these vulnerabilities. Specifically, 15 vulnerabilities in xmllint                 lecting more suitable seeds could mitigate this issue, the diversity
+are only triggered when “–maxmem” falls within a certain range                         of input formats would necessitate considerable manual effort. Ad-
+(see Section 5.6), and 23 in c++filt only occur when “-s” specifies                    ditionally, even within the same input format, there can be varying
+a DLang compiler instead of a C++ compiler. While CarpetFuzz                           detailed requirements (e.g., styles in PDF), adding complexity to
+may inadvertently meet these conditions through random selection,                      the manual collection of seeds. Instead, ProphetFuzz enhances its
+ProphetFuzz, aiming for validity, typically opts for more commonly                     ability to meet large-scale testing needs by guiding LLMs to auto-
+used values, such as selecting a C++ compiler for c++filt, thus miss-                  mate the generation of high-quality, specification-compliant seeds.
+ing these vulnerabilities. Incorporating less common values could                      To ensure adherence to specific requirements, ProphetFuzz directs
+help address this issue in the future. Lastly, four vulnerabilities                    LLMs to utilize Python libraries and external tools for file creation.
+are missed due to randomness (2 in avconv, 2 in c++filt). Prophet-                     For instance, LLM uses the function “pdf.set_font(‘Arial’,size=12)”
+Fuzz successfully predicts and assembles certain commands, yet                         to meet font specifications, thus enabling precise and accurate file
+temporarily fails to detect them.                                                      generation while eliminating the need for manual script tuning.
+   Additionally, we analyze the option combinations related to
+these vulnerabilities. Of the 1748 high-risk option combinations
+predicted by ProphetFuzz, 12.30% trigger vulnerabilities within                        5.3    Precision of Constraint Extraction (RQ2)
+72 hours, surpassing CarpetFuzz’s 1.50% (8.2×). Specifically, in six                   To compare the performance of ProphetFuzz and CarpetFuzz in con-
+programs (gif2png, pdftopng, pdftops, pdftotext, podofoencrypt, and                    straint extraction, we manually annotate all extracted constraints.
+pspp), more than half of the predicted high-risk combinations suc-                     Within the documentation of these 52 programs, ProphetFuzz suc-
+cessfully trigger vulnerabilities, with the ratio reaching as high as                  cessfully extracts 633 constraints with an overall precision of 94.00%
+90.91% in pspp. This demonstrates ProphetFuzz’s efficiency in test-                    and an average precision of 92.48% per program. In contrast, Carpet-
+ing option combination-related vulnerabilities and highlights the                      Fuzz extracts only 447 constraints, achieving an overall precision
+effectiveness and necessity of predicting high-risk combinations.                      of 76.06% and an average precision of 68.32%, all lower than those
+   To further compare the performance of ProphetFuzz with Carpet-                      of ProphetFuzz. To compare the precision of constraint extraction
+Fuzz, we also measure the coverage achieved by both tools across                       between these two tools across different programs, we plot their
+52 programs. Despite not primarily aiming to maximize path cover-                      boxplots as shown in Figure 5. The data range for ProphetFuzz’s
+age, ProphetFuzz’s coverage is remarkably close to CarpetFuzz’s,                       boxplot is concentrated between 77.78% and 100%, with a median
+with a marginal difference of less than 0.5%. Although Prophet-                        of 100%, indicating that ProphetFuzz maintains high precision in
+Fuzz uses only 0.2 times as many commands as CarpetFuzz, the                           extracting constraints across most programs. On the other hand,
+coverage difference is within 30% for most programs (43 out of 52).                    the boxplot for CarpetFuzz displays a data spread from 0% to 100%,
+For these programs, 24 exhibit a coverage discrepancy of less than                     with a median of 75%, reflecting high variability in performance
+10%. Notably, on vim, CarpetFuzz discovers 4.62 times more paths                       and less consistency. This difference is due to CarpetFuzz relying
+                                                                                 9
+                                                                                                    Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+Table 2: Results of ProphetFuzz and CarpetFuzz within 72 hours. The table shows the number of commands (#Cmds), unique
+vulnerabilities (#Uniq Vuls), exclusive vulnerabilities (#Excl Vuls), the vulnerable combination ratio (Vul Com Ratio), and edge
+coverage (#Edge Cov.) for each program. Where 𝑑𝑎𝑡𝑎𝑃 , 𝑑𝑎𝑡𝑎𝐶 , and 𝑟 represent the data of ProphetFuzz, the data of CarpetFuzz,
+and the ratio between them, respectively.
+
+                                          #Cmds         #Uniq Vuls        #Excl Vuls      Vul Com Ratio             #Edge Cov.
+                    Program
+                                     𝑑𝑎𝑡𝑎𝑃 𝑑𝑎𝑡𝑎𝐶      𝑑𝑎𝑡𝑎𝑃 𝑑𝑎𝑡𝑎𝐶      𝑑𝑎𝑡𝑎𝑃 𝑑𝑎𝑡𝑎𝐶       𝑑𝑎𝑡𝑎𝑃   𝑑𝑎𝑡𝑎𝐶     𝑑𝑎𝑡𝑎𝑃     𝑑𝑎𝑡𝑎𝐶         𝑟
+                        avocnv        497     3414       4      12        2       10     5.45%    2.81%    48951      35006     139.84%
+                          bison       221      484      13       8        5        0     8.82%    0.21%     6229      6305      98.79%
+                         c++filt       25       78      96      63       60       27      4.00%   5.13%     3268      3372      96.92%
+                          cflow       162      632      17      17        6        6     14.29%   0.32%     1453      1700      85.47%
+                          cjpeg        53      555       0       0        0        0      0.00%    0.00%     775       782      99.10%
+                         cmark         52      150       0       0        0        0      0.00%    0.00%    7000      7737      90.47%
+                          djpeg       401     1470       0       0        0        0      0.00%    0.00%     438       452      96.90%
+                    dwarfdump         108     4704       2      4         1        3     6.06%    0.23%     7767      8042      96.58%
+                        editcap       276      704       0       0        0        0      0.00%    0.00%    4586       4408     104.04%
+                   eu-elfclassify      42      1110      0       0        0        0      0.00%    0.00%     213       200      106.50%
+                          exiv2       224      539      2        2        1        1     4.44%    0.56%     8496       6657     127.63%
+                        ffmpeg        336      690      4        1        3        0     7.69%    0.58%    71198      62877     113.23%
+                        gif2png        36      263      10      10        1        1     75.00%   11.41%     441       434      101.61%
+                            gm        292     1096       0       0        0        0      0.00%    0.00%   10172     10588      96.07%
+                             gs       104       78       0       0        0        0      0.00%    0.00%   22747      22555     100.85%
+                     img2sixel        210      611       5      7         3        5     25.00%   1.80%     2207      2881      76.61%
+                         jasper       117       82       0       0        0        0      0.00%    0.00%    3416       2355     145.05%
+                     jpegoptim         55      988       4      6         0        2     28.00%   1.82%      244       287      85.02%
+                       jpegtran       143      414       0       0        0        0      0.00%    0.00%    5773      5831      99.01%
+                             jq        90      558       1      3         0        2     20.00%   0.36%     2616       2257     115.91%
+                           lrzip       93      645       0       0        0        0      0.00%    0.00%    4069      4597      88.51%
+                       mpg123          78      763       0      4         0        4      0.00%   3.54%     3043      3157      96.39%
+                        mutool        211      769      1        1        1        1     2.44%    0.13%    13118     16238      80.79%
+                          nasm        238      537      17      11       10        4     21.95%   3.35%     7399      7623      97.06%
+                            nm         63      555      13       5       10        2     3.13%    0.36%     5860       4986     117.53%
+                      objdump         209     1742      9        3        9        3     11.32%   0.11%    11392      10793     105.55%
+                        ogg123        165      257       0      1         0        1      0.00%   0.39%      385       377      102.12%
+                 openssl-asn1parse    142      249       0      1         0        1      0.00%   1.20%     4415       2610     169.16%
+                    openssl-ec        363      386       0       0        0        0      0.00%    0.00%    9474       7979     118.74%
+                    openssl-rsa       194     2043       0       0        0        0      0.00%    0.00%    8034       7105     113.08%
+                     pdftohtml         73      456      3        3        0        0     33.33%   0.22%     5635      7764      72.58%
+                      pdftopng        181      326      12       3       10        1     60.71%   1.84%     4531      5043      89.85%
+                        pdftops       122     1495      11       6        7        2     77.14%   0.94%     3978       1784     222.98%
+                      pdftotext       172      787      10       5        5        0     70.59%   1.91%     4485       1500     299.00%
+                         pngfix        63      116       0       0        0        0      0.00%    0.00%    1058       1015     104.24%
+                  podofoencrypt        33      203      1        0        1        0     72.73%   0.00%     2796       251     1113.94%
+                          pspp        166      258      46      19       29        2     90.91%   8.14%    15958      11005     145.01%
+                         readelf      106     1130      10       3       10        3     13.33%   6.55%    12305      11741     104.80%
+                            size       94      146       0       0        0        0      0.00%    0.00%    3708       2894     128.13%
+                      speexdec         76      271       0       0        0        0      0.00%    0.00%     784       596      131.54%
+                        tcpprep       110      710       2      4         0        2     16.67%   4.23%      707       902      78.38%
+                      tcpreplay        65      1328      1      2         0        1     31.82%   2.64%      733       765      95.82%
+                        tiff2pdf      120      584       0       0        0        0      0.00%    0.00%    6250      6268      99.71%
+                         tiff2ps       78      832       0       0        0        0      0.00%    0.00%    3932      4073      96.54%
+                          tiffcp       45      385      3        3        2        2     14.71%   0.52%     5710      6474      88.20%
+                        tiffcrop      334      680      65      45       47       27     26.67%   7.65%     6283      6810      92.26%
+                         tiffinfo      17      116       0       0        0        0      0.00%    0.00%    3789      3822      99.14%
+                            vim       243     1031       0      2         0        2      0.00%   0.19%    10630     49166      21.62%
+                    xmlcatalog         66      116       0       0        0        0      0.00%    0.00%    6129       5864     104.52%
+                        xmllint       109      664       2      17        1       16      2.22%  14.31%    12609      10946     115.19%
+                         xmlwf         67      329       0       0        0        0      0.00%    0.00%    3473       3104     111.89%
+                           yara        74      455       0      3         0        3      0.00%   0.22%     2588      3021      85.67%
+                        Count         7614    38984    364     274      224       134    12.30%   1.50%    393250    394999     99.56%
+
+
+on heuristic rules for extracting constraints, whereas ProphetFuzz              to aid the LLM’s comprehension of our constraint definitions, the
+utilizes carefully designed prompts to guide the LLM in extracting              LLM’s inherent randomness lead to incomplete understanding in
+constraints, resulting in better precision and applicability. Note that,        some instances, resulting in false positives. In five programs except
+the boxplot for ProphetFuzz shows three outliers, which correspond              nasm, the number of constraints extracted is limited (six or fewer).
+to precision on six programs: dwarfdump and tiffcp at 50%, nasm                 Hence, each false positive significantly impacts precision. Despite
+at 63.64%, and editcap, ogg123, and xmlcatalog at 66.67%. These                 extracting a relatively higher number of constraints (11 in total)
+outliers indicate unusually low constraint extraction precisions for            from nasm, the LLM’s misunderstanding of a complex, multi-option
+ProphetFuzz on these six programs. Upon analysis, we attribute the              constraint leads to a disproportionate increase in false positives
+issue to misunderstandings by the LLM. Despite our development                  when these constraints are split into pairs for individual assessment,
+of a set of self-check questions based on bidirectional reasoning               subsequently resulting in reduced precision.
+                                                                           10
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+                                                                                       the help message will be displayed, and the program will exit without
+                                                                                       considering the –debug-level option.” Note that these disregarded
+                                                                                       constraints do not affect the subsequent prediction of high-risk
+                                                                                       option combinations, as the LLM does not consider combinations
+                                                                                       involving such options to present vulnerabilities by default.
+                                                                                          To further assess the robustness of our constraint extraction mod-
+                                                                                       ule, we randomly select 20 programs and manually annotate their
+                                                                                       documents, totaling about 22,730 words, to calculate recall (See
+                                                                                       details in footnote 3). We exclude help and version constraints to
+Figure 5: Boxplot comparing the precision of constraint ex-                            ensure reliability and find 180 constraints as ground truth. Prophet-
+traction across 52 programs by ProphetFuzz, CarpetFuzz, and                            Fuzz extracts 148 constraints, with a precision of 97.97% and a recall
+ProphetFuzz𝑁 𝑆𝐶 (without self-check).                                                  of 80.56%. CarpetFuzz extracts 108 constraints with lower precision
+                                                                                       (77.78%) and recall (46.67%), highlighting ProphetFuzz’s superior
+                                                                                       performance. ProphetFuzz𝑁 𝑆𝐶 , evaluated without help and version
+   As mentioned above, ProphetFuzz employs a bidirectional reason-                     constraints, extracts 1880 constraints but with only 8.56% precision;
+ing-based self-check method to inspect and filter out incorrect                        however, its recall is the highest at 89.44%, reflecting the backend
+constraint extraction results. To assess the effectiveness of this                     LLM’s extensive initial extraction of constraints before self-check,
+method, we analyze the constraint extraction outcomes before ap-                       as expected. Currently, we use a self-check voting threshold of 5,
+plying the self-check (ProphetFuzz𝑁 𝑆𝐶 ). Notably, ProphetFuzz𝑁 𝑆𝐶                     where higher thresholds improve precision but reduce recall, and
+extracts 6682 constraints, which is 10.56 times the total number                       lower thresholds do the opposite. Future research could aim to
+of constraints after implementing self-check. However, these con-                      identify the optimal threshold for peak performance.
+straints have an overall precision of only 23.41% and an average                       Interesting finding. Previous work [34] mentions four hidden
+precision of 33.37%, indicating that despite the LLM’s strong text                     conflicting constraints in img2sixel: -P vs -8, -p vs -e, -p vs -I, and -p
+comprehension and reasoning, it cannot ensure correct constraint                       vs -b. These conflicts are not documented online and typically only
+extraction results without our self-check method. We also plot a                       surface through error messages when violated. Despite insufficient
+boxplot for the precision of ProphetFuzz𝑁 𝑆𝐶 across different pro-                     indications, ProphetFuzz successfully identifies two constraints (-p
+grams, as shown in Figure 5. The data range for ProphetFuzz𝑁 𝑆𝐶 ’s                     versus -e and -p versus -I ). Our analysis of the LLM’s extraction pro-
+boxplot is concentrated between 2.17% and 80%, with a median of                        cess reveals that ProphetFuzz can identify these hidden constraints
+23.90%, indicating generally low and unstable precision across most                    based on a nuanced understanding of the options’ functionalities.
+programs. Additionally, three outliers in the boxplot correspond                       For instance, the LLM infers that “-p has a default value of 256,
+to four programs with unusually high precisions: eu-elfclassify at                     which implies it defines the color depth. This might conflict with -e as
+88.24%, size at 90.91%, c++filt, and tcpprep at 100%, which suggest                    monochrome means 2 colors.” This analysis relies on sophisticated
+that ProphetFuzz𝑁 𝑆𝐶 performs extraordinarily well on these spe-                       reasoning capabilities, which traditional heuristic-based constraint
+cific programs. Further analysis reveals that the high precision in                    extraction tools generally fail to handle.
+these programs is largely due to the precise documentation of con-
+straints. For instance, in eu-elfclassify’s document, options related                  5.4     Contribution of Self-Check and Few-Shot
+to constraints are described using a consistent sentence structure.                            Methods (RQ3)
+Documentation for c++filt and size groups options with constraints
+                                                                                       This paper introduces a self-check mechanism and a few-shot
+together for clarity, while tcpprep explicitly specifies the corre-
+                                                                                       method to boost ProphetFuzz’s predictions. To assess the impact
+sponding constraints within the description of each option. Such
+                                                                                       of these methods on prediction performance, we implement two
+structured documentation significantly facilitates the LLM’s high
+                                                                                       variants of ProphetFuzz: ProphetFuzz𝑁 𝑆𝐶 (without the self-check
+precision in extracting constraints, thus enabling these programs to
+                                                                                       mechanism in constraint extraction), and ProphetFuzz𝑍𝑆 (zero-shot,
+demonstrate higher precision even without the self-check process.
+                                                                                       without the few-shot method). We conduct 72-hour fuzz tests on 25
+   We observe a reduction of 969 true positive (TP) constraints
+                                                                                       randomly selected programs using both variants and the original
+following self-check. Most of these constraints are associated with
+                                                                                       ProphetFuzz under the same conditions 4 , repeating the process
+help and version options such as “–help” and “–version”. Before
+                                                                                       five times. We measure the effectiveness of predicting high-risk
+the self-check, we increase the temperature setting to encourage
+                                                                                       option combinations by counting the number of combinations that
+the LLM to make bolder guesses. This leads to identifying combi-
+                                                                                       trigger vulnerabilities during the fuzz tests.
+nations of these options with others as potential conflicts. Since
+                                                                                           As shown in Table 3, within these 25 programs, ProphetFuzz
+these options override the functionality of others, we mark them as
+                                                                                       identifies 221 high-risk option combinations that triggers vulnerabil-
+TPs during manual annotation. However, during the self-check, the
+                                                                                       ities, which is 2.63 times the number identified by ProphetFuzz𝑁 𝑆𝐶
+LLM’s settings are adjusted to favor more cautious outcomes. As a
+result, it thinks that while these options might override other op-                    (84 combinations) and 1.44 times that of ProphetFuzz𝑍𝑆 (153 com-
+tions’ functionalities, this does not necessarily constitute an actual                 binations). This demonstrates that equipping ProphetFuzz with
+conflict. For example, during the self-check of the conflict constraint                both a self-check mechanism and few-shot methods significantly
+between –debug-level and –help in jasper, the LLM states: “–debug-                     4 Theexperiments in Sections 5.4 and 5.5 were conducted in a different period than
+level can be used with –help, but standard behavior would suggest that                 those in Sections 5.2 and 5.6. To ensure uniform conditions, we reran ProphetFuzz.
+                                                                                 11
+                                                                                                     Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+enhances its performance in predicting high-risk option combina-                   As shown in Table 3, the Out-of-the-Box LLM identifies 145
+tions. ProphetFuzz𝑁 𝑆𝐶 exhibits the poorest performance, likely due             combinations that trigger vulnerabilities, showing it also has the
+to unchecked constraints disrupting the LLM’s reasoning process.                ability to predict high-risk combinations. ProphetFuzz outperforms
+For example, in the six programs—cmark, djpeg, gif2png, jasper,                 the Out-of-the-Box LLM, triggering vulnerabilities in 1.52 times
+pdftohtml, and pngfix—all options are considered conflicting by                 more combinations, demonstrating greater predictive effectiveness.
+the LLM, which prevents it from predicting any high-risk option                 Notably, ProphetFuzz𝑁 𝑆𝐶 triggers only about half as many combi-
+combinations that met the constraints. This underscores the critical            nations, suggesting that removing the self-check mechanism might
+importance of the self-check method. In contrast, ProphetFuzz𝑍𝑆 ,               detract from the LLM’s overall prediction effectiveness. This is
+which includes the self-check mechanism, performs better than                   likely because unchecked constraints can interfere with reasoning,
+ProphetFuzz𝑁 𝑆𝐶 but is less effective than the fully equipped Prophet-          as discussed in Section 5.4. Compared to ProphetFuzz𝑍𝑆 , which is
+Fuzz, highlighting the efficacy of the few-shot method.                         equipped with self-checked constraints and our CoT prompt but
+                                                                                lacks AutoCoT-generated few-shot examples, the Out-of-the-Box
+5.5       Performance of Out-of-the-Box LLMs in                                 LLM performs slightly worse (145 vs 153). This indicates that veri-
+                                                                                fied constraints and the CoT prompt enhance the LLM’s ability to
+          Predicting High-Risk Combinations (RQ4)
+                                                                                predict high-risk combinations. Without these enhancements, the
+To discuss whether an Out-of-the-Box LLM can effectively predict                Out-of-the-Box LLM might incorrectly identify invalid combina-
+high-risk option combinations, we employ GPT-4 turbo—the same                   tions that violate constraints as high-risk. For instance, in jpegoptim,
+model used in ProphetFuzz—to predict high-risk combinations for                 the Out-of-the-Box LLM identifies the combination “-level1 -level2
+the 25 programs selected in Section 5.4. Specifically, we provide the           -level3” as high-risk, reasoning that “they specify different levels of
+same program documentation used in ProphetFuzz but employ a                     PostScript generation, which may be incompatible or produce conflict-
+straightforward prompt: “Please predict the high-risk option com-               ing outputs.” However, despite these advantages, ProphetFuzz𝑍𝑆
+binations.” Note that without our carefully designed prompts, the               does not outperform the Out-of-the-Box LLM as significantly as
+Out-of-the-Box LLM lacks the capability for command assembly                    ProphetFuzz does, suggesting that without AutoCoT-generated
+and file generation. To assess its predicted combinations, we pro-              few-shot examples, the LLM learns less about predicting high-risk
+cess them using our command assembly module and conduct the                     option combinations from the CoT prompt, leading to performance
+experiment concurrently with those described in Section 5.4 under               comparable to the Out-of-the-Box LLM.
+the same operational conditions, repeating the process five times.
+
+                                                                                5.6    Contribution of Command Assembly (RQ5)
+Table 3: Results of a 72-hour ablation study on 25 ran-
+                                                                                To assess the contribution of the command assembly module to
+domly selected programs, evaluating the number of vulnera-
+                                                                                ProphetFuzz’s performance, we conduct ablation experiments on
+ble combinations identified by each configuration: Prophet-
+                                                                                the 25 programs randomly selected in Section 5.4. Specifically, we
+Fuzz, ProphetFuzz𝑁 𝑆𝐶 (without the self-check mechanism),
+                                                                                compare two setups: one in which ProphetFuzz operates without us-
+ProphetFuzz𝑍𝑆 (without the few-shot method), and OBLLM
+                                                                                ing generated option values (ProphetFuzz𝑁𝑉 ) and another without
+(Out-of-the-Box LLM with the command assembly module).
+                                                                                using generated seed files (ProphetFuzz𝑁 𝑆 ). In the ProphetFuzz𝑁𝑉
+                                                                                ’s setup, we utilize default option values from the dataset along
+     Program              ProphetFuzz   Prophet𝑁 𝑆𝐶   Prophet𝑍 𝑆   OBLLM
+        cflow                 34            18            21         25         with the seeds generated by ProphetFuzz to assemble the predicted
+        cmark                   0            -*            0          0         high-risk option combinations. Conversely, ProphetFuzz𝑁 𝑆 com-
+        djpeg                   0            -*            0          0         bines the seed input files provided by the dataset with option values
+    dwarfdump                  7             1             1          4
+   eu-elfclassify               0            0             0          0         generated by ProphetFuzz to assemble commands. Since command
+         exiv2                 5             0             4          3         assembly occurs after prediction, we use end-to-end metrics for
+       ffmpeg                 17             3             9          7         evaluation, that is, the number of unique vulnerabilities and edge
+       gif2png                 26            -*           27         16
+          gm                    0            1             0          0         coverage. Each setup is run for 72 hours in the same environment
+     img2sixel                24             2            13          2         and repeated five times. The results are shown in Table 4.
+        jasper                  0            -*            1          0             Compared to ProphetFuzz𝑁𝑉 , ProphetFuzz detects 34.65% more
+     jpegoptim                 10            6             8         18
+      jpegtran                  1            1            2           0         vulnerabilities and increases edge coverage by 8.21%, indicating
+         lrzip                  0            0             0          0         that the option values generated by the command assembly module
+       mutool                  6             0             0          4         effectively enhance ProphetFuzz’s performance. In contrast, com-
+         nasm                  2             1             0          1
+      objdump                 13             8             8         13         pared to ProphetFuzz𝑁 𝑆 , ProphetFuzz discovers 17.24% more vul-
+    openssl-ec                 0             0             0          0         nerabilities but only achieves a slight increase in coverage (0.26%).
+    openssl-rsa                 0            0             0          0
+                                                                                This shows that the seed files from the command assembly module
+     pdftohtml                 28            -*           27         30
+      pdftopng                27            17            15          6         markedly improve vulnerability detection but only slightly increase
+        pngfix                 0             -*            0          0         path coverage across the 25 programs.
+          size                  0            0             0          0
+       tiffcrop                19           26            13         16
+                                                                                    In xmllint, ProphetFuzz finds notably fewer vulnerabilities than
+       xmllint                  2            0            4           0         ProphetFuzz𝑁𝑉 , and the problem arises because the default option
+       Count                  221           84           153        145         values in the dataset incidentally trigger vulnerabilities. The critical
+   *   Fail to predict.                                                         option associated with these vulnerabilities is “–maxmem”, which
+                                                                           12
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+Table 4: Results of a 72-hour ablation study on 25 randomly                            error introduction (-E) with other packet modification operations may
+selected programs, detailing the number of unique vulnera-                             lead to unexpected memory states,” and flags the combination of
+bilities (#vuls) and edge coverage (#cov.) for each configura-                         –inject-secrets, -E, and -c as high-risk. It then assignes values to
+tion: ProphetFuzz, ProphetFuzz𝑁𝑉 (without generated option                             these options and generates the necessary configuration and input
+values) and ProphetFuzz𝑁 𝑆 (without generated seeds).                                  files. Notably, the configuration file for –inject-secrets must adhere
+                                                                                       to the strict format specifications of the NSS key log. Despite this
+                        ProphetFuzz    ProphetFuzz𝑁 𝑉    ProphetFuzz𝑁 𝑆                complexity, ProphetFuzz successfully generates the file by leverag-
+       Program
+                       #vuls   #cov    #vuls    #cov     #vuls    #cov
+           cflow         17    1453      10     1367       12     1445                 ing its built-in knowledge. This enables ProphetFuzz to identify the
+           cmark          0     7000     0     7739        0      7001                 vulnerability during fuzz testing.
+           djpeg          0     438       0      400        0      416                 Buffer overflow in jpegtran. In jpegtran, a buffer overflow is
+       dwarfdump          2    7767      4      6958       1     7808
+      eu-elfclassify      0     213       0     213        0       203                 triggered by the “-drop +X+Y filename” option, which inserts an
+            exiv2        2     8496       1     8128        1     7671                 image at specified coordinates. After extracting constraints and
+          ffmpeg         4     71198      1    65551        2    71667
+          gif2png        10     441     10       427      10       440
+                                                                                       avoiding invalid option combinations, ProphetFuzz identifies -drop
+             gm           0   10172       0     9415        0     8727                 with -maxmemory as high-risk, noting: “The -drop option could be
+        img2sixel         5    2207       3     2136       7      2440                 sensitive to buffer overflows if the dropped image’s dimensions or en-
+           jasper         0    3416      1      3182       0      2161
+        jpegoptim        4      244       2      202       4       242                 coding parameters cause unexpected memory usage.” Notably, X and
+         jpegtran         0    5773       0     5662        0     5672                 Y represent the coordinates in the input image where another im-
+            lrzip         0    4069       0     3941       0     4706                  age is to be inserted. If the new image’s dimensions exceed those of
+          mutool         1     13118      0     9601       1     16556
+            nasm         17    7399       2     6205       11    8331                  the input image, the program reports an “Invalid crop request” error
+         objdump         9     11392      7    11902       6     11050                 and exits. Leveraging the LLM’s understanding of documentation,
+       openssl-ec         0    9474       0     9150        0     8420
+       openssl-rsa        0    8034       0     7949        0     7529
+                                                                                       ProphetFuzz assigns values of 10 and 20 to X and Y, and generates a
+        pdftohtml        3     5635      3      5611       0     6224                  50x50 configuration file along with a 100x100 seed file to ensure the
+         pdftopng        12    4531      11     3653       5     4895                  program could operate correctly. These configurations ultimately
+           pngfix         0    1058       0      988        0      922
+             size         0    3708       0     3602        0     2842                 help discover this buffer overflow vulnerability.
+          tiffcrop       65    6283     48      6038      67      6555
+          xmllint         2   12609      8     11764       1     11681
+          Count         136             101               116
+
+
+                                                                                       5.8    Predictive Knowledge (RQ7)
+is used to specify the maximum number of bytes allocable. We                           To understand how ProphetFuzz, without any expert intervention,
+discover that vulnerabilities are triggered only when the option                       manages to predict 1748 high-risk option combinations solely from
+value falls within the range of [97406, 103252], and the default                       program documentation, we record the complete CoT outputs from
+option value incidentally falls within this range (102400). However,                   the LLM during each prediction. Initially, we extract content di-
+the values generated by ProphetFuzz are to induce memory-related                       rectly related to the predictions, focusing on the fourth step of the
+abnormal behaviors, which are either too small (< 10240) or too                        prompt. We then instruct the LLM to “summarize the knowledge
+large (> 1000000), failing to trigger these vulnerabilities.                           of the categories of program option combinations that may have po-
+                                                                                       tential vulnerabilities.” Subsequently, we compile summaries for
+5.7      Zero-day Vulnerablities Discovered (RQ6)                                      each program, have the LLM synthesize these summaries and rank
+To verify ProphetFuzz’s ability to uncover zero-day vulnerabilities,                   them from most to least common. To make the results more under-
+we conduct persistent fuzzing on the latest versions of 52 programs                    standable, we set the context in the prompt: “For software testers
+in our evaluation dataset. The discovered vulnerabilities represent                    who do not understand security, they hope to have easy-to-understand
+unpatched flaws, potentially qualifying as zero-day or half-day vul-                   knowledge to conduct efficient security testing.” Finally, we capture
+nerabilities. As shown in Table 5, ProphetFuzz identifies 140 unique                   15 key pieces of knowledge crucial for predicting high-risk option
+vulnerabilities across 15 programs, covering 11 types, including                       combinations. The top three are detailed below (see footnote 3 for
+heap overflow, stack overflow, use-after-free, and double-free. We                     a complete list).
+report these findings to the developers; 93 are confirmed, 26 fixed,                      1. Resource Management and Limits. Options that affect
+and 21 assigned CVE numbers. Notably, after reporting a use-after-                     resource allocation and limits can lead to vulnerabilities when they
+free vulnerability to the dwarfdump developers, they express intent                    conflict with options that increase resource demands, potentially
+to include our “nice” test case in their regression tests, underscoring                causing resource exhaustion or buffer overflows.
+the effectiveness of our command assembly module.                                         2. Complex Data Processing. Combinations of options that
+   Next, we analyze specific cases to demonstrate how ProphetFuzz                      lead to complex data processing tasks can increase the risk of vul-
+successfully identifies these vulnerabilities.                                         nerabilities such as memory corruption, especially when involving
+Bad free in editcap. In editcap, a bad-free vulnerability is trig-                     external data or detailed output formatting.
+gered by combining “–inject-secrets <secrets type>,<file>” with “-c”.                     3. Output and Format Manipulation. Options that modify
+ProphetFuzz extracts constraints from the documentation (e.g., -c                      output verbosity or format can lead to vulnerabilities if they result
+conflicts with -i) to guide the LLM in avoiding invalid combinations.                  in excessive data being processed or displayed, potentially revealing
+During the prediction process, ProphetFuzz notes, “Combining the                       sensitive information or causing buffer overflows.
+                                                                                 13
+                                                                                                      Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+Table 5: Vulnerabilities identified by ProphetFuzz. All these                  constraints, the ideal approach is to split them into pairwise option
+vulnerabilities were found in the latest versions of the pro-                  constraints for self-checks, which provides the highest precision
+grams, indicating that they are either zero-day or half-day                    but would significantly increase the number of LLM queries. For
+vulnerabilities.                                                               cost considerations, ProphetFuzz instructs the LLM to evaluate the
+                                                                               entire multi-option constraint in a single inference. While this ap-
+     Program          Vulnerability Type         Count   #Fixed   #CVEs        proach is more cost-effective, it may confuse the LLM’s analysis
+       avconv            assertion failure          1       0       0
+       avconv       floating point exception        1       0       0          process and introduce incorrect constraints.
+       avconv        global-buffer-overflow         1       0       0              In a few programs, the high-risk option combinations predicted
+       avconv         heap-buffer-overflow        21        0       0
+       avconv        segmentation violation         6       0       0
+                                                                               by ProphetFuzz do not achieve satisfactory results. On the one hand,
+       avconv             use-after-free            1       0       0          this is because ProphetFuzz primarily focuses on mutating input
+        bison        segmentation violation        10       0+       0         files, whereas for some programs (e.g., vim), mutating configura-
+       c++filt        stack-buffer-overflow        12       0+       0
+        cflow        global-buffer-overflow        1        0        0         tion files might yield better outcomes. To address this, we plan to
+        cflow             use-after-free           2        0        0         enable the LLM to autonomously choose the most suitable target
+    dwarfdump             use-after-free           1        1        1         for mutation in future versions. On the other hand, although we
+       editcap               bad free              2        2       1
+       editcap        heap-buffer-overflow         1        1       1          design an automated few-shot corpus collection method that gen-
+       editcap       segmentation violation        1        1       0*         erates the analysis examples for predicting some high-risk option
+       ffmpeg       floating point exception        2       1+       1         combinations without expert involvement, real expert experience
+       ffmpeg        segmentation violation         3       2       2
+     img2sixel      floating point exception       2        0        0         may still provide more effective learning outcomes for the LLM.
+     img2sixel        heap-buffer-overflow         1        0        0         Therefore, we intend to involve security experts to conduct a deeper
+     img2sixel       segmentation violation        1        0        0
+     img2sixel            use-after-free           1        0        0
+                                                                               analysis of the prediction of high-risk option combinations, aiming
+        jasper           assertion failure         1        1        1         to produce a higher-quality corpus.
+      jpegtran       segmentation violation        1        1        0*            Additionally, ProphetFuzz currently focuses only on predicting
+       mupdf           negative-size-param          1       1       1
+       mupdf         segmentation violation         1       1       1
+                                                                               high-risk option combinations that lead to memory crash vulnera-
+         nasm        segmentation violation        4        0       0          bilities, aligning with the characteristics of fuzzers. By adjusting the
+         nasm             use-after-free           3        0       0          prompts, ProphetFuzz can also be adapted to predict other types
+      objdump         heap-buffer-overflow          2       1       1
+         pspp            assertion failure        29        8+       6         of vulnerabilities, such as multithreading and undefined behavior
+         pspp       bus on unknown address         1        0+       0         errors, in future implementations.
+         pspp              double-free             1        0+       0
+         pspp         heap-buffer-overflow         3        0+       0
+         pspp        segmentation violation       13        4+       4         7    Conclusion
+         pspp         stack-buffer-overflow        5        0+       0
+         pspp             use-after-free           3        0+       0         This paper introduces ProphetFuzz, a fully automated tool based
+         xpdf         stack-buffer-overflow        1        1        1         on large language models (LLM) specifically designed to predict
+       Count                                      140      26       21
+                                                                               high-risk option combinations and conduct fuzz testing. Benefiting
+    +   Have been confirmed by the developers.
+    *                                                                          from our thoughtfully engineered prompts and the LLM’s superior
+        Applying for CVE.
+                                                                               text comprehension and reasoning capabilities, ProphetFuzz suc-
+                                                                               cessfully predicts 1748 high-risk option combinations on a dataset
+6   Limitation and Future Work                                                 covering 52 programs, leading to the discovery of 364 unique vul-
+                                                                               nerabilities, which is 32.85% more effective than the previous work.
+While ProphetFuzz demonstrates impressive performance in our
+                                                                               Additionally, ProphetFuzz identifies 140 zero-day or half-day vulner-
+evaluation experiments, it still has some limitations. In some pro-
+                                                                               abilities in the latest versions of these programs, with 93 confirmed
+grams, the precision of constraint extraction by ProphetFuzz is
+                                                                               by developers and 21 awarded CVE numbers.
+unsatisfactory primarily because its constraint extraction module
+heavily relies on the LLM’s reasoning performance. When the LLM
+underperforms, ProphetFuzz’s performance is correspondingly af-                Acknowledgement
+fected. With the continuous advancements in LLM technology,                    We are grateful to our shepherd and the anonymous reviewers for
+we expect ProphetFuzz’s performance to improve. Additionally,                  their valuable guidance and insightful comments.
+ProphetFuzz solely relies on documentation for predictions, which
+is both a strength and a limitation. When documentation is incor-              References
+rect or missing, it becomes difficult for ProphetFuzz to perform                [1] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Floren-
+constraint extraction, target prediction, or command assembly. In                   cia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal
+the future, we aim to enable ProphetFuzz to reference additional                    Anadkat, et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774
+                                                                                    (2023).
+sources of information, such as code comments and the code itself.              [2] Omer Akgul, Taha Eghtesad, Amit Elazari, Omprakash Gnawali, Jens Grossklags,
+Moreover, despite ProphetFuzz achieving full automation in pre-                     Michelle L Mazurek, Daniel Votipka, and Aron Laszka. 2023. Bug { Hunters’ }
+                                                                                    Perspectives on the Challenges and Benefits of the Bug Bounty Ecosystem. In
+dicting and fuzzing high-risk option combinations, the historical                   32nd USENIX Security Symposium (USENIX Security 23). 2275–2291.
+high-risk option combinations used to generate few-shot corpora                 [3] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2017. Coverage-
+are manually collected. Note that it is a one-time job, and we have                 Based Greybox Fuzzing as Markov Chain. IEEE Transactions on Software
+                                                                                    Engineering 45, 5 (2017), 489–506.
+made all these combinations publicly available, ensuring that the               [4] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+process does not need to be repeated. For complex multi-option                      Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+                                                                          14
+ProphetFuzz: Fully Automated Prediction and Fuzzing of High-Risk Option Combinations
+with Only Documentation via Large Language Model
+
+
+       Askell, et al. 2020. Language models are few-shot learners. Advances in neural                 preprint arXiv:2307.09288 (2023).
+       information processing systems 33 (2020), 1877–1901.                                      [32] Trieu H Trinh, Yuhuai Wu, Quoc V Le, He He, and Thang Luong. 2024. Solving
+ [5]   Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming                      olympiad geometry without human demonstrations. Nature 625, 7995 (2024),
+       Zhang. 2023. Large language models are zero-shot fuzzers: Fuzzing deep-learning                476–482.
+       libraries via large language models. In Proceedings of the 32nd ACM SIGSOFT               [33] Daniel Votipka, Rock Stevens, Elissa Redmiles, Jeremy Hu, and Michelle Mazurek.
+       international symposium on software testing and analysis. 423–435.                             2018. Hackers vs. testers: A comparison of software vulnerability discovery
+ [6]   Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang,                           processes. In 2018 IEEE Symposium on Security and Privacy (SP). IEEE, 374–
+       Shujing Yang, and Lingming Zhang. 2024. Large language models are edge-                        391.
+       case generators: Crafting unusual programs for fuzzing deep learning libraries.           [34] Dawei Wang, Ying Li, Zhiyu Zhang, and Kai Chen. 2023. { CarpetFuzz } : Auto-
+       In Proceedings of the 46th IEEE/ACM International Conference on Software                       matic Program Option Constraint Extraction from Documentation for Fuzzing.
+       Engineering. 1–13.                                                                             In 32nd USENIX Security Symposium (USENIX Security 23). 1919–1936.
+ [7]   Dor1s. 2019. Testcase of pdf. https://github.com/google/AFL/blob/master/test              [35] Zi Wang, Ben Liblit, and Thomas Reps. 2020. Tofu: Target-oriented fuzzer. arXiv
+       cases/others/pdf/small.pdf                                                                     preprint arXiv:2004.14375 (2020).
+ [8]   Jueon Eom, Seyeon Jeong, and Taekyoung Kwon. 2024. CovRL: Fuzzing JavaScript              [36] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi,
+       Engines with Coverage-Guided Reinforcement Learning for LLM-based Mutation.                    Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits rea-
+       arXiv preprint arXiv:2402.12222 (2024).                                                        soning in large language models. Advances in neural information processing
+ [9]   Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++:                   systems 35 (2022), 24824–24837.
+       Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop                  [37] Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Ling-
+       on Offensive Technologies (WOOT 20). USENIX Association.                                       ming Zhang. 2024. Fuzz4all: Universal fuzzing with large language mod-
+[10]   Yao Fu, Hao Peng, Ashish Sabharwal, Peter Clark, and Tushar Khot. 2022.                        els. Proceedings of the 46th IEEE/ACM International Conference on Software
+       Complexity-based prompting for multi-step reasoning. In The Eleventh                           Engineering (2024).
+       International Conference on Learning Representations.                                     [38] Xuhai Xu, Bingsheng Yao, Yuanzhe Dong, Saadia Gabriel, Hong Yu, James
+[11]   Google. 2019. Fuzzing with afl-fuzz. https://afl-1.readthedocs.io/en/latest/fuz                Hendler, Marzyeh Ghassemi, Anind K Dey, and Dakuo Wang. 2024. Mental-LLM:
+       zing.html                                                                                      Leveraging Large Language Models for Mental Health Prediction via Online Text
+[12]   Jie Hu, Qian Zhang, and Heng Yin. 2023. Augmenting greybox fuzzing with                        Data. Proceedings of the ACM on Interactive, Mobile, Wearable and Ubiquitous
+       generative ai. arXiv preprint arXiv:2306.06782 (2023).                                         Technologies 8, 1 (2024), 1–32.
+[13]   Shima Imani, Liang Du, and Harsh Shrivastava. 2023. Mathprompter: Mathe-                  [39] Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V Le, Denny Zhou,
+       matical reasoning using large language models. arXiv preprint arXiv:2303.05398                 and Xinyun Chen. 2023. Large language models as optimizers. arXiv preprint
+       (2023).                                                                                        arXiv:2309.03409 (2023).
+[14]   George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.              [40] Chenyuan Yang, Zijie Zhao, and Lingming Zhang. 2023. KernelGPT: Enhanced
+       Evaluating fuzz testing. In Proceedings of the 2018 ACM SIGSAC conference on                   Kernel Fuzzing via Large Language Models. arXiv preprint arXiv:2401.00563
+       computer and communications security. 2123–2138.                                               (2023).
+[15]   Ahcheong Lee, Irfan Ariq, Yunho Kim, and Moonzoo Kim. 2022. Power: Program                [41] Yue Zhang, Yafu Li, Leyang Cui, Deng Cai, Lemao Liu, Tingchen Fu, Xinting
+       option-aware fuzzer for high bug detection ability. In 2022 IEEE Conference on                 Huang, Enbo Zhao, Yu Zhang, Yulong Chen, et al. 2023. Siren’s song in the
+       Software Testing, Verification and Validation (ICST). IEEE, 220–231.                           AI ocean: a survey on hallucination in large language models. arXiv preprint
+[16]   Caroline Lemieux, Jeevana Priya Inala, Shuvendu K Lahiri, and Siddhartha Sen.                  arXiv:2309.01219 (2023).
+       2023. Codamosa: Escaping coverage plateaus in test generation with pre-trained            [42] Yunhang Zhang, Chengbin Pang, Stefan Nagy, Xun Chen, and Jun Xu.
+       large language models. In 2023 IEEE/ACM 45th International Conference on                       2023. Profile-guided System Optimizations for Accelerated Greybox Fuzzing.
+       Software Engineering (ICSE). IEEE, 919–931.                                                    In Proceedings of the 2023 ACM SIGSAC Conference on Computer and
+[17]   LMSYS. 2024. LMSYS Chatbot Arena Leaderboard in March 13, 2024. https:                         Communications Security. 1257–1271.
+       //huggingface.co/spaces/lmsys/chatbot-arena-leaderboard                                   [43] Zenong Zhang, George Klees, Eric Wang, Michael Hicks, and Shiyi Wei. 2023.
+[18]   Xiaoliang Luo, Akilles Rechardt, Guangzhi Sun, Kevin K Nejad, Felipe Yáñez,                    Fuzzing configurations of program options. ACM Transactions on Software
+       Bati Yilmaz, Kangjoo Lee, Alexandra O Cohen, Valentina Borghesani, Anton                       Engineering and Methodology 32, 2 (2023), 1–21.
+       Pashkov, et al. 2024. Large language models surpass human experts in predicting
+       neuroscience results. arXiv preprint arXiv:2403.03230 (2024).
+[19]   Yunlong Lyu, Yuxuan Xie, Peng Chen, and Hao Chen. 2023. Prompt Fuzzing for                Appendix
+       Fuzz Driver Generation. arXiv preprint arXiv:2312.17677 (2023).
+[20]   Ruijie Meng, Martin Mirchev, Marcel Böhme, and Abhik Roychoudhury. 2024.                  A     Prompts for Code Assembly
+       Large language model guided protocol fuzzing. In Proceedings of the 31st Annual
+       Network and Distributed System Security Symposium (NDSS).                                 Figure 6 shows the prompt for code assembly.
+[21]   Timothy Nosco, Jared Ziegler, Zechariah Clark, Davy Marrero, Todd Finkler,
+       Andrew Barbarello, and W Michael Petullo. 2020. The industrial age of hacking.            B     Recall for 20 Randomly Selected Programs
+       In 29th USENIX Security Symposium (USENIX Security 20). 1129–1146.
+[22]   Yaroslav Oliinyk, Michael Scott, Ryan Tsang, Chongzhou Fang, Houman Homay-                Table 6 shows the precision and recall for Constraint Extraction by
+       oun, et al. 2024. Fuzzing BusyBox: Leveraging LLM and Crash Reuse for Embed-              ProphetFuzz, CarpetFuzz, and ProphetFuzz𝑁 𝑆𝐶 from Documenta-
+       ded Bug Unearthing. arXiv preprint arXiv:2403.03897 (2024).
+[23]   OpenAI. 2023. GPT-4V(ision) System Card.                                                  tion of 20 Randomly Selected Programs.
+[24]   OpenAI. 2024. API Reference - OpenAI API. https://platform.openai.com/docs
+       /api-reference/audio
+[25]   Chengbin Pang, Tiantai Zhang, Xuelan Xu, Linzhang Wang, and Bing Mao.
+                                                                                                 C     Complete List of Predictive Knowledge
+       2023. OCFI: Make Function Entry Identification Hard Again. In Proceedings                 The complete list of the extracted 15 pieces of knowledge used by
+       of the 32nd ACM SIGSOFT International Symposium on Software Testing and
+       Analysis. 804–815.                                                                        ProphetFuzz to predict high-risk option combinations is as follows:
+[26]   Anthropic PBC. 2024. Introducing the next generation of Claude.             https:        1. Resource Management and Limits. Options that affect re-
+       //www.anthropic.com/news/claude-3-family
+[27]   LLVM Project. 2024. libFuzzer – a library for coverage-guided fuzz testing.                  source allocation and limits can lead to vulnerabilities when they
+       https://llvm.org/docs/LibFuzzer.html                                                         conflict with options that increase resource demands, potentially
+[28]   Reingart. 2018. FPDF for Python. https://pyfpdf.readthedocs.io/en/latest/                    causing resource exhaustion or buffer overflows.
+[29]   Suhwan Song, Chengyu Song, Yeongjin Jang, and Byoungyoung Lee. 2020. Cr-
+       Fuzz: Fuzzing multi-purpose programs through input validation. In Proceedings             2. Complex Data Processing. Combinations of options that lead
+       of the 28th ACM Joint Meeting on European Software Engineering Conference                    to complex data processing tasks can increase the risk of vulner-
+       and Symposium on the Foundations of Software Engineering. 690–700.
+[30]   Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu, Jean-Baptiste
+                                                                                                    abilities such as memory corruption, especially when involving
+       Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth,                 external data or detailed output formatting.
+       et al. 2023. Gemini: a family of highly capable multimodal models. arXiv preprint         3. Output and Format Manipulation. Options that modify out-
+       arXiv:2312.11805 (2023).
+[31]   Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yas-                 put verbosity or format can lead to vulnerabilities if they result
+       mine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhos-
+       ale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv
+                                                                                            15
+                                                                                                                                                 Dawei Wang, Geng Zhou, Li Chen, Dan Li, and Yukai Miao
+
+
+                                              Prompt for Assembly                                                                     Prompt for File Generation
+                     Here is the document of [Program name],                                                     …
+                     ```                                                                                         7. Develop a Python script to generate each specified file placeholder out of thin
+                     {“name”: [Program name], “description”: [Program description], “options”:                   air. Follow these instructions:
+                     [Option descriptions], “synopsis”: [Synopsis]}                                                 1. Identify the format of the target files. For handling files with complex
+                     ```                                                                                         formats (e.g., binary files), it's advisable to use Python libraries you're familiar
+                     Instructions:                                                                               with, or to integrate external tools using the 'subprocess' module, to create the
+                     1. Assemble all [Options in target combination] to create a singular, exclusive             most suitable files.
+                     command as directed by the "synopsis" field.                                                   2. Carefully consider content constraints, guaranteeing their semantic
+                     2. Pinpoint options that require values by reviewing their descriptions in the              coherence with other defined option values. Notably, the 'file0' placeholder
+                     "options" field and confirming with the "synopsis" field.                                   should act as an initial seed for fuzzing processes, representing a minimal yet
+                     3. Comprehend the combination's intent and generate valid values for these                  valid test case while ensuring the most extensive feature exposure possible.
+                     options.                                                                                    Under 1 kB is ideal, although not strictly necessary.
+                     4. Replace all placeholders in your command with actual, specific values. When                 3. Replace all placeholders with specific, pre-determined values. Avoid using
+                     in doubt, opt for credible hypothetical values out of thin air.                             any vague placeholders or dummy file that necessitate user input.
+                     5. Use the 'file0' placeholder to indicate the input file path in your command.                4. Name each created file using the format '{placeholder}.{extension}’.
+                     Since fuzzers work with one file at a time, ensure you're only using one input file.        Output Format:
+                     For other options that require an existing file, utilize placeholders like 'file1',         Provide the final result of commands in JSON format. Provide the Python script
+                     'file2', etc., without altering them.                                                       in a markdown code block behind the JSON results.
+                     6. Check that each file placeholder is correctly used in your command. Remove               Let's take a deep breath and think step by step. Please show your thoughts in
+                     any placeholders that don't correspond to actual files.                                     each step.
+
+
+
+
+  Figure 6: Prompts for assembly and file generation. The content enclosed in brackets denotes the need for specific input.
+
+Table 6: Precision (Prec.) and Recall (Rec.) for Constraint Ex-                                                  7. Concurrency and Parallel Processing. Options that enable
+traction by ProphetFuzz, CarpetFuzz, and ProphetFuzz𝑁 𝑆𝐶                                                            multi-threading or parallel processing can introduce vulnerabil-
+from Documentation of 20 Randomly Selected Programs.                                                                ities such as race conditions if combined with options that are
+                                                                                                                    not thread-safe.
+                         ProphetFuzz                  CarpetFuzz              ProphetFuzz𝑁 𝑆𝐶                    8. Verbose and Debugging Modes. Increasing the verbosity of
+    Program
+                        Prec.    Rec.               Prec.     Rec.             Prec.     Rec.
+        cjpeg          100.0%   80.0%               50.0%    40.0%             2.1%    100.0%                       the program’s output or enabling debugging modes can inad-
+       cmark           100.0%   50.0%              100.0%    50.0%            11.1%    100.0%                       vertently expose vulnerabilities by providing more data to an
+        djpeg          100.0%   74.3%               95.5%    60.0%             7.3%     77.1%                       attacker or changing the timing and performance characteristics
+        exiv2          100.0%   80.0%               50.0%    20.0%             8.5%     80.0%
+      gif2png          100.0% 100.0%                0.0%      0.0%             1.4%    100.0%                       of the application.
+     img2sixel          87.5%   87.5%              100.0%    62.5%             9.2%    100.0%                    9. Security Thresholds and Protections. Options that set se-
+         lrzip         100.0% 100.0%               100.0%    41.2%             7.6%    100.0%
+ openssl-asn1parse     100.0%   25.0%              100.0%    50.0%             4.0%    100.0%
+                                                                                                                    curity thresholds can lead to vulnerabilities when incorrectly
+    openssl-ec         100.0% 100.0%               100.0%    60.0%             7.5%    100.0%                       configured or combined with complex XML structures, as they
+     pdftopng          100.0%   50.0%               20.0%    50.0%            66.7%    100.0%                       may not protect sufficiently or cause legitimate processing to
+     pdftotext         100.0%   94.1%               22.2%    11.8%             6.6%    100.0%
+  podofoencrypt        100.0% 100.0%               100.0%    33.3%            14.3%    100.0%                       fail.
+        pspp           100.0%   77.8%               0.0%      0.0%            11.2%    100.0%                    10. External Data and Variable Definition. Allowing external
+          size          90.0%   69.2%              100.0%    92.3%            90.9%     76.9%                       data input or variable definition can lead to vulnerabilities when
+     speexdec          100.0% 100.0%               45.5%     50.0%            19.2%    100.0%
+      tcpprep          100.0%   88.9%              100.0%    77.8%            100.0%    88.9%                       combined with options that do not properly sanitize or handle
+       tiff2ps          87.5%   58.3%               62.5%    41.7%            33.3%     58.3%                       this external input.
+       tiffinfo        100.0% 100.0%                 0.0%    0.0%              33.3%   100.0%
+       xmlwf           100.0%   70.0%                0.0%     0.0%             8.1%    100.0%
+                                                                                                                 11. Transformation and Canonicalization. Transforming input
+         yara          100.0% 100.0%               100.0% 100.0%               2.1%    100.0%                       into detailed or canonical forms can increase the complexity
+      Overall          97.97% 80.56%               77.78% 46.67%               8.56%   89.44%                       of processing, leading to vulnerabilities due to the increased
+                                                                                                                    complexity of the output.
+                                                                                                                 12. Specialized Processing Modules. Passing data to specialized
+   in excessive data being processed or displayed, potentially re-
+                                                                                                                    processing modules can lead to vulnerabilities if the modules do
+   vealing sensitive information or causing buffer overflows.
+                                                                                                                    not properly handle the data, especially when combined with
+4. Error Handling Modifications. Options that suppress or alter
+                                                                                                                    options that modify data handling.
+   error handling can hide underlying issues, allowing the pro-
+                                                                                                                 13. Scan Optimization. Optimizing scanning for performance can
+   gram to operate in an unstable state and increasing the risk of
+                                                                                                                    lead to vulnerabilities when it conflicts with thorough scanning
+   vulnerabilities.
+                                                                                                                    required for security, potentially missing critical checks.
+5. Conflicting Operations. Using options that perform oppos-
+                                                                                                                 14. Memory-Intensive Operations. Combining options that are
+   ing actions can lead to undefined behavior or race conditions,
+                                                                                                                    inherently memory-intensive can lead to vulnerabilities, espe-
+   potentially causing the software to enter an unstable state.
+                                                                                                                    cially if they are not properly optimized for memory usage,
+6. Input/Output Handling. Options that affect how input and
+                                                                                                                    potentially resulting in memory leaks or corruption.
+   output are handled can lead to vulnerabilities if they cause the
+                                                                                                                 15. Control Flow Alteration. Changing the program’s control
+   program to read or write outside of intended memory areas or
+                                                                                                                    flow with certain options can lead to vulnerabilities when com-
+   handle file operations insecurely.
+                                                                                                                    bined with extensive processing options, potentially leading to
+                                                                                                                    incorrect processing or logic bypass.
+
+
+
+                                                                                                            16
+

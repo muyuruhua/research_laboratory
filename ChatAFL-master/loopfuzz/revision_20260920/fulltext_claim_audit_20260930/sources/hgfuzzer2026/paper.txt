@@ -1,0 +1,1109 @@
+                                                         Directed Greybox Fuzzing via Large Language Model
+                                                             Hanxiang Xu                                                      Yanjie Zhao                                 Haoyu Wang
+                                             Huazhong University of Science and                              Huazhong University of Science and               Huazhong University of Science and
+                                                       Technology                                                       Technology                                      Technology
+                                                          China                                                           China                                            China
+                                                    xuhx@hust.edu.cn                                             yanjie_zhao@hust.edu.cn                          haoyuwang@hust.edu.cn
+
+                                        Abstract                                                                                        Over the years, fuzzing has evolved from simple random testing
+                                        Directed greybox fuzzing (DGF) focuses on efficiently reaching spe-                             to more sophisticated and targeted strategies. Among these evo-
+                                        cific program locations or triggering particular behaviors, making                              lutionary paths, greybox fuzzing has emerged as a prominent
+arXiv:2505.03425v1 [cs.CR] 6 May 2025
+
+
+
+
+                                        it essential for tasks like vulnerability detection and crash repro-                            approach that balances efficiency and scalability [41] by combining
+                                        duction. However, existing methods often suffer from path explo-                                elements of both blackbox testing with minimal program visibility
+                                        sion and randomness in input mutation, leading to inefficiencies                                and whitebox testing with comprehensive program analysis.
+                                        in exploring and exploiting target paths. In this paper, we pro-                                   Most greybox fuzzers are traditionally coverage-guided, aiming
+                                        pose HGFuzzer, an automatic framework that leverages the large                                  to maximize overall program exploration. As the field advanced,
+                                        language model (LLM) to address these challenges. HGFuzzer trans-                               researchers developed directed greybox fuzzing (DGF), which
+                                        forms path constraint problems into targeted code generation tasks,                             focuses on specific target locations, such as bug-prone regions, mak-
+                                        systematically generating test harnesses and reachable inputs to                                ing it particularly useful for scenarios like patch testing and crash
+                                        reduce unnecessary exploration paths significantly. Additionally,                               reproduction [10, 13]. Despite its targeted approach, DGF faces two
+                                        we implement custom mutators designed specifically for target                                   key challenges that significantly hinder its efficiency: the com-
+                                        functions, minimizing randomness and improving the precision of                                 plexity of exploration and the randomness of exploitation.
+                                        directed fuzzing. We evaluated HGFuzzer on 20 real-world vulner-                                The exploration phase often encounters the issue of path explosion,
+                                        abilities, successfully triggering 17, including 11 within the first                            where numerous infeasible paths are unnecessarily explored, con-
+                                        minute, achieving a speedup of at least 24.8× compared to state-                                suming excessive resources. In the exploitation phase, the inherent
+                                        of-the-art directed fuzzers. Furthermore, HGFuzzer discovered 9                                 randomness of input generation and mutation frequently results
+                                        previously unknown vulnerabilities, all of which were assigned                                  in irrelevant inputs being tested and fails to satisfy the precise
+                                        CVE IDs, demonstrating the effectiveness of our approach in iden-                               constraints required to trigger vulnerabilities [66].
+                                        tifying real-world vulnerabilities.                                                                To improve the efficiency of directed fuzzing, various solutions
+                                                                                                                                        have been proposed [22, 23, 53]. One approach focuses on opti-
+                                        CCS Concepts                                                                                    mizing guidance toward target locations by analyzing program
+                                                                                                                                        characteristics, such as identifying deviation basic blocks [16, 21]
+                                        • Security and privacy → Software security engineering.
+                                                                                                                                        or satisfying execution path constraints [30, 62]. Another approach
+                                        Keywords                                                                                        aims to generate inputs with a higher likelihood of reaching tar-
+                                                                                                                                        get locations, for example, by predicting reachable inputs [67] or
+                                        Fuzzing; Directed Greybox Fuzzing; Large Language Model; Open-                                  instrumenting only the relevant parts of the code [39]. However,
+                                        source Library; Vulnerability                                                                   existing methods that leverage static analysis and symbolic execu-
+                                        ACM Reference Format:                                                                           tion to evaluate path reachability and constrain execution [10, 62]
+                                        Hanxiang Xu, Yanjie Zhao, and Haoyu Wang. 2018. Directed Greybox                                introduce additional computational overhead and struggle with
+                                        Fuzzing via Large Language Model. In Proceedings of Make sure to en-                            scalability. This inefficiency delays the discovery of vulnerabilities
+                                        ter the correct conference title from your rights confirmation email (Con-
+                                                                                                                                        and limits testing effectiveness, highlighting the need for more
+                                        ference acronym ’XX). ACM, New York, NY, USA, 14 pages. https://doi.org/
+                                                                                                                                        intelligent and targeted strategies in both exploration and
+                                        XXXXXXX.XXXXXXX
+                                                                                                                                        exploitation phases.
+                                        1     Introduction                                                                                 Recent advances in artificial intelligence, particularly large lan-
+                                                                                                                                        guage models (LLMs), offer new opportunities to address these
+                                        Fuzzing is a widely adopted and highly effective technique for                                  challenges in DGF. LLMs have demonstrated remarkable capabili-
+                                        identifying software vulnerabilities by generating and executing                                ties in various domains, including natural language understanding,
+                                        numerous test cases to detect abnormal program behaviors [11, 34].                              code generation, and program analysis [26]. Their ability to under-
+                                        Permission to make digital or hard copies of all or part of this work for personal or           stand code semantics, infer program logic, and generate contextu-
+                                        classroom use is granted without fee provided that copies are not made or distributed           ally relevant code makes them particularly promising for tackling
+                                        for profit or commercial advantage and that copies bear this notice and the full citation
+                                        on the first page. Copyrights for components of this work owned by others than the              the core difficulties in DGF. Several recent works have begun to
+                                        author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or          leverage LLMs to address key challenges in fuzzing [19, 55], such as
+                                        republish, to post on servers or to redistribute to lists, requires prior specific permission
+                                        and/or a fee. Request permissions from permissions@acm.org.
+                                                                                                                                        driver synthesis [40, 54], input generation [42, 48], and bug detec-
+                                        Conference acronym ’XX, Woodstock, NY                                                           tion [31]. However, the application of LLMs specifically to the
+                                        © 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM.               dual challenges of exploration complexity and exploitation
+                                        ACM ISBN 978-1-4503-XXXX-X/2018/06                                                              randomness in DGF remains largely unexplored.
+                                        https://doi.org/XXXXXXX.XXXXXXX
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                  Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+   Building on these insights, we propose a novel framework, i.e.,       that trigger new paths to maximize the potential of reaching targets.
+HGFuzzer, that leverages the reasoning and code generation capa-         Once sufficient paths are uncovered, the exploitation phase focuses
+bilities of LLMs to improve the efficiency of DGF. HGFuzzer tackles      on inputs closer to the targets, assigning them more energy to gen-
+the complexity of exploration by transforming the path constraint        erate mutations that fulfill the testing goals. Recent advancements,
+problem into a code generation task. Specifically, it employs static     such as SemFuzz [59], ParmeSan [45] and FuzzGuard [67], have em-
+analysis to identify potential call chains of the target function and    ployed techniques like natural language processing, sanitizer-based
+guides LLM to analyze an available call chain, infer execution condi-    annotations and machine learning to automate target identifica-
+tions, and generate target harness. The harness constrains execution     tion, further expanding DGF’s applicability to scenarios like patch
+paths to focus on relevant code regions, thereby reducing unneces-       testing, crash reproduction, and detecting complex vulnerabilities.
+sary exploration and computational overhead. For the exploitation
+phase, HGFuzzer reduces randomness by systematically guiding in-         2.2    LLM for Fuzzing
+put generation and mutation. It utilizes LLM to generate reachable
+                                                                         Recent research has explored the application of LLMs in fuzzing,
+seeds that satisfy the execution constraints derived from the call
+                                                                         demonstrating their potential to enhance input generation, driver
+chain analysis. Additionally, HGFuzzer constructs target-specific
+                                                                         synthesis, and bug detection processes [25, 27]. Unlike traditional
+mutators by analyzing the characteristics of the target function and
+                                                                         fuzzing methods, which often rely on randomized or rule-based
+the associated vulnerability. These custom mutators are tailored
+                                                                         approaches, LLMs utilize their generative capabilities to produce di-
+to efficiently trigger the target vulnerability by prioritizing input
+                                                                         verse and contextually valid inputs. Tools such as TitanFuzz [14] and
+mutations that align with the conditions required to exploit the
+                                                                         FuzzGPT [15] leverage LLMs to improve seed mutation and input
+vulnerability. By integrating these components, HGFuzzer provides
+                                                                         diversity, enabling more effective exploration of complex software
+an automatic approach to improve the efficiency of DGF.
+                                                                         behaviors. LLMs have also been applied to automate fuzz driver
+   We evaluate HGFuzzer across a benchmark of 20 real-world vul-
+                                                                         synthesis, a critical step in fuzzing workflows. For instance, Zhang
+nerabilities, comparing it against state-of-the-art directed greybox
+                                                                         et al. [60] demonstrate the effectiveness of GPT-4 in generating
+fuzzers, including AFLGo [10], Beacon [21], and SelectFuzz [39].
+                                                                         fuzz drivers for library APIs, significantly reducing manual effort.
+HGFuzzer demonstrates superior performance by successfully trig-
+                                                                         Similarly, InputBlaster [38] and ChatAFL [43] enhance fuzzing for
+gering 17 out of 20 vulnerabilities, compared to 5 by AFLGo and
+                                                                         mobile apps and network protocols, achieving higher bug detec-
+SelectFuzz and 6 by Beacon, with 11 vulnerabilities triggered within
+                                                                         tion rates and improved input validity. Despite these advances, the
+the first minute of fuzzing. For successfully triggered known vulner-
+                                                                         potential of LLMs to specifically address the challenges of explo-
+abilities, it achieves at least a 24.8× speedup to baselines. HGFuzzer
+                                                                         ration complexity and exploitation randomness in DGF has yet to
+also achieved a 27.5% improvement in target function hit rate over
+                                                                         be thoroughly investigated.
+the best-performing baseline, demonstrating its ability to effec-
+tively guide execution paths toward target functions. Additionally,
+HGFuzzer identified 9 previously unknown vulnerabilities in two          2.3    Challenges and Motivations
+open-source libraries, all of which were assigned CVE IDs.               Complexity of exploration. Existing approaches in the explo-
+   In summary, this paper makes the following contributions:             ration phase aim to uncover as many execution paths as possible, as
+     • We propose a novel framework, HGFuzzer, that integrates           new paths increase the likelihood of reaching the target [10, 12, 16].
+       LLM to improve the efficiency of directed greybox fuzzing.        This is particularly necessary when the initial seeds are far from
+     • We transform path constraint analysis into a code generation      the target. Some methods also leverage lightweight static analysis
+       task, introducing LLM-guided reachable seed generation to         to evaluate the reachability of execution paths to the target and use
+       reduce exploration complexity and a target-specific mutator       symbolic execution to constrain path exploration [21, 39, 62]. How-
+       to mitigate exploitation randomness during fuzzing.               ever, these methods face the challenge of path explosion caused by
+     • We implement HGFuzzer and demonstrate its superiority             exploring numerous infeasible paths that cannot reach the given
+       over state-of-the-art directed fuzzers on real-world bench-       target in a library. Furthermore, existing methods fail to directly
+       marks, successfully discovering 9 previously unknown vul-         utilize the semantic results of static analysis. Instead, they con-
+       nerabilities with CVE IDs.                                        vert these results into constraints for symbolic execution, which
+                                                                         introduces additional computation overhead.
+2 Background                                                                To address this issue, our core idea is to leverage the semantic
+                                                                         understanding and code generation capabilities of LLM. We trans-
+2.1 Directed Greybox Fuzzing (DGF)                                       form the complex path constraint problem into a code generation
+DGF is a targeted software testing approach that focuses on ef-          task. Specifically, we collect the call chains of the target func-
+ficiently reaching specific program locations or exposing certain        tion within the target library, use LLM to analyze these call
+program behaviors, such as vulnerable code regions or critical           chains, and generate an executable harness that explicitly
+execution paths [51]. Unlike traditional coverage-guided fuzzing,        constrains the execution path to the target. This approach
+which maximizes coverage indiscriminately, DGF prioritizes inputs        avoids complex path exploration. As shown in Figure 1, CVE-2017-
+closer to pre-defined targets, saving resources and improving effi-      2897 is an out-of-bounds write vulnerability in libxls 1.4.0. The
+ciency. First introduced by Böhme et al. with AFLGo [10], operating      entry program contains numerous complex execution paths. Tra-
+in two phases: exploration and exploitation. During exploration,         ditional directed fuzzers require extensive path exploration before
+the fuzzer aims to uncover as many paths as possible, favoring seeds     reaching the target, but most of these paths are irrelevant to the
+Directed Greybox Fuzzing via Large Language Model                                                                                                                          Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+                                                                       xls2csv.c:main
+                                                                                                                                                      often rely on probabilistic techniques [29, 66]. This randomness
+                         xls_open()            xls_row()          xls_parseWorkSheet()           xls_cell()          xls_getWorkSheet()               conflicts with the goal of directed fuzzing, as it can reduce efficiency
+                                                                                                                                                      by diverting resources to inputs that are less likely to reach or trig-
+          ole2_open()        ole2_fopen()        ole2_read()      xls_preparseWorkSheet()       ole2_seek()      xls_addCell()      xls_makeTable()   ger the target during the exploitation phase. As shown in Figure 2,
+                                  ole2_sopen()
+                                                                                                                                                      CVE-2020-13790 requires satisfying multiple path constraints to
+                                                                                    xlsConvertBof()           xlsConvertRow()    xls_getfcell()
+                                                                                                                                                      execute the vulnerable function get_rgb_row. For instance, the
+     xlsConvertHeader()                          ole2_bufread()
+
+                                                                                                                                                      input file must start with specific characters (‘P’ followed by ‘6’),
+                                                                                         xlsShortVal()
+      read_MAST()                     xlsConvertPss()
+                                                                                                                                                      have a maxval less than 255, and use the JCS_EXT_RGB color space.
+     xlsIntVal()
+                                                                                                                                                      Traditional directed fuzzers rely on input without confirmation
+                                                                                                                                                      of target reachability and random mutations to satisfy these con-
+Figure 1: A motivating example from CVE-2017-2897, where                                                                                              straints, which often results in numerous irrelevant inputs being
+the red blocks indicate a reachable path to the vulnerable                                                                                            tested, increasing the time required to reach or trigger the vulnera-
+target function read_MAST.                                                                                                                            bility. This randomness not only reduces efficiency but also leads
+                                                                                                                                                      to excessive resource consumption, as mutations are not explicitly
+                                                                                                                                                      guided toward satisfying the constraints necessary for exploitation.
+vulnerable function read_MAST. By analyzing the call relations of
+                                                                                                                                                      Addressing this challenge requires reducing randomness in the
+read_MAST in the library, we can generate a harness program to
+                                                                                                                                                      exploitation phase to better align with the goals of directed fuzzing.
+constrain the execution path explicitly, significantly simplifying
+                                                                                                                                                         To address this challenge, inspired by existing studies [28, 56, 64],
+the path exploration process.
+                                                                                                                                                      our basic idea is to utilize LLM to reduce the randomness in the
+                                                                                                                                                      exploitation process. Specifically, we first leverage LLM to analyze
+    001    unsigned char *tjLoadImage(const char *filename, ...)
+    002    {                                                                                                                                          the complex parameter or variable constraints imposed by the target
+    003      if ((file = fopen(filename, "rb")) == NULL)
+    004        ...                                                                                                                                    call chain, enabling the generation of initial reachable inputs for
+    005      if ((tempc = getc(file)) < 0 || ungetc(tempc, file) == EOF)
+    006
+    007
+               ...
+             else if (tempc == EOF)
+                                                                                                                                                      directed fuzzing. Subsequently, we use LLM to further analyze the
+    008
+    009
+               ...
+             if (tempc == 'B') {
+                                                                                                                                                      characteristics of the target function, combined with the potential
+    010
+    011
+               ...
+             } else if (tempc == 'P') {
+                                                                                                                                                      vulnerability risks, to generate custom mutators tailored for directed
+    012
+    013
+               if ((src = jinit_read_ppm(cinfo)) == NULL)                                                                                             fuzzing. This approach aims to minimize the impact of randomness
+    014                 /* The first character of the input file should be 'P' */                                                                     by systematically guiding the fuzzing process.
+    015
+    016          ...
+    017        } else
+    018        ...
+    019
+    020        }
+                                                                                                                                                      3     Methodology
+    021
+    022    cjpeg_source_ptr jinit_read_ppm()                                                                                                          Our approach aims to improve the efficiency of directed fuzzing
+    023    {
+    024     ...                                                                                                                                       by leveraging the reasoning and code generation capabilities of
+    025      source->pub.start_input = start_input_ppm;
+    026     ...                                                                                                                                       LLM. As shown in Figure 3, HGFuzzer consists of multiple phases
+    027    }
+    028                                                                                                                                               to systematically guide the fuzzing process toward specific target
+    029    void start_input_ppm(j_compress_ptr cinfo,...)
+    030    {                                                                                                                                          functions. First, it uses static analysis to identify all potential call
+    031      ...
+    032      c = getc(source->pub.input_file);                                                                                                        chains of the target function and filters out the feasible ones (Sec-
+    033      maxval = read_pbm_integer(cinfo, source->pub.input_file, 65535);
+    034      ...                                                                                                                                      tion 3.1). Then, LLM analyze these call chains to infer the execu-
+    035      switch (c) {
+    036
+    037
+             ...
+             case '6': /* The second character of the input file must be '6' */
+                                                                                                                                                      tion conditions required to trigger the target function (Section 3.2).
+    038
+    039
+             ...
+               if (maxval > 255) {
+                                                                                                                                                      Based on this information, HGFuzzer generates executable target
+    040
+    041
+                ...
+               } else if (maxval == MAXJSAMPLE && sizeof(JSAMPLE) == sizeof(U_CHAR) &&
+                                                                                                                                                      harness and initial input seeds to guide execution paths toward the
+    042
+    043
+                          (cinfo->in_color_space == JCS_EXT_RGB
+                          )) {
+                                                                                                                                                      target (Section 3.3, Section 3.4). Finally, HGFuzzer constructs target-
+    044         ...                                                                                                                                   specific mutators using target execution reports to optimize input
+    045        } else {
+    046
+    047                 /* The maxval of the input file must be less than 255 */
+                                                                                                                                                      mutation, reducing the time required to reach the target function
+    048
+    050                 if (IsExtRGB(cinfo->in_color_space))                                                                                          and enhancing the effectiveness of the fuzzing process (Section 3.5).
+    051
+    052                 /* The color space of the input file must be extended RGB */
+    053
+    054
+    055
+                          source->pub.get_pixel_rows = get_rgb_row;                                                                                   3.1    Call Chain Analysis
+    056                 /* Trigger the vulnerable function */
+    057                                                                                                                                               Call chain analysis is the initial step of HGFuzzer, where we utilize
+    058                 else if (cinfo->in_color_space == JCS_CMYK)
+    059                   ...                                                                                                                         static analysis to query all existing call chains of the target function
+    060                 else
+    061                   ...                                                                                                                         within the library and extract an available call chain for further
+    062          }
+    063          break;                                                                                                                               processing. This step provides crucial insights into the invocation
+    064        }
+    065
+    066    }
+               ...                                                                                                                                    context of the target function and forms the basis for subsequent
+                                                                                                                                                      reasoning and harness generation.
+                                                                                                                                                           A call chain 𝐶 is represented as a sequence of functions (𝐹𝑛 , 𝐹𝑛−1,
+   Figure 2: A motivating example from CVE-2020-13790.                                                                                                . . . , 𝐹 1, 𝐹 0 ), where 𝐹 0 is the target function and 𝐹𝑛 is the starting
+                                                                                                                                                      function of the chain. Let 𝑆 denote the set of all call chains for the
+Randomness of exploitation. Fuzzing is inherently a process                                                                                           target function. To identify an available call chain, HGFuzzer parses
+driven by randomness, where the generation and mutation of inputs                                                                                     𝑆 following the criteria defined in Algorithm 1. If there exists a call
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                             Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+
+
+                      Call Chain Analysis                        Target Harness Generation              Target-Specific Mutator
+                                                                  Source Code         Execution               Generation
+        Library
+                            Target Call Identify                                      Conditions        Target               Custom
+                              Chains             Available                                            Description Infer      Mutator               Run Fuzz
+    Target Function                                Call Chain             Infer
+                                                                   Pass
+                                                                            Harness
+                              Extract                                                                          Reachable Input Generation
+                                                                                  Failed
+                                                                                                       Execution
+              Execution Conditions Analysis                               Library Usage                Conditions                 Input Identify
+                                                                          RAG                                                     Seed
+                                        Infer   Execution                                              Executable         Infer
+      Source Code                                                     Executable Harness                                                           Reachable
+                                                Conditions                                              Harness
+                                                                                                                                                     Input
+
+
+
+                                                             Figure 3: Overview of HGFuzzer.
+
+
+chain 𝐶 ∈ 𝑆 with 𝐹𝑛 = main, HGFuzzer identifies the chain with                    and environment setup for correctly invoking target functionality.
+the smallest length |𝐶 | as the available call chain. If no such chain            This strategy ensures we can identify call chains with sufficient
+exists, HGFuzzer searches 𝑆 for the call chain with the smallest                  context to build executable target harnesses even without main. In
+length |𝐶 | whose starting function 𝐹𝑛 is declared as an external                 summary, by prioritizing either main-originated chains or those
+function in the library’s header files. If such a chain is found, it is           starting with external functions, HGFuzzer ensures the selected
+identified as the available call chain.                                           call chain provides sufficient initialization context to generate valid
+                                                                                  and executable target harnesses.
+Algorithm 1 Call Chain Identification
+Require: Target Function 𝐹 0 , Library 𝐿                                          3.2      Execution Conditions Analysis
+Ensure: Available Call Chain 𝐶                                                    Given an available call chain 𝐶 = (𝐹𝑛 , 𝐹𝑛−1, . . . , 𝐹 1, 𝐹 0 ), HGFuzzer
+ 1: 𝑆 ← CallChains(𝐹 0 , 𝐿)                                                       then extracts the execution conditions required to traverse the chain
+ 2: 𝐶 ← ∅, 𝑙 ← ∞ // 𝑙 means shortest length of available call chain               and ultimately reach the target function 𝐹 0 . This process involves
+ 3: for 𝐶 ′ ∈ 𝑆 do                                                                parsing the source code of all functions in the call chain and using
+ 4:     if 𝐹𝑛 (𝐶 ′ ) = main ∧ |𝐶 ′ | < 𝑙 then                                     LLM to analyze the conditions for each function call in the chain.
+ 5:         𝐶 ← 𝐶 ′ , 𝑙 ← |𝐶 ′ |                                                     HGFuzzer begins by utilizing static analysis to parse the source
+ 6:     end if                                                                    code of all functions in 𝐶. This parsing step generates a structured
+ 7: end for                                                                       representation of the code, enabling precise identification of func-
+ 8: if 𝐶 = ∅ then                                                                 tion definitions and call sites. For each pair of functions <𝐹𝑖 , 𝐹𝑖 −1 >
+ 9:     for 𝐶 ′ ∈ 𝑆 do                                                            in the chain, where 𝐹𝑖 calls 𝐹𝑖 −1 , HGFuzzer employs LLM to analyze
+10:         if 𝐹𝑛 (𝐶 ′ ) ∈ 𝐿.headers ∧ 𝐹𝑛 (𝐶 ′ ) is extern ∧ |𝐶 ′ | < 𝑙           the specific execution conditions required for the call. The LLM is
+    then                                                                          designed to complete the following steps:
+11:             𝐶 ← 𝐶 ′ , 𝑙 ← |𝐶 ′ |
+12:         end if                                                                    (1) Determining the Call Location: Identifying the exact lo-
+13:     end for                                                                           cation in the source code where 𝐹𝑖 −1 is called within 𝐹𝑖 . This
+14: end if                                                                                includes extracting the line number and the surrounding
+15: return 𝐶                                                                              code snippet containing the call.
+                                                                                      (2) Identifying Decision Variables: Identifying the variables
+                                                                                          that determine whether the call from 𝐹𝑖 to 𝐹𝑖 −1 occurs. These
+    The preference for call chains starting with main is based on the                     decision variables may include function parameters, global
+observation that main and its associated file often provide complete                      variables, or local variables within 𝐹𝑖 .
+parameter initialization, global variable declarations, and program                   (3) Analyzing Conditions: Analyzing the conditions that these
+constraints for calling entry function 𝐹𝑛−1 . As the primary entry                        decision variables must satisfy for the call to occur. These
+point, main is typically designed for specific functionalities, making                    conditions are represented as logical predicates or constraints
+it an ideal candidate template example for generating a target har-                       on the variable values, such as inequalities, equality con-
+ness. When no call chain starting with main can be found, we prior-                       straints, or ranges.
+itize call chains beginning with declared external functions, which
+typically have well-defined interfaces and parameter specifications.                  Figure 4 illustrates the structured output of the LLM for a single
+External functions, designed as entry points for libraries or mod-                function call <𝐹𝑖 , 𝐹𝑖 −1 >. Each decision variable is associated with
+ules, generally encapsulate the necessary contextual information                  its constraints, which are expressed in formal logic for clarity and
+Directed Greybox Fuzzing via Large Language Model                                               Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+
+         Response of LLM                                                       Prompt Template
+        {                                                                      Task: Generate a targeted C/C++ fuzz harness for a specific
+              "current_function":"{current_func}",                             fuzzing target within a given library.
+              "next_function":" {next_func}",
+              "call_location": {                                               Input Context:
+                          "line":<line_number>,                                l Target Description: Information about the fuzzing target
+                          "code_snippet":<exact_code_snippet>                    ({target_info}).
+                    },                                                         l Target Function: The target function to be tested
+              "decision_variables": [                                            ({target_func}).
+                    {
+                                                                               l Available Call Chain: The complete call chain leading
+                          "variable": "<variable_name>",
+                                                                                 to the target function ({call_chain}).
+                          "conditions": [
+                                                                               l Execution       Conditions: Execution conditions and
+                                           "<condition_1>",
+                                           "<condition_2>",                      dependencies for each function in the call chain
+                                           "..."                                 ({execution_conditions}).
+                                      ]                                        l Entry Function: The entry function that initiates the call
+                    },                                                           chain {entry_func_code}.
+                    "...”                                                      l Source File: Source file where the entry function is
+               ]                                                                 defined or called ({src_file}).
+        }
+                                                                               Instructions:
+                                                                               l Implement a main function that calls the entry function
+Figure 4: An example of the response from the LLM in exe-                        {entry_func_name} and guides the execution path along
+cution conditions analysis.                                                      the call chain to the target function.
+                                                                               l Use argv[1] as the input file path, compatible with
+                                                                                 AFL++ input (@@).
+                                                                               l Do not hardcode variables or implement library functions
+precision. By iterating over all function pairs in the call chain, HG-           that are already part of the call chain.
+Fuzzer builds a complete representation of the execution conditions            l Ensure proper resource management and include
+needed to reach the target function 𝐹 0 . This structured analysis               necessary headers.
+accurately captures the dependencies and constraints of the call               l Design the harness to trigger the target in the shortest
+chain, providing essential information for generating executable                 possible fuzzing time.
+harness and deriving inputs that can traverse the chain and trigger
+the target function.
+   Illustrative Case. For the motivating example in Figure 2, the         Figure 5: Prompt template for target harness generation.
+call chain 𝐶 = (tjLoadImage, jinit_read_ppm, start_input_ppm,
+get_rgb_row) leads to the target function get_rgb_row. The call
+from tjLoadImage to jinit_read_ppm occurs at line 12 and is
+conditional on the first character of the input file (temp_c) being
+                                                                         incorporates a target description, the entry function, and the cor-
+‘P’ (line 11). Within start_input_ppm, additional conditions must
+                                                                         responding source file. The target description provides an overall
+be satisfied, such as the second character of the file being ‘6’ (line
+                                                                         summary of the fuzzing objective, which may come from prior
+37), the maximum pixel value (maxval) being less than 255 (line
+                                                                         vulnerability reports (e.g., CVE records) or expert knowledge indi-
+39-45), and the color space of the input file being extended RGB
+                                                                         cating potential weaknesses in the target function. This description
+(JCS_EXT_RGB) (line 50). HGFuzzer identifies these decision vari-
+                                                                         helps guide the LLM in generating a relevant and effective harness.
+ables and constraints for each function pair in the call chain, ensur-
+                                                                         The entry function is determined based on the structure of the call
+ing the conditions required to traverse the chain and execute the
+                                                                         chain. Given an available call chain 𝐶 = (𝐹𝑛 , 𝐹𝑛−1, . . . , 𝐹 1, 𝐹 0 ), if the
+target function get_rgb_row are captured in a structured format
+                                                                         final function 𝐹𝑛 is the main function, then the entry function is set
+for downstream use.
+                                                                         to 𝐹𝑛−1 , as it is the actual initiator of the call sequence. The main
+                                                                         function is treated as a template for invoking 𝐹𝑛−1 . In this case,
+3.3    Target Harness Generation                                         the source file provided as input should be the file containing 𝐹𝑛
+To direct the fuzzing process toward the target function, HGFuzzer       to ensure that the LLM has all necessary configuration details for
+generates a targeted fuzz harness based on the available call chain,     calling 𝐹𝑛−1 . If 𝐹𝑛 is not the main function, then 𝐹𝑛 itself is treated
+execution conditions, and corresponding function source code. This       as the entry function, and the source file corresponds to the file
+harness constrains the exploration space of the fuzzer, reducing         where 𝐹𝑛 is defined. By structuring the prompt in this manner, HG-
+redundant path exploration and ensuring efficient reachability of        Fuzzer enables LLM to generate a valid fuzz harness that effectively
+the target function.                                                     triggers the target function.
+   Figure 5 presents the prompt template used in HGFuzzer for               Compilation Error Resolution. To ensure that the generated
+target harness generation. In addition to the available call chain,      fuzz harness can be successfully compiled into an executable pro-
+function source code, and execution conditions, the input context        gram, HGFuzzer employs a compilation error resolution mechanism
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                   Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+based on RAG (Retrieval-Augmented Generation), as shown in Al-
+gorithm 2. This mechanism is based on an external knowledge base               Prompt Template
+that contains all source files, header files, and test cases from the         Task: Generate a Python script using standard libraries to
+target library. These files are embedded into vector representations          create an 'input_file’ whose content precisely satisfies all
+and indexed to facilitate efficient similarity-based retrieval. If the        execution conditions specified below, ensuring the target
+harness fails to compile within the library’s context, HGFuzzer col-          function is reached via the intended execution path.
+lects the compilation errors issued by the compiler and constructs
+                                                                              Input Context:
+a query based on these errors. The query engine retrieves relevant
+                                                                              l Target Description: Information about the fuzzing target
+code snippets from the knowledge base, including the usage, im-                 ({target_info}).
+plementation, and definition of the error-related functions. The              l Target Function: The target function to be tested
+retrieved results are then used by the LLM to guide the repair pro-             ({target_func}).
+cess. Specifically, the LLM incorporates the context provided by the          l Harness Code: Code used to run the target with the
+retrieved snippets to iteratively refine the harness until the compi-           input ({harness_code}).
+lation errors are resolved. This iterative repair process ensures that        l Available Call Chain: The complete call chain leading
+the harness is not only syntactically correct but also semantically             to the target function ({call_chain}).
+compatible with the target library.                                           l Execution       Conditions: Execution conditions and
+                                                                                dependencies for each function in the call chain
+                                                                                ({execution_conditions}).
+Algorithm 2 Compilation Error Resolution with RAG.
+                                                                              Instructions:
+Require: Compilation error 𝐸, Target Harness 𝐻 , Knowledge base
+                                                                              l Satisfy ALL execution conditions precisely, prioritizing
+    𝐾, Embedding model 𝑀, Similarity threshold 𝑠, Number of
+                                                                                mathematical/logical correctness over input realism or
+    chunks 𝑘, LLM 𝐿, Refinement prompt 𝑃𝑟                                       validity.
+Ensure: Revised harness 𝐻𝑟𝑒𝑣𝑖𝑠𝑒𝑑                                              l Use conservative values clearly within bounds for range
+ 1: 𝑄 ← 𝐵𝑢𝑖𝑙𝑑𝑄𝑢𝑒𝑟𝑦 (𝐸)                                                          conditions (e.g., `100` if `<200`) and the exact required
+ 2: 𝐼𝑛𝑑𝑒𝑥𝐵𝑎𝑠𝑒 ← 𝐸𝑚𝑏𝑒𝑑 (𝐾, 𝑀)                                                    value for equality conditions (e.g., `127` if `==127`).
+ 3: 𝑄 𝑣𝑒𝑐 ← 𝐸𝑚𝑏𝑒𝑑 (𝑄, 𝑀)                                                      l Ensure chosen values strictly follow the specified
+ 4: 𝐶 1 , 𝐶 2 , . . . , 𝐶𝑘 ← 𝑅𝑒𝑡𝑟𝑖𝑒𝑣𝑒𝐶ℎ𝑢𝑛𝑘𝑠 (𝑄 𝑣𝑒𝑐 , 𝐼𝑛𝑑𝑒𝑥𝐵𝑎𝑠𝑒, 𝑠, 𝑘)           conditions to avoid triggering alternative execution paths.
+ 5: 𝑅 ← 𝐿𝐿𝑀 (𝑄, 𝐶 1 )                                                         l Include     detailed    comments       explaining     value
+ 6: for all remaining chunk 𝐶𝑖 in 𝐶 2 , . . . , 𝐶𝑘 do                           choices/condition satisfaction, implement basic error
+ 7:       𝑅 ← 𝑅𝑒 𝑓 𝑖𝑛𝑒𝑊 𝑖𝑡ℎ𝐿𝐿𝑀 (𝑅, 𝐶𝑖 , 𝑃𝑟 , 𝐿)                                 handling, and save the generated input as 'input_file' with
+                                                                                appropriate extension.
+ 8: end for
+ 9: 𝐻𝑟𝑒𝑣𝑖𝑠𝑒𝑑 ← 𝐿𝐿𝑀 (𝑄, 𝑅, 𝐻 )
+10: return 𝐻𝑟𝑒𝑣𝑖𝑠𝑒𝑑                                                      Figure 6: Prompt template for reachable input generation.
+
+
+                                                                         binary or structured data as raw content exceeds the current capa-
+3.4     Reachable Input Generation                                       bilities of LLMs and would invariably produce invalid inputs. For
+The target harness generated by HGFuzzer explicitly constrains           instance, creating a valid SWF file requires comprehensive knowl-
+the fuzzer’s path exploration. However, the harness alone cannot         edge of the flash file format specification, including its tag structure,
+directly guide the execution path to the target function. This lim-      binary encoding rules, and internal consistency requirements.
+itation arises because the entry function often contains multiple           To address this challenge, HGFuzzer instead employs LLM to
+branches, which create diverse execution paths. To ensure that the       generate a Python script tailored to produce an initial input capa-
+execution path reaches the target function, it is necessary to gen-      ble of meeting all specified execution conditions. This approach
+erate a reachable seed input that satisfies all execution conditions     leverages existing libraries in Python that can handle the
+within the call chain. These execution conditions provide logical        complexities of file format specifications, allowing for precise
+or mathematical constraints that must be met for the program to          construction of valid inputs. To guide the LLM in generating the
+traverse the intended path. Given the diversity and complexity of        required Python script, HGFuzzer employs a structured prompt,
+library functionalities and their input formats, generating such an      as listed in Figure 6. The prompt supplies essential input context,
+input manually is both labor-intensive and error-prone.                  encompassing the execution conditions derived from the program’s
+   An alternative approach might be to employ LLMs to directly           call chain and the pertinent harness code. It explicitly defines the
+generate the initial input. However, this approach presents signifi-     task for the LLM: to generate a Python script producing an input
+cant challenges when considering the complex input requirements          that satisfies all specified execution conditions, thereby ensuring
+of many libraries. For example, libraries such as libming process        the target function is reached while avoiding unintended execution
+SWF or ABC flash files, libjpeg-turbo requires correctly format-         paths. Additionally, the prompt details how to handle specific con-
+ted JPEG or PPM images, and other libraries may demand inputs            dition types, instructing the LLM to use values well within bounds
+with complex binary structures, specific headers, checksums, and         for range constraints and precise values for equality constraints,
+format-specific requirements. Directly generating such specialized       leveraging Python libraries for accurate input construction.
+Directed Greybox Fuzzing via Large Language Model                                                     Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+   Once the Python script is generated, it is executed to produce                   compatibility with the fuzzing engine. It includes all neces-
+an initial input for the target harness. However, given the potential               sary headers, struct definitions, and initialization functions
+for the LLM to generate incorrect or suboptimal code [36, 46, 47],                  required by the custom mutator API documentation. The im-
+HGFuzzer integrates a verification mechanism using afl-cov [1].                     plementation maintains performance optimization to ensure
+This tool instruments the target harness and monitors the execution                 the fuzzing engine runs smoothly without runtime errors or
+path to verify whether the generated input successfully guides the                  performance degradation.
+program to the target function. If the input fails to reach the target
+function, the process is repeated iteratively. During each iteration,
+the prompt is refined, and the LLM generates a new script aiming            001 METHODDEF(JDIMENSION)
+                                                                            002 get_rgb_row(j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
+to address previous deficiencies. This iterative process continues          003 {
+                                                                            004      ppm_source_ptr source = (ppm_source_ptr)sinfo;
+until a reachable input is obtained. By combining the generative            005      register JSAMPROW ptr;
+capabilities of LLM with the verification of afl-cov, HGFuzzer en-          006      register U_CHAR *bufferptr;
+                                                                            007      register JSAMPLE *rescale = source->rescale;
+sures that the generated inputs effectively guide the execution path        008      JDIMENSION col;
+                                                                            009      unsigned int maxval = source->maxval;
+to the target function.                                                     010      register int rindex = rgb_red[cinfo->in_color_space];
+                                                                            011      register int gindex = rgb_green[cinfo->in_color_space];
+                                                                            012      register int bindex = rgb_blue[cinfo->in_color_space];
+3.5    Target-Specific Mutator Generation                                   013      register int aindex = alpha_index[cinfo->in_color_space];
+                                                                            014      register int ps = rgb_pixelsize[cinfo->in_color_space];
+After generating a reachable input to guide the execution path              015
+                                                                            016      if (!ReadOK(source->pub.input_file, source->iobuffer, source->buffer_width))
+to the target function, the next challenge is to ensure that the            017         ERREXIT(cinfo, JERR_INPUT_EOF);
+target function can be triggered. Triggering the target requires the        018      ptr = source->pub.buffer[0];
+                                                                            019      bufferptr = source->iobuffer;
+program to enter specific execution states that satisfy the conditions      020      if (maxval == MAXJSAMPLE) {
+                                                                            021         if (aindex >= 0)
+necessary for exploiting the target vulnerability. To reduce the            022               RGB_READ_LOOP(*bufferptr++, ptr[aindex] = 0xFF;)
+randomness of the fuzz engine in mutating the reachable seed,               023           else
+                                                                            024             RGB_READ_LOOP(*bufferptr++,)
+HGFuzzer leverages LLM to generate a target-specific custom                 025       } else {
+                                                                            026         if (aindex >= 0)
+mutator. The custom mutator is then integrated into the fuzzing             027               RGB_READ_LOOP(rescale[UCH(*bufferptr++)], ptr[aindex] = 0xFF;)
+engine to implement tailored mutation strategies designed for the           028           else
+                                                                            029              RGB_READ_LOOP(rescale[UCH(*bufferptr++)],) /* Vulnerable code line */
+specific target.                                                            030       }
+   The generation of the custom mutator is based on a carefully             031       return 1;
+                                                                            032 }
+designed prompt, which incorporates the target description, the
+target function’s source code, and the reachable input script. Addi-
+tionally, the prompt provides the LLM with the custom mutator API                 Figure 7: Vulnerable function in CVE-2020-13790.
+documentation and examples from the fuzzing engine to ensure
+compatibility. We guide the LLM through a three-step chain-of-
+                                                                             To ensure the generated custom mutator is functional and ef-
+thought prompt to generate the custom mutator:
+                                                                         fective, our approach incorporates an iterative refinement process.
+   (1) Analyzing Root Cause: The LLM first analyzes the target           If the generated custom mutator fails to compile or causes run-
+       function’s source code and the provided description of the        time errors, the LLM automatically references the custom mutator
+       target, same as mentioned in Section 3.3. This analysis fo-       API documentation to fix the issues. Additionally, our framework
+       cuses on identifying the root cause of the vulnerability and      performs a lightweight validation check after integrating the cus-
+       the specific program states that must be reached to trigger it.   tom mutator with the fuzzing engine, measuring basic execution
+       By understanding the vulnerability pattern and its triggering     metrics over a short sample run to verify that it operates without
+       conditions, the LLM gathers critical insights into how the        significant overhead or instability. This iterative process ensures
+       input should be mutated to exploit the vulnerability.             that the custom mutator can efficiently guide the fuzzing process
+   (2) Designing Mutation Strategy: Based on the analysis of             toward triggering the target vulnerability.
+       the target function and its triggering conditions, the LLM            Illustrative Case. To address the heap buffer overflow vulner-
+       designs a mutation strategy aimed at efficiently exploiting       ability in the get_rgb_row function from CVE-2020-13790 in Fig-
+       the vulnerability. This strategy prioritizes mutations that       ure 7, the LLM first analyzes the source code and identifies that the
+       directly target the vulnerability-triggering conditions. The      root cause lies in the lack of proper boundary checks when access-
+       approach ensures that input values are mutated toward ex-         ing the rescale array through the pointer bufferptr. This occurs
+       treme bounds or specific ranges that satisfy the conditions       under specific conditions, such as maxval!= MAXJSAMPLE (line 20-
+       identified in the target function, while simultaneously avoid-    25) and aindex<0 (line 26-28), while processing malformed PPM
+       ing mutations that would cause the input to fail the call chain   files. Based on this analysis, the LLM designs a mutation strategy
+       conditions or deviate from paths leading to the target.           that includes generating malformed PPM headers, manipulating
+   (3) Generating Custom Mutator Code: After defining the                key variables (e.g., maxval and aindex), and targeting boundary
+       mutation strategy, the LLM generates the complete custom          conditions to trigger the vulnerability. The custom mutator gener-
+       mutator code in C/C++, adhering to the custom mutator             ated by the LLM implements this strategy by mutating input files
+       API. The mutator code implements the tailored mutation            to include unexpected dimensions, non-standard pixel values, and
+       strategy specific to the target vulnerability while ensuring      insufficient data sizes. This allows the fuzzing engine to efficiently
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                  Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+explore paths leading to the vulnerability, reducing randomness           the same compilation options and execution commands for all ex-
+and improving the likelihood of triggering the overflow condition.        periments. To mitigate the effects of fuzzing randomness on the
+                                                                          results, each experiment was repeated 5 times, with a time budget
+3.6     Implementation                                                    of 24 hours per run.
+                                                                          Environment. All experiments were conducted on a server equipped
+We implemented HGFuzzer using approximately 3,400 lines of
+                                                                          with an AMD 64-Core Processor and 1TB of RAM, running a 64-bit
+Python code and 500 lines of bash scripts. Our implementation
+                                                                          version of Ubuntu 22.04 LTS.
+is based on AFL++ [2] due to its extensibility and robust feature
+set. For our LLM selection, we utilize Anthropic’s API to access
+Claude-3.5-Sonnet [9]. For static analysis, we used CodeQL [3] and
+Tree-Sitter [7] to extract information about call chains and source       4.1    RQ1: Effectiveness in Triggering Known
+code of functions. Additionally, we employed LlamaIndex [5] to                   Vulnerabilities
+build the RAG engine, enabling an efficient construction of prompts
+                                                                          To answer RQ1, we evaluated the effectiveness of HGFuzzer against
+and retrieval of relevant program context.
+                                                                          the baselines on the benchmark. We used the time to exploit
+                                                                          (TTE) as the metric for evaluating effectiveness. Additionally, we
+4     Evaluation                                                          compared the time spent on static analysis (TS) between HG-
+In this section, we evaluate HGFuzzer using real-world vulnerabili-       Fuzzer, AFLGo, and Beacon. Since SelectFuzz performs seed execu-
+ties and aim to answer the following research questions:                  tion to detect code regions related to the target during the fuzzing
+                                                                          process, and both SelectFuzz and AFL++ only perform compilation
+      • RQ1: How effective is HGFuzzer in triggering known vul-
+                                                                          and instrumentation during the preparation phase, their TS was not
+        nerabilities?
+                                                                          recorded. We also evaluated the time for HGFuzzer to guide the
+      • RQ2: Can HGFuzzer effectively constrain execution paths
+                                                                          execution path to the target function (TTR). For evaluating the
+        to hit the target functions more frequently?
+                                                                          performance of the baselines on the benchmark, we collected the
+      • RQ3: How do the individual components of HGFuzzer con-
+                                                                          vulnerable library programs mentioned in the CVE reports or the
+        tribute to its overall performance?
+                                                                          fuzz drivers provided by the libraries as the fuzzing entry points.
+      • RQ4: Can HGFuzzer detect new real-world vulnerabilities?
+                                                                          The initial inputs for the baselines were set to the test inputs or
+Baselines. For evaluation, we compared HGFuzzer against three             fuzz inputs provided by the libraries.
+state-of-the-art greybox directed fuzzers: AFLGo [10], Beacon [21],          As detailed in Table 1, HGFuzzer successfully triggered 17 out
+and SelectFuzz [39].                                                      of 20 vulnerabilities within the 24-hour time budget, the high-
+                                                                          est among all evaluated methods. In contrast, the baselines showed
+      • AFLGo: A widely used directed fuzzer that guides the fuzzing
+                                                                          significantly lower success rates, with AFLGo and SelectFuzz each
+        process toward the target location by leveraging distance
+                                                                          triggering 5 vulnerabilities and Beacon triggering 6, representing a
+        metrics to prioritize execution paths.
+                                                                          2.2x to 2.3x improvement in the number of successfully triggered
+      • Beacon: This fuzzer focuses exclusively on execution paths
+                                                                          vulnerabilities by HGFuzzer. The baselines also encountered cases
+        that can reach the target location, prioritizing exploration of
+                                                                          where certain CVEs were marked as unavailable due to static anal-
+        relevant code paths.
+                                                                          ysis errors or runtime failures. For instance, AFLGo and Beacon
+      • SelectFuzz: This fuzzer detects code regions related to the
+                                                                          failed to process CVE-2018-20330 due to block distance calculation
+        target location and focuses on exploring these regions to
+                                                                          errors, while SelectFuzz and AFL++ successfully initiated fuzzing
+        improve the likelihood of reaching the target.
+                                                                          on CVE-2018-20330 but encountered runtime errors, with their exe-
+   Since HGFuzzer is built on AFL++, we also included AFL++, a            cution paths remaining constant at 1. This highlights the robustness
+coverage-guided fuzzer, as a baseline to evaluate the effectiveness       of HGFuzzer in handling a wider range of vulnerabilities.
+of our enhancements. We also attempted to compare HGFuzzer                   Among the vulnerabilities successfully triggered by HGFuzzer,
+with state-of-the-art directed fuzzers such as Titan [22], PGDF [62],     11 were exploited within the first minute of fuzzing, show-
+and DeepGo [35]. However, Titan is designed for multi-target sce-         casing its efficiency in reaching and triggering vulnerabilities. For
+narios and encountered compatibility issues when applied to our           example, in CVE-2016-9831, HGFuzzer exploited the vulnerability
+single-target benchmark. Additionally, PGDF and DeepGo do not             in under one minute, significantly faster than AFL++’s 0.45 hours,
+provide source code or documentation, making it infeasible for us         while the TTE for all other baselines exceeded 1 hour for this vul-
+to reproduce them.                                                        nerability. These results demonstrate that HGFuzzer achieves lower
+Benchmark Dataset. We constructed our benchmark dataset by                TTEs compared to the baselines, with differences often spanning
+collecting 20 CVE vulnerabilities sourced from prior fuzzing re-          orders of magnitude. This efficiency is primarily attributed to HG-
+search work [10, 21, 39] and open-source libraries integrated with        Fuzzer’s ability to generate precise execution conditions and custom
+OSS-Fuzz [6]. These vulnerabilities span 12 versions of 9 open-           mutators tailored to the target function. By reducing randomness in
+source C/C++ libraries. As shown in Table 1, the dataset includes         input mutation and focusing on paths relevant to the vulnerability,
+common vulnerability types in C/C++ programs and covers diverse           HGFuzzer significantly accelerates the fuzzing process.
+functionalities of open-source libraries. These vulnerabilities were         TS and TTR are influenced by factors such as project size, the
+used to evaluate the ability of the baselines to perform directed         complexity of the target function’s call relationships, and the re-
+fuzzing on specific targets. To ensure a fair comparison, we used         sponse time of the LLM API. However, experimental results show
+Directed Greybox Fuzzing via Large Language Model                                                                        Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+Table 1: Comparison of effectiveness with baselines on our benchmark. The “Total” row represents the number of vulnerabilities
+successfully triggered within the time budget.
+
+                                                                                                                 HGFuzzer            AFLGo         Beacon
+         Library          CVE ID            Vulnerability Location               Vulnerability Type                                                             SelectFuzz AFL++
+                                                                                                              TS      TTR TTE       TS     TTE TS TTE
+       libming 0.4.7      CVE-2016-9831     util/parser.c:parseSWF_RGBA          Buffer Overflow             6.96s 104s     I.E.   2,290s 6.7h    16s    4.3h     1.1h     0.45h
+                          CVE-2017-9988 util/parser.c:parseABC_NS_SET_INFO NULL Pointer Dereference          6.24s 179s 10.1h 3,265s T.O. 404s T.O.               T.O.     T.O.
+       libming 0.4.8
+                          CVE-2018-13066 util/parser.c:parseSWF_DEFINETEXT Memory Leak                       6.28s 94s I.E. 3,473s T.O. 131s 5.8h                 T.O.     T.O.
+                          CVE-2018-13785 pngrutil.c:png_check_chunk_length       Integer Overflow            6.78s 89s 0.27h 563s          T.O.   43s    T.O.     T.O.     T.O.
+       libpng 1.6.34      CVE-2018-14048 png.c:png_free_data                     Segmentation Violation      6.79s 96s T.O. 573s           T.O.   78s    T.O.     T.O.     T.O.
+                          CVE-2019-7317 pngerror.c:png_safe_execute              Use-after-free              7.12s 107s I.E. 607s          T.O.   98s    T.O.     T.O.     T.O.
+    libjpeg-turbo 2.0.1 CVE-2018-20330 turbojpeg.c:tjLoadImage                   Buffer Overflow              6.2s    71s 2.17h U.A.        /     U.A.    /       U.A.     U.A.
+    libjpeg-turbo 2.0.4 CVE-2020-13790 rdppm.c:get_rgb_row                       Buffer Overflow             6.25s 77s 3.12h        91s    T.O.   22s    T.O.     T.O.     T.O.
+    libjpeg-turbo 2.0.9 CVE-2021-46822 rdppm.c:get_word_rgb_row                  Buffer Overflow             6.52s 82s      T.O.   697s    T.O.   14s    T.O.     T.O.     T.O.
+         lcms2.9          CVE-2018-16435 src/cmscgats.c:AllocateDataSet          Integer Overflow            6.57s 98s      I.E.   950s    T.O.   82s    T.O.     T.O.     T.O.
+                          CVE-2017-2896     src/xls.c:xls_mergedCells            Out-of-bounds Write         6.33s    102s I.E.     41s  I.E. 11s 0.35h            3.7h    0.85h
+                          CVE-2017-2897     src/ole.c:read_MSAT                  Out-of-bounds Write         6.31s    99s I.E.      55s 0.35h 9s I.E.             0.25h    0.23h
+        libxls 1.4.0
+                          CVE-2017-2910     src/xls.c:xls_addCell                Out-of-bounds Write         6.09s    104s 0.13h   64s 1.2h 15s I.E.              0.73h     1.1h
+                          CVE-2021-27836    src/xls.c:xls_getWorkSheet           Segmentation Violation      6.22s    103s I.E.    112s 0.45h 16s 0.5h            2.43h    1.23h
+        libzip 1.2.0      CVE-2017-12858 lib/zip_dirent.c:_zip_dirent_read       Use-after-free              6.12s 82s      1.1h   251s    T.O.   14s    T.O.     T.O.     T.O.
+                          CVE-2021-38115 src/gd_tga.c:read_header_tga            Out-of-bounds Read          7.36s 79s      I.E.   U.A.      /    23s    T.O.     U.A.     T.O.
+        libgd 2.3.2
+                          CVE-2021-40812 src/gd_bmp.c:_gdImageBmpCtx             Out-of-bounds Read          6.41s 112s     I.E.   543s    T.O.   24s    T.O.     T.O.     T.O.
+                          CVE-2023-50471 cJSON.c:cJSON_InsertItemInArray         Segmentation Violation      6.59s 69s      I.E.   U.A.      /  U.A.      /       T.O.     T.O.
+       cjson 1.7.16
+                          CVE-2023-50472 cJSON.c:cJSON_SetValuestring            Segmentation Violation      6.57s 67s      I.E.   11s     T.O. U.A.      /       T.O.     T.O.
+     libmodbus 3.1.6      CVE-2024-36844 src/modbus.c:send_msg                   Use-after-free              6.09s 98s      T.O.   113s    T.O.   10s    T.O.     T.O.     T.O.
+          Total                                                                                                   17/20             5/20          6/20        5/20         5/20
+              I.E.: Imiediately Exploit (Trigger the vulnerability in one minute), T.O.: Time Out (>24 hours), U.A.: Unavailable (Static analysis or runtime error)
+
+
+                               Table 2: Comparison of target function hit rates with baselines on our benchmark.
+
+                          CVE ID               HGFuzzer                   AFLGo                     Beacon              SelectFuzz                  AFL++
+                       CVE-2016-9831           79.16%(38/48)         15.71%(383/2,437)        23.21%(13/56)             34.88%(30/86)        14.64%(115/785)
+                       CVE-2017-9988         53.76%(256/476)          3.68%(126/3,420)       1.57%(17/1,080)               0%(0/428)          1.39%(73/5,223)
+                       CVE-2018-13066           81.82%(9/11)          3.57%(118/3,298)         5.56%(36/647)             0.76%(3/390)        9.48%(452/4,763)
+                       CVE-2018-13785          94.73%(18/19)          94.10%(319/339)        90.09%(100/111)          97.63%(124/127)        96.71%(294/304)
+                       CVE-2018-14048        99.63%(270/271)          90.15%(119/132)        94.07%(127/135)            96%(120/125)         93.03%(187/201)
+                       CVE-2019-7317             100%(3/3)           100.00%(208/208)       100.00%(126/126)           100.00%(58/58)       100.00%(199/199)
+                       CVE-2018-20330       100.00%(320/320)                 U.A.                   U.A.                      U.A.                  U.A.
+                       CVE-2020-13790          7.94%(29/365)          1.00%(21/2,094)         8.07%(39/483)            14.10%(22/156)        4.19%(137/3,264)
+                       CVE-2021-46822          9.91%(36/363)          1.03%(16/1,543)         3.07%(18/585)                0%(0/146)          0.74%(20/2,669)
+                       CVE-2018-16435          22.47%(20/89)           9.26%(39/421)           2.52%(11/436)              5.77%(3/52)           14.29%(7/49)
+                       CVE-2017-2896           92.96%(66/73)            2.42%(8/330)          13.19%(76/576)            4.72%(35/742)         13.69%(66/482)
+                       CVE-2017-2897           95.83%(69/72)          83.75%(299/357)        90.84%(119/131)           94.77%(290/306)       79.91%(346/433)
+                       CVE-2017-2910           56.25%(36/64)          38.96%(247/634)         30.88%(42/136)           43.99%(267/607)       36.42%(287/788)
+                       CVE-2021-27836          73.53%(50/68)          69.43%(602/867)        73.45%(498/678)         46.87%(1047/2,234)     75.42%(801/1,062)
+                       CVE-2017-12858         88.14%(721/818)         90.77%(492/542)        75.70%(349/461)          99.28%(139/140)          95.65%(22/23)
+                       CVE-2021-38115        100.00%(17/17)                  U.A.              100.00%(5/5)                   U.A.             100.00%(5/5)
+                       CVE-2021-40812        100.00%(13/13)           44.10%(202/458)        37.70%(204/541)            68.60%(59/86)        42.04%(206/490)
+                       CVE-2023-50471            80%(8/10)                   U.A.                   U.A.                   0%(0/114)              0%(0/37)
+                       CVE-2023-50472           100.00%(3/3)              0%(0/612)                 U.A.                   0%(0/102)              0%(0/39)
+                       CVE-2024-36844          98.75%(79/80)             4.65%(2/43)            7.14%(3/42)               14.29%(1/7)          18.75%(12/64)
+                           AVG             64.75%(2,061/3,183)      18.05%(3,201/17,735)   28.62%(1,783/6,229)       37.22%(2,198/5,906)    15.46%(3,229/20,880)
+
+
+
+that our approach has an advantage in processing time dur-                                        speed. For example, in libming, the average static analysis time
+ing the preparation phase. Unlike AFLGo and Beacon, which                                         for AFLGo exceeds 3000 seconds, while for Beacon, it exceeds 183
+incur significant computational overhead from calculating block                                   seconds. In contrast, our approach completes static analysis in just
+distances during static analysis, HGFuzzer only requires query-                                   6–7 seconds. Additionally, HGFuzzer guides the execution path to
+ing the call chains of the target function within the library.                                    the target function within an average of 95.6 seconds, avoiding the
+This results in lower computational overhead and faster processing                                need for fuzz region guidance based on path distance calculations.
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                   Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+    In conclusion, HGFuzzer effectively balances success rate, effi-      generate target harnesses as fuzzing entry points demonstrates
+ciency, and computational overhead in triggering known vulnerabil-        great flexibility, providing a significant advantage even in scenarios
+ities. It outperforms baselines in both the number of vulnerabilities     where open-source library programs struggle to reach the target
+triggered and the time required to exploit them. Its ability to avoid     functions. This flexibility ensures the effectiveness of HGFuzzer
+costly block distance calculations during static analysis further high-   across a diverse range of programs and CVEs.
+lights its efficiency, completing preparation phases significantly
+faster than baselines. These results emphasize HGFuzzer’s practi-         4.3    RQ3: Ablation Study
+cality in triggering known vulnerabilities for open source libraries.
+                                                                          HGFuzzer leverages the generative power of LLM to improve multi-
+                                                                          ple key steps in existing directed fuzzing techniques. To evaluate the
+4.2     RQ2: Effectiveness in Constraining                                contributions of each component, we conducted an ablation study
+        Execution Paths                                                   by defining three variations of HGFuzzer: (1) HGFuzzer without the
+                                                                          reachable input generation component, using the same initial in-
+To evaluate whether HGFuzzer can effectively constrain execu-
+                                                                          puts as the baselines in Section 4.1 (Without Input); (2) HGFuzzer
+tion paths to hit target functions more frequently, we examined
+                                                                          without the target-specific mutator generation (Without Muta-
+how explicit path constraints generated by the LLM influence the
+                                                                          tor); and (3) HGFuzzer without both reachable input generation
+fuzzing process. These path constraints are designed to reduce un-
+                                                                          and target-specific mutator generation, relying solely on the target
+necessary exploration of non-target regions, potentially lowering
+                                                                          harness generation (Harness-only). We evaluated the TTE of these
+performance overhead and improving the success rate of triggering
+                                                                          variations across the benchmark to measure their effectiveness.
+vulnerabilities. For our analysis, we need to examine the execution
+paths explored during the experiments in Section 4.1.
+   During fuzzing, each unique execution path discovered generates        Table 3: Comparison of effectiveness with different HGFuzzer
+a new seed that is preserved in the fuzzer’s queue. Therefore, by         variations.
+analyzing these seeds, we can determine what proportion of the
+fuzzer’s exploration successfully reached our target functions. We
+                                                                                CVE ID      Without Input    Without Mutator     Harness-only
+compared the target function hit rate across all approaches by using
+                                                                           CVE-2016-9831         0.28h               0.1h             0.25h
+afl-cov to determine whether each generated seed hit the target
+                                                                           CVE-2017-9988          T.O.               T.O.              T.O.
+function, then calculated the overall hit rate. This metric directly       CVE-2018-13066         T.O.               T.O.              T.O.
+measures how effectively each approach guides execution toward             CVE-2018-13785        9.8h              10.65h             13.7h
+the vulnerable code regions.                                               CVE-2018-14048         T.O.               T.O.              T.O.
+   As illustrated in Table 2, HGFuzzer achieved the highest tar-           CVE-2019-7317          T.O.               T.O.              T.O.
+                                                                           CVE-2018-20330        5.32h              2.3h               T.O.
+get function hit rate on 14 out of 20 CVEs. For example, in CVE-
+                                                                           CVE-2020-13790        7.65h              9.1h              17.5h
+2016-9831, HGFuzzer achieved a hit rate of 79.16%, significantly           CVE-2021-46822         T.O.               T.O.              T.O.
+outperforming SelectFuzz (34.88%) and AFL++ (14.64%). Similarly,           CVE-2018-16435         T.O.              0.12h              T.O.
+for CVE-2018-14048, HGFuzzer reached a hit rate of 99.63%, which           CVE-2017-2896          I.E.               I.E.              I.E.
+is higher than SelectFuzz (96%) and other baselines. These results         CVE-2017-2897          I.E.              0.16h             0.22h
+                                                                           CVE-2017-2910          I.E.              0.11h             0.15h
+confirm the ability of HGFuzzer to guide execution paths effectively
+                                                                           CVE-2021-27836         I.E.              0.27h             0.25h
+toward target functions. In contrast, the baselines demonstrated           CVE-2017-12858        7.5h               2.45h             7.9h
+very low or even zero hit rates on certain CVEs, such as CVE-2018-         CVE-2021-38115         I.E.              0.13h             0.05h
+13066 and CVE-2023-50472. This suggests that the library programs          CVE-2021-40812         I.E.              0.08h             0.1h
+or their built-in fuzz drivers struggled or failed to reach the target     CVE-2023-50471         I.E.               I.E.              I.E.
+                                                                           CVE-2023-50472         I.E.               I.E.              I.E.
+functions, leading to poor performance of the baselines.                   CVE-2024-36844         T.O.               T.O.              T.O.
+   HGFuzzer also generated the smallest number of seeds across
+                                                                                Total            13/20             14/20              12/20
+the benchmark dataset, with a total of 3,183 seeds. This indicates
+significantly fewer explored paths, demonstrating that HGFuzzer
+effectively constrained the execution paths during fuzzing.
+Compared to the best-performing baseline, SelectFuzz, which gen-             As shown in Table 3, the removal of individual components led
+erated 5,906 seeds, HGFuzzer reduced the number of explored paths         to significant degradation in performance. The Without Input varia-
+by 46%. Despite exploring fewer paths, HGFuzzer achieved the high-        tion successfully triggered vulnerabilities in only 13 out of 20 CVEs,
+est average target function hit rate of 64.75%, representing a 27.5%      with longer TTE compared to the full HGFuzzer (e.g., 5.32h for
+improvement over SelectFuzz (37.22%).                                     CVE-2018-20330 compared to 2.17h in Section 4.1). The Without
+   These results highlight three key findings: (1) HGFuzzer sig-          Mutator variation performed slightly better, exposing vulnerabili-
+nificantly constrains the execution paths during directed fuzzing,        ties in 14 out of 20 CVEs, but its TTE was also noticeably higher
+reducing unnecessary exploration of non-target regions and improv-        (e.g., 10.65h for CVE-2018-13785 compared to 0.27h in Section 4.1).
+ing efficiency. (2) HGFuzzer achieves the highest target function         The Harness-only variation showed the weakest performance, suc-
+hit rate, enabling it to fuzz the target functions more frequently,       cessfully exposing vulnerabilities in only 12 out of 20 CVEs, and
+which correlates with its high success rate and low TTE observed          often failed to reduce TTE to a practical level (e.g., timing out on
+in the Section 4.1 experiments. (3) The use of LLM to explicitly          CVE-2018-20330).
+Directed Greybox Fuzzing via Large Language Model                                                                                     Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+   By comparing the results in Table 1 and Table 3, the ablation                                        339 char *readSizedString(FILE *f,int size)
+experiments demonstrate the essential contributions of each com-                                        340 {
+                                                                                                        341       int len = 0, buflen = 256, i;
+ponent in HGFuzzer. The absence of reachable input generation                                           342       char c, *buf, *p;
+significantly reduces the ability to guide execution toward the tar-                                    343
+                                                                                                        344       buf = (char *)malloc(sizeof(char)*buflen);
+get function, as it ensures the satisfaction of execution conditions                                    345       p = buf;
+derived from the call chain analysis. Similarly, removing the target-                                   346
+                                                                                                        347       for(i=0;i<size;i++)
+specific mutator generation hinders efficient mutation of inputs                                        348       {
+to satisfy vulnerability-triggering conditions; the fuzzer relies on                                    349           c=(char)readUInt8(f);
+                                                                                                        350           if(len >= buflen-2)
+random mutations, leading to excessive exploration of irrelevant                                        351           {
+paths and increased TTE (e.g., 5.32h vs. 2.17h in CVE-2018-20330).                                      352                buf = (char *)realloc(buf, sizeof(char)*(buflen+256));
+                                                                                                        353               buflen += 256;
+The Harness-only variation, which lacks both components, per-                                           354               p = buf+len;
+
+forms the worst, as the harness alone cannot ensure correct path                                        356         }
+                                                                                                        ...       ...
+traversal or condition satisfaction, leading to lower success rates                                     374       return buf;
+                                                                                                        375 }
+and frequent timeouts. We observe that for CVE-2023-50471 and
+CVE-2023-50472, the three variations exhibit no significant differ-
+ences compared to the results in Section 4.1, as their exploitability                                          (a) A memory leak case (CVE-2025-26306) in libming 0.4.8.
+heavily depends on specific library execution paths. HGFuzzer ef-                                       1137 static cmsBool smooth2(cmsContext ContextID, cmsFloat32Number w[], cmsFloat32Number y[],
+                                                                                                        1138                          cmsFloat32Number z[], cmsFloat32Number lambda, int m)
+fectively captures these features and incorporates them into the                                        1139 {
+                                                                                                        1140     int i, i1, i2;
+target harness, achieving good performance even with the Harness-                                       1141     cmsFloat32Number *c, *d, *e;
+only variation. These results highlight that reachable input gen-                                       1142     cmsBool st;
+                                                                                                        1143
+eration and target-specific mutators are essential to reducing                                          1144     c = (cmsFloat32Number*) _cmsCalloc(ContextID, MAX_NODES_IN_CURVE, sizeof(cmsFloat32Number));
+                                                                                                        1145     d = (cmsFloat32Number*) _cmsCalloc(ContextID, MAX_NODES_IN_CURVE, sizeof(cmsFloat32Number));
+randomness and improving directed fuzzing efficiency, with the                                          1146     e = (cmsFloat32Number*) _cmsCalloc(ContextID, MAX_NODES_IN_CURVE, sizeof(cmsFloat32Number));
+                                                                                                        1147
+full integration of all components providing the best performance.                                      1148      if (c != NULL && d != NULL && e != NULL) {
+                                                                                                        ...       ...
+                                                                                                        1185
+4.4          RQ4: Vulnerability Detection                                                               1186      i1 = m - 2; i2 = m - 3;
+                                                                                                        1187
+
+In this section, we apply HGFuzzer to detect new vulnerabilities.                                       1188
+                                                                                                        1189
+                                                                                                                  d[m - 1] = w[m - 1] + 5 * lambda -c[i1] * c[i1] * d[i1] - e[i2] * e[i2] * d[i2];
+                                                                                                                  c[m - 1] = (-2 * lambda - d[i1] * c[i1] * e[i1]) / d[m - 1];
+We selected two open-source libraries from the benchmark dataset                                        1190      z[m - 1] = w[m - 1] * y[m - 1] - c[i1] * z[i1] - e[i2] * z[i2];
+                                                                                                        1191      i1 = m - 1; i2 = m - 2;
+(libming and lcms) and tested their latest versions after compi-                                        ...       ...
+                                                                                                        1201      }
+lation. Since directed fuzzers require specific fuzzing targets, we                                     1202      else st = FALSE;
+
+adopted two strategies to define these targets. First, we investi-                                      1203
+                                                                                                        1204      if (c != NULL) _cmsFree(ContextID, c);
+gated the most recent vulnerabilities in these libraries from the                                       1205      if (d != NULL) _cmsFree(ContextID, d);
+                                                                                                        1206      if (e != NULL) _cmsFree(ContextID, e);
+CVE database [4] and used their root cause locations as fuzzing                                         1207
+                                                                                                        1208      return st;
+targets, which is based on the observation that certain vulnerable lo-                                  1209 }
+
+cations may contain multiple related bugs [52]. Second, we invited
+a security expert to manually review the code of the target libraries                                            (b) A buffer overflow case (CVE-2025-29070) in lcms2.16.
+to identify additional suspicious locations. We applied HGFuzzer
+to each target for 24 hours of fuzzing. As a result, HGFuzzer dis-                                                Figure 8: Examples of identified vulnerabilities.
+covered 9 new vulnerabilities across the two open-source libraries.
+All 9 vulnerabilities were assigned CVE IDs, demonstrating the
+real-world impact of our approach. The details of these findings are
+summarized in Table 4.
+                                                                                                       ing function of libming 0.4.8. The issue arises from insufficient
+            Table 4: Vulnerabilities identified by HGFuzzer.                                           error handling during dynamic memory allocation. The function al-
+                                                                                                       locates a buffer using malloc (line 344) and resizes it with realloc
+  Library       Vulnerability Location                           Vulnerability Type       CVE          (line 352) when the buffer size is exceeded. However, in cases where
+                util/parser.c:parseSWF_EXPORTASSETS                 Memory Leak       CVE-2025-26304   realloc fails, the previously allocated memory is not freed, leading
+                util/parser.c:parseSWF_SOUNDINFO                    Memory Leak       CVE-2025-26305
+                util/read.c:readSizedString                         Memory Leak       CVE-2025-26306   to a memory leak. Additionally, the function lacks proper cleanup
+libming 0.4.8
+                util/parser.c:parseSWF_IMPORTASSETS2                Memory Leak       CVE-2025-26307   logic in error conditions, such as when readUInt8 fails during the
+                util/parser.c:parseSWF_FILTERLIST                   Memory Leak       CVE-2025-26308
+                util/parser.c:parseSWF_DEFINESCENEANDFRAMEDATA      Memory Leak       CVE-2025-26309
+                                                                                                       loop (lines 347–356). This vulnerability was assigned CVE-2025-
+                util/parser.c:parseABC_FILE                         Memory Leak       CVE-2025-26310   26306. Second, HGFuzzer revealed a buffer overflow vulnerability
+                util/parser.c:parseSWF_CLIPACTIONS                  Memory Leak       CVE-2025-26311
+                                                                                                       in the smooth2 function of lcms2. The function dynamically allo-
+  lcms2.16      cmsgamma.c:smooth2                                 Buffer Overflow    CVE-2025-29070
+                                                                                                       cates memory for the c, d, and e arrays using _cmsCalloc (lines
+                                                                                                       1144–1146) and subsequently accesses elements based on the input
+   To further demonstrate the effectiveness to detect unknown vul-                                     parameter m. At lines 1188–1190, the function performs calcula-
+nerabilities of HGFuzzer, we provide two representative examples                                       tions that access d[m-1], d[m-2], and d[m-3] without validating
+of the vulnerabilities it identified, as shown in Figure 8. First, HG-                                 whether m is large enough to ensure safe access. If the input m is
+Fuzzer identified a memory leak vulnerability in the readSizedStr                                      less than 4, these array accesses result in a buffer overflow.
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                 Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+5    Discussion                                                             To improve target identification, recent tools have integrated
+HGFuzzer demonstrates the effectiveness of applying LLM to DGF.          advanced techniques. SUZZER [63], V-Fuzz [32], and DeepGo [35]
+To explore more effective DGF approaches, we discuss core aspects        employ deep learning models to predict vulnerable code regions,
+of our approach and identify promising future directions.                enabling the automatic labeling of potential targets without manual
+   Selection of LLM. In our implementation of HGFuzzer, we               effort. AFLChurn [65] and DeltaFuzz [61] leverage code changes
+utilized Claude-3.5-Sonnet as the underlying LLM. However, the           from version control systems to identify patch-related targets, mak-
+performance of different LLMs may vary significantly, leading to         ing them suitable for regression testing scenarios. Additionally,
+discrepancies in outputs and results. More advanced LLMs gener-          tools like FuzzGuard [67] and BEACON [21] use lightweight static
+ally exhibit a deeper understanding of the instructions provided         analysis or deep learning to filter out unreachable inputs, signifi-
+in prompts and are capable of generating higher-quality harnesses        cantly improving fuzzing efficiency. For example, FuzzGuard has
+and initial inputs. This suggests that the performance of HGFuzzer       been shown to reduce unnecessary path executions by over 80%,
+could be further enhanced by employing more powerful LLMs. Ad-           while BEACON combines symbolic execution with filtering mecha-
+ditionally, we observed during our experiments that hallucinations       nisms to further optimize performance. These advancements high-
+in the LLM could produce incorrect all-chain analysis results [24].      light the diverse approaches in DGF, focusing on improved target
+This issue can lead to the generation of reachable inputs that fail      identification, advanced fitness metrics, and optimization strategies
+to satisfy specific constraints. For example, in the case of complex     to enhance fuzzing performance across a variety of scenarios.
+conditional branches, as illustrated in Figure 2, the LLM might
+mistakenly interpret a condition requiring maxval to be less than        6.2    LLM for Fuzzing
+255 as requiring maxval to be greater than or equal to 255. Such         Recent advancements in integrating LLM with fuzzing have demon-
+misinterpretations negatively impact the effectiveness of HGFuzzer,      strated their potential to address challenges in generating meaning-
+especially in scenarios with intricate logic or constraints. A val-      ful and context-aware test cases for complex software systems [25,
+idation mechanism that cross-checks LLM-generated constraint             27, 55]. Unlike traditional fuzzing methods, which often rely on
+interpretations against the original code could be implemented to        simple input generation techniques, LLM enable more sophisticated
+address this issue, which we leave as a direction for future work.       approaches by leveraging their generative capabilities. Tools such as
+   Expanding Applicability. The benchmark libraries used in our          TitanFuzz [14], FuzzGPT [15], WhiteFox [58], and ParaFuzz [57] uti-
+evaluation are open-source, with their source code publicly avail-       lize models like GPT [8] and Codex [18] to improve input diversity
+able. These libraries are also likely included in the training data of   and quality. These approaches incorporate LLM into prompt engi-
+the selected LLM. As a result, applying HGFuzzer directly to closed-     neering and seed mutation processes, enhancing the effectiveness
+source libraries might yield different evaluation outcomes. Inspired     of fuzzing. Furthermore, LLMs have been applied to refine mutation
+by AFGen’s approach of generating harnesses for whole functions          strategies, beyond conventional techniques such as bit-flipping [50].
+of applications [37], we also consider leveraging internal function      E.g., CovRL-Fuzz [17] employs LLM to perform coverage-guided
+call relationships as a reference for generating target harnesses.       mutations while maintaining input validity, increasing the proba-
+This could enable HGFuzzer to be applied in a broader range of soft-     bility of uncovering unexpected software behavior.
+ware scenarios, such as Linux-based systems and web frameworks.             In addition to improving fuzzing inputs, LLM are increasingly
+Expanding the scope of HGFuzzer to these domains would require           employed to automate and simplify fuzzing workflows, particularly
+addressing challenges related to analyzing closed-source code and        in the generation of fuzz drivers. InputBlaster [38] demonstrates the
+handling complex system-level dependencies, which presents an            use of LLM to create specialized text inputs for mobile applications,
+interesting direction for future work.                                   achieving higher bug detection rates compared to conventional
+                                                                         methods. Similarly, ChatAFL [43] and ChatFuzz [20] integrate LLM
+                                                                         to enhance fuzzing for web applications and network protocols,
+6 Related Work                                                           resulting in greater code coverage and better vulnerability identifi-
+6.1 Directed Greybox Fuzzing                                             cation. LLM have also proven effective in automating fuzz driver
+                                                                         generation, which is critical for targeting specific APIs or software
+DGF has recently gained attention due to its ability to efficiently
+                                                                         functions. Zhang et al. [60] employ GPT-3.5 and GPT-4 to auto-
+locate specific target sites or trigger certain program behaviors.
+                                                                         mate the creation of fuzz drivers for complex library APIs, reducing
+Böhme et al. [10] proposed AFLGo, a pioneering DGF tool that
+                                                                         manual effort and achieving over 60% automation. Similarly, CK-
+utilizes a distance-based fitness metric to prioritize seeds closer to
+                                                                         GFuzzer [54] leverages LLM along with a code knowledge graph
+target locations. AFLGo calculates target distances during compile
+                                                                         to iteratively generate high-quality fuzz drivers, enabling deeper
+time and uses this information at runtime to guide the fuzzing pro-
+                                                                         exploration of previously untested library code and improving code
+cess, achieving significant efficiency improvements in tasks such
+                                                                         coverage. These advancements demonstrate the potential of in-
+as bug reproduction. Building on AFLGo, tools like Hawkeye [12]
+                                                                         tegrating LLM with knowledge-driven frameworks to streamline
+introduced function-level trace similarity to enhance seed prioriti-
+                                                                         fuzzing processes and enhance their overall effectiveness.
+zation, while tools such as UAFL [49] and UAFuzz [44] focused on
+detecting complex behavioral bugs like use-after-free vulnerabili-
+ties using sequence-aware fitness metrics. Berry [33] extended this      7     Conclusion
+concept by incorporating execution context into target sequences,        In this work, we present HGFuzzer, a novel and automatic frame-
+improving the accuracy of target coverage.                               work that integrates LLM to enhance DGF. By transforming path
+Directed Greybox Fuzzing via Large Language Model                                                                    Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+
+
+constraint analysis into code generation tasks, HGFuzzer systemat-                          [20] Jie Hu, Qian Zhang, and Heng Yin. 2023. Augmenting greybox fuzzing with
+ically generates target harnesses and reachable inputs, effectively                              generative ai. arXiv preprint arXiv:2306.06782 (2023).
+                                                                                            [21] Heqing Huang, Yiyuan Guo, Qingkai Shi, Peisen Yao, Rongxin Wu, and Charles
+reducing unnecessary path exploration. Additionally, it employs                                  Zhang. 2022. BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning.
+custom mutators tailored to specific vulnerabilities, minimizing                                 In 2022 IEEE Symposium on Security and Privacy (SP). 36–50. doi:10.1109/SP46214.
+                                                                                                 2022.9833751
+randomness in input mutation and improving fuzzing precision.                               [22] Heqing Huang, Peisen Yao, Hung-Chun Chiu, Yiyuan Guo, and Charles Zhang.
+Evaluated on 20 real-world vulnerabilities, HGFuzzer outperformed                                2024. Titan : Efficient Multi-target Directed Greybox Fuzzing. 2024 IEEE Sympo-
+state-of-the-art fuzzers, successfully triggering 17 vulnerabilities,                            sium on Security and Privacy (SP) (2024), 1849–1864. https://api.semanticscholar.
+                                                                                                 org/CorpusID:268386913
+11 of which were triggered within the first minute, and achiev-                             [23] Heqing Huang, Anshunkang Zhou, Mathias Payer, and Charles Zhang. 2024.
+ing a speedup of at least 24.8× compared to baselines. Moreover,                                 Everything is Good for Something: Counterexample-Guided Directed Fuzzing
+HGFuzzer discovered 9 previously unknown vulnerabilities, all of                                 via Likely Invariant Inference. In 2024 IEEE Symposium on Security and Privacy
+                                                                                                 (SP). 1956–1973. doi:10.1109/SP54263.2024.00142
+which received CVE IDs. These results demonstrate the effective-                            [24] Lei Huang, Weijiang Yu, Weitao Ma, Weihong Zhong, Zhangyin Feng, Haotian
+ness of HGFuzzer in improving fuzzing efficiency and precision.                                  Wang, Qianglong Chen, Weihua Peng, Xiaocheng Feng, Bing Qin, and Ting
+                                                                                                 Liu. 2025. A Survey on Hallucination in Large Language Models: Principles,
+                                                                                                 Taxonomy, Challenges, and Open Questions. ACM Trans. Inf. Syst. 43, 2, Article
+                                                                                                 42 (Jan. 2025), 55 pages. doi:10.1145/3703155
+References                                                                                  [25] Linghan Huang, Peizhou Zhao, Huaming Chen, and Lei Ma. 2024. Large Language
+ [1]   2018. afl-cov. https://github.com/mrash/afl-cov                                           Models Based Fuzzing Techniques: A Survey. arXiv:2402.00350 [cs.SE] https:
+ [2]   2025. AFL++. https://github.com/AFLplusplus/AFLplusplus                                   //arxiv.org/abs/2402.00350
+ [3]   2025. CodeQL documentation. https://codeql.github.com/docs/                          [26] Zhenlan Ji, Pingchuan Ma, Zongjie Li, and Shuai Wang. 2023. Benchmarking and
+ [4]   2025. CVE Database. https://cve.mitre.org/                                                Explaining Large Language Model-based Code Generation: A Causality-Centric
+ [5]   2025. LlamaIndex Documents. https://docs.llamaindex.ai/en/stable/                         Approach. arXiv:2310.06680 [cs.SE] https://arxiv.org/abs/2310.06680
+ [6]   2025. OSS-Fuzz. https://github.com/google/oss-fuzz/tree/master/projects              [27] Yu Jiang, Jie Liang, Fuchen Ma, Yuanliang Chen, Chijin Zhou, Yuheng Shen,
+ [7]   2025. Tree-Sitter documentation. https://tree-sitter.github.io/tree-sitter/               Zhiyong Wu, Jingzhou Fu, Mingzhe Wang, Shanshan Li, and Quan Zhang. 2024.
+ [8]   Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Floren-             When Fuzzing Meets LLMs: Challenges and Opportunities. In Companion Pro-
+       cia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal                  ceedings of the 32nd ACM International Conference on the Foundations of Software
+       Anadkat, et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774             Engineering (Porto de Galinhas, Brazil) (FSE 2024). Association for Computing
+       (2023).                                                                                   Machinery, New York, NY, USA, 492–496. doi:10.1145/3663529.3663784
+ [9]   Anthropic. 2024. Claude 3.5 Sonnet. https://www.anthropic.com/news/claude-           [28] Zongze Jiang, Ming Wen, Jialun Cao, Xuanhua Shi, and Hai Jin. 2024. Towards
+       3-5-sonnet                                                                                Understanding the Effectiveness of Large Language Models on Directed Test
+[10]   Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen, and Abhik Roychoud-                       Input Generation. In Proceedings of the 39th IEEE/ACM International Conference
+       hury. 2017. Directed Greybox Fuzzing. In Proceedings of the 2017 ACM SIGSAC               on Automated Software Engineering (Sacramento, CA, USA) (ASE ’24). Association
+       Conference on Computer and Communications Security (Dallas, Texas, USA) (CCS              for Computing Machinery, New York, NY, USA, 1408–1420. doi:10.1145/3691620.
+       ’17). Association for Computing Machinery, New York, NY, USA, 2329–2344.                  3695513
+       doi:10.1145/3133956.3134020                                                          [29] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+[11]   Chen Chen, Baojiang Cui, Jinxin Ma, Runpu Wu, Jianchao Guo, and Wenqian                   Evaluating Fuzz Testing. In Proceedings of the 2018 ACM SIGSAC Conference on
+       Liu. 2018. A systematic review of fuzzing techniques. Computers & Security 75             Computer and Communications Security (Toronto, Canada) (CCS ’18). Association
+       (2018), 118–137. doi:10.1016/j.cose.2018.02.002                                           for Computing Machinery, New York, NY, USA, 2123–2138. doi:10.1145/3243734.
+[12]   Hongxu Chen, Yinxing Xue, Yuekang Li, Bihuan Chen, Xiaofei Xie, Xiuheng Wu,               3243804
+       and Yang Liu. 2018. Hawkeye: Towards a Desired Directed Grey-box Fuzzer. In          [30] Gwangmu Lee, Woochul Shim, and Byoungyoung Lee. 2021. Constraint-guided
+       Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications              Directed Greybox Fuzzing. In 30th USENIX Security Symposium (USENIX Secu-
+       Security (Toronto, Canada) (CCS ’18). Association for Computing Machinery, New            rity 21). USENIX Association, 3559–3576. https://www.usenix.org/conference/
+       York, NY, USA, 2095–2108. doi:10.1145/3243734.3243849                                     usenixsecurity21/presentation/lee-gwangmu
+[13]   Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming            [31] Tsz-On Li, Wenxi Zong, Yibo Wang, Haoye Tian, Ying Wang, Shing-Chi Che-
+       Zhang. 2023. Large Language Models Are Zero-Shot Fuzzers: Fuzzing Deep-                   ung, and Jeff Kramer. 2023. Nuances are the Key: Unlocking ChatGPT to Find
+       Learning Libraries via Large Language Models. In Proceedings of the 32nd ACM              Failure-Inducing Tests with Differential Prompting. In 2023 38th IEEE/ACM In-
+       SIGSOFT International Symposium on Software Testing and Analysis (Seattle, WA,            ternational Conference on Automated Software Engineering (ASE). 14–26. doi:10.
+       USA) (ISSTA 2023). Association for Computing Machinery, New York, NY, USA,                1109/ASE56229.2023.00089
+       423–435. doi:10.1145/3597926.3598067                                                 [32] Yuwei Li, Shouling Ji, Chenyang Lyu, Yuan Chen, Jianhai Chen, Qinchen Gu,
+[14]   Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming                 Chunming Wu, and Raheem Beyah. 2022. V-Fuzz: Vulnerability Prediction-
+       Zhang. 2023. Large language models are zero-shot fuzzers: Fuzzing deep-learning           Assisted Evolutionary Fuzzing for Binary Programs. IEEE Transactions on Cyber-
+       libraries via large language models. In Proceedings of the 32nd ACM SIGSOFT               netics 52, 5 (2022), 3745–3756. doi:10.1109/TCYB.2020.3013675
+       international symposium on software testing and analysis. 423–435.                   [33] Hongliang Liang, Lin Jiang, Lu Ai, and Jinyi Wei. 2020. Sequence directed hybrid
+[15]   Yinlin Deng, Chunqiu Steven Xia, Chenyuan Yang, Shizhuo Dylan Zhang, Shu-                 fuzzing. In 2020 IEEE 27th International Conference on Software Analysis, Evolution
+       jing Yang, and Lingming Zhang. 2024. Large language models are edge-case                  and Reengineering (SANER). IEEE, 127–137.
+       generators: Crafting unusual programs for fuzzing deep learning libraries. In Pro-   [34] Hongliang Liang, Xiaoxiao Pei, Xiaodong Jia, Wuwei Shen, and Jian Zhang. 2018.
+       ceedings of the 46th IEEE/ACM International Conference on Software Engineering.           Fuzzing: State of the Art. IEEE Transactions on Reliability 67, 3 (2018), 1199–1218.
+       1–13.                                                                                     doi:10.1109/TR.2018.2834476
+[16]   Zhengjie Du, Yuekang Li, Yang Liu, and Bing Mao. 2022. Windranger: A Directed        [35] Peihong Lin, Pengfei Wang, Xu Zhou, Wei Xie, Gen Zhang, and Kai Lu. 2024.
+       Greybox Fuzzer driven by Deviation Basic Blocks. In 2022 IEEE/ACM 44th In-                DeepGo: Predictive Directed Greybox Fuzzing. In Proceedings of the Network and
+       ternational Conference on Software Engineering (ICSE). 2440–2451. doi:10.1145/            Distributed System Security Symposium.
+       3510003.3510197                                                                      [36] Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. 2023. Is
+[17]   Jueon Eom, Seyeon Jeong, and Taekyoung Kwon. 2024. Fuzzing JavaScript Inter-              Your Code Generated by ChatGPT Really Correct? Rigorous Evaluation of Large
+       preters with Coverage-Guided Reinforcement Learning for LLM-Based Mutation.               Language Models for Code Generation. arXiv:2305.01210 [cs.SE] https://arxiv.
+       In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software                org/abs/2305.01210
+       Testing and Analysis (Vienna, Austria) (ISSTA 2024). Association for Computing       [37] Yuwei Liu, Yanhao Wang, Xiangkun Jia, Zheng Zhang, and Purui Su. 2024. AFGen:
+       Machinery, New York, NY, USA, 1656–1668. doi:10.1145/3650212.3680389                      Whole-Function Fuzzing for Applications and Libraries. In 2024 IEEE Symposium
+[18]   James Finnie-Ansley, Paul Denny, Brett A Becker, Andrew Luxton-Reilly, and                on Security and Privacy (SP). 1901–1919. doi:10.1109/SP54263.2024.00011
+       James Prather. 2022. The robots are coming: Exploring the implications of openai     [38] Zhe Liu, Chunyang Chen, Junjie Wang, Mengzhuo Chen, Boyu Wu, Xing Che,
+       codex on introductory programming. In Proceedings of the 24th Australasian                Dandan Wang, and Qing Wang. 2023. Testing the Limits: Unusual Text In-
+       Computing Education Conference. 10–19.                                                    puts Generation for Mobile App Crash Detection with Large Language Model.
+[19]   Xinyi Hou, Yanjie Zhao, Yue Liu, Zhou Yang, Kailong Wang, Li Li, Xiapu Luo,               arXiv:2310.15657 [cs.SE] https://arxiv.org/abs/2310.15657
+       David Lo, John Grundy, and Haoyu Wang. 2024. Large Language Models for               [39] Changhua Luo, Wei Meng, and Penghui Li. 2023. SelectFuzz: Efficient Directed
+       Software Engineering: A Systematic Literature Review. ACM Trans. Softw. Eng.              Fuzzing with Selective Path Exploration. In 2023 IEEE Symposium on Security and
+       Methodol. 33, 8, Article 220 (Dec. 2024), 79 pages. doi:10.1145/3695988                   Privacy (SP). 2693–2707. doi:10.1109/SP46215.2023.10179296
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY                                                                            Hanxiang Xu, Yanjie Zhao, and Haoyu Wang
+
+
+[40] Yunlong Lyu, Yuxuan Xie, Peng Chen, and Hao Chen. 2024. Prompt Fuzzing for            [59] Wei You, Peiyuan Zong, Kai Chen, XiaoFeng Wang, Xiaojing Liao, Pan Bian, and
+     Fuzz Driver Generation. In Proceedings of the 2024 on ACM SIGSAC Conference                Bin Liang. 2017. SemFuzz: Semantics-based Automatic Generation of Proof-of-
+     on Computer and Communications Security (Salt Lake City, UT, USA) (CCS ’24).               Concept Exploits. In Proceedings of the 2017 ACM SIGSAC Conference on Computer
+     Association for Computing Machinery, New York, NY, USA, 3793–3807. doi:10.                 and Communications Security (Dallas, Texas, USA) (CCS ’17). Association for
+     1145/3658644.3670396                                                                       Computing Machinery, New York, NY, USA, 2139–2154. doi:10.1145/3133956.
+[41] Valentin J.M. Manès, HyungSeok Han, Choongwoo Han, Sang Kil Cha, Manuel                    3134085
+     Egele, Edward J. Schwartz, and Maverick Woo. 2021. The Art, Science, and              [60] Cen Zhang, Mingqiang Bai, Yaowen Zheng, Yeting Li, Wei Ma, Xiaofei Xie,
+     Engineering of Fuzzing: A Survey. IEEE Transactions on Software Engineering 47,            Yuekang Li, Limin Sun, and Yang Liu. 2023. Understanding large language model
+     11 (2021), 2312–2331. doi:10.1109/TSE.2019.2946563                                         based fuzz driver generation. arXiv e-prints (2023), arXiv–2307.
+[42] Ruijie Meng, Martin Mirchev, Marcel Böhme, and Abhik Roychoudhury. 2024.              [61] Jia-Ming Zhang, Zhan-Qi Cui, Xiang Chen, Huan-Huan Wu, Li-Wei Zheng, and
+     Large Language Model guided Protocol Fuzzing. Proceedings 2024 Network and                 Jian-Bin Liu. 2022. DeltaFuzz: historical version information guided fuzz testing.
+     Distributed System Security Symposium (2024). https://api.semanticscholar.org/             Journal of Computer Science and Technology 37, 1 (2022), 29–49.
+     CorpusID:265296188                                                                    [62] Yujian Zhang, Yaokun Liu, Jinyu Xu, and Yanhao Wang. 2024. Predecessor-aware
+[43] Ruijie Meng, Martin Mirchev, Marcel Böhme, and Abhik Roychoudhury. 2024.                   Directed Greybox Fuzzing . In 2024 IEEE Symposium on Security and Privacy (SP).
+     Large language model guided protocol fuzzing. In Proceedings of the 31st Annual            IEEE Computer Society, Los Alamitos, CA, USA, 1884–1900. doi:10.1109/SP54263.
+     Network and Distributed System Security Symposium (NDSS).                                  2024.00040
+[44] Manh-Dung Nguyen, Sébastien Bardin, Richard Bonichon, Roland Groz, and                [63] Yuyue Zhao, Yangyang Li, Tengfei Yang, and Haiyong Xie. 2020. Suzzer: A
+     Matthieu Lemerre. 2020. Binary-level Directed Fuzzing for Use-After-Free                   Vulnerability-Guided Fuzzer Based on Deep Learning. In International Conference
+     Vulnerabilities. In 23rd International Symposium on Research in Attacks, In-               on Information Security and Cryptology.
+     trusions and Defenses (RAID 2020). USENIX Association, San Sebastian, 47–62.          [64] Zhuotong Zhou, Yongzhuo Yang, Susheng Wu, Yiheng Huang, Bihuan Chen,
+     https://www.usenix.org/conference/raid2020/presentation/nguyen                             and Xin Peng. 2024. Magneto: A Step-Wise Approach to Exploit Vulnerabilities
+[45] Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. 2020.             in Dependent Libraries via LLM-Empowered Directed Fuzzing. In 2024 39th
+     ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium              IEEE/ACM International Conference on Automated Software Engineering (ASE).
+     (USENIX Security 20). USENIX Association, 2289–2306. https://www.usenix.org/               1633–1644.
+     conference/usenixsecurity20/presentation/osterlund                                    [65] Xiaogang Zhu and Marcel Böhme. 2021. Regression greybox fuzzing. In Pro-
+[46] Hammond Pearce, Baleegh Ahmad, Benjamin Tan, Brendan Dolan-Gavitt, and                     ceedings of the 2021 ACM SIGSAC Conference on Computer and Communications
+     Ramesh Karri. 2021. Asleep at the Keyboard? Assessing the Security of GitHub               Security. 2169–2182.
+     Copilot’s Code Contributions. arXiv:2108.09293 [cs.CR] https://arxiv.org/abs/         [66] Xiaogang Zhu, Sheng Wen, Seyit Camtepe, and Yang Xiang. 2022. Fuzzing: A
+     2108.09293                                                                                 Survey for Roadmap. ACM Comput. Surv. 54, 11s, Article 230 (Sept. 2022), 36 pages.
+[47] Ruizhong Qiu, Weiliang Will Zeng, Hanghang Tong, James Ezick, and Christopher              doi:10.1145/3512345
+     Lott. 2024. How Efficient is LLM-Generated Code? A Rigorous & High-Standard           [67] Peiyuan Zong, Tao Lv, Dawei Wang, Zizhuang Deng, Ruigang Liang, and Kai
+     Benchmark. arXiv:2406.06647 [cs.SE] https://arxiv.org/abs/2406.06647                       Chen. 2020. FuzzGuard: filtering out unreachable inputs in directed grey-box
+[48] Wenxuan Shi, Yunhang Zhang, Xinyu Xing, and Jun Xu. 2024.                      Har-        fuzzing through deep learning. In Proceedings of the 29th USENIX Conference on
+     nessing Large Language Models for Seed Generation in Greybox Fuzzing.                      Security Symposium (SEC’20). USENIX Association, USA, Article 127, 15 pages.
+     arXiv:2411.18143 [cs.CR] https://arxiv.org/abs/2411.18143
+[49] Haijun Wang, Xiaofei Xie, Yi Li, Cheng Wen, Yuekang Li, Yang Liu, Shengchao
+     Qin, Hongxu Chen, and Yulei Sui. 2020. Typestate-guided fuzzer for discovering
+     use-after-free vulnerabilities. In Proceedings of the ACM/IEEE 42nd International
+     Conference on Software Engineering (Seoul, South Korea) (ICSE ’20). Association
+     for Computing Machinery, New York, NY, USA, 999–1010. doi:10.1145/3377811.
+     3380386
+[50] Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. 2019. Superion: Grammar-
+     aware greybox fuzzing. In 2019 IEEE/ACM 41st International Conference on Soft-
+     ware Engineering (ICSE). IEEE, 724–735.
+[51] Pengfei Wang, Xu Zhou, Tai Yue, Peihong Lin, Yingying Liu, and Kai Lu. 2023.
+     The progress, challenges, and perspectives of directed greybox fuzzing. Software
+     Testing, Verification and Reliability 34, 2 (Dec. 2023). doi:10.1002/stvr.1869
+[52] Yanhao Wang, Xiangkun Jia, Yuwei Liu, Kyle Zeng, Tiffany Bao, Dinghao Wu, and
+     Purui Su. 2020. Not All Coverage Measurements Are Equal: Fuzzing by Coverage
+     Accounting for Input Prioritization. Proceedings 2020 Network and Distributed
+     System Security Symposium (2020). https://api.semanticscholar.org/CorpusID:
+     211268394
+[53] Yi Xiang, Xuhong Zhang, Peiyu Liu, Shouling Ji, Hong Liang, Jiacheng Xu, and
+     Wenhai Wang. 2024. Critical Code Guided Directed Greybox Fuzzing for Com-
+     mits. In 33rd USENIX Security Symposium (USENIX Security 24). USENIX As-
+     sociation, Philadelphia, PA, 2459–2474. https://www.usenix.org/conference/
+     usenixsecurity24/presentation/xiang-yi
+[54] Hanxiang Xu, Wei Ma, Ting Zhou, Yanjie Zhao, Kai Chen, Qiang Hu, Yang Liu, and
+     Haoyu Wang. 2024. CKGFuzzer: LLM-Based Fuzz Driver Generation Enhanced
+     By Code Knowledge Graph. arXiv:2411.11532 [cs.SE] https://arxiv.org/abs/2411.
+     11532
+[55] Hanxiang Xu, Shenao Wang, Ningke Li, Kailong Wang, Yanjie Zhao, Kai Chen,
+     Ting Yu, Yang Liu, and Haoyu Wang. 2024. Large Language Models for Cyber
+     Security: A Systematic Literature Review. arXiv:2405.04760 [cs.CR] https://arxiv.
+     org/abs/2405.04760
+[56] Yijiang Xu, Hongrui Jia, Liguo Chen, Xin Wang, Zhengran Zeng, Yidong Wang,
+     Qing Gao, Jindong Wang, Wei Ye, Shikun Zhang, and Zhonghai Wu. 2024.
+     ISC4DGF: Enhancing Directed Grey-box Fuzzing with LLM-Driven Initial Seed
+     Corpus Generation. arXiv:2409.14329 [cs.SE] https://arxiv.org/abs/2409.14329
+[57] Lu Yan, Zhuo Zhang, Guanhong Tao, Kaiyuan Zhang, Xuan Chen, Guangyu Shen,
+     and Xiangyu Zhang. 2024. Parafuzz: An interpretability-driven technique for
+     detecting poisoned samples in nlp. Advances in Neural Information Processing
+     Systems 36 (2024).
+[58] Chenyuan Yang, Yinlin Deng, Runyu Lu, Jiayi Yao, Jiawei Liu, Reyhaneh Jab-
+     barvand, and Lingming Zhang. 2023. WhiteFox: White-Box Compiler Fuzzing
+     Empowered by Large Language Models. arXiv preprint arXiv:2310.15991 (2023).
+

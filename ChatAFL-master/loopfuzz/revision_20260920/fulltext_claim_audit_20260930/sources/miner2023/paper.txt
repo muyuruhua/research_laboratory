@@ -1,0 +1,1269 @@
+         Miner: A Hybrid Data-Driven Approach
+                  for REST API Fuzzing
+ Chenyang Lyu, Jiacheng Xu, Shouling Ji, Xuhong Zhang, and Qinying Wang,
+Zhejiang University; Binbin Zhao, Georgia Institute of Technology; Gaoning Pan,
+   Zhejiang University; Wei Cao and Peng Chen, Ant Group; Raheem Beyah,
+                         Georgia Institute of Technology
+         https://www.usenix.org/conference/usenixsecurity23/presentation/lyu
+
+
+
+
+        This paper is included in the Proceedings of the
+              32nd USENIX Security Symposium.
+                    August 9–11, 2023 • Anaheim, CA, USA
+                                 978-1-939133-37-3
+
+
+
+
+                                         Open access to the Proceedings of the
+                                          32nd USENIX Security Symposium
+                                               is sponsored by USENIX.
+                M INER: A Hybrid Data-Driven Approach for REST API Fuzzing
+
+                                                                                                                                ∗
+Chenyang Lyu† , Jiacheng Xu† , Shouling Ji†, B , Xuhong Zhang† , Qinying Wang† , Binbin Zhao , Gaoning
+                                                                           ∗
+                          Pan† , Wei Cao‡ , Peng Chen‡ , and Raheem Beyah
+                                       † Zhejiang University, ∗ Georgia Institute of Technology, ‡ Ant Group
+
+
+
+
+                                                                            APIs [22], without the requirement for local software installa-
+                                                                            tions. In a shared cloud service architecture, multiple users
+                              Abstract                                      can access the same application through separate processes.
+   In recent years, REST API fuzzing has emerged to explore                 In this manner, incorrect REST API access may result in a
+errors on a cloud service. Its performance highly depends                   crash of a process, which can finally lead to cloud service
+on the sequence construction and request generation. How-                   collapse, broken access control, and private data leakage.
+ever, existing REST API fuzzers have trouble generating long                   Therefore, to explore potential errors of cloud services
+sequences with well-constructed requests to trigger hard-to-                via REST APIs, early works [1, 6, 7] leverage previously-
+reach states in a cloud service, which limits their performance             captured API traffic and manually-defined rules to generate
+of finding deep errors and security bugs. Further, they cannot              testing requests. Recently, to better automatically infer the
+find the specific errors caused by using undefined parameters               dependencies among request types and construct request se-
+during request generation. Therefore, in this paper, we pro-                quences, REST API fuzzing is proposed to test cloud ser-
+pose a novel hybrid data-driven solution, named M INER, with                vices [12–14, 27]. Typically, 1) the generation strategies of a
+three new designs working together to address the above limi-               REST API fuzzer handle two main problems, i.e., how to con-
+tations. First, M INER collects the valid sequences whose re-               struct a sequence template and how to generate each request
+quests pass the cloud service’s checking as the templates, and              in a template. After generation, the fuzzer sends the ready-
+assigns more executions to long sequence templates. Second,                 to-use request sequences to test a target cloud service; 2)
+to improve the generation quality of requests in a sequence                 For each request in a sequence, the cloud service first checks
+template, M INER creatively leverages the state-of-the-art neu-             whether the request conforms to the syntax and semantics. If
+ral network model to predict key request parameters and pro-                not, it returns a response in 40× Range. On the contrary, the
+vide them with appropriate parameter values. Third, M INER                  cloud service performs a behavior according to the request,
+implements a new data-driven security rule checker to capture               e.g., the cloud service deletes a resource when receiving a
+the new kind of errors caused by undefined parameters. We                   DELETE request. If the cloud service behaves normally, e.g.,
+evaluate M INER against the state-of-the-art fuzzer RESTler                 it successfully deletes the specified resource according to
+on GitLab, Bugzilla, and WordPress via 11 REST APIs. The                    the request, it returns a response in 20× Range. Otherwise,
+results demonstrate that the average pass rate of M INER is                 the cloud service behaves abnormally, e.g., it tries to delete
+23.42% higher than RESTler. M INER finds 97.54% more                        a non-existent resource and results in an error state. Then,
+unique errors than RESTler on average and 142.86% more                      it returns a response in 50× Range; 3) The fuzzer analyzes
+reproducible errors after manual analysis. We have reported                 the response to each request and infers the triggered states
+all the newly found errors, and 7 of them have been confirmed               of a cloud service; 4) The fuzzer collects the unique request
+as logic bugs by the corresponding vendors.                                 sequences triggering error states, e.g., the sequences having
+                                                                            responses in 50× Range or violating security rules. Following
+                                                                            the above steps, a REST API fuzzer explores reachable cloud
+1    Introduction                                                           service states with generated request sequences.
+                                                                               However, we find that existing REST API fuzzers cannot
+Cloud services have experienced significant growth over
+                                                                            efficiently generate long request sequences to test cloud ser-
+the last decade. They provide software-as-a-service appli-
+                                                                            vices. As a result, existing fuzzers have trouble finding deep
+cations that can be programmatically accessed through REST
+                                                                            errors hidden in hard-to-reach states of cloud services. In par-
+    Shouling Ji is the corresponding author.                                ticular, it is hard for existing fuzzers to find security bugs like
+
+
+
+USENIX Association                                                                             32nd USENIX Security Symposium           4517
+use-after-free bugs and resource-hierarchy bugs as introduced       their performance under the same experimental condition. In
+in [14], which need to be triggered with a request sequence of      this paper, we implement a prototype of M INER based on
+no less than 3 in length. The underlying reason is that secu-       the state-of-the-art fuzzer RESTler [12]. Then, we evaluate
+rity bugs on cloud services often require complex execution         the performance of M INER and RESTler on 3 open-sourced
+logic to trigger. We summarize two main reasons, correspond-        cloud services GitLab [5], Bugzilla [2] and WordPress [8]
+ing to the sequence construction and request generation, that       via 11 representative REST APIs. The average pass rate of
+the state-of-the-art REST API fuzzers fail to generate long         M INER is 23.42% higher than RESTler, which indicates that
+request sequences. 1) Existing fuzzers often fail to extend         M INER significantly improves the request generation to pass
+request sequence templates. Their sequence extension pro-           the cloud service’s checking. The evaluation also shows that
+cess frequently abandons the constructed sequence templates         our designs significantly improve the sequence construction
+and starts with an empty template, making it challenging to         of M INER, which assigns most executions to the sequences of
+construct sequences of larger lengths; 2) When generating           length greater than 4. Furthermore, M INER discovers 142.86%
+a request in a sequence template, existing fuzzers randomly         more reproducible errors than RESTler, including 5 security
+select values for the request’s parameters. They cannot figure      bugs that access deleted resources.
+out which parameter should be mutated or what parameter                In summary, we make the following main contributions.
+value should be assigned, i.e., the key mutation on a request.         • We find that REST API fuzzers have trouble generating
+As a result, they have trouble generating valid requests that       long sequences containing high-quality requests and cannot
+can pass a cloud service’s checking.                                find incorrect parameter usage errors. Motivated by our find-
+   To overcome the above two limitations and improve er-            ings, we propose a new solution named M INER with three
+ror discovery, in this paper, we present a hybrid data-driven       novel data-driven designs, i.e., 1) leveraging the history data
+fuzzing solution named M INER with the following three im-          to guide the sequence construction, 2) improving the request
+portant designs. 1) Length-orientated sequence construction:        generation with desirable parameter values by constructing an
+M INER leverages the historical data to guide the sequence gen-     attention model for prediction, and 3) exploring a new kind
+eration. Specifically, M INER collects the sequence templates,      of errors by generating requests with undefined parameters.
+whose requests have been successfully generated and have               • We evaluate M INER and RESTler on 3 open-sourced
+passed the cloud service’s checking in the past fuzzing pro-        cloud services, and show the significant performance of
+cess, as the initial templates of the sequence extension process.   M INER on sequence construction, request generation and
+Then, M INER leverages a probability function to assign more        error discovery. Furthermore, we utilize the published bugs
+selection times to the sequence templates with large lengths        of GitLab as the ground truth to demonstrate that M INER
+in the extension process; 2) Attention model-based request          performs better than RESTler on serious bug discovery. The
+generation: To improve request generation quality, for each         stepwise analysis shows the contribution of our designs to
+valid request that passes the checking, M INER first collects its   pass rate and error discovery. We conduct extensive analysis
+parameters and the used values as the key mutations. Second,        to show high code line coverage, low time overhead, and di-
+M INER constructs an attention model, which is one of the           verse execution distribution of requests achieved by M INER1 .
+state-of-the-art neural network models, to learn the implicit
+relationship among the key mutations. Then, M INER uses the         2     Background
+model to generate more diverse combinations of desirable key
+mutations, which can construct high-quality requests to pass
+                                                                    2.1       REST API for Cloud Services
+the checking and explore different states of a cloud service; 3)
+Request parameter violation checking: M INER implements             Most cloud services can be accessed via REST APIs to
+an extra security rule checker to capture incorrect parameter       provide various functionalities. In implementation, different
+usage errors. By using this checker, M INER generates a new         types of requests can be sent to trigger different behaviors
+request with an undefined parameter to test a cloud service.        of a cloud service. For instance, a client 1) can send a GET
+For instance, M INER can construct a PUT request containing         request to GitLab, in order to get a list of visible projects with
+the undefined parameter, which comes from a POST request. If        the selected parameters after authentication; 2) can send a
+the request gets a response in 50× Range, M INER infers that        POST request to create a new project with the specified param-
+an incorrect parameter usage error is triggered, and records the    eters; 3) is able to update the parameters of a specified project
+used request locally for further analysis. The above three core     by sending a PUT request; and 4) can delete a project with a
+designs are compatible with each other, and work together in        DELETE request. These behaviors can explore different states
+the fuzzing process to improve the fuzzing performance.             of a cloud service. Similarly, by automatically generating and
+   Our approach is a generic data-driven framework that does        sending request sequences via a cloud service’s REST API, a
+not require initial training data before fuzzing. Instead, it       fuzzer can explore errors hidden in different states.
+automatically collects training data during the fuzzing process.        1We   open source M INER at https://github.com/puppet-meteor/MINER to
+It can be applied to most REST API fuzzers, and improves            facilitate future research on REST API fuzzing.
+
+
+
+
+4518    32nd USENIX Security Symposium                                                                              USENIX Association
+  GET    /groups/{id}                    /groups/{id}:                     generated_request = Request(          GET /api/v4/groups/{id}?      HTTP/1.1 200 OK
+                                          get:                              static(“GET /api/v4/groups/”),       with_custom_attributes=true   Server: nginx
+                                          parameters:                       consumer(“{id}”),                    & with_projects=false         Date: {date}
+ Parameters             Types Required     -name: id                        static(“?with_custom_attributes      HTTP/1.1                      Content-Type:
+                                            required: yes                  =”),                                  Accept: application/json      application/json
+                                            type: integer                   fuzzable(“boolean”),                 Host: 10.214.241.134          Content-Length: 848
+ id              integer/string    yes     -name: with_custom_attributes    static(“&with_projects=”),           PRIVATE-TOKEN: {token}        Connection: keep-alive
+                                            required: no                    fuzzable(“boolean”),                 Content-Length: 0             Vary: Accept-Encoding
+ with_custom_attributes boolean no          type: boolean                   static(“HTTP/1.1”),                  User-Agent: restler/7.3.0     Cache-Control: max-age=0,
+                                           -name: with_projects             static(“Accept:application/json”),                                 private, must-revalidate
+                                            required: no                     ……                                                                ......
+ with_projects             boolean no       type: boolean                  )
+
+
+(a) An example description of (b) The corresponding (c) The request template for (d) The generated request (e) The corresponding re-
+"GET /groups/{id}" on the web. Swagger specification. "GET /groups/{id}".        example.                  sponse.
+Figure 1: An example to convert the description of a request on the web into a request template, and what a generated request
+and its corresponding response look like.
+2.2     REST API Fuzzing                                                                   solves the problem by reading the target object id from the
+                                                                                           response of the previous request in a sequence. Specifically, it
+Two of the main challenges to fuzz cloud services are as                                   constructs special request templates to produce and consume
+follows: How to construct sequences composed of different                                  target object ids. To produce a target object id, the fuzzer ana-
+requests to trigger a series of behaviors and explore deep                                 lyzes the response of a request like GET and POST, and stores
+states of a cloud service, and how to construct high-quality                               the target id in memory, which will be freed when the test of
+requests to pass the cloud service’s checking. Towards this,                               the current request sequence ends. Then, if a latter request
+REST API fuzzing is proposed to explore errors hidden in the                               template needs a target object id, the fuzzer generates it by
+reachable execution states of a cloud service [12–14, 27]. A                               reading the stored id from memory. In general, a request that
+REST API fuzzer automatically generates request sequences                                  provides a target object id is named producer, and a request
+to test a target cloud service, and is guided by the request                               that requires a target object id is named consumer.
+responses. If a request in the generated sequence triggers a                               Sequence Module: A fuzzer combines different requests
+response in 50× Range, the fuzzer considers that an error                                  to construct different test sequences, e.g., it can send a se-
+is triggered and stores the sequence for future analysis. The                              quence containing POST and PUT requests to create a resource
+main modules of a REST API fuzzer are as follows.                                          and then modify this resource. To achieve this, it imple-
+Compiler Module: A REST API fuzzer implements the                                          ments the Sequence Module to dynamically extend request
+Compiler Module to generate a fuzzing grammar and con-                                     sequence templates started from an empty one, whose details
+struct request templates, whose procedures are as follows.                                 are as follows. 1) When entering the Sequence Module, a
+First, the fuzzer requires the Swagger specification for each                              fuzzer starts with an empty sequence template; 2) It main-
+request type. As shown in Fig. 1, to obtain the Swagger spec-                              tains a set of successfully extended sequence templates, and
+ification, a user 1) can read the description for each request                             performs the extension process to construct new sequence
+type published on the web page by vendors, and 2) manually                                 templates based on these successfully extended templates.
+transforms the description into the Swagger specification as                               Specifically, it adds each candidate request at the end of the
+shown in Fig. 1a and Fig. 1b. Then, based on the Swagger                                   current sequence template and constructs new candidate se-
+specification, the fuzzer performs a lightweight static analysis                           quence templates. Then, the fuzzer empties the set and waits
+to construct request templates as shown in Fig. 1c. To be                                  for the new successfully extended sequence templates; 3)
+specific, it 1) infers the dependencies among different request                            For each candidate sequence template, the fuzzer utilizes the
+types; 2) constructs a template for each request type; and                                 Generation Module, which will be introduced later, to gen-
+3) manually constructs a dictionary of alternative values for                              erate each request in the sequence template and then tests a
+each parameter in a request template. For instance, as shown                               target cloud service; 4) It analyzes the response of each re-
+in Fig. 1b, a user can provide {"3", "true", "false"} as the                               quest to infer the triggered behavior. For instance, a response
+dictionary for the parameter "with_projects", where "3" is the                             of 400 Bad Request, 200 OK or 500 Internal Error represents
+default value that does not match the parameter type.                                      that the cloud service performs the following behavior, respec-
+   In particular, some request templates require target object                             tively: The cloud service refuses to execute the request which
+ids of target resources, e.g., the "{id}" as shown in Fig. 1d. If                          does not pass the checking, the cloud service executes the
+we provide static alternative values for these object ids, the                             request normally, or it executes the request abnormally which
+fuzzer may suffer from the following two situations. 1) The                                results in an unexpected error; 5) Generally, the fuzzer checks
+fuzzer can only test the same resources on a cloud service,                                the response of the last request in each candidate sequence
+which limits the exploration space; 2) The resources can be                                to infer whether the sequence is valid. If the last request gets
+deleted by DELETE requests, which hinders other requests for                               a response in 20× Range from the cloud service, the fuzzer
+access to these resources. Therefore, the REST API fuzzer                                  considers the candidate sequence successfully extended and
+
+
+
+USENIX Association                                                                                                  32nd USENIX Security Symposium                 4519
+adds it to the set of successfully extended sequence templates;     2.3    Neural Network Model
+6) If the set is not empty, the fuzzer goes to step 2) to per-
+form the next extension process based on the newly collected        As marked by the red boxes in Fig. 1d, a request consists of
+sequence templates. Otherwise, it goes to step 1) to restart        an endpoint/name, several parameters and their values. In-
+the extension process with an empty sequence template. Note         tuitively, we can regard these elements in the red boxes as
+that in the Sequence Module, the constructed sequence tem-          words and transform a request into a word sequence. Then, a
+plates always satisfy the dependencies between producers and        request generation can be transformed into a sequence gen-
+consumers.                                                          eration, which is one of the common applications for neural
+                                                                    network models [20,31]. Specifically, a neural network model
+                                                                    leverages neurons to construct complex computational net-
+Generation Module: A REST API fuzzer implements
+                                                                    works [17, 19]. During training, the model adjusts the weights
+this module to generate each request in a sequence template.
+                                                                    between neurons to fit the implied relationship between words
+Specifically, the fuzzer assigns a value for each parameter in
+                                                                    in each sequence. Given an input word, the model improves
+the request, and constructs a complete request that is ready
+                                                                    the prediction probability of the ideal output word. After train-
+to be sent to a cloud service. There are two methods to ob-
+                                                                    ing, the model predicts words one by one, which follows the
+tain a parameter value, which are 1) selecting an alternative
+                                                                    implied relationship learned from the training set.
+value from the dictionary or 2) reading a target object id
+from a response of a previous request. The following instance          In our application, we collect the parameters and their val-
+shows how the fuzzer obtains parameter values using the             ues used in the valid requests, which pass the checking of a
+above two methods. As shown in Fig. 1, the request tem-             cloud service, as the key mutations. Then, we leverage a neu-
+plate GET /groups/{id} contains 3 parameters needed to              ral network model to learn the implied relationship between
+be set. To generate a ready-to-use request, the fuzzer selects      these key mutations, i.e., which key mutations should be used
+"true" and "false" as the values of "with_custom_attributes"        together on a request. After training, the model predicts the
+and "with_projects", respectively. As for the parameter "id",       key parameters to be mutated and their appropriate values for
+the fuzzer will read a target object id from the response of a      request generation. More details are shown in Section 3.3.
+producer like POST, which provides an object id after creation.
+                                                                    3     Design of M INER
+Checker Module: To improve error discovery of REST
+API fuzzing, Atlidakis et al. introduced several rule checkers      3.1    Why Valid Long Sequence Matters
+to capture specific security rule violations [14], which are im-
+plemented as the Checker Module in the REST API fuzzer.             As previously mentioned, different requests can be sent in a
+For instance, a fuzzer implements a use-after-free rule checker     sequence to a cloud service to trigger a series of behaviors
+to find the request sequences triggering use-after-free bugs,       and further explore unique errors hidden in deep states. For
+which access deleted resources in the cloud service scenario        instance, in a sequence, POST, PUT, and DELETE requests can
+and can lead to private data leakage. An example process            be sent orderly via GitLab Projects API. Then, GitLab will
+is as follows. The rule checker first sends a POST request to       create a new project, modify this project’s parameters, and
+create a resource on a cloud service. Then, it sends a DELETE       delete this project, respectively. We can conclude from the
+request to delete this resource. Finally, the fuzzer sends an       above instance that a long sequence covers the possible re-
+access request, like GET, to access this deleted resource. If the   quest combinations used in a short sequence, as does the range
+cloud service does not return a response in 40× Range, the          of states that can be reached. Therefore, to explore the errors
+fuzzer considers that the use-after-free violation is triggered     hidden in hard-to-reach states, an ideal REST API fuzzer is
+and saves the used request sequence locally for future anal-        expected to send long sequences more times, and should not
+ysis. Therefore, a REST API fuzzer tries to trigger specific        always test a cloud service using short sequences.
+rule violations in the Checker Module.                                 To further motivate our research, we analyze the REST
+                                                                    API-related issues on GitLab. To be specific, we collect the
+   By utilizing the above main modules, existing REST API           error issues related to the available resources for GitLab REST
+fuzzers automatically generate request sequences to test a          APIs, and count the number of issues triggered by a request
+cloud service via its REST APIs, and record the request se-         sequence or a singular request, respectively. Then, we realize
+quences locally that trigger unique errors hidden in differ-        that the issues caused by a request sequence account for the
+ent states. However, they still have limitations in sequence        majority. In all 56 issues, the proportion of the issues caused
+extension and request generation, resulting in slow state ex-       by request sequences is 76.79%. For instance, a published
+ploration progress. On the contrary, we observe that multiple       error is triggered by the following steps. 1) Create a GitLab
+kinds of historical data collected during the fuzzing process       project; 2) Delete this project; 3) Access this deleted project
+are valuable to guide REST API fuzzing and solve the above          with a GET request. Since the last request achieves to access
+limitations, which is the main focus of this paper.                 a deleted resource, this error is considered a use-after-free
+
+
+
+4520    32nd USENIX Security Symposium                                                                        USENIX Association
+               60                                                   sequence templates.
+               50                                                   Motivation. Based on the above analysis, we discover that
+               40                                                   most published errors are triggered by request sequences.
+        Ratio(%)
+
+
+                                                                    While existing REST API fuzzers are hard to generate long
+               30
+                                                                    sequences with acceptable request generation quality. Most of
+               20
+                                                                    the time, existing fuzzers test target cloud services with repeti-
+               10                                                   tive short request sequences, limiting their performance of dis-
+                   0                                                covering unique errors. In particular, it is hard for them to ex-
+                       1   2   3   4   5  6   7   8   9 >=10
+                                       Length                       plore security bugs triggered by long request sequences [14].
+Figure 2: The distribution of request sequence length sent by       Therefore, to improve security bug discovery on cloud ser-
+RESTler when fuzzing GitLab Projects API.                           vices, a new fuzzing solution is demanded to improve the
+bug in the cloud service scenario and is confirmed by the           sequence construction and request generation.
+vendors of GitLab. It takes at least 3 requests in a sequence to
+reproduce this published error. The case study demonstrates
+                                                                    3.2    Framework of M INER
+that a REST API fuzzer is expected to test a target cloud
+service with long request sequences.                                Motivated by the above findings, we propose a hybrid data-
+   However, we find that existing REST API fuzzers cannot           driven solution named M INER as follows. 1) M INER imple-
+effectively generate long sequences to test a cloud service. To     ments the length-orientated sequence construction, and lever-
+illustrate this, we conduct the following case study to show        ages the used request sequences as seed sequence templates
+the proportion of request sequence length executed in the           to guide sequence construction; 2) M INER implements the
+fuzzing process. We utilize RESTler [12], which is one of the       attention model-based request generation, and utilizes an at-
+most famous REST API fuzzers and implements the main                tention model to provide proper values for the key parameters,
+modules as shown in Section 2.2, to fuzz GitLab Projects API.       which increases the pass rate to the cloud service’s checking;
+Then, we construct the length distribution of the generated         3) To find errors caused by incorrect parameter usage, M INER
+request sequences. The evaluation lasts for 12 hours, and the       implements the request parameter violation checking, and
+proportion of each sequence length is shown in Fig. 2, from         constructs a new security rule checker named DataDriven
+which we can learn that the length of most request sequences        Checker to generate requests with undefined parameters. The
+generated by RESTler is less than 3. The proportion of the          above three designs work together to improve the fuzzer’s
+sequences with lengths of 1 and 2 is around 85%.                    performance on cloud services.
+   These results demonstrate that existing REST API fuzzers            As shown in Fig. 3, the framework of M INER contains
+hardly generate long sequences to trigger series of behaviors       5 main components: Sequence Template Selection,
+on cloud services. Especially, it is hard for them to trigger       Generation Module, Fuzzing Module, Collection
+security bugs explored by long request sequences as shown           Module, and Training Module. The basic workflow is that
+in [14]. We infer the reasons as follows. First, existing fuzzers   M INER continuously generates request sequences to test
+cannot effectively generate valid requests that can pass a cloud    a cloud service via its REST API. Before fuzzing, like
+service’s syntax and semantic checking. For each parame-            existing fuzzers, M INER constructs request templates for a
+ter in a request template, they cannot figure out the appro-        target REST API with the Compiler Module as described in
+priate parameter value, but randomly select an alternative          Section 2.2. For each test, M INER 1) utilizes the Sequence
+value from a preset dictionary, e.g., {"3", "true", "false"} for    Template Selection to probabilistically select request
+"with_projects" as exemplified in Section 2.2. Thus, their gen-     sequence templates according to their lengths and then extend
+erated requests are more likely to receive responses in 40×         sequences; 2) uses the Generation Module to generate each
+Range from the cloud service. This fact is also confirmed by        request in sequence templates and constructs ready-to-use
+the results in Section 4.2, which demonstrate the low pass          request sequences; and 3) utilizes the Fuzzing Module to
+rate of the requests generated by existing REST API fuzzers.        test a cloud service with generated request sequences. During
+Then, due to the lack of a proper mechanism to generate valid       the execution of the above modules, the Collection Module
+requests, existing fuzzers are difficult to extend a sequence       collects the following historical data: First, M INER collects
+template to form a long one. As shown in Section 2.2, the           the valid request sequences, all of whose requests pass the
+fuzzers frequently restart the sequence extension process with      cloud service’s checking, to enrich the sequence template set.
+an empty sequence template, if the last request in a sequence       Second, if a request passes the checking, M INER collects the
+fails to pass the checking. Moreover, the kinds of request com-     mutated parameter values that are not the default ones. For
+binations in a short sequence template are limited, which can       clarity, we use "param-value pair" to represent the mutated
+be fully explored by existing fuzzers in the fuzzing process.       parameter and its used value in request generation, e.g.,
+Therefore, most of the time, existing REST API fuzzers tend         <"with_projects", "false"> as shown in Fig. 1. Then, M INER
+to test a cloud service with short and already-used request         periodically invokes the Training Module to train an
+
+
+
+USENIX Association                                                                     32nd USENIX Security Symposium           4521
+                               Start                                            Generation Module                                           Fuzzing Module
+                                                                     Request Generation                                                              Security Rule Checker
+
+                Sequence Template Selection                                                                                                               Traditional
+                                                                 Traditional Generation          Generated Request            Generation Request
+                                                                                                                                                           Checker
+                                                                                                    Sequences                  Sequence Testing
+           Length Orientated           Request Sequence
+               Selection                  Extension                  Generation based on                                                                 DataDriven
+                                                                      Param-Value Lists                                                                   Checker
+                                                                                                                     Collection Module
+
+                                                                                                          Training Data for     Request Sequence
+                                                               Training Module                            Attention Model          Template
+                                                   Attention Model           Param-Value Lists
+                                                       Training                 for Requests
+                                                                                                                                                               Error
+                                                                                                                                                             Collection
+
+                                                               Figure 3: The framework of M INER.
+
+attention model with the collected param-value pairs. After                                       model-based request generation.
+training, M INER uses the model to generate lists of desirable                                       In implementation, to generate a sequence containing n
+param-value pairs for each request template to enhance the                                        requests, M INER uses param-value lists to generate the first
+request generation. In the following, we use "param-value                                         n − 1 requests, and uses the traditional generation method to
+list" to represent a list of generated param-value pairs. The                                     generate the last request. The reasons are as follows. When
+details of each module are as follows.                                                            generating the first n − 1 requests, M INER would like to lever-
+Sequence Template Selection: In this component,                                                   age param-value lists to improve the generation quality. This
+M INER constructs candidate sequence templates based on                                           helps trigger normal executions of a target cloud service, and
+the seed sequence templates collected from the Collection                                         obtain a target object id if there is a producer in the request
+Module. Specifically, M INER first assigns a different selec-                                     sequence. Then, M INER utilizes the traditional generation
+tion probability to each seed sequence template according to                                      method to generate the last request, in order to increase the
+its length. The longer a sequence template is, the larger its                                     probability of triggering an abnormal behavior, e.g., tries to
+selection probability is. Thus, M INER obtains a set of selected                                  create a resource with the parameter value that does not con-
+sequence templates that tend to have larger lengths. Second,                                      form to the defined type.
+for each selected sequence template, M INER performs the                                             After generating all the requests, M INER obtains ready-to-
+extension process to construct a candidate sequence template.                                     use request sequences, and enters the Fuzzing Module.
+In other words, M INER adds a new request template at the end                                     Fuzzing Module: In this component, M INER performs
+of the selected template. Based on the above design, M INER                                       the following process to explore unique errors. First, M INER
+implements the length-orientated sequence construction. In                                        sends a generated request sequence to a cloud service via its
+implementation, we use log10 (l + 1), where l is the length                                       REST API, and analyzes the corresponding response to each
+of a sequence template, as the probability function for the                                       request. If M INER receives a response in 50× Range, M INER
+Sequence Template Selection.                                                                      thinks that the corresponding request triggers an error, and
+   After finishing all the extension processes, M INER ob-                                        stores the generated sequence among with their responses
+tains a set of candidate sequence templates and enters the                                        locally for future analysis. Second, M INER leverages each
+Generation Module.                                                                                security rule checker to mutate the current request sequence,
+Generation Module: In this component, M INER gen-                                                 in order to trigger specific rule violations. In particular, we
+erates each request in a candidate sequence template, i.e.,                                       propose the request parameter violation checking, and imple-
+M INER assigns a value for each parameter excluding a target                                      ment a new security rule checker named DataDriven Checker
+object id in a request. As shown in Fig. 3, M INER implements                                     to find the errors caused by incorrect parameter usage, whose
+two methods to generate requests. The first one is the tra-                                       target rule violation is as follows.
+ditional generation method as described in Section 2.2, i.e.,                                        In general, vendors define specific parameters for each
+randomly selecting an alternative value for each parameter.                                       request to trigger specific behaviors of a cloud service. If a
+On the other hand, the procedure of the second method is                                          user adds an undefined parameter to a request and sends it
+as follows. To generate a request, M INER 1) selects the de-                                      to a cloud service, generally the cloud service ignores the
+fault value for each parameter; 2) finds the set of param-value                                   incorrect usage of the undefined parameter, and performs
+lists, each of which contains a list of param-value pairs for                                     behaviors according to the values of the defined parameters.
+mutation, generated by the attention model for this request                                       However, a cloud service may perform unexpected behaviors
+template; 3) probabilistically selects a candidate param-value                                    according to the undefined parameters due to unexpected
+list from the set according to a uniform distribution; and 4)                                     conditions, e.g., parameter definition update and incorrect
+uses the specified values to modify the parameters according                                      code implementation. The unexpected behaviors can trigger
+to the param-value pairs in the selected list. For the param-                                     security-related exceptions, e.g., a cloud service may access
+eters that are not in the selected param-value list, M INER                                       a non-existent resource. As a result, the process of a cloud
+remains their default values in request generation. By per-                                       service can crash and return a response in 50× Range due to
+forming the above procedure, M INER achieves the attention                                        undefined parameters.
+
+
+
+4522   32nd USENIX Security Symposium                                                                                                                     USENIX Association
+   To capture this kind of rule violation, the DataDriven
+Checker adds an undefined param-value pair to a request
+during the generation process. Specifically, for the last re-
+quest in a sequence, M INER randomly selects an undefined
+param-value pair collected in the Collection Module. Then,
+M INER adds the selected pair into the last request of the se-
+quence, e.g., adds <"min_access_level", "1"> in the request
+shown in Fig. 1d. Finally, M INER sends the sequence with
+the newly constructed request to a cloud service via its REST
+API. If the cloud service returns a response in 50× Range,         Figure 4: The structure of the attention model used in M INER.
+M INER considers that the new request triggers an incorrect
+parameter usage error, and stores the sequence locally for         noted as param-value lists. To achieve this, in the Training
+further analysis.                                                  Module, M INER trains the attention model using the lists of
+   After executing the above process for all the generated         param-value pairs as the training data, which are collected
+request sequences, M INER enters the Sequence Template             from the requests triggering responses in 20× Range. The
+Selection to start the next iteration.                             process is as follows.
+Collection Module: In the fuzzing process, M INER                     1) M INER adds the corresponding request name in the
+first collects the valid request sequences, in which all the       front of each list of param-value pairs, and regards each
+requests pass the cloud service’s checking in the Fuzzing          list as a word sequence, e.g., ["GET /api/v4/groups/{id}",
+Module. These sequences are used as the seed sequence tem-         "<with_custom_attributes, true>", "<with_projects, false>"]
+plates in the Sequence Template Selection to guide the             for the example as shown in Fig. 1. Then, we follow the com-
+sequence construction. Second, M INER analyzes the response        mon processing of the machine learning model and embed
+of each generated request from a cloud service, and extracts       all the words into vectors, e.g., "<with_projects, false>" is
+the param-value pairs used in the valid requests that pass the     represented by a unique vector in matrix form. Thus, the lists
+checking. Specifically, if a request gets a response in 20× and    collected in the Collection Module are transformed into
+50× Range, which means that the request passes the checking        a set of vector sequences (similar to the input sequence as
+and triggers a behavior of the cloud service, M INER analyzes      shown in Fig. 4); 2) M INER randomly divides the vector se-
+the used value for each parameter in the request. If the used      quences into the training set and the validation set, which are
+value is not the default one for a parameter, M INER regards the   used to train the model and verify the prediction performance
+value as a key mutation on this parameter, and stores them as a    of the model, respectively; 3) In each set, M INER utilizes a
+param-value pair. Thus, M INER collects a list of param-value      vector sequence to train/verify the attention model. Specif-
+pairs for each valid request, which contains the valid muta-       ically, M INER uses the previous n vectors in the sequence
+tions to help pass the cloud service’s checking. For instance,     as the input and the n + 1 th vector as the expected output
+M INER will collect [<"with_custom_attributes", "true">,           as shown in Fig. 4. During the training process, the model
+<"with_projects", "false">] for the example in Fig. 1d. The        adaptively adjusts the weights between neurons and increases
+collected lists are used to 1) train the attention model in the    the prediction probability of the expected output vector. For
+Training Module, and 2) provide undefined param-value              instance, assuming the ideal output is <pair T+2> as shown
+pairs for the DataDriven Checker to trigger incorrect parame-      in Fig. 4, the model will adjust the weights to improve the
+ter usage errors.                                                  prediction probability of <pair T+2> and lower others’ predic-
+Training Module: M INER periodically invokes the                   tion probabilities; 4) After M INER finishes a certain number
+Training Module to train an attention model with the param-        of training epochs and improves the prediction accuracy to a
+value pairs collected in the Collection Module. After train-       stable level, the training process ends.
+ing, M INER utilizes the model to generate the param-value            After the training process, M INER utilizes the attention
+lists for each request template, which will be used in the         model to generate the param-value lists for the request tem-
+Generation Module to generate requests. In the following,          plates, which provide the param-value pairs as the training
+we describe the detailed usage of the attention model.             data. To be specific, M INER employs the vector of a request
+                                                                   name as the first input of the attention model, and predicts
+3.3    Attention Model used in M INER                              a param-value pair as the output. Next, the predicted pair is
+                                                                   appended to the previous input as the new input to predict
+In this paper, we utilize a customized attention model, which      the next pair. The end conditions for the generation of param-
+is one of the most powerful machine learning models for se-        value pairs are as follows. 1) The attention model thinks that
+quence generation, to learn the implicit relationship between      the sequence generation finishes and outputs a terminator
+param-value pairs. Then, we utilize the model to explore           (generally the terminator is a null vector that does not repre-
+more ideal combinations of param-value pairs, which are de-        sent any word); 2) The list of param-value pairs reaches the
+
+
+
+USENIX Association                                                                   32nd USENIX Security Symposium         4523
+                              Collection Module                                   Request Generation       Table 1: The target cloud services and 11 REST APIs used in
+                          Param-Value Pairs from     Param-Value Pairs from       Traditional Generation   the experiments.
+    Set of Request
+                          Requests with Responses    Requests with Responses
+      Sequences                                                                    Generation based on
+                              in 50X Range                in 20X Range
+                                                                                    Param-Value Lists          Cloud        REST         # Request   # Request
+                                                                                                                                                                          Description
+                                                                                                               Service       API         Templates   Parameters
+ Sequence Template Selection             DataDriven Checker               Training Module
+                                                                                                                            Projects        29          304       API to interact with projects
+   Sequence          Length Orientated      Set of Param-         Set of Param-         Generated                           Groups          13          293          API related to groups
+  Template Set          Selection            Value Pairs           Value Pairs       Param-Value Lists           GitLab
+                                                                                                                            Issues          23           89        API to interact with issues
+                                                                                                               14.1.0-ce.0.
+Figure 5: The data flow of the three new designs in M INER.                                                                 Commits         14           59         API related to commits
+                                                                                                                            Branches         8           28       API to interact with branches
+                                                                                                                            Comments         8           26        API to maintain comments
+                                                                                                               Bugzilla
+preset maximum length, which is significantly greater than                                                                   Bugs           11           89       API to maintain bug reports
+                                                                                                                 5.0.4
+                                                                                                                            Groups           6           29       API to maintain user groups
+the sequence length in the training set. Then, the generated                                                                Categories       5           20        API to maintain categories
+                                                                                                               WordPress
+list is stored locally, and will be used as a param-value list in                                                 5.8.1
+                                                                                                                             Posts          10           42        API to interact with posts
+                                                                                                                            Comments         8           40        API to maintain comments
+the Generation Module as described in Section 3.2.
+   In implementation, we use a lightweight attention model,
+                                                                                                           and 2) not all types of requests can get the responses in 50×
+which contains a Gated Recurrent Unit (GRU) neural net-
+                                                                                                           Range, their number is not sufficient as the training data of a
+work [17, 19], an attention layer [36] and a linear layer as
+                                                                                                           model. Thus, we do not include their param-value pairs as the
+shown in Fig. 4, to handle our generation problem. M INER
+                                                                                                           training data in our application scenario. On the contrary, if
+invokes the Training Module every two hours and retrains
+                                                                                                           we collect sufficient requests with responses in 50× Range in
+the model from scratch based on the newly discovered train-
+                                                                                                           the application scenarios like continuous fuzzing for a cloud
+ing data. The training and generation process of the attention
+                                                                                                           service, we can utilize a machine learning model to learn how
+model runs in parallel with the fuzzing process, which will
+                                                                                                           to generate a request triggering a response in 50× Range, and
+not affect the fuzzing performance of M INER. Contributed
+                                                                                                           utilize the model to generate requests on demand.
+by the above settings, the time cost to train our model is less
+                                                                                                              Based on the above illustration from the perspective of
+than 500 seconds as shown in Section 5.5.
+                                                                                                           data flow, we can learn that all the datasets for M INER can
+                                                                                                           be automatically collected during the fuzzing process. All
+3.4       Data Flow of M INER                                                                              the three designs rely on the datasets from the Collection
+                                                                                                           Module, and are able to work together. Our hybrid data-driven
+In this subsection, we illustrate how the three core data-driven                                           approach is compatible with the fuzzing process, which can
+designs work together in M INER from the perspective of                                                    be deployed in general REST API fuzzers.
+data flow. As shown in Fig. 5, in the Collection Module,
+M INER mainly collects three datasets: 1) the set of request
+sequences whose requests successfully pass the checking of a                                               4       Evaluation
+cloud service; 2) the param-value pairs from the requests with
+responses in 50× Range; and 3) the param-value pairs from                                                  4.1        Experiment Setup
+the requests with responses in 20× Range. In the following,
+we illustrate which design in M INER utilizes these datasets.                                              In implementation, in order to measure the error discovery
+   For the set of request sequences, M INER uses it to guide se-                                           performance of our checker, we construct two prototypes
+quence construction in the Sequence Template Selection.                                                    without and with the DataDriven Checker, which are named
+Since M INER mainly deals with sequence template construc-                                                 M INER _ PART and M INER, respectively.
+tion in this design, the other two datasets are not used.                                                  Compared fuzzer. We evaluate M INER _ PART and M INER
+   The param-value pairs from the valid requests, which pass                                               against the state-of-the-art open-sourced fuzzer RESTler [12],
+the cloud service’s checking and have responses in 50× and                                                 which is the first REST API fuzzer proposed in 2019 to ex-
+20× Range, are used in the DataDriven Checker to explore in-                                               plore errors on a cloud service automatically. Since another
+correct parameter usage errors. Since a request should pass the                                            REST API fuzzer Pythia is not open-sourced, we cannot com-
+checking before triggering a potential error, in the DataDriven                                            pare our fuzzers with it [13].
+Checker M INER does not use the param-value pairs from                                                     Target cloud services. We evaluate the above fuzzers on Git-
+the requests having the responses in 40× Range, which may                                                  Lab [5], Bugzilla [2] and WordPress [8] via 11 REST APIs as
+cause the generated request to be rejected by a cloud service                                              shown in Table 1, and the reasons to select these targets are
+and reduces the error discovery efficiency.                                                                as follows. First, GitLab, Bugzilla and WordPress are widely-
+   The param-value pairs from the requests, whose responses                                                used cloud services. Evaluating their security is meaningful
+are in 20× Range, are also used in the Training Module as                                                  for vendors and users. Second, the request templates for the
+the training data of the attention model. Thus, the attention                                              REST APIs of GitLab contain many parameters to support a
+model tends to generate the param-value lists that help pass                                               wide variety of functionalities. On the contrary, the request
+the checking of a cloud service. Since 1) the requests having                                              templates of Bugzilla and WordPress are relatively simple
+responses in 50× Range are pretty rare in the fuzzing process                                              ones with fewer parameters, which limits the place that can
+
+
+
+4524       32nd USENIX Security Symposium                                                                                                                         USENIX Association
+                       Table 2: The fuzzing performance of RESTler, M INER _ PART and M INER on 3 cloud services.
+  Cloud         REST     # Total Request               RESTler                             M INER _ PART                                  M INER
+  Service        API        Templates      Pass         # Unique                 Pass         # Unique                   Pass         # Unique
+                                                                        Errors                                  Errors                                  Errorsa
+                                           Rate     Request Templates            Rate     Request Templates              Rate     Request Templates
+            Projects           29          72.01%          22              7     95.77%          26              17      95.78%         26               21 (9)
+            Groups             13          65.01%          10             21     92.37%          12              26      92.28%         12              33 (10)
+  GitLab    Issues             23          86.56%          21              7     96.13%          21               7      95.42%         21               15 (6)
+            Commits            14          53.52%          12             16     86.65%          12              20      86.70%         12              37 (12)
+            Branches            8          81.10%          8              2      89.91%           8               3      89.31%          8                9 (6)
+            Comments            8          88.79%          7              8      89.74%           8               8      90.23%          8                8 (0)
+  Bugzilla   Bugs              11          45.03%          4              7      91.05%           4               7      93.16%          4               14 (6)
+            Groups              6          54.88%          4              5      74.01%           5               6      72.85%          5               11 (5)
+            Categories          5          75.33%          4              8      91.96%           4              10      92.64%          4               13 (4)
+  WordPress Posts              10          94.06%          10              4     95.13%          10               5      95.56%         10               7 (2)
+            Comments            8          96.61%          4              0      99.65%           4               0      99.43%          4                0 (0)
+               Average                     73.90%         9.64           7.73    91.12%         10.36           9.91     91.21%        10.36          15.27 (5.45)
+a The   number of unique errors found by M INER is presented in two parts: the total number of all the unique errors as shown in front of the parentheses, and the
+                                    number of unique errors found by the DataDriven Checker as shown in the parentheses.
+be mutated. Thus, in the evaluation, we can analyze the per-                         and M INER is 28.65% and 28.28% higher than RESTler on
+formance of fuzzers on the targets with different functional                         GitLab, respectively. The average pass rate of M INER _ PART
+complexity. Third, each REST API interacts with different                            is 35.03% higher than RESTler on Bugzilla. Although the
+kinds of resources on a cloud service. Fuzzing via these REST                        request templates of several APIs, e.g., WordPress Posts API,
+APIs, the evaluated fuzzers can execute different code lines                         are easy-to-construct ones containing few parameters, our
+and explore different states of a cloud service, which can                           fuzzers still achieve higher pass rate compared to RESTler.
+examine their fuzzing performance more comprehensively.                              The experimental results confirm the pass rate improvement
+   To construct the targets, we deploy an open-sourced version                       contributed by our hybrid data-driven approach.
+of each cloud service on our server, and construct request                              • M INER _ PART and M INER can generate high-quality re-
+templates with the Compiler Module for all the REST APIs,                            quests for more unique request templates than RESTler. For
+which is a one-shot effort and costs us about 1 hour.                                instance, the average number of unique request templates
+Experiment settings. Each evaluation lasts for 48 hours on a                         covered by M INER _ PART is 8.22% larger than RESTler on
+docker container configured with 8 CPU cores, 20 GB RAM,                             GitLab. The number of unique request templates covered by
+Python 3.8.2, and the OS of Ubuntu 16.04 LTS. We run eval-                           M INER is 20.00% larger than RESTler on GitLab Groups API.
+uations on 3 servers, each of which has two E5-2680 CPUs,                            We analyze the executions of each request template and have
+256GB RAM and a Nvidia GTX 1080 Ti graphics card.                                    the following conclusions. Our hybrid data-driven approach
+Evaluation metrics. To measure the performance of each                               significantly improves the complexity of generated request
+fuzzer on request generation and error discovery, we evaluate                        sequences. First, the length-orientated sequence construction
+the fuzzers with the following three metrics. First, to evaluate                     implemented in M INER increases the executions of long re-
+the request generation quality, we measure the pass rate of                          quest sequences, and increases the attempts on the consumers
+each fuzzer to the syntax and semantic checking of a cloud                           which require target object ids. Second, M INER’s attention
+service, which is calculated by dividing the number of the                           model-based request generation significantly improves re-
+responses in 20× and 50× Range by the number of total                                quest generation quality. In particular, M INER improves the
+responses. Second, to measure how many unique request tem-                           producers’ pass rate and obtains target object ids, which can
+plates are successfully generated by each fuzzer, we count the                       serve as the key parameter values for consumers. As a result,
+types of generated requests that get responses in 20× Range.                         M INER successfully sends more types of requests to a cloud
+The more unique request templates are successfully generated                         service. Since the only difference between M INER _ PART and
+and sent to a cloud service, the more kinds of behaviors are                         M INER is that M INER contains a new security rule checker
+triggered by a REST API fuzzer. Third, we count the number                           DataDriven Checker, they perform the same on the number
+of unique errors, which trigger the responses in 50× Range                           of covered request templates.
+or violate the defined security rules, reported by each fuzzer.                         • Both M INER _ PART and M INER find more unique errors
+                                                                                     than RESTler on most targets. For instance, M INER _ PART
+4.2       Fuzzing Performance Analysis                                               finds 37.74% and 25.00% more unique errors than RESTler
+                                                                                     on GitLab and WordPress, respectively. We analyze the rea-
+In this subsection, we analyze the fuzzing results reported by                       sons as follows. As indicated in Section 3.1, the kinds of
+each fuzzer. The details are shown in Table 2, from which we                         request combinations generated by RESTler are limited due
+have the following conclusions.                                                      to the short generated request sequences. On the contrary,
+   • As shown in Table 2, the new designs implemented in                             contributed by our approach, M INER _ PART and M INER can
+our fuzzers significantly improve the pass rate on a cloud                           generate long sequences containing high-quality requests to
+service. For instance, the average pass rate of M INER _ PART                        test a cloud service. The kinds of request combinations cover
+
+
+
+USENIX Association                                                                                            32nd USENIX Security Symposium                 4525
+             Table 3: The real errors found by RESTler, M INER _ PART and M INER on GitLab, Bugzilla and WordPress.
+ Target      No.             Endpoints of Used Requests                     Responses                                Description                      RESTler M INER _ PART M INER
+             1     1. POST /api/v4/projects                            1. 201 Created                 Use <"namespace_id", "-1"> pair in the
+                   2. GET /api/v4/projects/:id/fork                    2. 500 Internal Error                    second request.
+             2     1. POST /api/v4/projects                            1. 201 Created              The second request updates a project with the
+                   2. PUT /api/v4/projects/:id                         2. 500 Internal Error      undefined parameter "initialize_with_readme".
+                   1. POST /api/v4/projects                            1. 201 Created
+             3                                                                                         Use after free a . The fourth request tries
+                   2. GET /api/v4/projects/:id/custom_attributes       2. 200 OK
+                                                                                                     to access the attributes of a deleted project.
+                   3. DELETE /api/v4/projects/:id                      3. 202 Accepted
+                   4. GET /api/v4/projects/:id/custom_attributes       4. 500 Internal Error
+             4     1. GET /api/v4/projects/:id/custom_attributes       1. 500 Internal Error         Using string or invlaid number as :id.
+                                                                       1. 201 Created               The third request updates a hook with 3
+             5     1. POST /api/v4/projects                                                          undefined parameters "requirements_
+                   2. POST /api/v4/projects/:proj_id/hooks             2. 200 OK
+                                                                       3. 500 Internal Error        access_level", "auto_cancel_pending_
+                   3. PUT /api/v4/projects/:proj_id?/hooks/:hook_id                                pipelines" and "initialize_with_readme".
+             6     1. GET /api/v4/groups                               1. 500 Internal Error       List groups with 2 parameters "statistics"
+                                                                                                            and "min_access_level".
+             7     1. GET /api/v4/groups                               1. 500 Internal Error       Use <"per_page", "0"> pair in the request.
+             8     1. POST /api/v4/groups                              1. 500 Internal Error      Error when the parameter "praent_id" is set
+ GitLab                                                                                               to be a special number like 2, -1, -2.
+             9     1. POST /api/v4/groups                              1. 500 Internal Error       Create group with the undefined parameter
+                                                                                                           "shared_runners_setting".
+                   1. POST /api/v4/groups                              1. 201 Created             Use after free. The third request successfully
+             10
+                   2. DELETE /api/v4/groups/:id                        2. 202 Accepted                accesses the descendant groups of a
+                   3. GET /api/v4/groups/:id/descendant_groups         3. 200 OK                      deleted group. Private data leakage.
+             11    1. POST /projects/:id/issues                        1. 201 Created                Update issue with an extra-long label.
+                   2. PUT /projects/:id/issues/:issue_iid              2. 500 Internal Error
+                   1. POST /api/v4/groups                              1. 201 Created             Use after free. The third request lists a group
+             12
+                   2. DELETE /api/v4/groups/:id                        2. 202 Accepted            with the parameters "with_custom_attributes"
+                   3. GET /api/v4/groups/:id                           3. 200 OK                    and "with_projects". Private data leakage.
+                   1. POST /projects/:id/repository/branches           1. 201 Created                    Use after free. The fourth request
+             13    2. DELETE /projects/:id/repository/branches/:Br     2. 204 No Content              successfully creates a branch while its
+                   3. GET /projects/:id/repository/branches/:Br        3. 404 Not Found               "ref " refers to the name of the deleted
+                   4. POST /projects/:id/repository/branches           4. 201 Created                       branch. Private data leakage.
+                   1. POST                                                                                    Create a new branch with
+             14                                                        1. 500 Internal Error
+                   /api/v4/projects/:proj_id/repository/branches                                          the undefined parameter "sort".
+Bugzilla     15    1. POST /rest/bugs                                  1. 500 Internal Error        Use invalid datetime value in the request.
+                   1. POST /categories ⇒ Category id: (cid)            1. 201 Created             Use after free. The parent of both the second
+             16    2. POST /categories                                 2. 201 Created             and forth requests refers to the same id of the
+ Word-
+                   3. DELETE /categories(cid)                          3. 200 OK                   category (cid). However, the fourth request
+ Press
+                   4. POST /categories                                 4. 500 Internal Error         triggers an error after (cid) gets deleted.
+             17    1. POST /wp/v2/posts                                1. Timeout                      Connections get closed after timeout.
+                                                                      Total                                                                            7         13         17
+aA   use-after-free error on cloud services means that the request accesses a deleted resource, leading to bypassing resource quotas and corrupting service state.
+
+and far exceed those generated by RESTler. Thus, they can                                      4.3       Real Error Analysis
+trigger more kinds of the cloud service’s behaviors in a sin-
+gle request sequence test, followed by finding more errors                                     To further evaluate the performance of each fuzzer on real
+than RESTler. In addition, since M INER _ PART and M INER                                      error discovery, we manually analyze all the errors on GitLab,
+can successfully generate requests for more unique request                                     Bugzilla and WordPress reported by each fuzzer. Specifically,
+templates as shown in Table 2, they can trigger more and                                       we filter out the errors that cannot be reproduced due to the
+different behaviors of a target cloud service compared to                                      change of server states as discussed in Section 6.2. Then, we
+RESTler. Thus, they can trigger more unique errors based                                       deduplicate the errors that are caused by the same reason. The
+on these unique request templates. Due to the randomness in                                    details of real errors on three cloud services found by each
+fuzzing, the number of unique errors found by M INER _ PART                                    fuzzer are shown in Table 3.
+and M INER is slightly different, if we do not count the errors                                   • The exploration space of real errors triggered by RESTler
+found by the DataDriven Checker for M INER.                                                    is fully covered and exceeded by M INER _ PART and M INER.
+   • The DataDriven Checker of M INER finds many unique                                        After error filtering and deduplicating, M INER _ PART finds all
+errors caused by misuse of undefined parameters. For instance,                                 the errors discovered by RESTler, and finds 6 more unique
+M INER finds 43 unique errors in total with the DataDriven                                     errors missed by RESTler, from which we can have the follow-
+Checker on GitLab via the 5 REST APIs. M INER also finds 6                                     ing conclusions. 1) Since RESTler’s possible request combi-
+unique errors that misuse undefined parameters on Bugzilla                                     nations are covered by M INER _ PART, the real errors triggered
+Bugs API. The results demonstrate that 1) incorrect parameter                                  by RESTler also can be found by M INER _ PART; 2) Thanks to
+usage errors commonly exist in various cloud services, and                                     the length-orientated sequence construction implemented in
+2) M INER can effectively discover this kind of unique errors                                  M INER _ PART, M INER _ PART assigns more execution times
+with our data-driven designs.                                                                  to long request sequences. As a result, M INER _ PART finds
+
+
+
+4526       32nd USENIX Security Symposium                                                                                                              USENIX Association
+Table 4: The pass rate and the number of unique errors found by RESTler, RESTler+Seq, RESTler+Rec1, RESTler+RecList,
+RESTler+Model, and M INER _ PART, respectively.
+                                   RESTler           RESTler+Seq        RESTler+Rec1        RESTler+RecList     RESTler+Model        M INER _ PART
+ Cloud Service   REST API
+                              Pass Rate  Errors   Pass Rate  Errors   Pass Rate  Errors    Pass Rate  Errors   Pass Rate Errors   Pass Rate     Errors
+                  Projects    69.48%      7.00    89.57%      7.50    66.10%        7.50   65.66%      7.25    87.11%      9.00   94.70%        9.75
+    GitLab        Groups      60.28%     16.00    94.67%     19.50    65.22%       19.00   65.56%     17.00    94.53%     19.00   94.66%        19.50
+                   Issues     86.32%      6.50    89.06%      6.50    88.14%        7.00   90.38%      7.00    91.00%      7.50   94.31%        7.00
+   Bugzilla      Comments     86.19%      8.00    89.05%      8.00    87.05%        8.00   89.05%      8.00    87.94%      8.25   89.36%        8.00
+  WordPress      Categories   81.35%     9.00     86.40%      8.75    81.03%        9.00   81.44%      9.00    82.41%      9.50   90.53%        9.50
+
+
+5 new unique errors triggered by the request sequences of                      5     Further Analysis
+length greater than 2; 3) We find that RESTler cannot find the
+No. 16 error triggered by 4 requests, but all four requests had                5.1     Stepwise Analysis
+been successfully generated by RESTler, as the number of
+unique request templates successfully generated by RESTler                     In order to evaluate the contribution of our data-driven designs
+is the same as M INER _ PART and M INER on WordPress Cat-                      to the pass rate and error discovery, we construct the follow-
+egories API as shown in Table 2. Thus, either RESTler fails                    ing 4 fuzzers with different designs. To be specific, we con-
+to construct a sequence of sufficient length, or RESTler does                  struct RESTler+Seq by implementing the length-orientated
+not generate high-quality requests to pass the checking of                     sequence construction in RESTler; RESTler+Rec1 is the one
+WordPress. This case study demonstrates the motivation of                      that generates requests by randomly using a param-value pair
+our paper, i.e., a new solution is demanded to improve the                     recorded in the Collection Module and using default val-
+sequence construction and request generation.                                  ues for other parameters; RESTler+RecList randomly uses a
+                                                                               list of recorded param-value pairs to generate requests, i.e.,
+   • The DataDriven Checker implemented in M INER can
+                                                                               it reproduces and sends the same requests to trigger the same
+efficiently find the unique errors caused by incorrect parame-
+                                                                               behaviors of cloud services; and we combine RESTler with
+ter usage. For instance, as shown by the No. 2 error, M INER
+                                                                               the attention model-based request generation to construct
+adds an undefined parameter "initialize_with_readme" to the
+                                                                               RESTler+Model. Then, we can measure the contribution of
+PUT request, which is the parameter used in other requests
+                                                                               the length-orientated sequence construction by comparing the
+like POST. Violating the standard API specification, GitLab
+                                                                               results of M INER _ PART and RESTler+Model, and the results
+executes the behavior of "initialize_with_readme". However,
+                                                                               of RESTler+Seq and RESTler. We can measure the contribu-
+this behavior is not compatible with the behavior of PUT, and
+                                                                               tion of the attention model-based request generation from the
+causes the response of 500 Internal Error. For another example
+                                                                               results of M INER _ PART and RESTler+Seq, and the results of
+shown by the No. 9 error, M INER sends a POST request with
+                                                                               RESTler+Model and RESTler. Furthermore, we can evaluate
+the undefined parameter "shared_runners_setting". When
+                                                                               the contribution of different request generation algorithms on
+creating a group, GitLab accesses a non-existent resource be-
+                                                                               pass rate and error discovery by comparing the performance
+cause of this parameter, which causes the crash of the creation
+                                                                               of RESTler+Rec1, RESTler+RecList and RESTler+Model.
+process. As a result, GitLab returns the response of 500 Inter-
+                                                                               Since the evaluation in Section 4 demonstrates the significant
+nal Error. Although M INER finds several incorrect parameter
+                                                                               performance of the DataDriven Checker on the discovery of
+usage errors on Bugzilla and WordPress, we find that their
+                                                                               incorrect parameter usage error, we do not evaluate its perfor-
+root causes are the same as the shown errors in Table 3. Thus,
+                                                                               mance in this subsection. Each evaluation lasts for 12 hours
+these errors are not shown in Table 3.
+                                                                               and is repeated 4 times. The experiment settings are the same
+Security bugs. Our fuzzers find 5 security bugs that allow at-                 as in Section 4.1, and the results are shown in Table 4, from
+tackers to access resources that have been deleted, which may                  which we have the following conclusions.
+cause the leakage of private user data. For instance, as shown                     • The length-orientated sequence construction significantly
+by the No. 13 error, the fourth request creates a new branch                   improves the pass rate of a REST API fuzzer, while it can-
+referring to the deleted one, which copies the resource data                   not improve the error discovery on most evaluations. For
+from the deleted one. Therefore, attackers can leverage the                    instance, the pass rate of M INER _ PART is 9.85% higher than
+No. 13 error to restore the deleted private data of users. These               RESTler+Model on WordPress Categories API, and the aver-
+cases demonstrate the significant performance of M INER in                     age pass rate of RESTler+Seq is 26.48% higher than RESTler
+constructing long request sequences to explore head-to-reach                   on GitLab. On the other hand, RESTler+Seq performs closely
+states and find security bugs. On the contrary, RESTler hardly                 to RESTler on error discovery. To figure out the reason, we
+generates a request sequence of length greater than 2, and                     analyze the sequence templates constructed by RESTler+Seq,
+cannot trigger any of the 5 security bugs.                                     and have the following conclusion. The sequence templates of
+  We have reported all the discovered unique errors on Git-                    RESTler+Seq are mainly composed of easy-to-construct re-
+Lab, Bugzilla and WordPress, and 7 of them have already                        quest templates, e.g., GET, which contain few parameters and
+been confirmed as logic bugs by vendors.                                       are easy to pass the cloud service’s checking. Because of the
+
+
+
+USENIX Association                                                                                  32nd USENIX Security Symposium              4527
+                                         Table 5: The published bugs found by RESTler and M INER on GitLab.
+      No.                Endpoints of Used Requests                   Responses                         Description                   RESTler           M INER
+                 1. POST /api/v4/projects                        1. 201 Created
+                                                                                            Use after free a . The fourth request
+                 2. GET /api/v4/projects/:id/custom_attributes   2. 200 OK
+       1                                                                                     tries to access the attributes of a
+                 3. DELETE /api/v4/projects/:id                  3. 202 Accepted
+                                                                                                       deleted project.
+                 4. GET /api/v4/projects/:id/custom_attributes   4. 500 Internal Error
+                 1. POST /api/v4/projects                        1. 201 Created
+                 2. POST /api/v4/projects/:id_1/fork             2. 201 Created                Error when creating a forked
+       2         3. POST /api/v4/projects                        3. 201 Created           relationship between existing projects
+                 4. POST /api/v4/projects/:id_2/fork             4. 201 Created                   that already have forks.
+                 5. POST /projects/:id_1/fork/:id_2              5. 500 Internal Error
+                                                                                         List groups with 2 parameters "statistics"
+       3         1. GET /api/v4/groups                           1. 500 Internal Error
+                                                                                                 and "min_access_level".
+       4         1. GET /api/v4/groups                           1. 500 Internal Error    Use <"per_page", "0"> pair in request.
+                                                                 Total                                                                  2                 4
+                                     aA   use-after-free error on a cloud service means that the request accesses a deleted resource.
+Table 6: The average time spent by RESTler and M INER to                                     learns the implicit relations between key param-value pairs,
+trigger the published bugs on GitLab, where N/A means that                                   and generates diverse yet valid mutations as param-value lists.
+the fuzzer fails to trigger the bug in 48 hours.                                             Our design can serve as a new direction to improve request
+           REST     # Request      Minimum Length                                            generation quality for REST API fuzzing.
+ No.                                                      RESTler        M INER
+           API      Templates      to Trigger Bugs
+  1        Projects     3                 3                N/A         66.5 mins
+  2        Projects     4                 5                N/A         142.6 mins
+  3        Groups       1                 1              27.6 mins     26.6 mins             5.2 Performance on Reproducing Serious Bugs
+  4        Groups       1                 1              13.7 mins     14.2 mins
+                                                                                            To evaluate the performance of RESTler and M INER on seri-
+length-orientated sequence construction, RESTler+Seq tends                                  ous bug discovery, we manually check the published issues of
+to generate sequences based on long sequence templates, in                                  GitLab, and collect 4 serious bugs that a REST API fuzzer can
+which all the requests have passed the checking. However,                                   reproduce as the ground truth. Then, we construct the fuzzing
+due to low request generation quality, RESTler+Seq rarely                                   grammar that only contains the relevant request templates for
+stores hard-to-construct request templates within its sequence                              each unique bug, as shown in Table 6. For instance, to repro-
+templates, which often consist of easy-to-construct request                                 duce the No. 2 bug, a fuzzer needs to correctly generate 5
+templates. As a result, the executions of easy-to-construct                                 requests in a reasonable order, which are based on 4 different
+requests increase by dozens of times, which results in a high                               request templates in the grammar. Each evaluation lasts up
+pass rate. On the contrary, M INER _ PART improves the pass                                 to 48 hours and is repeated 5 times to calculate the average
+rate of hard-to-construct requests with the help of the attention                           trigger time. The results are shown in Table 5 and Table 6,
+model-based request generation, which improves the diversity                                from which we have the following observations.
+of sequence templates and error discovery.                                                     • M INER can reproduce the serious bugs published on Git-
+   • The attention model-based request generation can im-                                   Lab more effectively and efficiently compared to RESTler.
+prove the error discovery and pass rate of a REST API fuzzer.                               M INER can reproduce all 4 bugs, while RESTler can repro-
+For instance, RESTler+Model finds more errors than RESTler                                  duce two. Furthermore, it takes 142.6 mins on average for
+on all 5 evaluations. M INER _ PART also performs better than                               M INER to construct a sequence with 5 requests in the correct
+RESTler+Seq on pass rate and error discovery with the help                                  order as shown in Table 5, while RESTler cannot construct
+of the attention model-based request generation. The results                                the sequence within 48 hours. The results demonstrate the sig-
+demonstrate the contribution of our new design to the fuzzing                               nificant performance of M INER on serious bug discovery, and
+performance. Furthermore, M INER _ PART performs the best                                   we analyze the reasons as follows. First, M INER can construct
+on pass rate and error discovery on most evaluations, which                                 long request sequences with the length-orientated sequence
+implies that the two data-driven designs can be combined to                                 construction, which increases the execution times on compli-
+improve each other.                                                                         cated request combinations compared to RESTler. Second,
+   • The attention model-based request generation can effec-                                the attention model-based request generation implemented in
+tively provide key param-value lists for request generation                                 M INER improves the pass rate of hard-to-construct requests
+and improve the fuzzing performance compared to straightfor-                                to GitLab, which reduces the trigger time of bugs.
+ward algorithms. For instance, the pass rate and error discov-                                 • Our designs will not prevent M INER from triggering
+ery of RESTler+Model is better than RESTler+Rec1 on most                                    relatively simple bugs. As shown in Table 5, the No. 3 and No.
+evaluations. The error discovery of RESTler+Model is signifi-                               4 bugs are triggered by one request with incorrect parameters
+cantly better than RESTler+RecList on all 5 evaluations. Thus,                              and values. Both M INER and RESTler trigger the two bugs
+neither randomly selecting a mutation nor simply reproducing                                by using the traditional generation method to generate the
+a well-constructed request can improve the performance of                                   corresponding request, and the average time spent by the two
+a REST API fuzzer. The results demonstrate that our design                                  fuzzers is close. In conclusion, M INER performs closely with
+
+
+
+4528        32nd USENIX Security Symposium                                                                                                      USENIX Association
+       100                                                        100                                                           100
+                                          RESTler                              RESTler                                                       RESTler
+                                          RESTler+Seq                          RESTler+Seq                                                   RESTler+Seq
+           80                             RESTler+Model               80       RESTler+Model                                        80       RESTler+Model
+                                          MINER_PART                           MINER_PART                                                    MINER_PART
+           60                                                         60                                                            60
+Ratio(%)
+
+
+
+
+                                                           Ratio(%)
+
+
+
+
+                                                                                                                         Ratio(%)
+           40                                                         40                                                            40
+
+
+           20                                                         20                                                            20
+
+
+            0                                                          0                                                             0
+                1    2   3   4   5   6    7   8   9 >=10                   1   2   3    4      5   6    7   8   9 >=10                   1   2   3    4      5   6    7   8   9 >=10
+                                 Length                                                        Length                                                        Length
+                    (a) GitLab Projects API.                               (b) Bugzilla Comments API.                                    (c) Wordpress Categories API.
+Figure 6: The distribution of sequence length sent by 4 fuzzers, where RESTler+Seq only implements the length-orientated
+sequence construction and RESTler+Model only implements the attention model-based request generation.
+RESTler on discovering this kind of bugs, which are triggered                                     code lines triggered by the incoming requests. Specifically,
+by one incorrectly constructed request.                                                           we leverage a popular ruby gem named Coverband [3] to
+                                                                                                  trace the code lines executed in GitLab’s service/lib and
+5.3             Sequence Length Analysis                                                          service/app folders. We also exclude the coverage statis-
+To analyze the contribution of different designs to sequence                                      tics for irrelevant behaviors like service boot. Then, we con-
+length, we conduct the experiments as follows. We evaluate                                        duct the line coverage evaluation for RESTler, RESTler+Seq,
+RESTler, RESTler+Seq, RESTler+Model, and M INER _ PART                                            RESTler+Model, and M INER _ PART, each of which lasts for
+on GitLab Projects API, Bugzilla Comments API, and Word-                                          12 hours. Since the DataDriven Checker reuses the param-
+Press Categories API. Each evaluation lasts for 12 hours,                                         value pairs collected from the used requests and triggers the
+during which we count the executions of sequences with                                            repeated code lines, it does not affect line coverage. Thus,
+different lengths. Based on the above settings, we can mea-                                       we omit M INER in the evaluation. The line coverage growth
+sure the contribution of the attention model-based request                                        of each fuzzer is shown in Fig. 7, from which we have the
+generation to sequence length from the results of RESTler                                         following observations.
+and RESTler+Model, and the results of RESTler+Seq and                                                • Both the attention model-based request generation and
+M INER _ PART. We can measure the contribution of the length-                                     length-orientated sequence construction can improve line
+orientated sequence construction to sequence length from                                          coverage. For instance, the line coverage of RESTler+Model
+the results of RESTler and RESTler+Seq, and the results of                                        and RESTler+Seq is better than RESTler on all the evalua-
+RESTler+Model and M INER _ PART. Since the DataDriven                                             tions. Furthermore, the line coverage of RESTler+Model is
+Checker does not affect the sequence extension, we omit                                           better than RESTler+Seq on most targets, which implies that a
+M INER in the evaluation. The results are shown in Fig. 6,                                        sequence with well-constructed requests triggers deeper states
+from which we have the following conclusions.                                                     of a cloud service than a long sequence with easy-to-construct
+   • As shown in Fig. 6, the attention model-based request                                        requests.
+generation can increase the executions of long request se-                                           • M INER _ PART performs the best on line coverage on all
+quences. For instance, RESTler+Model assigns more exe-                                            the evaluations. For instance, M INER _ PART covers the most
+cutions on longer request sequences than RESTler on all 3                                         code lines at the end of each evaluation. The line coverage
+targets. M INER _ PART also generates more request sequences                                      triggered by M INER _ PART grows rapidly on GitLab Groups
+with larger lengths compared to RESTler+Seq. The results                                          API and GitLab Issues API. The results demonstrate that our
+demonstrate the contribution of the attention model-based                                         data-driven designs can be combined to improve the coverage
+request generation to sequence extension. By improving the                                        performance of a REST API fuzzer.
+pass rate of requests with our design, a REST API fuzzer can
+construct request sequences with larger lengths.                                                   5.5      Schedule of the Training Module
+   • The length-orientated sequence construction significantly
+increases the executions of request sequences with large                                          To evaluate the impact of different schedules of the Training
+lengths. Both M INER _ PART and RESTler+Seq assign most                                           Module on fuzzing performance, we measure the average
+executions to the request sequences whose lengths are greater                                     time overhead and pass rate for M INER _ PART when using
+than 10, demonstrating our design’s effectiveness.                                                1 hour, 2 hours and 3 hours as the iteration duration of the
+                                                                                                  Training Module, respectively. Each evaluation lasts for 12
+5.4             Coverage Performance Analysis                                                     hours. Thus, the invocation times of the Training Module
+                                                                                                  are 12, 6 and 4 when using the above iteration durations, re-
+To evaluate the coverage performance of each fuzzer, we hook                                      spectively. For each evaluation, we 1) calculate the average
+the source code of GitLab to trace the number of covered                                          time overhead for each invocation of the Training Module
+
+
+
+USENIX Association                                                                                                       32nd USENIX Security Symposium                         4529
+               8,000                                                                      2,500                                                                          3,500
+
+               7,000                                                                                                                                                     3,000
+                                                                                          2,000
+New Covered Lines
+
+
+
+
+                                                                           New Covered Lines
+
+
+
+
+                                                                                                                                                          New Covered Lines
+               6,000
+                                                                                                                                                                         2,500
+               5,000                                                                      1,500
+                                                                                                                                                                         2,000
+               4,000
+                                                                                                                                                                         1,500
+               3,000                                                                      1,000
+                                                    MINER_PART                                                                    MINER_PART                                                              MINER_PART
+                                                                                                                                                                         1,000
+               2,000                                RESTler+Model                                                                 RESTler+Model                                                           RESTler+Model
+                                                                                               500
+                                                    RESTler+Seq                                                                   RESTler+Seq                                 500                         RESTler+Seq
+               1,000
+                                                    RESTler                                                                       RESTler                                                                 RESTler
+                    0                                                                            0                                                                             0
+                     0        2      4       6      8       10        12                          0        2      4     6          8      10         12                         0    2       4      6      8         10   12
+                                           Time                                                                        Time                                                                       Time
+                           (a) GitLab Projects API.                                                     (b) GitLab Groups API.                                                      (c) GitLab Issues API.
+          Figure 7: The line coverage growth of 4 fuzzers when fuzzing GitLab through 3 REST APIs, respectively.
+Table 7: The average time overhead of the attention model and the pass rate of requests sent by M INER _ PART when the iteration
+duration of the Training Module is 1 hour, 2 hours and 3 hours, respectively.
+                                                                    1 Hour                                                       2 Hours                                                       3 Hours
+                                  Target
+                                                        Time Overhead                                 Pass Rate       Time Overhead               Pass Rate                         Time Overhead        Pass Rate
+                           GitLab Projects API              346.20s                                   92.78%             380.80s                  91.54%                               989.30s           89.55%
+                           GitLab Groups API                318.90s                                   93.49%             386.90s                  92.80%                              1,002.67s          91.92%
+                            GitLab Issues API               463.40s                                   90.90%             498.67s                  90.67%                              1,001.60s          90.23%
+                         Bugzilla Comments API               97.60s                                   88.89%             117.30s                  86.47%                               143.70s           85.37%
+                         WordPress Categories API           305.93s                                   91.02%             323.25s                  90.84%                               402.40s           90.14%
+
+to train the attention model and generate the param-value                                                                   model and uses the traditional generation method to generate
+lists, and 2) calculate the pass rate of requests. The results                                                              requests with a low pass rate. Thus, the larger the iteration
+are shown in Table 7, from which we have the following con-                                                                 duration is, the more times M INER _ PART generates requests
+clusions. Note that due to the different number of request                                                                  with a low pass rate in the first period. After the first time
+templates and the different number of parameters in each                                                                    invoking the Training Module and obtaining param-value
+request template, the number of the collected param-value                                                                   lists, M INER _ PART improves the generation quality of re-
+pairs (i.e., the training data for the attention model) is dif-                                                             quests and significantly increases the pass rate. As a result,
+ferent when using M INER _ PART to fuzz a cloud service via                                                                 when using 3 hours as the iteration duration compared to
+different REST APIs. Thus, the average time overhead to                                                                     1 and 2 hours, M INER _ PART generates more requests with
+train the attention model and generate param-value lists can                                                                the traditional generation method, which results in a slightly
+be different when fuzzing different targets.                                                                                lower average pass rate.
+   • The average time overhead to train the attention model
+and generate param-value lists increases when using a larger
+                                                                                                                            5.6        Execution Distribution of Requests
+iteration duration of the Training Module. For instance, as
+shown in Table 7, the average time overhead of the Training                                                                 In this subsection, we conduct the analysis to count the ex-
+Module increases by 185.76% when using 3 hours as the it-                                                                   ecutions of different request templates sent by RESTler and
+eration duration to fuzz GitLab Projects API compared to                                                                    M INER. Each evaluation lasts for 12 hours, and the distri-
+1 hour. The average time overhead increases by 100.85%                                                                      bution of the executions of different request templates is
+when using 3 hours as the iteration duration to fuzz GitLab                                                                 shown in Fig. 8, from which we have the following con-
+Issues API compared to 2 hours. We analyze the reasons                                                                      clusion. M INER assigns more executions to diverse request
+for the results as follows. When the iteration duration of the                                                              templates than RESTler. For instance, as shown in Fig. 8,
+Training Module increases, the training data collected in                                                                   M INER assigns most executions to 17 templates of requests
+the Collection Module increases correspondingly. Thus,                                                                      when fuzzing GitLab Projects API. On the contrary, RESTler
+the training set of the attention model increases, which re-                                                                mainly tests GitLab with 4 request templates. When fuzzing
+quires more time to finish the training.                                                                                    GitLab Groups API, M INER assigns significantly more ex-
+   • The pass rate of M INER _ PART slightly decreases when                                                                 ecutions to 5 extra request templates compared to RESTler.
+using a longer iteration duration to invoke the Training                                                                    Therefore, based on more different request templates, M INER
+Module. For instance, the pass rate of M INER _ PART decreases                                                              can generate more diverse requests with different parameter
+from 90.90% to 90.23% when using larger iteration durations                                                                 values compared to RESTler. Then, M INER triggers more
+to fuzz GitLab Issues API. We infer the reasons for the results                                                             kinds of behaviors of a target cloud service with these re-
+as follows. The slight difference in pass rate is caused by the                                                             quests, which can explore more and deeper states. Thus, the
+request generation in the first period, in which M INER _ PART                                                              aforementioned conclusion can serve as one of the reasons
+does not have the param-value lists generated by the attention                                                              that M INER performs better than RESTler on line coverage
+
+
+
+4530                     32nd USENIX Security Symposium                                                                                                                                           USENIX Association
+      POST /projects/:pid/fork/:forked_from_id                                                                                                                            POST /projects/:pid/issues/:issue_iid/time_stats
+      DELETE /projects/:pid/share/:group_id;                           MINER       DELETE /groups/:group_id/share/:group_id                                    MINER      POST /projects/:pid/issues/:issue_iid/metric_images                          MINER
+      POST /projects/:pid/uploads                                                                                                                                         PUT /projects/:pid/issues/:issue_iid/order
+      POST /projects/:pid/restore                                      RESTler     DELETE /groups/:group_id                                                    RESTler                                                                                 RESTler
+      PUT /projects/:pid/hooks/:hook_id                                                                                                                                   GET /projects/:pid/issues/:issue_iid/metric_images
+      GET /projects/:pid/hooks/:hook_id                                                                                                                                   DELETE /projects/:pid/issues/:issue_iid
+      POST /projects/:pid/star                                                     POST /groups/:group_id/projects/:pid                                                   PUT /projects/:pid/issues/:issue_iid
+      GET /projects/:pid/forks                                                                                                                                            POST /projects/:pid/issues/:issue_iid/reset_spent_time
+      DELETE /projects/:pid/hooks/:hook_id                                         POST /groups/:group_id/share
+                                                                                                                                                                          POST /projects/:pid/issues/:issue_iid/move
+      PUT /projects/:pid/transfer
+      POST /projects/:pid/unstar                                                   PUT /groups/:group_id                                                                  POST /projects/:pid/issues/:issue_iid/add_spent_time
+      POST /projects/:pid/housekeeping                                                                                                                                    POST /projects/:pid/issues/:issue_iid/subscribe
+      POST /projects/:pid/share                                                    GET /groups/:group_id/descendant_groups                                                POST /projects/:pid/issues/:issue_iid/unsubscribe
+      POST /projects/:pid/language                                                                                                                                        GET /issues/:issue_id
+      POST /projects/:pid/archive                                                  GET /groups/:group_id/subgroups                                                        POST /projects/:pid/issues/:issue_iid/todo
+      PUT /projects/:pid                                                                                                                                                  GET /projects/:pid/issues/:issue_iid/related_merge_requests
+      POST /projects/user/:user_id
+      GET /projects/:pid                                                           GET /groups;:group_id/projects/shared                                                  POST /projects/:pid/issues/:issue_iid/time_estimate
+      POST /projects/:pid/hooks                                                                                                                                           GET /projects/:pid/issues/:issue_iid/participants
+      POST /projectsl:pid/unarchive                                                GET /groups/:group_id/projects                                                         GET /projects/:pid/issues/:issue_iid/closed_by
+      POST /projectsl:pid/fork                                                                                                                                            POST /projects/:pid/issues/:issue_iid/reset_time_estimate
+      DELETE /projects/:pid/fork(*)                                                GET /groups/:group_id                                                                  POST /projects/:pid/issues
+      GET /projectsl:pid/hooks                                                                                                                                            GET /projects/:pid/issues/:issue_iid
+      DELETE /projects                                                             POST /groups(*)
+      POST /projects(*)                                                                                                                                                   GET /issues
+      POST /users/:user_id/projects                                                                                                                                       GET /groups/:group_id/issues
+      GET /projects                                                                GET /groups                                                                            GET /projects/:pid/issues
+50%       40%       30%        20       10%      0   10%   20%   30%   40%   50%             50%      40%      30%         20   10%   0    10%   20%   30%   40%   50%                      50% 40% 30%                20      10%      0   10% 20% 30% 40% 50%
+
+                        (a) GitLab Projects API.                                                            (b) GitLab Groups API.                                                                   (c) GitLab Issues API.
+Figure 8: The distribution of executions of different request templates sent by RESTler and M INER, where the request template
+with (∗) means that it has multiple versions to provide different target object ids or it contains different parameters.
+and error discovery.                                                                                                                      automatically detect violations of these security rules [14].
+                                                                                                                                          Godefroid et al. defined differential regression testing for
+                                                                                                                                          REST APIs, which leveraged RESTler to construct network
+6         Discussion and Limitation                                                                                                       logs on different versions of the target REST APIs and de-
+                                                                                                                                          tected service and specification regressions by comparing
+6.1             Data-Driven Sequence Generation
+                                                                                                                                          these network logs [27]. Godefroid et al. also studied how to
+In this paper, M INER utilizes the attention model to learn and                                                                           generate data payloads learned from REST API specifications
+generate param-value lists for each request, which improves                                                                               and found data-processing bugs in cloud services [25]. Based
+the request generation quality. In addition, the model can                                                                                on RESTler, Pythia is presented to leverage a machine learn-
+also be used to explore the implicit relations across different                                                                           ing model to decide different mutation strategies on different
+requests and provide key mutation strategies for a request                                                                                positions of a request. Pythia also leverages the code coverage
+sequence. Due to not having enough training data collected                                                                                information to guide the fuzzing process, which needs manual
+in the fuzzing process, it is hard for us to train an attention                                                                           cost before fuzzing [13].
+model for sequence generation. However, there can be suffi-                                                                                  Different from existing REST API fuzzers, M INER utilizes
+cient training data for sequence generation in different scenar-                                                                          an attention model to locate the parameters to be mutated
+ios like continuous fuzzing and parallel fuzzing. Therefore,                                                                              and provide the appropriate values, which is implemented
+utilizing a machine learning model to provide key mutation                                                                                by using the predicted param-value lists in request genera-
+strategies for a request sequence can be an interesting topic                                                                             tion. Furthermore, M INER leverages the other two data-driven
+in future work.                                                                                                                           designs to increase the execution times on long request se-
+                                                                                                                                          quences and explore incorrect parameter usage errors.
+6.2             Error Reproduction Across Sequences
+Due to the change in the server states, some unique errors
+can only be triggered in a specific state of a cloud service,                                                                             7.2          Generation-based Fuzzing
+while cannot be reproduced in future analysis. It is a common
+problem in error reproduction for REST API fuzzing. For                                                                                   Similar to REST API fuzzing, most generation-based fuzzers
+instance, a fuzzer can trigger an error by accessing a resource,                                                                          generate test cases with specific input formats to fuzz a target
+which is created a few hours ago by other request sequences.                                                                              program with syntax and semantic checking [4, 21, 26, 32, 50].
+However, the fuzzer deletes this resource in the following                                                                                Wang et al. presented a novel data-driven seed generation
+fuzzing process, making the error irreproducible. Thus, how                                                                               approach named Skyfire to learn the syntax and semantic rules
+to analyze the correlation between request sequences that are                                                                             and generate the inputs with specific input formats, which are
+far apart and how to reproduce this kind of errors can be an                                                                              used as the initial seeds for fuzzers [49]. Han et al. presented
+interesting research direction for REST API fuzzing.                                                                                      a novel generation algorithm named semantics-aware assem-
+                                                                                                                                          bly to generate test cases with semantical and syntactical
+7         Related Work                                                                                                                    correctness [30]. Nautilus combines the usage of grammars
+                                                                                                                                          with code coverage feedback, which generates the test cases
+7.1             REST API Fuzzing                                                                                                          with a higher probability of having semantical and syntacti-
+                                                                                                                                          cal correctness [10]. Lee et al. presented a neural network
+In 2019, Atlidakis et al. presented the first stateful REST                                                                               language model-guided fuzzer named Montage to explore
+API fuzzer named RESTler to automatically fuzz a cloud                                                                                    JavaScript engine vulnerabilities [35]. Fuzzilli utilizes a de-
+service via its REST API [12]. Then, Atlidakis et al. imple-                                                                              signed Intermediate Representation (IR) to build syntactically
+mented several security rule checkers in RESTler that can                                                                                 and semantically correct test cases [29].
+
+
+
+USENIX Association                                                                                                                                                       32nd USENIX Security Symposium                                                  4531
+7.3    Machine Learning-based Fuzzing                              REST APIs. The results show that M INER performs much
+                                                                   better than RESTler on request generation and error discovery.
+Multiple works focus on improving fuzzers with machine             Based on manual analysis, M INER also finds 10 more real er-
+learning techniques [16, 28, 37, 40, 42, 43, 46]. NEUZZ em-        rors than RESTler, including 5 security bugs that try to access
+ploys a neural network model to learn the real-world pro-          deleted resources. Furthermore, using the published bugs of
+gram’s branching behaviors, and then utilizes the program          GitLab as the ground truth, we demonstrate the significant
+smoothing technique to locate the bytes in a test case that        performance of M INER on serious bug discovery. In addition,
+influence the branching behaviors [45]. MTFuzz presented by        we conduct extensive analysis to demonstrate the outstanding
+She et al. utilizes a multi-task neural network to learn a com-    performance of M INER on the sequence extension, line cov-
+pact embedding of program input spaces. The neural network         erage and time overhead. Overall, our approach can serve as
+guides the mutation process by predicting which input bytes        a new direction to improve the sequence extension, pass rate,
+with the highest likelihood to impact code coverage [44].          and error discovery of REST API fuzzers.
+
+7.4    Mutation-based Fuzzing                                      Acknowledgments
+Mutation-based fuzzing focuses on exploring unique bugs on
+                                                                   We sincerely appreciate the guidance from the shepherd. We
+a target program without the input format requirement, which
+                                                                   would also like to thank the anonymous reviewers for their
+is different from REST API fuzzing. However, the following
+                                                                   valuable comments and input to improve our paper. This work
+development directions of mutation-based fuzzing can still
+                                                                   was partly supported by NSFC under No. U1936215, the State
+inspire future REST API fuzzing.
+                                                                   Key Laboratory of Computer Architecture (ICT, CAS) under
+   Several studies make use of symbolic execution [18, 33,
+                                                                   Grant No. CARCHA202001, and the Fundamental Research
+34, 47, 53, 54] to solve difficult path constraints and improve
+                                                                   Funds for the Central Universities (Zhejiang University NG-
+code coverage. Profuzzer includes a lightweight mechanism
+                                                                   ICS Platform).
+to discover the relationship between input bytes and pro-
+gram behaviors [51]. Aschermann et al. presented Redqueen
+to solve magic bytes and checksums automatically with              References
+input-to-state correspondence [11]. Gan et al. presented a
+lightweight data flow-sensitive fuzzing solution named GREY-        [1] APIFuzzer: HTTP API Testing Framework. https:
+ONE, which contains a taint-guided mutation strategy to mu-             //github.com/KissPeter/APIFuzzer.
+tate a seed on appropriate positions with appropriate values        [2] Bugzilla. https://www.bugzilla.org.
+and a conformance-guided evolution solution to collect better
+seeds in the queue [23].                                            [3] Coverband.          https://github.com/danmayer/
+   Energy allocation strategies used in mutation-based fuzzing          coverband.
+assign more energy to explore low-frequency paths, un-              [4] Funfuzz. https://github.com/MozillaSecurity/
+touched branches and effective mutations [15, 24, 38, 39, 52].          funfuzz.
+Several studies allocate energy based on multi-objective met-
+rics [9, 41, 55]. AFL++HIER leverages a multi-armed bandit          [5] GitLab. https://gitlab.com/gitlab-org/gitlab.
+model to allocate energy to different clusters of seeds with
+                                                                    [6] Qualys Web Application Scanning (WAS). https://
+multi-level coverage metrics [48].
+                                                                        www.qualys.com/apps/web-app-scanning.
+   Inspired by these state-of-the-art solutions, in future work,
+REST API fuzzing can be further developed by 1) locating            [7] TnT-Fuzzer: OpenAPI Fuzzer Written in Python.
+request templates that are most relevant to error discovery and         https://github.com/Teebytes/TnT-Fuzzer.
+2) assigning more mutation energy to the request sequences
+                                                                    [8] WordPress. https://wordpress.org.
+with better error discovery and code coverage.
+                                                                    [9] Nadia Alshahwan, Xinbo Gao, Mark Harman, Yue Jia,
+                                                                        Ke Mao, Alexander Mols, Taijin Tei, and Ilya Zorin.
+8     Conclusion                                                        Deploying Search based Software Engineering with
+                                                                        Sapienz at Facebook. In International Symposium on
+To solve the limitations of REST API fuzzers and improve
+                                                                        Search Based Software Engineering, pages 3–45, 2018.
+their error discovery performance, we present a hybrid data-
+driven approach with three new designs, which help find se-        [10] Cornelius Aschermann, Tommaso Frassetto, Thorsten
+curity bugs triggered by long request sequences and explore             Holz, Patrick Jauernig, Ahmad-Reza Sadeghi, and
+incorrect parameter usage errors. We implement the proto-               Daniel Teuchert. NAUTILUS: Fishing for Deep Bugs
+type M INER based on our approach, and evaluate M INER                  with Grammars. In Network and Distributed Systems
+against RESTler on 3 open-sourced cloud services via 11                 Security Symposium, 2019.
+
+
+
+4532    32nd USENIX Security Symposium                                                                      USENIX Association
+[11] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko,        [22] Roy Thomas Fielding. Architectural Styles and the
+     Robert Gawlik, and Thorsten Holz. Redqueen: Fuzzing              Design of Network-based Software Architectures. Uni-
+     with Input-to-State Correspondence. In Network and               versity of California, Irvine, 2000.
+     Distributed Systems Security Symposium, 2019.
+                                                                 [23] Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao,
+[12] V. Atlidakis, P. Godefroid, and M. Polishchuk. RESTler:          Xiaojun Qin, Dong Wu, and Zuoning Chen. GREYONE:
+     Stateful REST API Fuzzing. In Proceedings of the                 Data Flow Sensitive Fuzzing. In USENIX Security Sym-
+     41st International Conference on Software Engineering,           posium, pages 2577–2594, 2020.
+     pages 748–758, 2019.
+                                                                 [24] Shuitao Gan, Chao Zhang, Xiaojun Qin, Xuwen Tu,
+[13] Vaggelis Atlidakis, Roxana Geambasu, Patrice Gode-               Kang Li, Zhongyu Pei, and Zuoning Chen. CollAFL:
+     froid, Marina Polishchuk, and Baishakhi Ray. Pythia:             Path sensitive fuzzing. In Symposium on Security and
+     Grammar-based Fuzzing of REST APIs with Coverage-                Privacy, pages 679–696, 2018.
+     guided Feedback and Learning-based Mutations. arXiv
+                                                                 [25] Patrice Godefroid, Bo-Yuan Huang, and Marina Pol-
+     preprint:2005.11498, 2020.
+                                                                      ishchuk. Intelligent REST API Data Fuzzing. In ACM
+                                                                      Joint Meeting on European Software Engineering Con-
+[14] Vaggelis Atlidakis, Patrice Godefroid, and Marina Pol-
+                                                                      ference and Symposium on the Foundations of Software
+     ishchunk. Checking Security Properties of Cloud Ser-
+                                                                      Engineering, pages 725–736, 2020.
+     vice REST APIs. In 2020 IEEE 13th International Con-
+     ference on Software Testing, Validation and Verification,   [26] Patrice Godefroid, Adam Kiezun, and Michael Y Levin.
+     pages 387–397, 2020.                                             Grammar-based Whitebox Fuzzing. In ACM Sigplan
+                                                                      Notices, 2008.
+[15] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-
+     hury. Coverage-based Greybox Fuzzing as Markov              [27] Patrice Godefroid, Daniel Lehmann, and Marina Pol-
+     Chain. In ACM SIGSAC Conference on Computer and                  ishchuk. Differential Regression Testing for REST APIs.
+     Communications Security, pages 1032–1043, 2016.                  In International Symposium on Software Testing and
+                                                                      Analysis, pages 312–323, 2020.
+[16] Konstantin Böttinger, Patrice Godefroid, and Rishabh
+     Singh. Deep Reinforcement Fuzzing. In 2018 IEEE             [28] Patrice Godefroid, Hila Peleg, and Rishabh Singh.
+     Security and Privacy Workshops, pages 116–122, 2018.             Learn&Fuzz: Machine Learning for Input Fuzzing. In
+                                                                      International Conference on Automated Software Engi-
+[17] Kyunghyun Cho, Bart Van Merriënboer, Caglar Gul-                 neering, pages 50–59, 2017.
+     cehre, Dzmitry Bahdanau, Fethi Bougares, Holger
+     Schwenk, and Yoshua Bengio. Learning Phrase Repre-          [29] Samuel Groß. FuzzIL: Coverage Guided Fuzzing for
+     sentations using RNN Encoder–Decoder for Statistical             JavaScript Engines. Department of Informatics, Karl-
+     Machine Translation. arXiv preprint:1406.1078, 2014.             sruhe Institute of Technology, 2018.
+
+[18] Mingi Cho, Seoyoung Kim, and Taekyoung Kwon.                [30] HyungSeok Han, DongHyeon Oh, and Sang Kil Cha.
+     Intriguer: Field-Level Constraint Solving for Hybrid             CodeAlchemist: Semantics-Aware Code Generation to
+     Fuzzing. In ACM SIGSAC Conference on Computer                    Find Vulnerabilities in JavaScript Engines. In Network
+     and Communications Security, pages 515–530, 2019.                and Distributed Systems Security Symposium, 2019.
+
+                                                                 [31] Sepp Hochreiter and Jürgen Schmidhuber. Long Short-
+[19] Junyoung Chung, Caglar Gulcehre, KyungHyun Cho,
+                                                                      Term Memory. Neural computation, 9:1735–1780,
+     and Yoshua Bengio. Empirical Evaluation of Gated Re-
+                                                                      1997.
+     current Neural Networks on Sequence Modeling. arXiv
+     preprint:1412.3555, 2014.                                   [32] Christian Holler, Kim Herzig, and Andreas Zeller.
+                                                                      Fuzzing with Code Fragments. In USENIX Security
+[20] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+                                                                      Symposium, pages 445–458, 2012.
+     Kristina Toutanova. BERT: Pre-training of Deep Bidi-
+     rectional Transformers for Language Understanding.          [33] Heqing Huang, Peisen Yao, Rongxin Wu, Qingkai Shi,
+     arXiv preprint:1810.04805, 2018.                                 and Charles Zhang. Pangolin: Incremental Hybrid
+                                                                      Fuzzing with Polyhedral Path Abstraction. In Sympo-
+[21] Kyle Dewey, Jared Roesch, and Ben Hardekopf. Lan-                sium on Security and Privacy, pages 1613–1627, 2020.
+     guage Fuzzing Using Constraint Logic Programming.
+     In International Conference on Automated Software En-       [34] Kyungtae Kim, Dae R Jeong, Chung Hwan Kim,
+     gineering, pages 725–730, 2014.                                  Yeongjin Jang, Insik Shin, and Byoungyoung Lee. HFL:
+
+
+
+USENIX Association                                                                32nd USENIX Security Symposium       4533
+       Hybrid Fuzzing on the Linux Kernel. In Network and          Fuzzing with Neural Program Smoothing. In Sympo-
+       Distributed Systems Security Symposium, 2020.               sium on Security and Privacy, pages 803–817, 2019.
+
+[35] Suyoung Lee, HyungSeok Han, Sang Kil Cha, and Sooel      [46] Suphannee Sivakorn, George Argyros, Kexin Pei, An-
+     Son. Montage: A Neural Network Language Model-                gelos D Keromytis, and Suman Jana. HVLearn: Auto-
+     Guided JavaScript Engine Fuzzer. In USENIX Security           mated Black-box Analysis of Hostname Verification in
+     Symposium, pages 2613–2630, 2020.                             SSL/TLS Implementations. In Symposium on Security
+                                                                   and Privacy, pages 521–538, 2017.
+[36] Minh-Thang Luong, Hieu Pham, and Christopher D
+     Manning. Effective Approaches to Attention-based Neu-    [47] Nick Stephens, John Grosen, Christopher Salls, Andrew
+     ral Machine Translation. arXiv preprint:1508.04025,           Dutcher, Ruoyu Wang, Jacopo Corbetta, Yan Shoshi-
+     2015.                                                         taishvili, Christopher Kruegel, and Giovanni Vigna.
+                                                                   Driller: Augmenting Fuzzing Through Selective Sym-
+[37] Chenyang Lyu, Shouling Ji, Yuwei Li, Junfeng Zhou,            bolic Execution. In Network and Distributed Systems
+     Jianhai Chen, Pan Zhou, and Jing Chen. SmartSeed:             Security Symposium, 2016.
+     Smart Seed Generation for Efficient Fuzzing. arXiv
+     preprint:1807.02606, 2018.                               [48] Jinghan Wang, Chengyu Song, and Heng Yin. Reinforce-
+                                                                   ment Learning-based Hierarchical Seed Scheduling for
+[38] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-         Greybox Fuzzing. In Network and Distributed Systems
+     Han Lee, Yu Song, and Raheem Beyah. MOPT: Opti-               Security Symposium, 2021.
+     mized Mutation Scheduling for Fuzzers. In USENIX
+     Security Symposium, pages 1949–1966, 2019.               [49] Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. Sky-
+                                                                   fire: Data-Driven Seed Generation for Fuzzing. In Sym-
+[39] Chenyang Lyu, Shouling Ji, Xuhong Zhang, Hong Liang,          posium on Security and Privacy, pages 579–594, 2017.
+     Binbin Zhao, Kangjie Lu, and Raheem Beyah. EMS:
+     History-Driven Mutation for Coverage-based Fuzzing.      [50] Qinying Wang, Shouling Ji, Yuan Tian, Xuhong Zhang,
+     In Network and Distributed Systems Security Sympo-            Binbin Zhao, Yuhong Kan, Zhaowei Lin, Changting Lin,
+     sium, 2022.                                                   Shuiguang Deng, and Alex X Liu. Mpinspector: a sys-
+                                                                   tematic and automatic approach for evaluating the se-
+[40] Chenyang Lyu, Hong Liang, Shouling Ji, Xuhong Zhang,          curity of iot messaging protocols. In USENIX Security
+     Binbin Zhao, Meng Han, Yun Li, Zhe Wang, Wenhai               Symposium, pages 4205–4222, 2021.
+     Wang, and Raheem Beyah. SLIME: Program-Sensitive
+     Energy Allocation for Fuzzing. In International Sympo-   [51] Wei You, Xueqiang Wang, Shiqing Ma, Jianjun Huang,
+     sium on Software Testing and Analysis, pages 365–377,         Xiangyu Zhang, XiaoFeng Wang, and Bin Liang. Pro-
+     2022.                                                         Fuzzer: On-the-fly Input Type Probing for Better Zero-
+                                                                   day Vulnerability Discovery. In Symposium on Security
+[41] Ke Mao, Mark Harman, and Yue Jia. Sapienz: Multi-             and Privacy, pages 769–786, 2019.
+     objective Automated Testing for Android Applications.
+     In International Symposium on Software Testing and       [52] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu,
+     Analysis, pages 94–105, 2016.                                 Kai Lu, and Xu Zhou. EcoFuzz: Adaptive Energy-
+                                                                   Saving Greybox Fuzzing as a Variant of the Adversarial
+[42] Nicole Nichols, Mark Raugas, Robert Jasper, and Nathan        Multi-Armed Bandit. In USENIX Security Symposium,
+     Hilliard. Faster Fuzzing: Reinitialization with Deep          pages 2307–2324, 2020.
+     Neural Models. arXiv preprint:1711.02807, 2017.
+                                                              [53] Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and
+[43] Mohit Rajpal, William Blum, and Rishabh Singh. Not            Taesoo Kim. QSYM: A Practical Concolic Execution
+     All Bytes are Equal: Neural Byte Sieve for Fuzzing.           Engine Tailored for Hybrid Fuzzing. In USENIX Secu-
+     arXiv preprint:1711.04596, 2017.                              rity Symposium, pages 745–761, 2018.
+[44] Dongdong She, Rahul Krishna, Lu Yan, Suman Jana,         [54] Lei Zhao, Yue Duan, Heng Yin, and Jifeng Xuan. Send
+     and Baishakhi Ray. MTFuzz: Fuzzing with a Multi-task          Hardest Problems My Way: Probabilistic Path Prioriti-
+     Neural Network. In ACM Joint Meeting on European              zation for Hybrid Fuzzing. In Network and Distributed
+     Software Engineering Conference and Symposium on              Systems Security Symposium, 2019.
+     the Foundations of Software Engineering, pages 737–
+     749, 2020.                                               [55] Xiaoqi Zhao, Haipeng Qu, Wenjie Lv, Shuo Li, and Jian-
+                                                                   liang Xu. MooFuzz: Many-Objective Optimization Seed
+[45] Dongdong She, Kexin Pei, Dave Epstein, Junfeng Yang,          Schedule for Fuzzer. Mathematics, 9:205, 2021.
+     Baishakhi Ray, and Suman Jana. NEUZZ: Efficient
+
+
+
+4534     32nd USENIX Security Symposium                                                             USENIX Association
+

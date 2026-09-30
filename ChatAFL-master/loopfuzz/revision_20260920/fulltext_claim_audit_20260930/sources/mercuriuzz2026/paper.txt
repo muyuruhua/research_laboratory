@@ -1,0 +1,1372 @@
+            Identifying Logical Vulnerabilities in QUIC
+                         Implementations
+                 Kaihua Wang∗ , Jianjun Chen∗‡ , Pinji Chen∗ , Jianwei Zhuge∗ , Jiaju Bai† , Haixin Duan∗
+                                               ∗ Tsinghua
+                                                   University † Beihang University
+           {wkh23, cpj24}@mails.tsinghua.edu.cn {jianjun, zhugejw, duanhx}@tsinghua.edu.cn baijiaju@buaa.edu.cn
+
+
+   Abstract—QUIC is a modern transport protocol increasingly           YouTube, TikTok, and Facebook, have widely adopted QUIC
+adopted by major platforms and services, making its security           as their primary transport protocol.
+and correctness critically important. However, the complexity of          Given this widespread deployment, vulnerabilities in QUIC
+QUIC specification and implementations introduces opportunities
+for subtle and dangerous logic flaws. Existing QUIC testing tools      implementations pose serious security risks to the Internet.
+primarily focus on memory-related vulnerabilities and are ill-         While QUIC incorporates numerous security features by de-
+equipped to detect logical vulnerabilities. Therefore, the discovery   sign, recent reports [18], [19] have revealed a growing class of
+of logical vulnerabilities is currently still highly dependent on      logical vulnerabilities—subtle flaws arising not from memory
+manual auditing.                                                       corruption but from incorrect implementations logic. These
+   In this paper, we introduce MerCuriuzz, a novel black-box
+fuzzing framework designed to automatically uncover logical vul-       vulnerabilities can be just as dangerous, enabling denial-of-
+nerabilities in QUIC implementations. We evaluated MerCuriuzz          service (DoS) attacks, state inconsistencies, and other unin-
+against 16 widely used QUIC implementations and discovered             tended behaviors. A notable example is CVE-2024-22189 [45],
+14 previously unknown logical vulnerabilities affecting popular        which is similar to the HTTP/2 Rapid Reset vulnerability [28]
+implementations such as quiche, xquic, and aioquic. Those              and allowed attackers to overwhelm servers with minimal
+vulnerabilities can pose severe security risks, enabling attackers
+to exhaust server resources, crash services, or deny legitimate        effort by exploiting a subtle logic flaw in connection migration.
+users access to the server. We categorize those vulnerabilities        Unfortunately, state-of-the-art fuzzing and automated testing
+into six categories and propose mitigation strategies. We also         techniques have limited success in detecting such logic flaws
+responsibly disclosed our findings to the affected vendors, and        in QUIC, due to the following three reasons.
+11 of them were confirmed and rewarded by the vendors, such               First, there is a lack of effective and efficient mutation
+as Cloudflare and Alibaba Cloud.
+                                                                       techniques for the QUIC protocol to generate high-value frame
+                            I. I NTRODUCTION                           sequences that can cover a larger number of program paths.
+                                                                       Triggering logical vulnerabilities in the QUIC protocol often
+   The standardization of the QUIC protocol has progressed             requires sending many carefully crafted packets in a specific
+over nearly four years [65]. According to global website               sequence, which leads to a huge mutation state space. Given
+usage statistics from W3Techs [58], over 33% of websites               that the number of states grows exponentially in the sequence
+now support HTTP/3—which is based on QUIC—up from                      quantity, existing techniques based on random mutation are
+25% in 2022. This rapid growth highlights QUIC’s emergence             infeasible to test the QUIC protocol in practice. Second,
+as a core component of modern internet infrastructure, with            logical vulnerabilities often do not result in common error
+adoption expected to continue rising. Thanks to its inte-              manifestations such as crashes or overflows, thus traditional
+grated design that mandates TLS encryption and eliminates              fuzzing frameworks have difficulty detecting whether a vul-
+handshake latency [7], QUIC not only boosts communication              nerability has been triggered. Third, QUIC services involve
+efficiency but also enhances security. Furthermore, its ability to     complex interactions, including port registration, service ini-
+support faster data transfer and improved connection stability         tialization, and frequent process restarts. These operations
+compared to traditional TCP has made it a preferred choice for         require resetting the service state before each fuzzing iteration,
+content delivery networks (CDNs) and large-scale platforms.            which significantly undermines the efficiency of the testing
+For instance, Akamai and Kuaishou have collaborated to                 process.
+optimize video streaming over QUIC [2], while major CDN                   To address these challenges, we propose MerCuriuzz,
+providers like Cloudflare and Fastly, and platforms such as            a novel testing method capable of automatically discovering
+  ‡ Corresponding author.                                              logical vulnerabilities in QUIC implementations. To tackle the
+                                                                       first challenge, we design a segmental mutation strategy that
+                                                                       decomposes test case generation into three separate mutation
+                                                                       stages, which maintains good mutation efficiency even when
+                                                                       dealing with complex and long QUIC frame sequences. For
+                                                                       the second challenge, we introduce a semantic and public
+Network and Distributed System Security (NDSS) Symposium 2026
+23-27 February 2026, San Diego, CA, USA                                resource consistency detector based on differential testing.
+ISBN 979-8-9919276-8-0                                                 This method allows us to detect traffic anomalies and potential
+https://dx.doi.org/10.14722/ndss.2026.231777
+www.ndss-symposium.org
+vulnerabilities in two differential QUIC services based on their        trip times (RTTs) to complete the handshake and encryption
+traffic characteristics and usage of public resources. For the          setup, QUIC integrates the cryptographic handshake into the
+third challenge, we design and implement a snapshot manager             transport layer and completes the entire process in a single
+based on Nyx snapshot technology [50], [51], which enables              RTT under normal circumstances. This phase includes the fol-
+millisecond-level snapshot saving and recovery. This design             lowing steps: (1) Connection Initiation: The client initiates the
+eliminates the overhead associated with resetting the system            connection by sending a ClientHello message, encapsulated
+state after each test case, including operations such as service        within a CRYPTO frame, alongside a randomly generated
+initialization and connection establishment.                            Connection ID (CID); (2) Cryptographic Negotiation: The
+   We implemented the MerCuriuzz prototype and evaluated it             server responds with a ServerHello message and cryptographic
+on 16 open source QUIC implementations recommended by                   parameters, establishing encryption keys; (3) 0-RTT Data
+the QUIC work group [17]. Consequently, we discovered 14                (optional): If the client has previously connected to the server,
+logical vulnerabilities across these implementations, affecting         it may send early application data using 0-RTT encryption
+well-known projects such as quiche, xquic, and aioquic. We              keys derived from session resumption for reconnecting; (4) 1-
+further categorize them into 6 typical classes and demonstrate          RTT Completion: The handshake concludes once the server
+their impact through controlled experiments on real-world               verifies the client’s finished message and both parties derive
+implementations. We responsibly disclosed these findings to             the final 1-RTT keys.
+vendors and received vulnerability rewards from Cloudflare                 QUIC connection migration. One of the distinguishing
+and Alibaba, along with five CVE IDs. Furthermore, we                   features of the QUIC protocol is its native support for
+analyzed the common root causes of these logical vulnera-               connection migration. Unlike traditional transport protocols,
+bilities and proposed mitigation strategies to both the QUIC            which bind the transport-layer connection to a four-tuple of
+specification and implementation developers.                            IP addresses and ports, QUIC decouples connection identity
+   In summary, we make the following contributions:                     from endpoint addresses by introducing CID. This design
+                                   1
+   • We proposed MerCuriuzz , a novel methodology for                   enables seamless migration of ongoing connections across
+      automatically discovering logical vulnerabilities in QUIC         network paths without requiring a full renegotiation, e.g.,
+      implementations, enabling efficient identification of such        when a mobile device switches from Wi-Fi to cellular. In
+      vulnerabilities.                                                  certain scenarios, QUIC allows the use of 0-RTT data during
+   • We implemented our approach and evaluated it on 16                 connection migration, particularly when session resumption is
+      mainstream QUIC implementations, discovering 14 logi-             enabled. However, due to the risk of spoofing and path-based
+      cal vulnerabilities and 6 categories of attacks. These lead       attacks, path validation is required. This process involves: (1)
+      to various security issues, such as resource exhaustion           Path Challenge: Upon detecting a potential change in path,
+      and assertion failures, enabling denial-of-service attacks        the peer sends a randomly generated challenge token using a
+      on major QUIC services.                                           PATH CHALLENGE frame; (2) Path Response: The recipient
+   • We responsibly disclosed our findings to affected ven-             must echo the challenge value in a PATH RESPONSE frame;
+      dors and received positive feedback. We also presented            (3) ACK Confirm: If the peer receives the path response,
+      three mitigation recommendations to address such logical          it returns an ACK frame to confirm address ownership and
+      vulnerabilities of QUIC.                                          reachability. Only after this validation succeeds, QUIC allows
+                                                                        application data to be sent on the new path.
+                         II. BACKGROUND                                    QUIC data transmission. Once the handshake is com-
+A. QUIC Protocol                                                        plete and secure communication is established, QUIC is
+   QUIC is a modern, multiplexed transport protocol developed           changed to the data transmission phase. Instead of delivering
+by Google and standardized by the IETF as RFC 9000 [56].                a continuous byte stream, QUIC employs a frame-oriented
+It is designed to provide low-latency, secure, and reliable             abstraction, wherein each QUIC packet encapsulates one or
+communication over UDP, integrating features traditionally              more self-describing frames. These frames are broadly cat-
+split between TCP and TLS into a unified framework. QUIC                egorized into data frames and control frames. Data frames
+has gained increasing popularity in recent years, with 14               (STREAM frames) are used to carry application data, while
+QUIC-related RFC documents proposed successively, includ-               control frames are utilized for managing connection state, flow
+ing HTTP/3 and DNS Over QUIC [8], [31], [56], [57]. Gen-                control, congestion control, and transport-level signaling. For
+erally, the QUIC protocol can be logically decomposed into              instance, the NEW CONNECTION ID control frame allows
+two phases: (1) QUIC connection establishment or migration,             connection migration by issuing new CIDs. This flexible
+and (2) QUIC data transmission.                                         framing system allows QUIC to multiplex multiple types of
+   QUIC connection establishment. Initially, the QUIC pro-              information within the same packet, enabling more efficient
+tocol launches a handshake to establish a secure and authenti-          utilization of the network. Additionally, QUIC offers TCP-
+cated connection between the client and the server. Unlike tra-         equivalent reliability through a combination of mechanisms.
+ditional TCP + TLS protocols, which require multiple round-             First, each STREAM frame includes offset and length fields,
+                                                                        allowing data to be reassembled in order and detect losses on
+  1 https://github.com/k4ra5u/MerCuriuzz                                a per-stream basis. Second, QUIC uses rich ACK frames that
+
+
+
+                                                                    2
+support selective acknowledgment of received packet ranges,             This assumption is feasible, for example, many closed-source
+enabling efficient retransmission strategies and minimizing             PCDN services provide local deployment solutions [42], [55].
+head-of-line blocking. Third, QUIC maintains packet-level                  In terms of the victim QUIC server, first, we assume that
+state, including packet numbers and transmission timestamps.            the server is properly deployed, bound to a valid IPv4 network
+Based on acknowledgments and timeouts, the sender can                   address and port, and has unrestricted network connectivity,
+retransmit lost data frames, ensuring guaranteed delivery.              allowing it to interact with external clients without firewall
+                                                                        or NAT constraints. Second, we do not impose any assump-
+B. Protocol Logical Vulnerabilities
+                                                                        tions or limitations regarding the implementation language of
+   Protocol logical vulnerabilities have become an important            the server. The server may be written in any programming
+area of research in the field of cybersecurity in recent years.         language, as our approach is agnostic to the underlying tech-
+These vulnerabilities differ significantly from traditional mem-        nology stack.
+ory vulnerabilities in both nature and exploitation methods.
+Traditional memory vulnerabilities, such as buffer overflows
+                                                                        B. Challenges
+and use-after-free (UAF) errors, are primarily due to low-
+level programming errors related to memory management.                     Although QUIC protocol logical vulnerabilities can have
+In contrast, protocol logical vulnerabilities arise from design         serious practical impacts, research on automatically discov-
+flaws in the protocol logic, regardless of memory safety.               ering logical vulnerabilities in the QUIC protocol is still
+Exploiting logical vulnerabilities does not require memory              lacking. To develop a fuzzing framework tailored for the QUIC
+corruption, instead, attackers manipulate the system’s intended         protocol that can efficiently detect state machine corruption
+logic to achieve unintended behavior.                                   type logical vulnerabilities, three fundamental challenges must
+   Landscape of logical vulnerability. In recent years, the in-         be addressed:
+creasing complexity of network protocols and their widespread              Challenge 1: How to find frame sequences covering more
+adoption [22] have driven a rapid growth in research on                 program paths in a huge mutation state space? To cover as
+protocol logical vulnerabilities. Taking the QUIC protocol as           many program states as possible, the transmitted data frames
+an example, vulnerabilities in QUIC prior to 2021 were pre-             must follow both the syntax rules (as defined in the QUIC RFC
+dominantly memory-related issues, such as stack corruption.             for data and control frames) and the semantic rules (based on
+However, after 2021, there was a significant rise in protocol           the state machine of the QUIC server). We need to consider
+logical vulnerabilities. This trend is caused by several factors.       the dependencies between each frame in the sequence. If we
+On one hand, the QUIC protocol has only been officially                 use traditional field-based mutation methods, such as those
+standardized for three years, and its complex protocol logic            in Bleem [29], to blindly mutate every field in the frame
+has not yet undergone extensive testing, with many QUIC                 to be sent, the state space of mutated frames will increase
+features still under development. On the other hand, due to             exponentially with the length of the frame sequence. One
+advancements in security tools, such as the increasing adoption         available solution is to generate frame sequences in batches
+and improvement of tools like Sanitizers, traditional memory            based on predefined rules, as in TLS-Anvil [30]. However,
+vulnerabilities have become harder to exploit, prompting at-            such rules depend on the developer’s experience and can
+tackers to focus more on logical vulnerabilities. This shift in         only detect known issues, failing to uncover unknown errors.
+vulnerability landscape motivates us to systematically identify         Moreover, as a stateful protocol based on UDP, the behavior
+and analyze logical vulnerabilities in QUIC implementations.            of a QUIC implementation can be influenced by factors such
+                                                                        as the timing of the data sequence, packet ordering, packet
+                       III. OVERVIEW
+                                                                        loss, and retransmission, leading to unique states. Therefore,
+A. Threat model                                                         existing mutation strategies in protocol fuzzing cannot address
+   In our attack, the attacker first establishes a secure and           the challenges of mutating QUIC frame sequences.
+legitimate connection with the victim’s QUIC server, then                  Our solution. To address this challenge, we designed the
+sends a carefully crafted sequence of QUIC frames over this             segmental mutation for QUIC protocol data. This is a multi-
+connection to induce the victim into executing flawed code              stage test case generation strategy that divides the mutation
+logic. As a result, the victim enters an erroneous program              process into three targets: frame content mutator, frame se-
+state and fails to provide proper QUIC interactions for users,          quence generator, and interaction behavior mutator. In the
+thereby achieving a DoS attack. To ensure the practicality of           frame content mutator stage, we focus on the definitions and
+our attack in real-world scenarios, we assume the following             specifications of each frame as provided in the RFC docu-
+basic properties.                                                       mentation, performing mutations within syntactic constraints.
+   In terms of attacker capability, we assume two capabilities.         In the frame sequence generator stage, we predefine multiple
+First, the attacker can normally interact with the target QUIC          generation algorithms for each type of frame, expanding a
+server, which can use the correct QUIC version and application          single frame into a complete sequence. In the interaction
+name to establish a connection. Second, the attacker can                behavior mutator stage, we simulate and mutate various char-
+locally execute the victim program and observe its public               acteristics of the connection, such as response delay, frame
+resource usage metrics as provided by the operating system.             loss, retransmission, and out-of-order delivery.
+
+
+
+                                                                    3
+   Challenge 2: how to detect abnormalities in program                 initial startup, the harness controls the converter to establish
+behavior and state? When a program exhibits logic errors,              a connection with the QUIC server. Once the connection is
+there are generally two main manifestations. The first is              established, a snapshot node is created. The relay handles
+the inconsistency between its response to packets and the              communication with the QUIC server and reports test results
+Oracle standard. Since the RFC documentation does not define           back to the external fuzzer. After each fuzzing round, the
+every detail of QUIC interaction behavior, we must evaluate            harness restores the snapshot to the moment just after the
+the causes and types of inconsistencies and ignore those               connection is established, thereby saving the time otherwise
+that are unrelated to vulnerability exploitation. The second           required for service restart and connection setup.
+manifestation is in the occupation of public resources. Logical
+vulnerabilities typically exhibit normal memory states, leading                              IV. M ER C URIUZZ
+to a high rate of false negatives. Therefore, we must design              We propose MerCuriuzz, a black box fuzzing framework for
+a new observation and feedback mechanism to determine and              QUIC protocol. Unlike traditional black box fuzzers focusing
+verify whether the current interaction results in state or logic       on memory vulnerabilities, MerCuriuzz is capable of automat-
+anomalies.                                                             ically discovering logical vulnerabilities in QUIC implementa-
+   Our solution. To address this challenge, we developed State         tions through segmental mutation and state anomaly detectors.
+Anomaly Detectors that can detect whether logical vulner-              It also enables efficient state and connection resets using a
+abilities have been triggered and assess the expected value            snapshot manager. In the following sections, we provide a
+of the current interaction. Our Detectors consist of two main          detailed description of the design and implementation of these
+parts: (1) Semantic Consistency Detector. This is a differential       components. In addition, to support our mutations and detec-
+testing module. By analyzing the returned frame sequences,             tors, we design the Compressed Corpus for test case format,
+it detects behavioral inconsistencies between implementations.         and construct the Monte Carlo seed tree as the scheduler. The
+To reduce false positives caused by minor variations, we ignore        implementation details of these components are described in
+certain frames and contents that do not affect the state of the        Appendix.
+connection, and instead focus primarily on whether control
+frame logic and data frame content meet the expected condi-            A. Workflow
+tions. (2) Resource Consumption Detector. First, we define                Figure 1 illustrates the workflow of MerCuriuzz. Overall,
+three types of resources: computational resources, memory              MerCuriuzz consists of four main phases: (1) receiving input
+resources, and network handle resources. After obtaining the           testcases and outputting objectives and crashes; (2) managing
+average values of resource consumption from baseline tests,            and mutating the corpus; (3) managing snapshots and per-
+we track the resource usage before and after each fuzzing              forming differential evaluation; (4) executing input tests under
+session, paying attention to whether it exceeds the threshold          QEMU virtual machine snapshots. The complete workflow
+generated by the baseline tests.                                       includes the following seven steps:
+   Challenge 3: how to mitigate the time overhead intro-                  ➀ We extract part of the QUIC traffic from the real world.
+duced by state resets and connection recovery? As a stateful           Then, we abstract the packet data to construct the initial seed.
+communication protocol, a QUIC connection is forcefully                ➁ The seed is inserted into the seed tree. The MCTS algorithm
+closed whenever one endpoint encounters a state error or               recommends the next seed to fuzz. ➂ The selected seed is
+receives an unexpected packet, with the endpoint sending a             mutated using Segmental Mutation to generate a complete
+Connection Close frame. This closure resets all accumulated            test case. ➃ The snapshot manager in the Diff Executor is
+connection states. Whether reconnecting or restoring the pre-          responsible for establishing virtual machine snapshots and in-
+vious state, these processes incur significant time overhead.          jecting the test case into two virtual machines. After execution,
+More importantly, they consume computational resources and             the snapshot manager restores VMs to their initial snapshot
+reduce the accuracy of anomaly detection. Therefore, it is             state, ready for the next round of testing. ➄ The QUIC
+crucial to reduce time overhead from repetitive tasks like state       Converter processes the input from the host and packages
+resets and connection recovery, such as server restart and TLS         it into QUIC format packets to be sent to the target. The
+handshake.                                                             internal Observers collect reports on public resource usage
+   Our solution. To address this challenge, we designed                and the interaction flow, which are transmitted back to the host
+a snapshot manager based on the fast snapshot restoration              through a preconfigured channel. ➅ In the Evaluation stage,
+technique of Nyx [50]. Since Nyx requires a QEMU [44]                  two detectors assess whether any abnormal state or behavior
+virtual machine for the target program, we split the data              occurs. ➆ If a test case is identified as abnormal, it is reported
+collection component of the detector from its core logic and           as an objective or crash. If no anomaly is found but the test
+merged it with the QUIC communication module to form                   case is marked interesting, it is returned to the seed and the
+a data converter. This converter is primarily responsible for          process repeats from Step ➁.
+bridging the fuzzer and the QUIC server running inside the
+virtual machine. Each target implementation is encapsulated            B. Segmental Mutation
+as a System Under Test (SUT), containing the target QUIC                  The core idea of segmental mutation is to reduce the explo-
+server, the data converter module, and the harness. Upon               sion of the state space caused by excessive mutability of seeds.
+
+
+
+                                                                   4
+    ① Corpus                              ② MCTS Scheduler                                   ⑥ Evaluation                                            ⑤ SUT
+
+        RFCs        RW Packets                                                                                                                        Impl A
+                                                                               Valid Input               Testcases
+                                                                                                           Testcases
+                                                                                                  Abstracting Frame Sequence                                                Testcases
+                                                                                                                                                                             Testcases
+                                                                                                                                                                           Observers in VM
+
+
+                                               Corpus Evaluation
+                Abstract                                                                              Semantic Consistency
+                                                                                                         Testcases
+                                                                                                          Testcases                                                          Quic frames
+                                                                                                           Detectors
+                                                 Corpus Scoring
+               Testcases
+                                                                                                                                                            QUIC Converter                   Server A
+                                                  MCTS Update                                           Public Resource
+                                                                                                         Testcases
+                                                                                                          Testcases                                    harness
+                                                                                                     Consumption Detectors
+                                                Recommendation                                                                                        Impl B
+                                                                                                                                                                            Testcases
+                                                                                                                                                                             Testcases
+                                                                                                                                                                           Observers in VM
+                                           Inconsistent Input
+                                                                                                        Execution Results
+                                          ③ Segmental Mutation
+        Objectives & crashes                     FrameTestcases
+                                                       Testcases
+                                                        Content Mutations
+                                                                                             ④ Diff Executor
+                                 corpus                                                                                                                                      Quic frames
+                                                    Testcases
+                                                    Testcases
+                                                Frame Content Mutator
+
+                                                                                                                                                            QUIC Converter                   Server B
+
+                                                Frame Testcases
+                                                      TestcasesGenerator
+                                                      Sequence                                         Snapshot Manager                                harness
+                                                                                                                                           Input
+    MerCuriuzz
+                                                       Testcases
+                                                        Testcases
+                                                Interaction Behavior Mutator
+     Workflow
+                                                                                                                            Release snapshot
+
+                                                                               Input                                                               Acquire snapshot
+   Phase 1: I/O Of Mercuriuzz             Phase 2: Input Generation                             Phase 3: Fuzz & Evaluation                                            Phase 4: Execution in VM
+
+
+                                                                    Fig. 1: Overview of MerCuriuzz.
+
+
+We achieve this by extracting semantic constraints defined in                                        rounds of frame content mutation; in each round, we randomly
+the RFC for each QUIC frame and analyzing the dependencies                                           select one of the three field types and mutate a specific
+among different frame types to prune and restrict mutation                                           field while ensuring all constraints are met. As a result,
+spaces that clearly violate protocol specifications. To support                                      frame content mutation ensures that all mutated frames remain
+this, we design a custom test case format called Compressed                                          compliant with the RFC and can be correctly accepted and
+Corpus (CC). In short, a CC consists of several base frames                                          processed by the server.
+and a corresponding description document. The frame content                                             Frame sequence generator. Building on the frame con-
+mutator mainly performs modification operations on base                                              tent mutator, we introduce the frame sequence generator.
+frames. The frame sequence generator focuses on modifying                                            We collect all inter frame constraints described in the RFC
+the generation algorithm and the repeat count of base frames                                         documents. Starting from the base frames within the seed, the
+specified in the description document. The interaction behavior                                      generator applies the selected algorithm to construct successor
+mutator alters the behavioral rules of the client defined in the                                     frames, forming a basic frame sequence. We predefine various
+document. By combining the base frames and the description                                           algorithms, such as fixed step increments of numerical fields
+document, we can reconstruct a complete frame sequence and                                           or overlapping / gaped modifications of offset / length fields,
+interaction specification for fuzzing. Figure 2 illustrates the                                      to ensure that different frame types comply with protocol
+process by which we mutate the base frame sequence in the                                            constraints. By iterating over all base frames, the frame se-
+Compressed Corpus into a complete test case through the                                              quence generator assembles a complete initial frame sequence.
+three mutators described above. Here we define the base frame                                        Although this approach may exclude some valid mutation
+sequence as a New Connection ID (NCI) frame.                                                         spaces, it significantly improves the quality of generated test
+   Frame content mutator. Referring to the RFC specifi-                                              cases by reducing the exponential growth of the mutation space
+cations, we identify 34 distinct frame types, including both                                         to a linear scale. In Figure2, we describe a sequence length
+control and data frames defined in RFC 9000, as well as                                              of n, so the frame sequence generator produces n NCI frames
+new frame types introduced by recent extensions such as the                                          numbered 1 to n.
+DATAGRAM frame in RFC 9221. We conduct a detailed                                                       Interaction behavior mutator. In addition to mutating
+analysis of the type characteristics and specific characteristics                                    frame content and sequence, the transmission order and
+of all the fields within these frames. We categorize all field                                       packet-loss scenarios of QUIC frames are equally critical due
+types into three major type characteristics: Content fields,                                         to UDP’s unreliable datagram nature. QUIC servers may expe-
+which represent a sequence of raw bytes; Length fields, which                                        rience out-of-order frame reception, loss of critical frames, or
+indicate the length of the content field; Numerical fields, which                                    receipt of multiple retransmitted frames; peers may similarly
+cover all numerical values except for length indicators. Each                                        see delayed or missing replies. To model these scenarios, we
+field is subject to both general RFC constraints (e.g., no                                           design an interaction behavior mutator. Mutation strategies
+numerical field may exceed 262 ) and frame-specific constraints                                      include partial frame dropping, repeated frame sending, and
+(e.g., in NCI frames, the seq num must be greater than                                               reordering the initial frame sequence based on specific algo-
+the maximum existing CID seq num). We perform multiple                                               rithms. We predefine various remapping algorithms, such as
+
+
+
+                                                                                                 5
+  ① Compressed Corpus (CC)                                                                                                               C. State Anomaly Detector
+  Basic Frame sequence                        Description document
+
+   NCI Frame
+    seq_num:               S1 (numeric)
+                                                  ● Frame sequence length
+                                                  ● Sequence generator algorithm
+                                                                                                                                            Our state anomaly detector consists of two fundamental
+    retire_prior_to:
+    CID:
+                           R1 (numeric)
+                           C1 (content)
+                                                  ● Sequence reordering algorithm
+                                                  ● Interaction behaviour definition                                                     parts: (1) a semantic consistency detector and (2) a public
+                                                  ● Other fields
+    reset_token:           T1 (content)
+                                                                                                                                         resource consumption detector.
+                                                                                                                                            1) Semantic Consistency Detector: To efficiently identify
+  ② Frame content mutator                    ③ Frame sequence generator                  ④ Interaction behavior mutator
+
+    Numeric field mutator                     Select one generator algorithm              Select one generator algorithm                 the inconsistencies, it is impractical to conduct an exhaus-
+      NCI Frame
+       seq_num:               S2 (numeric)
+                                                PKN1
+                                                 seq_num:             S21 (numeric)
+                                                                                            PKNp1
+                                                                                             seq_num:            S2p1 (numeric)
+                                                                                                                                         tive comparison of every frame sequence across all imple-
+       retire_prior_to:
+       CID:
+                              R2 (numeric)
+                              C1 (content)
+                                                 retire_prior_to:
+                                                 CID:
+                                                                      R21 (numeric)
+                                                                      RandC1 (content)
+                                                                                             retire_prior_to:
+                                                                                             CID:
+                                                                                                                 R2p1 (numeric)
+                                                                                                                 RandCp1 (content)
+                                                                                                                                         mentations. So, we abstract the frame sequences to extract
+       reset_token:           T1 (content)       reset_token:         RandT1 (content)       reset_token:        RandTp1 (content)
+
+                                                PKN2                                        PKNp2
+                                                                                                                                         relevant semantic information and focus on monitoring spe-
+    Length field mutator (No such field)
+
+      NCI Frame
+                                                 seq_num:
+                                                 retire_prior_to:
+                                                                      S22 (numeric)
+                                                                      R22 (numeric)
+                                                                                             seq_num:
+                                                                                             retire_prior_to:
+                                                                                                                 S2p2 (numeric)
+                                                                                                                 R2p2 (numeric)
+                                                                                                                                         cific indicators. After each round of interaction between the
+                                                 CID:                 RandC2 (content)       CID:                RandCp2 (content)
+        seq_num:
+        retire_prior_to:
+                              S2 (numeric)
+                              R2 (numeric)
+                                                 reset_token:         RandT2 (content)       reset_token:        RandTp2 (content)       MerCuriuzz and a QUIC implementation, these indicators are
+                                                PKNs                                        PKNs
+        CID:
+        reset_token:
+                              C1 (content)
+                              T1 (content)
+                                                                                                                                         independently recorded and passed to evaluate the difference.
+    Content field mutator
+                                                                ●●●●●●                                      ●●●●●●                       Specifically, the process involves the following steps:
+      NCI Frame
+       seq_num:               S2 (numeric)
+                                                PKNn                                        PKNpm                                           Abstracting frame sequence. To detect reply consistency,
+                                                 seq_num:             S2n (numeric)          seq_num:            S2pm (numeric)
+       retire_prior_to:
+       CID:
+                              R2 (numeric)
+                              C2 (content)
+                                                 retire_prior_to:     R2n (numeric)          retire_prior_to:    R2pm (numeric)          we send data to all tested endpoints at the same rate and in
+                                                 CID:                 RandCn (content)       CID:                RandCpm (content)
+       reset_token:           T2 (content)
+                                                 reset_token:         RandTn (content)       reset_token:        RandTpm (content)       the same order during each fuzzing iteration. As previously
+                                                                                                                                         mentioned, directly comparing the content of each reply frame
+Fig. 2: Mutation workflow diagram. The basic frame sequence                                                                              may lead to excessive false positives due to implementation
+is mutated along the orange lines to generate complete test                                                                              differences among servers, resulting in inefficiency. To address
+cases, while the document is sent to each mutator along the                                                                              this, it is crucial to understand the root cause of inconsisten-
+blue lines, specifying the mutation strategy.                                                                                            cies. First, we abstract all response frame data and extract
+                                                                                                                                         their key information. This key information is then compared
+                                                                                                                                         against the requirements specified in the RFC and other
+                                                                                                                                         response sequences to identify the causes of inconsistencies.
+randomly deleting or shuffling one frame every k frames (e.g.,
+                                                                                                                                         Specifically, we consider both the content of sent frames
+in a 100-frame sequence, randomly reordering or deleting one
+                                                                                                                                         and response frames. While sent frames are mostly identical,
+frame every five frames). This introduces variability without
+                                                                                                                                         during multi-round interactions between the client and server,
+prematurely terminating the connection. In Figure 2, we map
+                                                                                                                                         it is essential to understand the content of the sent frames to
+the original sequence 1–n to a permuted sequence p1 to pm .
+                                                                                                                                         determine and compare the validity of the response frames.
+Additionally, we impose rate limits on client-to-server reply
+                                                                                                                                         To achieve this, we extract the following features from the
+frames; in multi-round interactions, delaying, canceling, or
+                                                                                                                                         frame sequences: (1) frame sequence numbers, (2) frame
+crafting incorrect replies can also lead to abnormal server
+                                                                                                                                         types, and (3) the fields and content within the frames. In
+states.
+                                                                                                                                         the abstracted frame sequences, each element is represented
+   Benefit of our segmental mutation. Remarkably, our                                                                                    as a (sent, received) tuple. To simplify the model, we exclude
+segmental mutation approach significantly reduces the muta-                                                                              frames actively sent by the server, such as ping frames and
+tion state space. For instance, if the initial corpus contains                                                                           frames used to establish and initialize connections, as these
+100 New Connection ID (NCI) frames. Each frame in-                                                                                       frames are not directly controllable by the fuzzer.
+cludes fields such as the seq_num, retire_prior_to,                                                                                         Detecting the disconnection and checking the causes
+the CID content, and the reset_token. Mutating all these                                                                                 behind. When the server sends a ConnectionClose frame,
+fields could theoretically yield 2400 combinations. However,                                                                             it typically indicates that the server has detected a critical
+valid mutations require at least two following constraints:                                                                              state error, potentially difficult to handle or indicative of a
+   SeqOf N ewCid ≥ SeqOf LatestCid                                                                                                       vulnerability. Similarly, other mandatory control frames such
+   SeqOf RetireCid ∈ SeqOf ActiveCids                                                                                                    as ApplicationClose or ResetStream signify failures
+SeqOfLatestCid is the largest seq_num in the cur-                                                                                        in different layers of the QUIC protocol state. Consequently,
+rently stored list of CIDs. SeqOfRetireCid is the                                                                                        these control frames provide clear indicators of abnormal
+retire_prior_to field as well as the max identifier of                                                                                   behavior. If, during differential testing, some servers throw
+the CID we prepare to retire; this identifier must be present                                                                            such control frames while others continue to operate normally,
+in the current available CID list. Moreover, the values of the                                                                           we classify the input as potentially containing a vulnerability.
+CID and reset token do not affect the program’s execution                                                                                To avoid excessive false positives caused by hard-coded server
+state. Therefore, the mutation space for these 100 CIDs                                                                                  logic that might produce these control frames at different times
+can be pruned to focus only on behaviors such as whether                                                                                 or with mismatched sequence numbers, we do not consider
+to mutate SeqOfNewCid or SeqOfRetireCid, reducing                                                                                        their positions within the frame sequence.
+the mutation space to 22 . This allows more computational                                                                                   Examining control frame type and quantity. If the pro-
+resources to be allocated to determining how to construct these                                                                          gram enters an abnormal state, it may manifest as an inability
+CID numbers.                                                                                                                             to generate response frames, a noticeably slower response rate,
+
+
+
+                                                                                                                                     6
+or ignoring subsequent frames after detecting a state error.          without promptly releasing them, and whether the service
+To identify such anomalies, we collect all response frames            remains capable of receiving complete QUIC requests and
+from each server and compare the types and counts of control          completing the key exchange process after each fuzz iteration.
+frames, as well as response rates and contents. If any server’s
+control frame messages differ significantly from the rest, it         D. Snapshot Manager
+implies that the server’s program state is in error.
+   Inspecting data frame payload. In addition to examining               To avoid the performance overhead caused by frequent
+control frames that indicate state changes, we also verify the        QUIC service restarts and state recoveries during fuzzing, we
+correctness of QUIC data frames. These include payload-               introduce a snapshot manager based on Nyx. As illustrated
+carrying frames, such as STREAM and CRYPTO frames, as                 in Figure 1, the snapshot manager coordinates the delivery of
+well as ACK frames used to acknowledge data from the peer.            mutated inputs to two target implementations. However, tra-
+For payload-carrying frames, we provide identical backend             ditional Nyx only supports coverage-guided greybox fuzzing,
+resources to all servers and thus expect uniform response data.       which cannot accurately record and restore snapshots when
+Upon receiving these data frames, we parse them according to          dealing with black box applications. To address this limitation,
+the agreed-upon format (e.g., HTTP/3) and analyze fields that         we construct a dedicated System Under Test (SUT). We utilize
+must match (e.g., page content, return header status codes).          shared memory to establish input and output channels between
+As the most commonly used server response frames, ACK                 the snapshot manager and the SUT, enabling complex data
+frames are non-retractable. By parsing ACK frames, we can             collection and message forwarding within the SUT itself.
+accurately determine which data the server has received and           Additionally, we implemented a harness running inside the
+processed. Hence, we specifically designed an ACK range               virtual machine. When the harness detects that the converter
+checker to record all ACK frames generated by each QUIC               has successfully established a connection with the target
+implementation in a single fuzz run and compute the full set          implementation, it notifies the snapshot manager to create a
+of inputs each server has processed. If any implementation            restore point for the entire SUT. This mechanism eliminates
+shows inconsistent range information (e.g., repeated acknowl-         the need for restarting the service and resetting the connection
+edgments or divergent ranges), the ACK range checker logs             in each fuzzing iteration.
+these discrepancies.                                                     SUT design. The original Nyx-fuzz framework provides
+   2) Public Resource Consumption Detector: Setting public            only three communication channels for interaction between
+resource consumption baseline. In order to identify abnormal          the fuzzer and the in-VM target: input delivery from the
+resource consumption, it is essential to first characterize the       fuzzer to the target, synchronization, and coverage feedback
+expected baseline of normal resource usage. Since different           transmission from the target back to the fuzzer. However,
+implementations are written in various languages, we define           inputs based on memory pipes and file-based formats cannot
+and measure a public resource consumption usage baseline              be directly consumed by the target. Moreover, since the target
+for each implementation. Under established connection condi-          runs entirely inside the virtual machine, deploying observers
+tions, the client transmits path_challenge frames padded              on the host side to monitor the target’s usage of shared system
+to 1200 bytes at a rate of 100 Mbps to the server and waits           resources is infeasible. To address these limitations, we made
+for a path_response, calculating the average memory and               the following modifications to the snapshot workflow.
+CPU usage. We chose path_challenge frames because the                    First, we extended the Nyx codebase by introducing a
+server must fully read the frame data and construct a padded          shared memory region res shm that is accessible and mod-
+response frame. Once processed, these path_challenge                  ifiable by both the snapshot manager and the virtual machine.
+frames are discarded, without allocating or occupying addi-           We then designed and implemented a component named
+tional runtime memory.                                                quic_converter, which is responsible for establishing and
+   Component of public resource consumption detector.                 maintaining a QUIC connection with the target after startup.
+Our detector encompasses three components: (1) CPU Re-                Upon receiving compressed test cases from the snapshot man-
+source Usage Detector. We employ a CPU usage monitor,                 ager, quic_converter decompresses them into a complete
+assigning a fixed CPU thread for each server. By observing            frame sequence and interacts with the target according to the
+whether CPU usage surpasses a defined threshold during                specifications in the associated descriptor. To enable traffic
+fuzzing, we determine if the server is experiencing exces-            monitoring and resource usage analysis, we decoupled the
+sive public resource consumption. (2) Memory Resource Us-             Observer and Evaluator components within the state anomaly
+age Detector. In a manner similar to CPU resource mon-                detector. The observer, embedded in quic_converter,
+itoring, at the end of each fuzz iteration, we read the               monitors system resource usage and QUIC traffic during exe-
+/proc/<pid>/maps file to obtain the current memory                    cution, and submits this data via res shm to the evaluator for
+usage. (3) Network Resource Usage Detector. Considering               further assessment after each test case is completed. Finally,
+that network bandwidth usage can vary substantially based on          we implemented a harness that runs at the beginning of each
+fuzzing content and configurations, this detector focuses on          VM boot-up. The harness uses Nyx’s internal APIs to register
+network handle usage and service availability. Specifically, it       all communication channels inside the VM, invokes the target
+checks whether the server retains too many network handles            program, and delivers inputs from the snapshot manager to the
+
+
+
+                                                                  7
+target. It is also responsible for informing Nyx when to create             neqo, lsquic, msquic, aioquic, and cloudflare). Therefore, we
+or restore a snapshot for the SUT.                                          performed differential testing of quinn only against these.
+   Rapid status recovery. To ensure that the SUT can imme-                  Regarding application-layer resource configuration, to ensure
+diately parse and transmit data to the target after each snapshot           stable application-layer output, we used a single GET request
+restoration, we configure the system snapshot created by the                for /index.html over HTTP/3. Regarding selecting differ-
+harness to cover both the quic_converter and the target.                    ential targets, we did not designate any single implementation
+During the initialization phase, the harness launches the target            as an oracle, instead, we paired the 16 implementations in
+and waits for it to start listening on its designated port. Once            all possible combinations, generating 112 test pairs. We ran
+the target is ready, it launches the quic_converter. When                   24-hour fuzzing on each test pair and recorded all corpus
+a successful QUIC connection is established between the                     entries that led to observed inconsistencies.
+quic_converter and the target, the quic_converter
+sends a signal to the harness, which then instructs the snapshot            B. Results and Findings
+manager to save a snapshot. After each test case execution,                    MerCuriuzz generated a total of 10M test cases across all
+once the interaction between the quic_converter and the                     test targets. We collected all test reports and corpus informa-
+target is completed, a second signal is sent to the harness.                tion. First, we performed three rounds of traffic replay to elim-
+The harness then triggers the snapshot manager to restore the               inate false positives caused by public resource fluctuations.
+previously saved state. At this point, the SUT is rolled back to            Then, we removed duplicate data based on traffic features and
+the moment immediately after the connection was established,                MerCuriuzz’s anomaly judgments. Each report selected by the
+thereby eliminating the overhead of both state and connection               above steps was manually analyzed. In total, we discovered 14
+reinitialization on the target. This design enables efficient and           new logic vulnerabilities in QUIC implementations affecting
+continuous fuzzing.                                                         prominent cloud service providers such as Cloudflare and
+                                                                            Alibaba Cloud. We have responsibly disclosed our findings to
+                        V. E VALUATION
+                                                                            the affected vendors. Up to now, we have received five CVE
+A. Experiment Setup                                                         IDs, two commitments to assign CVE IDs, and three Alibaba
+   Targets and experiment platforms. To evaluate MerCuri-                   vulnerability database IDs. In addition, four vulnerabilities
+uzz, we tested the 16 actively maintained QUIC projects [1],                earned bug bounties. Table I summarizes the information on
+[3], [6], [11], [16], [20], [25], [27], [35], [36], [40], [41], [43],       these vulnerabilities. We conducted an in-depth analysis of
+[46], [47] recommended by the QUIC Working Group [17].                      the experimental results and identified 6 novel interesting cate-
+These projects include well-known open-source implementa-                   gories of logic vulnerabilities in QUIC. Below, we elaborate on
+tions from companies such as Cloudflare, Google, and Alibaba,               how MerCuriuzz uncovered these vulnerabilities and explain
+as well as QUIC implementations in various programming                      the underlying principles behind them.
+languages, such as quic-go in Golang and aioquic in Python.                    Category 1: Crypto Flood. Crypto frames in the QUIC
+For version selection, we uniformly chose the latest versions               protocol are used to transmit TLS handshake messages during
+released before January 31, 2025. Detailed project and code                 connection establishment. When a message is long, crypto
+lines are listed in Table III of Appendix C. For the test                   frames are segmented for transmission. Similar to QUIC
+platform, we used a server equipped with two E5-2673V4                      stream structures, crypto frames provide simple in-order deliv-
+CPUs (40 cores, 80 threads, supporting the Intel PT technology              ery of these messages, achieved via the offset and length fields
+required by NYX snapshots) and 128 GB of memory, running                    in each crypto frame, which mark the current encrypted data
+Ubuntu 24.04. Each QUIC service was allocated one dedicated                 length and its position. STREAM frames constrain peer-sent
+CPU core and 4 GB of memory.                                                data size using the FIN bit and the MAX STREAM DATA
+   Details of experiment implementation. Regarding the                      transport parameter; unlike STREAM structures, crypto has
+implementation of all MerCuriuzz features, we wrote 18,000                  no such mechanisms, allowing unlimited use of crypto frames
+lines of Rust code and 1,000 lines of C code to realize all                 to send data. Additionally, section 7.5 of the RFC mandates
+the above designs. To improve development efficiency, we                    buffering at least 4096 bytes of out-of-order crypto frames but
+used LibAFL as the development framework and embedded                       does not specify how to handle excessive out-of-order data. As
+these components into it. Regarding the configuration of each               shown in Figure 3(a), during fuzz testing, our frame sequence
+QUIC test target, all implementations except nginx were run                 mutator generated approximately 500 crypto frame variants
+in single-threaded mode to ensure accurate measurement of                   with different offset/length ranges; some implementations,
+compute and network resources. Nginx cannot be configured                   such as aioquic, picoquic, and xquic, cached all these crypto
+in single-threaded mode because QUIC connection handling                    frames in memory. Our memory resource detector captured the
+requires a dedicated worker thread. Thus, we configured it                  corresponding memory growth, thereby identifying this flaw.
+to use only one worker thread. Regarding QUIC version                          Category 2: Path challenge Flood. In connection
+and ALPN selection, we used Version 1 and h3. The quinn                     migration, both endpoints use path challenge (PC) and
+platform supports only Draft 29 and hq (HTTP/0.9 over                       PATH RESPONSE (PR) to verify a new path’s reachability.
+QUIC Draft 29), a relatively uncommon version currently                     When the server sends PR1 in response to the first PC frame
+supported by only seven implementations (s2n-quic, picoquic,                PC1 but has not received an ACK for PR1 before the next
+
+
+
+                                                                        8
+                                             TABLE I: The 14 security defects discovered by MerCuriuzz
+  Bugs ID    Project Name    Language     Description                             Impact          Status    Assign CVE   DSM   DSCD   DPCD   RAD
+  M01        Aioquic         Python       CRYPTO Flood                       Memory Exhausting     fixed                        ✓
+  M02        Picoquic        C            CRYPTO Flood                       Memory Exhausting     fixed                        ✓
+  M03        Aioquic         Python       PC Flood                           Memory Exhausting     fixed                               ✓
+  M04        Aioquic         Python       ACK Confusion                       CPU Exhausting       fixed                 ✓             ✓
+  M05        Cloudflare      Rust         Connection Hold-on Flood              Silent DoS         fixed        -        ✓      ✓
+  M06        H2o             C            ACK Confusion                       Immediate Crash    reported                ✓      ✓      ✓     ✓
+  M07        H2o             C            Double Unregistered CID             Immediate Crash    reported                ✓      ✓      ✓     ✓
+  M08        Xquic           C            CRYPTO Flood                       Memory Exhausting     fixed                        ✓
+  M09        Xquic           C            PC Flood                           Memory Exhausting     fixed                        ✓      ✓
+  M10        Xquic           C            NCI Flood                          Memory Exhausting     fixed                        ✓      ✓
+  M11        Lsquic          C            Memory leak during TLS handshake   Memory Exhausting   reported       -        ✓      ✓
+  M12        Aioquic         Python       Double Unregistered CID             CPU Exhausting     reported       -        ✓             ✓
+  M13        Aioquic         Python       Close The Stream Twice              CPU Exhausting     reported       -        ✓             ✓
+  M14        neqo            Rust         Assert Error                        Immediate Crash      fixed                 ✓      ✓      ✓     ✓
+  M06 and M07 are fixing, and were promised assigned CVE IDs.
+  M09-M11 assigned Alibaba Vulnerability Library IDs, no CVE IDs.
+ DSM: Disable segmental mutation.
+ DSCD: Disable Semantic Consistency Detector.
+ DPCD: Disable Public Resource Consumption Detector.
+ RAD: Replace all anomaly detectors with LibAFL’s default.
+
+
+
+PC frame PC2 arrives, it must buffer both PC1 and PC2 until                      excessive RC frames, risking memory buildup.
+it either receives the corresponding ACK or determines that                         Category 4: Connection Hold-On Flood. Unlike the pre-
+PR1 failed and the new path is unreachable. If the rate of                       vious three vulnerabilities involving direct unbounded mem-
+clearing completed path challenges is slower than the arrival                    ory consumption, we discovered a more subtle logic flaw
+of new challenges, memory accumulation occurs. Our frame                         while fuzzing Cloudflare Quiche’s quiche-server (hereafter, the
+sequence mutator generated a large number of PC frames,                          server). During testing, we observed a strange phenomenon:
+and our interaction behavior mutator limited the fuzzer’s send                   CPU and memory resources appeared normal, yet network
+rate, revealing memory buildup in aioquic and xquic. We use                      resources reached the timeout limit and connections could
+Figure 3(b) to show how Path Challenge Flood works. Notably,                     not be established. After carefully reviewing the source code
+the memory-consumption logic differs: aioquic leaks memory                       and network traffic, we summarized the vulnerability trigger
+by failing to free buffers allocated for PC frames, whereas                      process as shown in Figure 3(d), as follows: The server stores
+xquic accumulates too many PR frames unsent, causing the                         all client connections throughout their life cycles in a hash
+send queue to grow rapidly.                                                      map; whenever QUIC data is received, it polls these clients
+   Category 3: New connection id Flood. New Connection                           to determine which client the data belongs to and processes
+ID (NCI) frames are used to request new CIDs, which identify                     them in order. At this time, a local variable total write is
+new paths during connection migration. Generally, a QUIC                         defined to indicate how much data has been sent to the
+server allows no more than four coexisting CIDs, so NCI                          current client; however, if total write is zero (meaning all
+frames use the retire prior to field to retire old CIDs and send                 streams are marked as closed), the developer erroneously
+Retire Connection ID (RC) frames. Under normal processing,                       uses break to exit the loop over all clients instead of skip-
+after the client sends an NCI, the server sends an RC frame,                     ping the current client. Suppose user Alice is loading an
+and the client acknowledges it with an ACK. The problem                          HTTP/3 page via the quiche-server. Bob opens numerous
+arises in the server’s processing of NCI frames and the                          connections to occupy the front positions in the hash map
+acknowledgment of RC frames. Since handling an NCI frame                         and uses STOP SENDING frames to close the streams on
+involves multiple memory operations such as CID registration                     those connections; the quiche-server then ends the polling over
+and storage, the server may respond to NCI frames with some                      clients prematurely and cannot send any data to Alice. This
+delay. Additionally, if the client delays the acknowledgment                     covert denial-of-service attack cannot be detected simply by
+of an RC frame, the server may assume it was lost and add                        monitoring process state or CPU and memory usage, and even
+it to the retransmission queue. Similar to previous cases, if                    traditional fuzzers cannot find it, because the attacker and vic-
+the rate at which the server receives NCI frames exceeds its                     tim are not on the same connection. MerCuriuzz reestablishes
+processing capacity, or if RC frames are added to the send                       connections when network resource exhaustion is detected and
+queue faster than they are removed, the send queue may grow                      evaluates their availability, thus reliably uncovering this type
+without bound. We illustrate the impact of this rate mismatch                    of vulnerability.
+in Figure 3(c). In our test framework, the frame sequence                          Category 5: Double Unregistered CID. We mentioned
+mutator generated a large number of valid NCI frames, each                       above how the server handles NCI frames. We discovered
+retiring a previously registered CID to maintain the current                     that this process can cause another logical vulnerability. As
+CID count. During testing, we found that xquic can cache                         shown in Figure 3(e), since the number of stored CIDs is
+
+
+
+                                                                             9
+        Attacker                           QUIC server                                        Attacker                                QUIC server                                                                                       Attacker        Max 4 CIDs           QUIC server
+
+                      CRYPTO Frames                                                         NCI0                                                                                                                                      NCI0
+                                                                   CRYPTO Buffer            NCI1                                                                                                                                                                                               CID0      Idle    Idle        Idle
+                                                                                                                                                              WorkFlow of NCI0
+                                                                                            NCI2                                                                                                                                      NCI1
+                                                                                                                                                         Handle frame
+                    Offset 0 Length 2000         FINISHED                                                    With Retire Prior To 1
+                                                                                                                                                                                         Cached in Buffer                                                                                      CID0     CID1     Idle        Idle
+                                                                  Waiting for                                                                            malloc space                                                                 NCI2
+                                                                 data at the gap                                                                         register CID
+                                                                                                                                                                                                NCI0
+                                                                                        Flood                                                                                                                                                                                                  CID0     CID1     CID2        Idle
+                                                                                                                                                              WorkFlow of NCI1                                                        NCI3
+                                                                                       Of NCIs                                                                                                  NCI1
+                                                                                                                                                         Handle frame
+               Offset 2100 Length 1000                                                                                                                                                                             Released                                                                    CID0     CID1     CID2       CID3
+                                                  CRYPTO                                                                                                 malloc space                           NCI2
+                                                                    Gaps between                                                                         register CID                                                                                  Retire Prior to 1
+                                                                                                                                                                                                                                                                                                      Unregister Replace
+                                                                                                                                                                                                NCI3                                  NCI4
+                                                                    two CRYPTO                                                                                WorkFlow of NCI2
+               Offset 3200 Length 1000                                                      ACK
+                                                                                                                                                                                                NCI4                                                                                           CID4     CID1     CID2       CID3
+                                                  CRYPTO                                                                                                 Handle frame
+                                                                                                                                                         malloc space                           NCI5                                                                                                            Retire CID 0
+                                                                                                                                                         register CID                           NCI6
+                                                                                                                                                                                                                   Stucked                                                                     CID4     CID1     CID2       CID3
+               Offset 4300 Length 1000            CRYPTO                                                                                                      WorkFlow of NCI3                  NCI7
+                                                                                       ACK, RC0
+                                                                                                                                                         Handle frame                                                                                                                         Assert Failed:
+                                                                                                                                                                                                NCI8
+                                                                                                                                                         malloc space                                                                                                                        Cannot find CID0
+                                                                                                                                                                                                ......
+                                                                                                                                                         register CID
+                     (a) CRYPTO Flood                                                               (c) New Connection ID Flood                                     ......                                                                      (e) Double Unregistered CID
+
+
+
+
+                                                                                                                                                                                                         The QUIC server                                                                                                     Packet Status
+                                                                                                                                                                                                          is running well,
+                                                                                                                                                                                                                                                                                                                        PKN 1: Acked
+                                                                                                                                                                                                              Probably.                                   Attacker                                   QUIC server
+                                                                                                                                                                                                                                                                                                                        PKN 2: Acked
+         Attacker                           QUIC server                                      Attacker                           QUIC server                   Normal Users                                                       Firewall                                                                               PKN 3: ......
+                                                                                                                                                                                                                                                      PKN 1                                                                              Time of Check:
+        PC1                                                                        Establish Conn
+                                                            Waiting For ACK To                                                                                                                                                                                                                                                          All Packets Acked
+                                                  PR1       Complete Challenge                                                                                                                     Client iteration breaked on
+                                                                                                                                                                                                                                             ACK Range [1,2)                                                                 Packet Status
+                                                                                                         malicious clien                                                                           Attacker's malicious client
+                                                                                   Stop Streams                            t                                                  Clients Hashmap
+        ACK                                                                                                                                        Client A
+                                                     POP                                                                                  Normal                                                                                                     PKN 2
+                                                                                                                                                                                                                                                                                                                        PKN 1: Acked
+                                                    ERASE          PC1                                                                                                                                                                                                                                                  PKN 2: Acked
+                                                                                                                                                                                                                                             ACK Range [2,3)
+                                                                                                                                                                                                                                                                                                                        PKN 3: ......
+                                                                                                                                                                                       malicious
+                                                                   PC2                                   malicious clien                                                                                                                     ACK Range [2,3)
+                                                                                                                        t
+                                                                                                                                                                                        Client C                                                                                                                             Packet Status
+                                                                                                                                                                                                                                             ACK Range [4,5)
+                                                                                                                                                 Clien  tB                                                                                                           Triggered Conn                                     PKN 1: Acked
+                                                                   PC3                                                                    Normal                                       malicious                                                                                      ection Close
+                                                                                                                                                                                                                                                                                                                        PKN 2: Invalid Ack
+      PCs
+                                                                                                                                                                                        Client B                                                                                                                        PKN 3: ......
+                                                                   PC4                                   malicious clien
+                                                   PRs                                                                  t                                                                                                                                                                                                                 Time of Use:
+                                                                                                                                                                                        Client A                 QUIC server
+                                                                                                                                                                                                                                                                                                                                        Assert Pkts Acked
+                                                                                                                                                   Client C
+                                                                   PC5                                                                    Normal                                       malicious                                                                                                                             Packet Status
+
+ ACK Of PR2                                                                                                                                                                                                                                                                                                             PKN 1: Acked
+                                                                                                         malicious clien                                                               malicious
+                                                                   ......                                                  t                                                                                                                                                                                            PKN 2: Invalid Ack
+                                                                                                                                                                                                                                                                                                                        PKN 3: ......
+                                                                                                                                                                                                                                                                           (f) ACK Confusion
+                    (b) Path Challenge Flood
+                                                                                                                 (d) Connection Hold-On Flood
+
+
+
+
+Fig. 3: During the fuzzing process, we identified 6 categories of interesting logical vulnerabilities. To illustrate their attack
+models, we present corresponding sequence diagrams.The vertical dimension of the diagram (the Y-axis) represents the flow
+of time, with events occurring sequentially from top to bottom.
+
+
+fixed after negotiation, when the CID count is saturated, the                                                                                                                     triggers Connection Close.
+server must first unregister older CIDs before adding new ones.
+A QUIC server must first process the retire prior to field to                                                                                                                     C. Real-World Attack Impact
+unregister all matching CIDs, and then replace them with new                                                                                                                         Impact 1: immediate service crash. Some vulnerability
+CIDs. However, the server also needs to notify the client of                                                                                                                      types directly cause the server process to crash. Even when
+the retired CIDs via RC frames. If it does not temporarily                                                                                                                        watchdog tools monitor the server’s status, an attacker can
+store the CIDs that have been unregistered, it fails to find the                                                                                                                  force the server to crash and restart frequently with a minimal
+CID and encounters an error. In our testing, we found that h2o                                                                                                                    payload, leading to a DoS attack. For example, in M07, an
+uses a similar logic. It performs two unregister operations. On                                                                                                                   attacker sends four NCI frames to h2o to fill the CID list, then
+the second unregister, the old CID has already been replaced,                                                                                                                     one additional NCI frame to replace an old CID, triggering an
+causing a crash error.                                                                                                                                                            assertion failure and crash in h2o with under 1 KB of traffic. In
+   Category 6: ACK Confusion. ACK frames indicate to the                                                                                                                          M06, the TOCTOU issue does not trigger reliably and requires
+peer that packets have been received. To improve acknowl-                                                                                                                         the attacker to repeatedly send specially crafted ACK frames.
+edgment efficiency, an ACK can include multiple ranges to                                                                                                                         In our tests, an average of 200 ACK frames causes one h2o
+acknowledge packets. For example, acknowledging packets                                                                                                                           crash, enabling an attack with 4KB of traffic in approximately
+numbered 1, 2, 4, 5, and 7 may use an ACK frame with the                                                                                                                          0.5 s.
+ranges [1,3), [4,6), and [7,8). As shown in Figure 3(f). During                                                                                                                      Impact 2: exhausting server memory. During CRYPTO,
+fuzzing, our mutator generated ACK frames with overlapping                                                                                                                        PC, and NCI flood attacks, the server continuously caches
+ranges. All packets in these ranges existed and had been                                                                                                                          either the attacker’s sent frames or data generated in the
+legitimately sent by the server. Most QUIC implementations                                                                                                                        process of responding, eventually allocating more memory
+ignore such duplicate ACK frames; stricter implementations                                                                                                                        than the physical limit allows and being forcibly terminated
+consider overlapping ranges invalid and terminate the con-                                                                                                                        by the operating system. Throughout this period, the attacker
+nection. We found that h2o, when processing these ACKs,                                                                                                                           must continuously send data to the server. We also conducted
+neither ignores them nor terminates the connection. Instead,                                                                                                                      experiments to validate the impact under practical conditions,
+it repeatedly updates the acknowledgment status of the same                                                                                                                       assuming both the attacker and victim use a 1000 Mbps
+packet, causing an already acknowledged packet to have its                                                                                                                        network bandwidth and the server is allocated 4 GB of
+state modified again at a later time, which can lead to a Time                                                                                                                    memory. In the case of crypto flood, we tested aioquic and
+of Check to Time of Use (TOCTOU) issue when the server                                                                                                                            xquic. All crypto frame contents sent by the attacker were
+
+
+
+                                                                                                                                                                             10
+received and cached by the server, resulting in memory usage            middleware using cloudflare-quiche. This middleware replaces
+growing at a steady rate of 1 GB/min and triggering forced              BooFuzz in establishing connections with the target QUIC
+process termination after 4 minutes. In PC flood, the server            server. We then supply templates for various QUIC frames;
+only stores 8 bytes of challenge data per frame and gradually           BooFuzz generates plaintext frames based on these templates,
+releases old challenges, so the memory growth rate is slower.           and the middleware automatically parses and interacts with
+However, for aioquic, the memory usage still increased at 0.4           the server, returning results to BooFuzz to complete one test
+GB/min, triggering a DoS attack within 10 minutes. For NCI              round. Bleem is a black box protocol fuzzing tool that operates
+flood, we tested xquic under attack and achieved a memory               as a man-in-the-middle (MITM), collecting frame sequences
+growth rate of 0.6GB/min, reaching a DoS condition within 7             from both the client and server during their interaction. It
+minutes.                                                                automatically learns frame formats and performs mutations on
+   Impact 3: silent DoS. Some vulnerabilities, such as Con-             the frame sequences. However, since Bleem is not yet open-
+nection hold on flood, do not manifest through explicit failures        sourced, we do not include it in the Comparison experiment
+and are categorized as Silent DoS. To assess the impact of such         in this evaluation.
+attacks, we designed the following experiment. We allocated                Comparison of mutation and detection capabilities. Ta-
+one CPU core and 4 GB of memory to the Cloudflare quiche                ble II lists the main differences in vulnerability detection capa-
+server. A 4 KB HTML page was provided for the victim to                 bilities among BooFuzz, DPIFuzz, Bleem, and MerCuriuzz. In
+request via GET. During the test, the victim sent a GET request         terms of mutation capabilities, all three tools perform random
+to the server every second and recorded the response time.              and unconstrained mutations at the content level. Among them,
+Meanwhile, the attacker injected malicious clients into the             only Bleem supports mutations at the frame sequence level,
+server’s hash map using the aforementioned attack strategy,             and none of them support mutations of interaction behaviors.
+gradually increasing the sending rate. When no attack was               MerCuriuzz, through its segmental mutation strategy, is ca-
+taking place, the victim’s average response time was 10 ms. As          pable of performing mutations at all three levels. In terms
+the attacker’s rate increased to 1 client per second, the victim        of detection capabilities, BooFuzz, Bleem and MerCuriuzz
+occasionally failed to establish a connection, though refreshing        use port occupancy and process status to determine crashes;
+the page would recover the session. At 3 clients per second, the        DPIFuzz only analyzes traffic and does not automatically
+victim rarely succeeded in establishing a connection, and the           detect crashes, and developers must manually maintain server
+average response time increased to over 300 ms. At 10 clients           state and check for failures. For correctness, BooFuzz and
+per second, the victim was unable to receive any response               Bleem do not verify correct output; DPIFuzz only checks the
+from the server at all, resulting in a severe DoS effect.               correctness of QUIC stream data, and MerCuriuzz checks both
+   Impact 4: exhausting CPU resource. For other aioquic                 data frames and control frames. For consistency detection,
+vulnerabilities such as M04, M12, and M13, the server does              BooFuzz and Bleem lack differential testing support; DPIFuzz
+not crash entirely but instead causes the subprocess of the             only detects byte-level inconsistencies; MerCuriuzz detects
+current connection to crash. Aioquic promptly collects and              semantic-level inconsistencies. Finally, only MerCuriuzz can
+reports the error, then restarts the subprocess. However, this          detect and report abnormal resource consumption.
+recovery process consumes significant CPU and memory I/O                           TABLE II: Comparison of Mutation and Detection Capabilities Among fuzzers
+resources.                                                                                       Mutation-level                                       Detection
+                                                                        Fuzzer
+   To evaluate the impact of these attacks, we used the same                           Content    Sequence     Interaction   Crashes   Correctness   Consistency   Resource Consumption
+
+server and victim configuration as in the Silent DoS exper-             BooFuzz
+                                                                        DPIFuzz
+iment. The attacker sent malicious requests to aioquic at a             BLEEM
+                                                                        MerCuriuzz
+bandwidth of 10 Mbps. Initially, the average response time               Capable     Partially Capable to mutate or detect   Not Capable.
+for client requests was 12 ms. As aioquic repeatedly triggered
+exceptions and restarted subprocesses, CPU utilization quickly             Comparison of code coverage. For the evaluation of
+reached 100%, accompanied by a large volume of error output.            test-case generation and comparison of actual testing results,
+The time it takes for the victim to access the page gradually           we introduced coverage and the number of detected vulner-
+increases, and after one minute of sustained attack, the average        abilities as objective metrics. Although none of the three
+response time exceeded 1 second.                                        fuzzers is coverage-guided, coverage information allows us to
+                                                                        gain insight into the diversity of generated test cases and the
+D. Comparison Experiment                                                likelihood of detecting vulnerabilities. In the fuzzing process,
+   1) Comparison with SOTA Fuzzing Framework: We sur-                   we selected four QUIC applications implemented in C and
+veyed three SOTA black box protocol fuzzing tools: BooFuzz,             C++ and collected coverage via code instrumentation. We ran
+DPIFuzz, and Bleem, and selected two of the currently open              each application with each of the three fuzzers for 24 hours;
+source tools for evaluation. DPIFuzz is currently the latest            the coverage data are shown in Figure 4.
+differential fuzzing framework for QUIC, and BooFuzz is a                  Overall, the coverage of BooFuzz growth was relatively
+widely tested black-box fuzzing framework. BooFuzz does                 slow and reached saturation prematurely on all four imple-
+not support TLS handshake or encryption mechanisms of the               mentations. This is because BooFuzz randomly populates
+QUIC protocol. To enable QUIC fuzzing, we implemented a                 each field of QUIC frames, resulting in an excessively large
+
+
+
+                                                                   11
+      Fig. 4: Coverage comparison of MerCuriuzz, MerCuriuzz DSM, DPIFuzz, and BooFuzz across four applications
+
+
+mutation state space. It therefore struggles to find test cases         vulnerability detection capabilities of each variant, as shown
+that trigger more program paths. MerCuriuzz overcomes this              in Table I. Under the DSCD mode, a total of 9 vulnerabilities
+challenge by performing a frame sequence mutator. DPIFuzz               were detected. However, some vulnerabilities in PC Flood and
+outperforms BooFuzz in coverage: after a rapid initial increase,        aioquic could be easily missed if only the Public Resource
+it continues to grow slowly, but the overall improvement                Consumption Detector is used. Under the DPCD mode, 8
+is limited. This behavior stems from its internal design:               vulnerabilities were detected. It fails to effectively detect
+DPIFuzz provides detailed generation and mutation algo-                 vulnerabilities like CRYPTO Flood and Connection Hold on
+rithms for STREAM frames according to the RFC, ensuring                 Flood, which primarily rely on public resource consumption
+each STREAM frame can be received without causing state                 and are not easily identifiable through traffic analysis. The
+anomalies, which yields high early coverage of the server’s             results show that the two detectors focus on different aspects
+STREAM-frame processing logic. For all other frame types,               of detection and are highly complementary, with identifying
+DPIFuzz uses simple random generation and thus faces the                vulnerabilities that the other misses. Under the RAD mode, all
+same large state-space issue. Furthermore, we used DPIFuzz              vulnerabilities except for M06, M07 and M14, which cause
+and BooFuzz to perform 24-hour black-box fuzzing on 16                  service crashes, were difficult to detect.
+QUIC applications. Neither tool detected any known vulnera-
+bilities or triggered anomalies or crashes.
+                                                                            Picoquic | Xquic                    69.316
+                                                                                                                                                          242.072
+   2) Ablation Experiments: To evaluate our contributions,
+                                                                           S2n-quic | Quinn             48.656
+we conducted ablation experiments and designed three fuzzer                                                                                       219.128
+
+                                                                            Ngtcp2 | Nginx                  52.952
+variants, each disabling or replacing one of MerCuriuzz three                                                                                   208.616
+
+                                                                            Haskell | Neqo         25.688
+key components:                                                                                         46.17
+
+                                                                          Aioquic | MsQuic                  53.746
+   Assessing the segmentation-based mutator. Disable seg-                                                                                  198.822
+                                                                                                               66.932
+mental mutation (MerCuriuzz DSM). Among its three mod-                         Lsquic | H2o                                         173.044
+                                                                                                              61.598
+ules, we turned off the frame sequence mutator and interaction           Quic-go | Haproxy                                                  202.198
+behavior mutator. We did not replace the segmentation-based             Cloudflare | Google
+                                                                                                               67.428
+                                                                                                                                            204.104
+mutator with AFL’s default mutator; instead, we retained the                                   0       50              100   150          200         250           300K
+frame content mutator to avoid breaking frame structure. We                                             Mercuriuzz-Net       MerCuriuzz
+tested the four QUIC applications used in the comparative
+experiments and recorded coverage changes over 24 hours,                Fig. 5: Comparison of the number of executions during 24
+as shown in Figure 4. Although this variant outperformed                hours of Fuzzing. Efficiency increased by up to 350% in the
+BooFuzz and DPIFuzz in some cases, it still lagged notice-              best case; average improvement (excluding Haskell — Neqo)
+ably behind full MerCuriuzz. Among the 14 defects, Mer-                 reached 225%.
+Curiuzz DSM detected only 7 (Table I). Under the DSM
+mode, vulnerabilities such as crypto flood and NCI flood                   Assessing the snapshot manager. Replace snapshots with
+went undetected, because merely sending packets in order                service-restart resets (MerCuriuzz RS). We ran 24-hour tests
+and immediately processing all responses does not trigger               on all target implementations and counted the total num-
+them. Only when the fuzzer actively drops some normally                 ber of differential test executions; results are in Figure 5.
+sent frames and delays responses can these bugs be triggered            Most tests performed well. In the S2n-quic vs. quinn com-
+and caught by the Semantic Consistency Detector.                        parison, MerCuriuzz achieved a 350% efficiency improve-
+   Assessing the anomaly detectors. We evaluated three                  ment over the non-snapshot version. Excluding Haskell and
+variants. Disable Semantic Consistency Detector (MerCuri-               Neqo, the average improvement was 225%, demonstrating
+uzz DSCD), Disable Public Resource Consumption Detec-                   that NYX snapshots effectively eliminate SUT state reset and
+tor (MerCuriuzz DPCD), and Replace all anomaly detectors                connection-establishment overhead. Because snapshot perfor-
+with LibAFL’s default (MerCuriuzz RAD). We measured each                mance depends heavily on CPU and memory bandwidth, faster
+variant’s ability to detect vulnerabilities. We evaluated the           compute and storage media could further boost MerCuriuzz’s
+
+
+
+                                                                   12
+speed. We also observed poor performance on Haskell and                  trigger, but most fuzzed cases fall short of this threshold,
+Neqo due to the Haskell implementation’s inefficiency, yet               leading to false positives flagged by the Semantic Consistency
+snapshots still yielded an 80% speedup.                                  Detector.
+
+E. Analysis of False Positive and Duplicate Rates                                               VI. D ISCUSSION
+   Improvements to reduce duplicate reports. We employ                   A. Mitigation
+two complementary methods to identify and filter duplicate                  Insights on QUIC and RFC Specifications. Through
+test reports. (1) Compare the root causes of reports. Whenever           analyzing the vulnerabilities uncovered by MerCuriuzz, we
+the State Anomaly Detector flags an exception, such as a                 observed that many QUIC implementations faithfully follow
+mismatched CC frame in differential testing or discrepancies             the mandatory and recommended requirements defined in
+in data frames, MerCuriuzz emits an anomaly brief detailing              RFC documents. However, in areas where the RFC does not
+the type of anomaly and its trigger. A single vulnerability may          provide explicit guidance, implementations still diverge. These
+trigger multiple detectors (e.g., a CRYPTO FLOOD attack                  differences can lead to exploitable vulnerabilities, especially
+may produce CC, DATA, ACK mismatches, and abnormal                       when implementations make differing assumptions. For exam-
+memory usage). We merge these briefs into a unique finger-               ple, the RFC’s specification for the crypto frame mandates a
+print per testcase; matching fingerprints reveals overlaps with          minimum buffering capacity but does not define an upper limit.
+previous reports. (2) Eliminate public resource fluctuations.            Similarly, in the case of PC and NCI frames, the RFC requires
+Even inside a VM, CPU, memory, and I/O may fluctuate due                 endpoints to respond to every path challenge and to send a
+to other processes, the host, or MerCuriuzz itself. We replay            retire connection id frame for every retired CID. However, it
+each testcase’s traffic and verify that identical briefs recur.          does not place any constraints on the maximum number of
+Only reports with unique fingerprints and identical briefs under         PC frames a connection can receive or the maximum number
+replay are accepted. Together, these methods remove most                 of CIDs that can be retired. We recommend supplementing
+duplicates and greatly reduce the duplicate report rate.                 the QUIC RFC with definitions for these upper bounds to
+   Measurement and analysis. We evaluated the filter on                  prevent excessive resource consumption and ensure consistent
+24 hour fuzzing runs of implementations with known logic                 behavior across implementations. For instance, A maximum of
+flaws. We logged total reports, deduplication effectiveness,             512 KB of out-of-order crypto frame data should be buffered.
+and causes of remaining duplicates or false positives. Aioquic           This limit is unlikely to interfere with normal certificate trans-
+as the implementation in which we discovered the greatest                mission and key exchange. No more than 256 path challenge
+number of logical flaws, , our run executed 99,411 independent           frames should be accepted before a connection migration is
+testcases. Applying fingerprint matching yielded 92 unique               completed. This provides ample allowance for endpoints to
+inconsistency reports. After replay verification, 16 reports re-         probe and establish a low-RTT path, after which the count can
+mained that pinpointed aioquic defects, covering all discovered          reset. A maximum of 256 CID retirements should be allowed
+vulnerabilities. Of these, 50% were duplicates (8/16), and               prior to completing a migration. In typical scenarios, switching
+18.75% were false positives (3/16). Manual review confirmed              CIDs primarily serves to indicate a new path, and this limit is
+each classification.                                                     sufficient to cover most network environments.
+   Duplicate reports typically stemmed from benign, irrelevant              Insights on QUIC implementations. We recommend
+traffic altering the fingerprint, which can be quickly discarded         adding audits for variable length arrays in high-level pro-
+during manual review. False positives fell into three categories:        gramming languages. During our vulnerability analysis, we
+(1) public resource fluctuations. Sustained high CPU or I/O              observed an interesting phenomenon: memory consump-
+delays may still trigger spurious anomaly briefs. (2) Stricter           tion–related logical vulnerabilities are more likely to occur
+scrutiny and restrictions on traffic. Some test targets enforce          in high-level programming languages (such as Python and
+constraints not defined in the RFC (or enforce them more                 Rust). Unlike C, these languages often support variable length
+strictly). For instance, lsquic upon receiving DATAGRAM                  structures with built-in iteration and query methods, such as
+frames it immediately emits a CC Frame, whereas other imple-             list and dict in Python, and vector in Rust. Developers do
+mentations accept them without error, this cause differential            not need to manually manage the memory usage of these
+anomalies without real flaws;(3) Deviation in the prediction             structures, and iterators eliminate the need to count the number
+of vulnerabilities. For some logical vulnerabilities, vulnerabil-        of elements. As a result, attackers are provided with the
+ities will only occur when public resources are continuously             opportunity to allocate arbitrary memory within these variable-
+occupied or the program responds with a long delay. Due                  length structures. Therefore, QUIC service providers and soft-
+to efficiency requirements, we avoid fuzzing efficiency being            ware developers can mitigate vulnerabilities caused by public
+too slow by limiting the maximum frame sequence size of                  resource consumption by enforcing stricter element number
+a single testcase. As a result, an individual testcase cannot            limits on these special structures.
+always trigger the full vulnerability, and we rely on manual                Sustained fuzzing. This work tests 16 open-source tools
+confirmation to determine whether a genuine logic flaw exists.           among all current QUIC implementations. Due to limita-
+A typical example is quic-go’s mitigation for the PC Flood               tions of the experimental environment and time, we did not
+attack: it requires 256 in-flight PATH RESPONSE frames to                test other closed-source QUIC implementations or additional
+
+
+
+                                                                    13
+QUIC tools. Therefore, we suggest that developers integrate              as HTTP/1 or SMTP, the frame sequence generator and the
+the findings of this work into their development workflows               interaction behavior mutator will no longer be available, and
+and continuously fuzz QUIC projects to discover more imple-              for protocols that do not have a flow structure, such as TLS,
+mentation flaws and logical vulnerabilities. Although logical            the modules of the segmentation mutation and state anomaly
+vulnerabilities are important and have a wide impact, their              detector will not be fully functional, as they do not involve
+early manifestations are easy to overlook, and they have                 flow and congestion control.
+not received sufficient attention so far. Hence, the entire                                   VII. R ELATED W ORK
+community needs to work together and adopt a systematic
+                                                                            In this section, we review prior work on logical vulnerabil-
+security perspective to mitigate this problem.
+                                                                         ities and fuzzing techniques for the QUIC protocol.
+B. Limitation                                                               Logical vulnerabilities in QUIC. Early studies such
+                                                                         as QuicSand [38] examined QUIC’s defenses against
+   In terms of vulnerability discovery, we do not necessarily
+                                                                         resource-exhaustion attacks. Cao et al. [9] and Cui et
+uncover all security issues in QUIC, this is an inherent
+                                                                         al. [12] further analyzed large-scale DoS vectors like 0-RTT
+limitation of fuzzing, which cannot exhaust all possibilities. In
+                                                                         and 1-RTT attacks. Developers have also uncovered issues
+the future, combining symbolic execution with logical vulner-
+                                                                         during implementation—for example, Seemann’s blog on
+ability discovery may enable more precise logical vulnerability
+                                                                         quic-go [52]. However, these efforts rely on manual analysis
+testing frameworks. In terms of the tool’s scope, we have not
+                                                                         of QUIC features and code audits, lacking automated methods
+yet adapted MerCuriuzz to protocols beyond QUIC; however,
+                                                                         to detect logical flaws in existing implementations.
+such porting is feasible, as discussed in next subsection. In
+                                                                            Automated testing frameworks. No prior work focuses
+terms of vulnerability determination and confirmation, our
+                                                                         on logic-vulnerability testing for QUIC. McMillan et al. [33]
+current workflow still requires manual intervention for vali-
+                                                                         perform formal analysis and fuzzing on the QUIC handshake.
+dation and root cause analysis. We plan to address this by
+                                                                         DPIFuzz [49] disguises test traffic to evade DPI but does
+integrating automated state-machine construction. Therefore,
+                                                                         not target logic bugs. BLEEM [29] supports general-purpose
+constructing a state machine to assist differential testing, as
+                                                                         protocol fuzzing, detecting only memory errors via crash ob-
+well as automating the mechanisms for report verification and
+                                                                         servation. In fuzzing work targeting other protocols [26], [37],
+replay, will be a key focus of our future research.
+                                                                         [53], [59]–[62], [64], [66], they leverage specific application
+C. Porting to Other Protocols                                            behaviors or semantic inconsistencies to detect implementation
+                                                                         discrepancies. In contrast, MerCuriuzz is the first automated
+   Although MerCuriuzz is principally designed for the QUIC
+                                                                         fuzzer that uncovers QUIC logic flaws from both semantic
+protocol, similar logic vulnerabilities may exist in other pro-
+                                                                         inconsistencies and resource-consumption anomalies.
+tocols. In general, porting MerCuriuzz to new protocols is
+                                                                            State machine testing for logical bugs. State machines
+feasible, and we are actively working toward this goal.
+                                                                         have been widely used to detect illegal transition paths in
+   Specifically, the following are the parts that can be reused
+                                                                         protocols like TLS. De Ruiter et al. [13] build a TLS state
+or less modified. The public resource detector mainly detects
+                                                                         machine via black-box testing; Stone et al. [32] extend it to
+system resource usage, and the snapshot manager is responsi-
+                                                                         grey-box; Fiterau-Brostean et al. [14] integrate test-case gen-
+ble for managing the VM and transferring data to the fuzzer,
+                                                                         eration and evaluation. Rasool et al. [48] constructed a QUIC
+and thus can be directly reused. The frame sequence generator
+                                                                         state machine and ported it to other protocols. State machines
+and the interaction behavior mutator in the sectional mutation
+                                                                         have proven effective for discovering and validating logic
+use predefined algorithms to expand the base frame sequence
+                                                                         vulnerabilities. Jero et al. [21] found TCP congestion-control
+and therefore require only minor modifications. The following
+                                                                         flaws by analyzing its state machine and crafting abstract
+are the parts that need to be re-adapted. The frame content
+                                                                         attacks. Our testcases require repeatedly triggering the same
+mutator and semantic consistency detector modules are mainly
+                                                                         state through state machine self loops, yet this still poses a
+designed for the QUIC protocol, so when porting to other
+                                                                         challenge due to state space explosion. This motivates our
+protocols, in order to improve the quality of the testcases,
+                                                                         future work to integrate automata into MerCuriuzz.
+we need to extract the constraints on length, content, and
+                                                                            Other QUIC attacks. Numerous works target QUIC’s
+numeric fields in the frames based on the definition of the
+                                                                         broader attack surface. McMillan [63], Zhang [63], and
+frames as defined in the RFC document and redefine semantic
+                                                                         Chatzoglou [10] expose TLS-handshake flaws. Damian [34]
+inconsistencies based on the protocol characteristics. In addi-
+                                                                         demonstrates UDP loop attacks that reflect stateless resets,
+tion, we use converters to abstract protocol interactions into
+                                                                         causing feedback loops. Gbur et al. [15] present QuicForge,
+interfaces, so developers only need to write the corresponding
+                                                                         forging QUIC traffic as DNS. These studies underscore
+protocol interaction programs, which greatly improves the
+                                                                         QUIC’s evolving security challenges and the need for auto-
+porting efficiency.
+                                                                         mated testing tools.
+   In terms of predictions, MerCuriuzz favors protocols with
+streams and contexts, such as HTTP/2 and HTTP/3, which we                                     VIII. C ONCLUSION
+believe are highly portable and expect to see more adaptations              This paper presents MerCuriuzz, a novel automated tool de-
+in the future. For protocols that do not have a context, such            signed to systematically test and uncover logical vulnerabilities
+
+
+
+                                                                    14
+in QUIC protocol implementations. We propose the Segmental              Wang for their peer review and helpful suggestions. This work
+Mutation strategy for generating structured test inputs. Addi-          was supported by the National Natural Science Foundation
+tionally, to effectively determine whether a logic bug has been         of China (grant #62272265). Any opinions, findings, and
+triggered, we adopt a differential testing approach by designing        conclusions or recommendations expressed in this material are
+and implementing two types of detectors: the Semantic Consis-           those of the authors and do not necessarily reflect the views
+tency Detector and the Public Resource Consumption Detector.            of their employers or the funding agencies.
+We design the Snapshot Manager to efficiently restore the state
+of the SUT. We applied MerCuriuzz to a comprehensive set of                                           R EFERENCES
+16 actively maintained QUIC implementations recommended                  [1] aiortc, “GitHub - aiortc/aioquic: QUIC and HTTP/3 implementation in
+by the IETF QUIC working group. In doing so, we discovered                   Python — github.com,” https://github.com/aiortc/aioquic, 2025.
+14 previously unknown logical vulnerabilities. All findings              [2] Akamai, “Akamai and kuaishou implement quic to improve video
+                                                                             experience,” https://www.akamai.com/newsroom/press-release, 2022.
+were responsibly disclosed to the affected vendors, and we               [3] alibaba, “GitHub - alibaba/xquic: XQUIC Library released by Alibaba
+received acknowledgment and bounty rewards from teams                        is a cross-platform implementation of QUIC and HTTP/3 protocol. —
+including Cloudflare, Alibaba Cloud, quickly, aioquic, and                   github.com,” https://github.com/alibaba/xquic, 2025.
+                                                                         [4] AsakuraMizu, “Security vulnerability due to unbounded storage of TLS
+picoquic. We hope this work raises awareness of resource-                    stream · Issue 1745 · private-octopus/picoquic — github.com,” https:
+exhaustion logic bugs and encourages the broader community                   //github.com/private-octopus/picoquic/issues/1745, 2024.
+to proactively defend against such subtle but impactful threats.         [5] AsakuraMizu and k4ra5u, “[SECURITY] aioquic may store an unlimited
+                                                                             number of remote path challenges · Issue 544 · aiortc/aioquic —
+                                                                             github.com,” https://github.com/aiortc/aioquic/issues/544, 2024.
+               IX. E THICS C ONSIDERATIONS                               [6] aws, “GitHub - aws/s2n-quic: An implementation of the IETF QUIC
+Ethical considerations. We take the utmost care of potential                 protocol — github.com,” https://github.com/aws/s2n-quic, 2025.
+                                                                         [7] S. Bauer, P. Sattler, J. Zirngibl, C. Schwarzenberg, and G. Carle,
+ethical issues. (1) In terms of experiment, we deployed all                  “Evaluating the benefits: Quantifying the effects of tcp options,
+QUIC services and fuzzing frameworks in a controlled internal                quic, and cdns on throughput,” in Proceedings of the 2023 Applied
+network. All our experiments were conducted locally, which                   Networking Research Workshop, ser. ANRW ’23. New York, NY,
+                                                                             USA: Association for Computing Machinery, 2023, p. 27–33. [Online].
+does not affect any other servers or users; (2) In terms of                  Available: https://doi.org/10.1145/3606464.3606474
+disclosure process, companies encourage security tests through           [8] M. Bishop, “RFC 9114: HTTP/3 — datatracker.ietf.org,” https://
+bug bounty programs, and we carefully follow disclosure                      datatracker.ietf.org/doc/rfc9114, 2022.
+                                                                         [9] X. Cao, S. Zhao, and Y. Zhang, “0-rtt attack and defense of quic
+guidelines when disclosing issues to vendors.                                protocol,” in 2019 IEEE Globecom Workshops (GC Wkshps), 2019, pp.
+Responsible disclosure. We have reported all vulnerabilities                 1–6.
+to the affected vendors. Up to now:                                     [10] E. Chatzoglou, V. Kouliaridis, G. Karopoulos, and G. Kambourakis,
+                                                                             “Revisiting quic attacks: A comprehensive review on quic security and
+   • Alibaba Cloud accepted the report of XQUIC, classified                  a hands-on study,” International Journal of Information Security, vol. 22,
+     the vulnerability as high severity, and awarded 7,200                   no. 2, pp. 347–365, 2023.
+     CNY as a bounty.                                                   [11] Cloudflare, “GitHub - cloudflare/quiche: Savoury implementation of the
+                                                                             QUIC transport protocol and HTTP/3 — github.com,” https://github.
+   • Cloudflare accepted the report and fixed the bug. Consid-               com/cloudflare/quiche/, 2025.
+     ering the vulnerable HTTP/3 server to be only the demo             [12] B. Cui, Z. Li, and F. Yu, “Manipulated client initial attack and defense
+     implementation recommended by Cloudflare Quiche,                        of quic,” in 2022 IEEE 24th Int Conf on High Performance Computing
+                                                                             & Communications; 8th Int Conf on Data Science & Systems; 20th Int
+     rather than a mandatory production standard, they only                  Conf on Smart City; 8th Int Conf on Dependability in Sensor, Cloud
+     awarded 200 USD as a bounty.                                            & Big Data Systems & Application (HPCC/DSS/SmartCity/DependSys),
+   • h2o and quicly acknowledged our report and have agreed                  2022, pp. 611–618.
+                                                                        [13] J. de Ruiter and E. Poll, “Protocol state fuzzing of TLS
+     to assign CVE identifiers for the reported vulnerabilities.             implementations,” in 24th USENIX Security Symposium (USENIX
+   • aioquic and picoquic are interested in the vulnerabilities.             Security 15). Washington, D.C.: USENIX Association, Aug. 2015,
+     They invited us to assist in fixing the vulnerabilities.                pp. 193–206. [Online]. Available: https://www.usenix.org/conference/
+                                                                             usenixsecurity15/technical-sessions/presentation/de-ruiter
+     We raised three issues [5], [23], [24] with aioquic, one           [14] P. Fiterau-Brostean, B. Jonsson, K. Sagonas, and F. Tåquist, “Automata-
+     issue with picoquic [4], and submitted CVE requests to                  based automated detection of state machine bugs in protocol implemen-
+     cve.mitre.org, receiving four CVE identifiers: CVE-                     tations.” in NDSS, 2023.
+                                                                        [15] K. Y. Gbur and F. Tschorsch, “Quicforge: Client-side request forgery in
+     2024-51410, 51411, 51413, and 51414.                                    quic.” in NDSS, 2023.
+   • lsquic confirmed the vulnerability, but the developers             [16] google, “quiche - Git at Google — quiche.googlesource.com,” https:
+     attributed the root cause to BoringSSL’s memory man-                    //quiche.googlesource.com/quiche/, 2025.
+                                                                        [17] Q. W. Group, “Implementations — github.com,” https://github.com/
+     agement issues [54] and refused to fix the issue or assign              quicwg/base-drafts/wiki/Implementations, 2021.
+     a CVE.                                                             [18] h2o, “cve.org,” https://www.cve.org/CVERecord?id=CVE-2021-43848,
+   • neqo confirmed the vulnerability [39], and helped us to                 2021.
+                                                                        [19] ——,              “cve.org,”         https://www.cve.org/CVERecord?id=
+     assign the CVE identifier: CVE-2025-6703.                               CVE-2023-50247, 2023.
+                                                                        [20] ——, “GitHub - h2o/h2o: H2O - the optimized HTTP/1, HTTP/2,
+                    ACKNOWLEDGMENT                                           HTTP/3 server — github.com,” https://github.com/h2o/h2o, 2025.
+  We would like to thank the anonymous reviewers and our                [21] S. Jero, E. Hoque, D. Choffnes, A. Mislove, and C. Nita-Rotaru,
+                                                                             “Automated attack discovery in tcp congestion control using a model-
+shepherd for their insightful feedback that helped improve the               guided approach,” in Proceedings of the 2018 Applied Networking
+quality of the paper. We are grateful to Keran Mu and Qi                     Research Workshop, ser. ANRW ’18. New York, NY, USA:
+
+
+
+
+                                                                   15
+       Association for Computing Machinery, 2018, p. 95. [Online]. Available:          [41] ngtcp2, “GitHub - ngtcp2/ngtcp2: ngtcp2 project is an effort to imple-
+       https://doi.org/10.1145/3232755.3232769                                              ment IETF QUIC protocol — github.com,” https://github.com/ngtcp2/
+[22]   Y. A. Joarder and C. Fung, “A survey on the security issues of quic,” in             ngtcp2, 2025.
+       2022 6th Cyber Security in Networking Conference (CSNet), 2022, pp.             [42] onethingcloud, “onethingcloud.com,” https://www.onethingcloud.com/,
+       1–8.                                                                                 2025.
+[23]   k4ra5u, “[SECURITY] Accepting and storing an unlimited number of                [43] private octopus, “GitHub - private-octopus/picoquic: Minimal imple-
+       CRYPTO frames within a single connection · Issue 501 · aiortc/aioquic                mentation of the QUIC protocol — github.com,” https://github.com/
+       — github.com,” https://github.com/aiortc/aioquic/issues/501, 2024.                   private-octopus/picoquic, 2025.
+[24]   ——, “[SECURITY] Excessive ranges in a single ACK frame causes an                [44] qemu, “QEMU — qemu.org,” https://www.qemu.org/, 2025.
+       exception in python programs · Issue 549 · aiortc/aioquic — github.com,”        [45] quic       go,        “cve.org,”       https://www.cve.org/CVERecord?id=
+       https://github.com/aiortc/aioquic/issues/549, 2024.                                  CVE-2024-22189, 2024.
+[25]   kazu yamamoto, “GitHub - kazu-yamamoto/quic: IETF QUIC library in               [46] ——, “GitHub - quic-go/quic-go: A QUIC implementation in pure Go
+       Haskell — github.com,” https://github.com/kazu-yamamoto/quic, 2025.                  — github.com,” https://github.com/quic-go/quic-go, 2025.
+                                                                                       [47] quinn rs, “GitHub - quinn-rs/quinn: Async-friendly QUIC implementa-
+[26]   Y. Liang, J. Chen, R. Guo, K. Shen, H. Jiang, M. Hou, Y. Yu, and
+                                                                                            tion in Rust — github.com,” https://github.com/quinn-rs/quinn, 2025.
+       H. Duan, “Internet’s Invisible Enemy: Detecting and Measuring Web
+                                                                                       [48] A. Rasool, G. Alpár, and J. de Ruiter, “State machine inference of
+       Cache Poisoning in the Wild,” in 31th ACM Conference on Computer
+                                                                                            quic,” 2019. [Online]. Available: https://arxiv.org/abs/1903.04384
+       and Communications Security, 2024.
+                                                                                       [49] G. S. Reen and C. Rossow, “Dpifuzz: A differential fuzzing framework
+[27]   litespeedtech, “GitHub - litespeedtech/lsquic: LiteSpeed QUIC and                    to detect dpi elusion strategies for quic,” in Proceedings of the 36th
+       HTTP/3 Library — github.com,” https://github.com/litespeedtech/lsquic,               Annual Computer Security Applications Conference, ser. ACSAC ’20.
+       2025.                                                                                New York, NY, USA: Association for Computing Machinery, 2020, p.
+[28]   J. D. Lucas Pardue, “HTTP/2 Rapid Reset: deconstructing the record-                  332–344. [Online]. Available: https://doi.org/10.1145/3427228.3427662
+       breaking attack — blog.cloudflare.com,” https://blog.cloudflare.com/            [50] S. Schumilo, C. Aschermann, A. Abbasi, S. Wör-ner, and T. Holz, “Nyx:
+       technical-breakdown-http2-rapid-reset-ddos-attack/, 2023.                            Greybox hypervisor fuzzing using fast snapshots and affine types,” in
+[29]   Z. Luo, J. Yu, F. Zuo, J. Liu, Y. Jiang, T. Chen, A. Roychoudhury,                   30th USENIX Security Symposium (USENIX Security 21). USENIX
+       and J. Sun, “Bleem: Packet sequence oriented fuzzing for protocol                    Association, Aug. 2021, pp. 2597–2614. [Online]. Available: https:
+       implementations,” in 32nd USENIX Security Symposium (USENIX                          //www.usenix.org/conference/usenixsecurity21/presentation/schumilo
+       Security 23). Anaheim, CA: USENIX Association, Aug. 2023,                       [51] S. Schumilo, C. Aschermann, A. Jemmett, A. Abbasi, and T. Holz,
+       pp. 4481–4498. [Online]. Available: https://www.usenix.org/conference/               “Nyx-net: Network fuzzing with incremental snapshots,” in Proceedings
+       usenixsecurity23/presentation/luo-zhengxiong                                         of the Seventeenth European Conference on Computer Systems,
+[30]   M. Maehren, P. Nieting, S. Hebrok, R. Merget, J. Somorovsky,                         ser. EuroSys ’22, 2022. [Online]. Available: https://doi.org/10.1145/
+       and J. Schwenk, “TLS-Anvil: Adapting combinatorial testing for                       3492321.3519591
+       TLS libraries,” in 31st USENIX Security Symposium (USENIX                       [52] M. Seemann, “Hello, I am Marten Seemann. — seemann.io,” https://
+       Security 22). Boston, MA: USENIX Association, Aug. 2022,                             seemann.io/, 2025.
+       pp. 215–232. [Online]. Available: https://www.usenix.org/conference/            [53] K. Shen, J. Lu, Y. Yang, J. Chen, M. Zhang, H. Duan, J. Zhang,
+       usenixsecurity22/presentation/maehren                                                and X. Zheng, “HDiff: A Semi-automatic Framework for Discovering
+[31]   A. Mankin, “RFC 9250: DNS over Dedicated QUIC Connections —                          Semantic Gap Attack in HTTP Implementations,” in 52nd Annual
+       datatracker.ietf.org,” https://datatracker.ietf.org/doc/rfc9250, 2022.               IEEE/IFIP International Conference on Dependable Systems and Net-
+[32]   C. McMahon Stone, S. L. Thomas, M. Vanhoef, J. Henderson,                            works, 2022.
+       N. Bailluet, and T. Chothia, “The closer you look, the more you                 [54] Spwpun, “a memory leak issue · Issue 460 · litespeedtech/lsquic —
+       learn: A grey-box approach to protocol state machine learning,” in                   github.com,” https://github.com/litespeedtech/lsquic/issues/460, 2023.
+       Proceedings of the 2022 ACM SIGSAC Conference on Computer                       [55] tempload, “tiptime.cn,” https://www.tiptime.cn/, 2025.
+       and Communications Security, ser. CCS ’22. New York, NY, USA:                   [56] M. Thomson, “RFC 9000: QUIC: A UDP-Based Multiplexed and
+       Association for Computing Machinery, 2022, p. 2265–2278. [Online].                   Secure Transport — datatracker.ietf.org,” https://datatracker.ietf.org/doc/
+       Available: https://doi.org/10.1145/3548606.3559365                                   rfc9000, 2021.
+[33]   K. L. McMillan and L. D. Zuck, “Formal specification and testing                [57] S. Turner, “RFC 9001: Using TLS to Secure QUIC — data-
+       of quic,” in Proceedings of the ACM Special Interest Group on                        tracker.ietf.org,” https://datatracker.ietf.org/doc/rfc9001, 2021.
+       Data Communication, ser. SIGCOMM ’19. New York, NY, USA:                        [58] W3Techs, “Usage Statistics of HTTP/3 for Websites, April 2025 —
+       Association for Computing Machinery, 2019, p. 227–240. [Online].                     w3techs.com,” https://w3techs.com/technologies/details/ce-http3, 2025.
+       Available: https://doi.org/10.1145/3341302.3342087                              [59] E. Wang, J. Chen, W. Xie, C. Wang, Y. Gao, Z. Wang, H. Duan, Y. Liu,
+[34]   D. Menscher, “Blog: Preventing Cross-Service UDP Loops in                            and B. Wang, “Where URLs Become Weapons: Automated Discovery
+       QUIC — bughunters.google.com,” https://bughunters.google.com/blog/                   of SSRF Vulnerabilities in Web Applications,” in 2024 IEEE Symposium
+       5960150648750080/, 2024.                                                             on Security and Privacy, 2024.
+                                                                                       [60] Q. Wang, J. Chen, Z. Jiang, R. Guo, X. Liu, C. Zhang, and H. Duan,
+[35]   Microsoft, “GitHub - microsoft/msquic: Cross-platform, C implemen-
+                                                                                            “Break the Wall from Bottom: Automated Discovery of Protocol-Level
+       tation of the IETF QUIC protocol, exposed to C, C++ and Rust. —
+                                                                                            Evasion Vulnerabilities in Web Application Firewalls,” in 2024 IEEE
+       github.com,” https://github.com/microsoft/msquic, 2025.
+                                                                                            Symposium on Security and Privacy, 2024.
+[36]   Mozilla, “GitHub - mozilla/neqo: Neqo, the Mozilla Firefox implemen-            [61] Y. You, J. Chen, Q. Wang, and H. Duan, “My ZIP isn’t your ZIP:
+       tation of QUIC in Rust — github.com,” https://github.com/mozilla/neqo,               Identifying and Exploiting Semantic Gaps Between ZIP Parsers,” in 34th
+       2025.                                                                                USENIX Conference on Security Symposium, 2025.
+[37]   K. Mu, J. Chen, J. Zhuge, Q. Li, H. Duan, and N. Feamster, “The                 [62] J. Zhang, J. Chen, Q. Wang, H. Zhang, C. Wang, J. Zhuge, and
+       Silent Danger in HTTP: Identifying HTTP Desync Vulnerabilities with                  H. Duan, “Inbox Invasion: Exploiting MIME Ambiguities to Evade
+       Gray-box Testing,” in 34th USENIX Conference on Security Symposium,                  Email Attachment Detectors,” in 31th ACM Conference on Computer
+       2025.                                                                                and Communications Security, 2024.
+[38]   M. Nawrocki, R. Hiesgen, T. C. Schmidt, and M. Wählisch, “Quicsand:            [63] J. Zhang, L. Yang, X. Gao, G. Tang, J. Zhang, and Q. Wang, “Formal
+       quantifying quic reconnaissance scans and dos flooding events,” in                   analysis of quic handshake protocol using symbolic model checking,”
+       Proceedings of the 21st ACM Internet Measurement Conference,                         IEEE Access, vol. 9, pp. 14 836–14 848, 2021.
+       ser. IMC ’21. ACM, Nov. 2021, p. 283–291. [Online]. Available:                  [64] L. Zheng, X. Li, C. Wang, R. Guo, H. Duan, J. Chen, and K. Shen,
+       http://dx.doi.org/10.1145/3487552.3487840                                            “ReqsMiner: Automated Discovery of CDN Forwarding Request Incon-
+[39]   neqo, “transport/fc.rs: panic attempting to send MAX DATA with                       sistencies with Differential Fuzzing,” in Proceedings 2024 Network and
+       value larger max varint — github.com,” https://github.com/mozilla/neqo/              Distributed System Security Symposium, 2024.
+       security/advisories/GHSA-jfv6-x22w-grhf, 2025.                                  [65] J. Zirngibl, P. Buschmann, P. Sattler, B. Jaeger, J. Aulbach, and
+[40]   nginx, “GitHub - nginx/nginx: The official NGINX Open Source repos-                  G. Carle, “It’s over 9000: analyzing early quic deployments with
+       itory. — github.com,” https://github.com/nginx/nginx, 2025.                          the standardization on the horizon,” in Proceedings of the 21st ACM
+
+
+
+
+                                                                                  16
+     Internet Measurement Conference, ser. IMC ’21. New York, NY, USA:              to that seed is expanded. Once the test concludes, if the evalu-
+     Association for Computing Machinery, 2021, p. 261–275. [Online].               ation result indicates the seed is “interesting,” we compute its
+     Available: https://doi.org/10.1145/3487552.3487826
+[66] Y.-H. Zou, J.-J. Bai, J. Zhou, J. Tan, C. Qin, and S.-M. Hu, “TCP-Fuzz:        Upper Confidence Bound (UCB) and propagate that value back
+     Detecting memory and semantic bugs in TCP stacks with fuzzing,”                to the root node. If the result is “uninteresting,” we delete that
+     in 2021 USENIX Annual Technical Conference (USENIX ATC 21).                    node. This iterative process incrementally builds and refines
+     USENIX Association, Jul. 2021, pp. 489–502. [Online]. Available:
+     https://www.usenix.org/conference/atc21/presentation/zou                       the seed tree.
+                                                                                       Our approach differs from the standard Monte Carlo al-
+                           A PPENDIX A                                              gorithm in that, theoretically, each parent node can have
+                       C OMPRESSED C ORPUS                                          infinitely many child nodes (since the mutation state space
+                                                                                    is unbounded). Consequently, our selection algorithm must
+   To support the aforementioned mutation strategies, we de-
+                                                                                    decide whether to mutate a node at level i of the seed
+signed a Compressed Corpus (CC) structure to represent the
+                                                                                    tree, rather than exclusively picking leaf nodes. Moreover,
+traffic of a single interaction from the client’s perspective. We
+                                                                                    to prevent the seed tree from growing excessively large and
+define a frame loop set S = {⟨f1 , f2 , . . . , fm ⟩, len}, which
+                                                                                    dispersing fuzzing energy too thinly (which would effectively
+represents an ordered combination of initial frames f1 to fm ,
+                                                                                    degrade to a traversal of all seeds), we introduce a time
+repeated len times. In addition to multiple frame loop sets
+                                                                                    parameter into the UCB formula. This gives newly added
+T = {S1 , . . . , Sn }, a CC also contains the following attributes:
+                                                                                    subtrees more energy for testing.
+Send-to-receive ratio (sr : rr): Defines the ratio at which sr
+frames are sent before receiving rr frames from the server. By
+adjusting the sr : rr ratio, it is possible to simulate network                                             A PPENDIX C
+congestion scenarios with high precision.                                                             Q UIC I MPLEMENTATIONS
+   Packet loss and reordering Algorithm (P A): Selects an
+algorithm to modify the current sequence, simulating charac-                           Below are the 16 recommended implementations selected
+teristics such as unstable packet loss and out-of-order delivery.                   from the QUIC workgroup, along with statistics on the pro-
+   Random seed (RS): To ensure consistency and repro-                               gramming languages used and the code size of these imple-
+ducibility in differential testing between both sides, the current                  mentations.
+random seed is also included in the corpus.
+                                                                                       TABLE III: Tested QUIC Projects and Their Versions
+   During the frame content mutation phase, one or more initial
+frames from Si are selected for field-level mutation, modifying                             Number     Project Name      Language   code lines
+                                                                                            1          Cloudflare QUIC   rust       57K
+elements of the set and other attributes in CC. In the sequence                             2          Google QUIC       C++        317K
+mutation phase, we use the random seed to select a frame                                    3          Quic-go           Golang     75K
+sequence mutation algorithm for each frame in S, arrange                                    4          Aioquic           python     20K
+them in the current order, and expand each set in T to form a                               5          Haproxy           C          295K
+                                                                                            6          H2o(quickly)      C          516K
+complete frame sequence. In the interaction behavior mutation                               7          Lsquic            C          111K
+phase, we use the reordering and packet loss algorithms to                                  8          MsQuic            C          188K
+construct the final frame sequence.                                                         9          Haskell quic      haskell    20K
+                                                                                            10         Neqo              Rust       66K
+   By applying a segmented mutation algorithm to expand and                                 11         Ngtcp2            C          75K
+mutate a CC, we balance the constraints necessary to avoid                                  12         Nginx             C          193K
+state explosion while maintaining mutation diversity, thereby                               13         Picoquic          C          104K
+                                                                                            14         Quinn             Rust       27K
+improving mutation efficiency.
+                                                                                            15         S2n-quic          Rust       194K
+                                                                                            16         Xquic             C          77K
+                       A PPENDIX B
+          C ORPUS U PDATE AND R ECOMMENDATION
+   Monte Carlo Seed Tree. To guide fuzzing more effectively in
+a black-box setting and to evaluate seeds in a systematic way,                                               A PPENDIX D
+we not only rely on differential detection and public resource                                           A RTIFACT A PPENDIX
+consumption detectors to determine whether a vulnerability is
+                                                                                    A. Description & Requirements
+triggered, but also use these detectors to quantify our level of
+interest in each seed. Besides marking certain seeds as “inter-                        This tool is developed as a fork of the LibAFL v0.13.0
+esting,” we must also exclude those deemed “uninteresting.”                         framework and integrates several other open-source compo-
+Hence, we design and maintain a Monte Carlo seed tree to                            nents to implement its features. For QUIC interaction, it
+update and recommend seeds in the corpus.                                           uses Cloudflare’s quiche component from cloudflare. Snapshot
+   Specifically, for constructing and maintaining this seed tree,                   support is enabled through libnyx, packer, and QEMU-Nyx
+we begin from a virtual root node and connect each initial seed                     modules of Nyx-fuzz project. The tool targets mainstream
+downward. Whenever the mutator selects a seed represented by                        QUIC implementations and is primarily written in Rust, with
+a node in the tree and mutates it, the leaf node corresponding                      portions in C and Python.
+
+
+
+                                                                               17
+   1) How to access: The MerCuriuzz main program is avail-               are controlled using vendors/packer/packer/linux x86 64-
+able on GitHub and can be accessed via Mercuriuzz. Its                   userspace/src/harness.c.
+auxiliary components have been functionally adapted based                   The main program is located in the fuzzers directory. For
+on the original projects for use with MerCuriuzz, including:             the minimized implementation, use network_quic_fuzz;
+LibAFL, Cloudflare-quiche. libnyx, QEMU-Nyx, packer. We                  for snapshot-based experiments, use nyx quic fuzz. The main
+have also uploaded our artifacts to a DOI-providing platform:            program connects all components and interfaces with either
+https://doi.org/10.5281/zenodo.17015304.                                 QUIC implementations or virtual machine processes to enable
+   2) Hardware dependencies: Running the minimal imple-                  continuous fuzzing execution.
+mentation requires at least 4GB of memory and 8 logical CPU
+cores (CPU IDs 0–7). Running the snapshot-based implemen-
+tation also requires a processor that supports Intel Processor
+Trace (Intel PT) (supported by most Intel CPUs; AMD CPUs
+have been tested) and KVM virtualization support (if the
+host is itself a virtual machine, nested virtualization must be
+enabled).
+   3) Software dependencies: All Linux-kernel-based operat-
+ing systems are supported; Ubuntu versions 22.04 or 24.04 are
+recommended.
+   4) Benchmarks: None.
+
+B. Artifact Installation & Configuration
+   From the initial setup to running a complete minimal
+instance involves several steps:
+   First install the required runtime libraries and components,
+including build tools and the libraries needed to execute the
+code. These are described in the “Environment” section of the
+README. As test targets, we chose two implementations:
+lsquic, and neqo. The build and testing processes are detailed
+in the “Target Installation” section of the README. Finally,
+building and running the MerCuriuzz project itself is covered
+in the “Building” section of the README, with all the
+detailed steps provided there.
+   Figure 1 illustrates the workflow of MerCuriuzz. Overall,
+MerCuriuzz consists of four main phases: (1) receiving input
+testcases and outputting objectives and crashes; (2) managing
+and mutating the corpus; (3) managing snapshots and per-
+forming differential evaluation; (4) executing input tests under
+QEMU virtual machine snapshots.
+   Regarding the code paths for each module,
+we take the MerCuriuzz directory as the root.
+The implementation of the MCTS scheduler is
+located      in      libafl-modules/src/schedulers,
+while      Segmental       Mutation     is    implemented      in
+libafl-modules/src/mutators. The executor func-
+tionality resides in libafl-modules/src/executors,
+providing both a minimized implementation based on
+local area networks and a full implementation based on
+snapshots. All evaluation features are distributed under
+libafl-modules/src/ across the observers and
+feedbacks directories. The former collects data, while the latter
+evaluates this data. The snapshot component is decoupled
+from the MerCuriuzz project, requiring manual configuration
+of virtual machines for each QUIC implementation, along
+with adding necessary runtime libraries to the filesystem.
+Virtual machine initialization and snapshot functionalities
+
+
+
+                                                                    18
+

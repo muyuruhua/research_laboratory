@@ -1,0 +1,314 @@
+                                               ProFuzzBench: A Benchmark for Stateful Protocol Fuzzing
+                                                                   Roberto Natella                                                    Van-Thuan Pham
+                                                              roberto.natella@unina.it                                          thuan.pham@unimelb.edu.au
+                                                  Università degli Studi di Napoli Federico II, Italy                         University of Melbourne, Australia
+
+                                         ABSTRACT                                                                 for multimedia file formats, data compression tools, OS utilities,
+                                         We present a new benchmark (ProFuzzBench) for stateful fuzzing of        etc.), but have limited or no support for stateful software, which
+                                         network protocols. The benchmark includes a suite of representa-         would be useful to make progress on fuzzing techniques suitable
+                                         tive open-source network servers for popular protocols, and tools        for protocol testing.
+                                         to automate experimentation. We discuss challenges and potential            In this paper, we present a new benchmark (ProFuzzBench) for
+                                                                                                                  stateful fuzzing of network protocols. This benchmark provides a
+arXiv:2101.05102v1 [cs.CR] 13 Jan 2021
+
+
+
+
+                                         directions for future research based on this benchmark.
+                                                                                                                  suite of open-source programs that implement popular network
+                                         KEYWORDS                                                                 protocols, and tools for fully automating the execution of fuzzing ex-
+                                                                                                                  periments. We selected programs representative of the ones adopted
+                                         Fuzzing; Benchmarking; Network Protocols                                 in previous research on stateful fuzzing, and of network protocols
+                                                                                                                  targeted by commercial and open-source fuzzers. Based on our
+                                         1   INTRODUCTION                                                         experience with these programs, we discuss some open research
+                                         Protocols are pervasive in computer systems, as they enable com-         issues for stateful network protocol fuzzing, and potential future
+                                         munication among parties over a local network or the internet, such      directions. We release the benchmark as open-source, inviting the
+                                         as, for instant messaging, email, file serving and sharing, multime-     community to use it for evaluation of new fuzzing techniques, and
+                                         dia streaming, and several other applications. Therefore, protocol       for further extend it with more targets.
+                                         implementations are an appealing target for malicious actors, as            In the following of this paper, Section 2 presents the benchmark
+                                         a vulnerability in an implementation may be remotely exploited.          targets; Section 3 elaborates on fuzzing automation; Section 4 dis-
+                                         However, it is challenging to test the security of protocol imple-       cusses challenges for applying fuzzers on stateful network protocol
+                                         mentations, since protocols are most often stateful in nature. This      implementations; Section 5 concludes the paper.
+                                         means that, compared to stateless programs, the input space for
+                                         testing is not limited to the format of individual messages (which       2   BENCHMARK TARGETS
+                                         can be very large by its own), but is further enlarged by the poten-     We selected a set of network protocols that we wanted to cover with
+                                         tial combinations of several messages. Therefore, protocol security      the benchmark. We looked for protocols that are mature and widely
+                                         testing is in need of techniques that can efficiently test such input    used, both by enterprises and by individual users. Moreover, the
+                                         space, by taking into account the protocol states.                       selection of the protocols took into account which protocols were
+                                             Much of recent research on security testing has been on fuzzing      analyzed by previous fuzzing studies, as reported in academic pa-
+                                         [13, 15], which automatically exercises a target system with large       pers, books, technical blogs, or supported by non-academic fuzzing
+                                         volumes of inputs, either generated using a model of the input space     tools (e.g., commercial products).
+                                         (e.g., a protocol state machine), or mutated from an initial set of          For every selected protocol, we looked for open-source software
+                                         regular inputs (seeds). Research on fuzzing is of experimental nature,   that implements that protocol, to be subject to fuzz testing. In
+                                         as this technique lies on heuristics, such as on seed selection and      this case too, we looked for mature software suitable for use in
+                                         mutation operators. Heuristics leverage empirical insights about         real-world applications (thus, worth of being tested for security
+                                         typical vulnerabilities, such as, knowing that out-of-bounds integers    vulnerabilities), and actively maintained and popular among users.
+                                         are often not well managed, mutation operators perform integer               Table 1 lists the protocols, and the related software implementa-
+                                         operations on the seeds.                                                 tions, that were selected for the benchmark. In total, we selected 10
+                                             Therefore, one of the key factors for progress in fuzzing research   protocols, and one software implementation for each of them. FTP
+                                         is the availability of benchmarks, that is, representative and well-     is the only exception, for which we included two implementations
+                                         defined experimental targets for applying heuristic techniques, and      in the benchmark. Since FTP is often adopted as running example in
+                                         for obtaining reproducible and quantitative evaluations. However,        books and papers to present fuzzing techniques and tools, we found
+                                         there is still a debate about how to benchmark fuzzers, e.g., how to     several FTP implementations that were subjected to fuzz testing.
+                                         measure progress and depth of fuzzing, how to avoid biases, and          Thus, we included more than one software for this protocol.
+                                         whether the targets are representative of real vulnerable systems.           For each protocol, the table provides a brief description of the
+                                         Existing proposals for benchmarking fuzzers include LAVA-M [7], a        objective of the protocol, and of the stateful aspects of the protocol.
+                                         set of open-source program injected with synthetically-generated         In many cases, the state of the protocol keeps track of the progress
+                                         bugs; Google FuzzBench [14], a cloud service for running a fuzzer        of a communication session between a client and a server. For ex-
+                                         on a set of target programs from the OSS-Fuzz project; the DARPA         ample, the FTP protocol prescribes initial states for authentication,
+                                         Cyber Grand Challenge corpus [5]; and Magma [11], a benchmark            with messages for providing the username and password; then, au-
+                                         of targets with manually-curated vulnerabilities. However, existing      thentication is followed by one or more commands for file transfer;
+                                         benchmarks focus on stateless libraries and programs (e.g., parsers      and finally, the session ends with a log-out. Similarly, in the case of
+                                                                          Table 1: Benchmark targets
+
+      Protocol    Implementation                                   Description                                         Protocol states     Related papers     Non-academic fuzzing tools
+      RTSP                  Live555                Real-time media streaming                            Progress of ongoing streaming               [9, 16]                        [4, 19]
+      SMTP                    Exim                         Email transmission                  Message queue, progress of the session                  [20]                    [4, 17, 19]
+      FTP        ProFTPD, LightFTP                                  File transfer           CWD, session flags, progress of the session        [10, 16, 20]                    [4, 17, 19]
+      SSH                 OpenSSH                          Secure remote shell      User authentication progress, session configuration                [24]                    [4, 17, 19]
+      TLS                 OpenSSL                    Secure socket connection       User authentication progress, session configuration             [6, 21]                        [4, 19]
+      DTLS               TinyDTLS            Secure datagram communication          User authentication progress, session configuration                 [8]                           [19]
+      DNS                  dnsmasq                    Network domain names                                         Cached DNS records              [20, 24]                    [4, 17, 19]
+      SIP                  Kamailio   Signaling protocol for real-time sessions              User registrations, progress of the session             [1–3]                         [4, 19]
+      DAAP            forked-daapd       HTTP-based audio library streaming                    Progress of ongoing streaming, playlist                 [18]                    [4, 17, 19]
+      DICOM               dcmqrscp                              Image retrieval                                  Progress of the session               [22]                           [19]
+
+
+
+the secure communication protocols (SSH, TLS, DTLS), the protocol                                    benchmark are AFLnwe (a basic variant of AFL, to support fuzzing
+state tracks the order of the steps in the authentication process,                                   over network sockets) and AFLnet (a protocol-aware fuzzer, also
+including the exchange of public key and other information for                                       based on AFL) [16]. The benchmark comes with a set of patches for
+encryption. In some protocols, the protocol state reflects the current                               each target software, which are applied during this state. For most
+state of the server process, and the history of its interactions with                                target software, the patches de-randomize the program, such as,
+the client: for example, in SMTP and DAAP, the server enqueues                                       by embedding a fixed seed in the source code. De-randomization
+emails to be transmitted, and songs to be played; while they are                                     is important to have reproducible behavior, i.e., if the program is
+processed, the server continues to interact with the client through                                  executed again with the same input, then the same execution path
+further messages. The benchmark also includes the DNS protocol,                                      is covered. This reproducible behavior is an implicit assumption
+despite it is in principle a stateless one. We still opted to include                                for the correct application of coverage-driven fuzzing techniques.
+this protocol in the benchmark, since it is a popular fuzzing target,                                Moreover, de-randomization supports the comparison of different
+and since its implementations can still provide stateful behavior,                                   fuzzing techniques, as it makes it less likely that a fuzzer perform
+such as the caching of records from past queries.                                                    better than other by chance, rather than for its merits. In some cases,
+   The table provides a non-exhaustive list of papers and books                                      the patches decrease or remove delays in the program (e.g., uses
+related to each protocol. In these references, the protocols were                                    of sleep()), which are adopted for synchronization in network
+adopted as case studies for evaluating the effectiveness of new tech-                                settings, but which unnecessarily slow down fuzzing since it can
+niques for stateful protocol fuzzing. In the case of some references,                                be performed locally with smaller delays. Other patches make the
+the protocols were adopted to provide context for examples, such                                     program compatible with fuzzers. For example, AFL uses UNIX
+as to show how to customize and to configure a fuzzing tool for a                                    signals to manage the target process and to detect its failures. Thus,
+new protocol. For example, in generational fuzzing, the user needs                                   any custom handler for these signals should be disabled to avoid
+to provide a model for the protocol under test, either by writing it                                 interfering with AFL-based fuzzing tools.
+from scratch, or by reusing an existing protocol model (e.g., based                                      Some patches of the benchmark support the experimentation of
+on protocol specifications).                                                                         tools tailored for protocol fuzzing. For example, AFLnet [16] takes
+   Finally, the table lists non-academic fuzzing tools (commercial                                   in input a corpus of network traffic traces, where an individual fuzz
+and open-source) that provide support for each protocol. The com-                                    input is represented by one traces, which consists of a sequence
+mercial Defensics tool from Synopsis (originally developed by Co-                                    of messages exchanged with the target software. In order to test
+denomicon) and beSTORM from Beyond Security, support an ex-                                          more states of the protocol, a tool may need to focus fuzzing on a
+tensive set of network protocols, including the ones that are part                                   specific message in the sequence. Thus, AFLnet performs a parsing
+of the benchmark. The Metasploit Framework (best known for its                                       of the traffic traces, by identifying the position of the individual
+exploit database) also provides a small set of fuzzers for few basic                                 messages. AFLnet includes several parsers for the supported pro-
+network protocols, which were included in the benchmark. The                                         tocols. Where available, the parsers look for marker characters to
+DAAP protocol is not directly supported by these fuzzers, but can                                    split the messages, such as, the characters 0x0D0A in FTP. Some pro-
+be fuzzed using these fuzzing tools using their support for HTTP.                                    tocol implementations do not provide such markers (e.g., a message
+                                                                                                     ends when the connection is closed, without an explicit marker). In
+3   AUTOMATION                                                                                       these cases, the patches introduce such characters to simplify the
+                                                                                                     implementation of message parsers.
+The protocol fuzzing benchmark has been published as a set of                                            Moreover, the patches support protocol fuzzing tools that keep
+utilities for automating the compilation, configuration, execution,                                  track of protocol states in order to maximize state coverage. Some
+and analysis of target software (Figure 1). These utilities are based                                protocols, such as FTP, provide distinctive status codes in response
+on Docker to automate the deployment of the target software and                                      messages from the server to the client (e.g., the number 230 when
+of fuzzing tools, in order to achieve reproducible experiments, and                                  the login succeeded and the server awaits for commands or number
+to support the comparative analysis of different fuzzing techniques                                  257 when a new folder has been successfully created). However,
+under controlled conditions.                                                                         it might not be the case for all protocols. For instance, RTSP pro-
+   The first stage is the build of a container image. The target                                     tocol uses the same response code 200 for all successful requests,
+software, and a set of protocol fuzzing tools, are first cloned from                                 regardless of the current server state. To make stateful fuzzing
+their open-source repositories. The tools currently included in the
+                                                                                                2
+              1.                                               2.                                                                     3.
+             Build                                            Run                                                                   Analyze
+
+                                                                                         ...
+    • Patch target software (de-randomization; message
+      markers; state encoding)                                      • Deployment of the target software over                             • Line coverage over time
+    • Copy fuzzers, automation scripts, configuration files           several parallel containers                                        • Branch coverage over time
+                                                                    • Execution of a fuzzer with selected options                        • Protocol state coverage over time
+    • Compile target software for coverage-driven fuzzing
+                                                                    • Save raw data from the fuzzer
+    • Compile target software for post-execution analysis
+
+
+                                                         Figure 1: Workflow of benchmark automation.
+
+
+more effective, our benchmark patches the target (Live555 server)                                 Kamailio
+to send responses with different status codes e.g., 201 when a PLAY                              SIP Server
+
+
+
+
+                                                                                                                         REGISTER
+
+
+
+
+                                                                                                                                                                                     Trying
+
+                                                                                                                                                                                              OK
+
+
+                                                                                                                                                                                                        ACK
+
+
+                                                                                                                                                                                                                    BYE
+                                                                                                                                          REGISTER
+
+
+
+
+                                                                                                                                                                                                                                OK
+                                                                                                                                                          INVITE
+command has been processed and 203 for a PAUSE command.
+
+
+
+
+                                                                                                                                                                            INVITE
+
+
+
+
+                                                                                                                                                                                                              ACK
+
+
+                                                                                                                                                                                                                          BYE
+    The (patched) target software is then compiled within the con-
+
+
+
+
+                                                                                                                                    OK
+tainer image. It is compiled a first time using the AFL compiler                                 SIP Callee
+wrapper (i.e., afl-clang-fast/afl-clang-fast++), in order to include
+the runtime instrumentation needed by AFL-based coverage-driven
+
+
+
+
+                                                                                                                                                                   Trying
+                                                                                                                                                     OK
+
+
+
+
+                                                                                                                                                                                                                                     OK
+                                                                                                                                                                                                   OK
+fuzzing tools. This binary will be the target for fuzzing. The target                            SIP Caller
+software is compiled a second time with support for gcov: this                                    (fuzzer)
+binary will be used in the last stage of the benchmark, in order
+to compute coverage metrics after fuzzing. The build stage of the
+                                                                                                                    Figure 2: SIP protocol fuzzing.
+benchmark finalizes the container image by adding target-specific
+files (e.g., configuration file, media sources). Finally, the fuzzing
+tools and automation scripts are copied in the container image.                                and in integrating them with a fuzzer, we found the following open
+    In the second stage, the benchmark runs the selected fuzzer on                             research issues.
+the target software, using the container image. In order to compare                               Configuration and multi-party protocols. The fuzzing of
+different fuzzers in a rigorous way, the same fuzzing experiment                               network protocols requires the configuration of their software im-
+should be repeated several times. In this way, two fuzzers can be                              plementations. Selecting a specific configuration determines which
+compared with respect to their results over several repetitions,                               parts of a network server can be tested by fuzzing. The configu-
+using statistical techniques analysis to achieve confidence that one                           ration space can be quite complex for real-world network servers,
+of the fuzzers is indeed superior to the other [12]. Therefore, the                            but the problem has not been studied yet. Previous research has
+utilities provided with the benchmark allow the user to run multiple                           been mostly focused on stateless programs, such as libraries and
+instances of the same container in parallel, by taking advantage of                            command-line utilities, where the main challenge comes from the
+multicore architectures. Finally, raw data from the fuzzer is copied                           complexity of the inputs and of their constraints for reaching deep
+from the container to the host machine. The raw data include inputs                            execution paths. As the configuration affects the attack surface, it
+generated by the fuzzer that covered a new path in the program                                 indirectly becomes a concern for fuzzing.
+(e.g., “interesting inputs” in AFL); inputs that discovered new state                             In particular, protocols can require to run more than two par-
+transitions in the protocol state machine (e.g., as in AFLnet); and                            ties. Existing fuzzing techniques only adopt a client-server scheme,
+inputs that caused a crash or hang of the target software.                                     where the fuzzer acts as client. However, in the case of SIP protocol,
+    The final stage analyzes the raw data to generate statistics about                         at least three parties are required: the server under test, a “caller”
+the fuzzing experiments. It runs again the inputs using the target                             and a “callee”. One or more “callee” and “caller” must first register
+software compiled with gcov, in order to obtain line- and branch-                              on the server; then, a caller can contact the server, by indicating the
+level information about the coverage of each input. Then, it gen-                              name of a callee; the server will act as proxy between the callee and
+erates time series in CSV format for the line and branch coverage,                             the caller, in order to establish a communication (e.g., a VoIP call)
+based on the timestamps at which the inputs were generated, to be                              between them. In the process, the server will handle the “ringing”,
+used for plotting and for comparing the fuzzers.                                               the possibility that the callee is busy, etc.
+                                                                                                  Figure 2 shows an example of interactions between the fuzzing
+                                                                                               tool and the Kamailio SIP target software. To fuzz a SIP session,
+4     DISCUSSION                                                                               which establishes a call between a caller and callee, the fuzzer
+The availability of this benchmark is an opportunity for research in                           should take one of these roles (in our benchmark, it is the caller).
+new techniques for protocol fuzzing. In selecting the target software,                         In addition to the fuzzer, it is necessary to have another process to
+                                                                                          3
+take the other role. Therefore, the benchmark comes with scripts to          supports 10 protocols and it can be extended. Based on our pre-
+automate the execution both of the SIP server and of a callee using          liminary experiments, we also discuss open challenges for future
+a SIP client; after the callee has registered, the fuzzers can replay        research. As future work we plan to add more targets and integrate
+and fuzz the sequences of message from the corpus. The corpus has            more fuzzers into the benchmark. Moreover, we will run large-scale
+been prepared to match the configuration of the processes, i.e., the         experiments on the benchmark and analyze the results to gain more
+same port numbers and client names are both referenced in corpus,            insights into the identified challenges.
+and used by the SIP client and by the fuzzer.
+   In more complex protocols, such as for IP routing and network             BENCHMARK AVAILABILITY
+management, even more parties may be required for a meaningful               The source code of ProFuzzBench is available online on GitHub at:
+testing. When setting up multiple parties, identifying a configura-          https://github.com/profuzzbench/profuzzbench
+tion for the target becomes even more challenging. Moreover, these
+protocols are beyond the support of current fuzzers, as they focus           REFERENCES
+on fuzzing an individual stream of data to the server.                        [1] Humberto J Abdelnur, Radu State, and Olivier Festor. 2007. KiF: a stateful SIP
+   Deterministic execution. Another challenge towards fuzzing                     fuzzer. In Intl. Conf. on Princ., Sys. and Apps. of IP Telecom. 47–56.
+                                                                              [2] Thoulfekar Alrahem, Alex Chen, N DiGiuseppe, Jefferey Gee, Shang-Pin Hsiao,
+a complete network server is non-deterministic behavior, due to                   Sean Mattox, Taejoon Park, IG Harris, et al. 2007. Interstate: A stateful protocol
+the extensive use of threads and event-based I/O. When the same                   fuzzer for SIP. Defcon 15 (2007), 1–5.
+input is applied to the target software, its non-determinism causes           [3] Greg Banks, Marco Cova, Viktoria Felmetsger, Kevin Almeroth, Richard Kem-
+                                                                                  merer, and Giovanni Vigna. 2006. SNOOZE: toward a Stateful NetwOrk prOtocol
+variations of the coverage of program paths, which in turn hinders                fuzZEr. In Intl. Conf. on Information Security. 343–358.
+coverage-driven fuzzing. For this reason, the AFL fuzzer performs a           [4] Beyond Security. 2020. beSTORM Black Box Testing. https://beyondsecurity.
+                                                                                  com/solutions/bestorm.html. [Online; accessed 12-10-2020].
+“calibration” on every new input that expands the coverage, in order          [5] Brian Caswell. 2020. Cyber Grand Challenge Corpus. http://www.lungetech.
+to assess whether the execution is deterministic, and to report the               com/cgc-corpus/. [Online; accessed 12-01-2021].
+percentage of anomalous new inputs (the stability metrics). In the            [6] Joeri De Ruiter and Erik Poll. 2015. Protocol State Fuzzing of TLS Implementations.
+                                                                                  In 24th USENIX Security Symp. 193–206.
+benchmark, we followed the best practices suggested for AFL [23],             [7] Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti,
+by disabling threads where possible; or, by replacing kernel-level                Wil Robertson, Frederick Ulrich, and Ryan Whelan. 2016. LAVA: Large-scale
+threads (as in pthreads) with user-level ones (as in GNU Pth) and                 automated vulnerability addition. In Symp. on Security and Privacy (SP). 110–121.
+                                                                              [8] Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri de Ruiter, Konstanti-
+related I/O APIs, as we did in the forked-daapd target. Despite these             nos Sagonas, and Juraj Somorovsky. 2020. Analysis of DTLS Implementations
+countermeasures, the reported stability is still lower than 50% in                Using Protocol State Fuzzing. In 29th USENIX Security Symp.
+                                                                              [9] Zicong Gao, Weiyu Dong, Rui Chang, and Yisen Wang. 2020. Fw-fuzz: A code
+several benchmarks, due to the use of threads and I/O in libraries                coverage-guided fuzzing framework for network protocols on firmware. Concur-
+called by the target software. Moreover, user-level threads increase              rency and Computation: Practice and Experience (2020).
+the complexity of the testing setup (e.g., in forked-daapd, it hinders       [10] Hugo Gascon, Christian Wressnegger, Fabian Yamaguchi, Daniel Arp, and Konrad
+                                                                                  Rieck. 2015. Pulsar: Stateful black-box fuzzing of proprietary network protocols.
+the saving of coverage data).                                                     In Intl. Conf. on Sec. and Priv. in Comm. Sys. 330–347.
+   Test execution speed. The execution speed of fuzz testing for             [11] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-
+network servers can be quite slow. Compared to fuzzing libraries                  Truth Fuzzing Benchmark. ACM Meas. Anal. Comput. Syst. 4, 3 (2020).
+                                                                             [12] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+and command-line utilities (which can reach up thousands of ex-                   Evaluating fuzz testing. In ACM Conf. on Comp. and Comm. Security. 2123–2138.
+ecutions per second in AFL), fuzzing network servers is slowed               [13] V. J. M. Manès, H. Han, C. Han, S. K. Cha, M. Egele, E. J. Schwartz, and M. Woo.
+                                                                                  2019. The Art, Science, and Engineering of Fuzzing: A Survey. IEEE Transactions
+down by the complex initialization of the process (e.g., to initialize            on Software Engineering (2019).
+a cache or a database), the networking overhead (due to commu-               [14] László Szekeres Jonathan Metzman, Abhishek Arya, and L Szekeres. 2020.
+nication and context switches between processes), and the long                    FuzzBench: Fuzzer benchmarking as a service. Google Security Blog (2020).
+                                                                             [15] Barton P. Miller, Louis Fredriksen, and Bryan So. 1990. An Empirical Study of
+sequences of messages in a test case. For example, in fuzzing SIP,                the Reliability of UNIX Utilities. Commun. ACM (1990).
+the initialization was slowed down by the synchronization between            [16] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. 2020. AFLNET: A
+the fuzzer and the other processes (the server and the SIP callee),               Greybox Fuzzer for Network Protocols. In Intl. Conf. on Software Testing, Verifica-
+                                                                                  tion and Validation (Testing Tools Track).
+with less than 5 executions per second. Notably, in fuzzing DAAP,            [17] Rapid7. 2020. Metasploit Vulnerability & Exploit Database. https://www.rapid7.
+the server under test takes about 2 seconds to reliably complete its              com/db/?q=fuzzer&type=metasploit. [Online; accessed 12-10-2020].
+                                                                             [18] Rebecca Shapiro, Sergey Bratus, Edmond Rogers, and Sean Smith. 2011. Identify-
+initialization hence the fuzzing speed significantly drops.                       ing vulnerabilities in SCADA systems via fuzz-testing. In Intl. Conf. on Critical
+   State identification The goal of protocol fuzzing is to gener-                 Infrastructure Protection. 57–72.
+ate tests that cover protocol states. One important open area of             [19] Synopsis, Inc. 2020. Defensics Fuzz Testing. https://www.synopsys.com/software-
+                                                                                  integrity/security-testing/fuzz-testing.html. [Online; accessed 12-10-2020].
+research is to perform fuzzing when a formal specification of the            [20] Ari Takanen, Jared D Demott, Charles Miller, and Atte Kettunen. 2018. Fuzzing
+protocol state machine is not available (e.g., using model inference              for software security testing and quality assurance. Artech House.
+techniques, which reverse a protocol by trial-and-error). In our             [21] Andreas Walz and Axel Sikora. 2017. Exploiting dissent: Towards fuzzing-based
+                                                                                  differential black box testing of TLS implementations. IEEE Trans. on Dep. and
+benchmark, we also faced the problem of identifying the current                   Sec. Comp. (2017).
+state of a protocol at run-time, when the protocol does not explicitly       [22] Zhiqiang Wang, Quanqi Li, Yazhe Wang, Biao Liu, Jianyi Zhang, and Qixu Liu.
+                                                                                  2019. Medical Protocol Security: DICOM Vulnerability Mining Based on Fuzzing
+encode the current state in the messages (e.g., RTSP protocol).                   Technology. In ACM Conf. on Comp. and Comm. Security. 2549–2551.
+                                                                             [23] Michal Zalewski. 2020. AFL Documentation - Understanding the status screen.
+                                                                                  https://github.com/mirrorer/afl/blob/master/docs/status_screen.txt. [Online;
+5    CONCLUSION                                                                   accessed 12-01-2021].
+                                                                             [24] Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, and
+In this paper, we present a new benchmark (ProFuzzBench) for                      Limin Sun. 2019. FIRM-AFL: High-throughput greybox fuzzing of IoT firmware
+stateful fuzzing of network protocols. The benchmark currently                    via augmented process emulation. In 28th USENIX Security Symp. 1099–1114.
+
+                                                                         4
+

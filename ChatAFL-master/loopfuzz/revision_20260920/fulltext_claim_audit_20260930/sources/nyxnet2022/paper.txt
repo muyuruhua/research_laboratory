@@ -1,0 +1,1097 @@
+                                                                     Nyx-Net: Network Fuzzing with
+                                                                        Incremental Snapshots
+                                              Sergej Schumilo1 , Cornelius Aschermann1 , Andrea Jemmett2 , Ali Abbasi1 and Thorsten Holz1
+                                                                                1 Ruhr-Universität Bochum
+                                                                             2 Vrije Universiteit Amsterdam
+
+                                        Abstract
+                                                                                                                       “Hence, we believe that a system testing approach is the only viable
+                                        Coverage-guided fuzz testing (“fuzzing”) has become main-                      solution for [...] IPC testing. One [...] approach [...] could be to [...]
+                                        stream and we have observed lots of progress in this research                  perform a snapshot of the parent [..] and then replace [..] child
+arXiv:2111.03013v1 [cs.CR] 4 Nov 2021
+
+
+
+
+                                        area recently. However, it is still challenging to efficiently                 messages [...]”
+                                        test network services with existing coverage-guided fuzzing                    — Blogpost - Security Team at Mozilla
+                                        methods. In this paper, we introduce the design and imple-
+                                        mentation of Nyx-Net, a novel snapshot-based fuzzing ap-
+                                                                                                                     Figure 1. Excerpt taken from Mozilla’s blogpost [31] on IPC-Fuzzing.
+                                        proach that can successfully fuzz a wide range of targets span-
+                                        ning servers, clients, games, and even Firefox’s Inter-Process
+                                        Communication (IPC) interface. Compared to state-of-the-art
+                                        methods, Nyx-Net improves test throughput by up to 300x                    targets, none of them allows proper harnessing of systems
+                                        and coverage found by up to 70%. Additionally, Nyx-Net is                  with many messages that are being passed back and forth
+                                        able to find crashes in two of ProFuzzBench’s targets that no              (e.g., network services). Such services pose a unique set of
+                                        other fuzzer found previously. When using Nyx-Net to play                  challenges distinct from “parse a binary blob” fuzzing targets:
+                                        the game Super Mario, Nyx-Net shows speedups of 10-30x                     the target applications are typically much more stateful, more
+                                        compared to existing work. Under some circumstances, Nyx-                  complex (and hence slower), and the message formats are
+                                        Net is even able play “faster than light”: solving the level               often more complex than individual file formats.
+                                        takes less wall-clock time than playing the level perfectly                   Such applications make up a significant fraction of interest-
+                                        even once. Nyx-Net is able to find previously unknown bugs                 ing attack surface. Yet, little has been done to allow effectively
+                                        in servers such as Lighttpd, clients such as MySQL client, and             fuzzing and harnessing such targets with coverage-guided
+                                        even Firefox’s IPC mechanism—demonstrating the strength                    fuzzers. The notable exception is AFLnet [46], which runs
+                                        and versatility of the proposed approach. Lastly, our proto-               the target and creates new connections for each test input.
+                                        type implementation was awarded a $20.000 bug bounty for                   While this approach has long been used to fuzz network
+                                        enabling fuzzing on previously unfuzzable code in Firefox                  services in blind fuzzers, its drawbacks has made coverage-
+                                        and solving a long-standing problem at Mozilla.                            guided network fuzzing exceedingly difficult. First, using
+                                                                                                                   network connections is significantly slower than reading
+                                                                                                                   from a file. Second, as the service is running persistently, the
+                                        1    Introduction                                                          fuzzer has no clear point at which the service is ready to
+                                        In the last years, we have seen a lot of research progress in the          receive a test case; such fuzzers require waiting for manually-
+                                        field of fuzzing—both from academia [2, 11, 16, 27, 30, 44, 52,            specified, fixed periods of time during startup, and use similar
+                                        56, 65, 67] as well as industry [17, 33, 47, 66]. The majority             timeouts when handling each test case. Third, reusing the
+                                        of improvements made in the last years have focused on                     same process (without fully restarting the server) is also
+                                        improving fuzzing algorithms themselves. However, it is                    “noisy”: for example, background threads in the service can
+                                        slowly becoming apparent that improvements for fuzzing on                  randomly get scheduled independently of the test cases the
+                                        the algorithmic level have less impact in practice compared                fuzzer sent. These seemingly random code paths still affect
+                                        to improvements to the ability to fuzz new targets. Any                    the fuzzer’s coverage and introduce pointless inputs into the
+                                        application that is fuzzed for the first time is likely to result in       queue. Similarly, great care has to be taken to ensure that the
+                                        many security-relevant findings [6]. Hence, we are currently               target is not operating based on state introduced by previous
+                                        observing a shift towards making it feasible (and even easy)               test cases. To this end, AFLnet requires a user to write a
+                                        to target new applications or systems.                                     “cleanup” script that is solely responsible for ensuring that
+                                           The two most common approaches to achieve this goal                     all changes to the file system, databases, etc. are rolled back
+                                        are generating function-style harnesses for persistent mode                after each test case. Building such a script based on spurious,
+                                        fuzzers such as libFuzzer [4, 28, 30, 47] or fuzzing based on              non-reproducible inputs can require a significant effort.
+                                        snapshots taken at the start of the test case [15, 52, 55]. While             In this paper, we present the design and implementation
+                                        these approaches address some of the problems of harnessing                of Nyx-Net, a fuzzing method that is able to test complex,
+                                                                                                               1
+Figure 2. Visualizing Nyx-Net’ use of incremental snapshots to solve a hard Super Mario Bros. level: red paths are taken once to create an incremental
+snapshot. For each snapshot, a number of test cases (green paths) are performed. Note how Nyx-Net also uses “old” positions to create snapshots.
+
+stateful message-passing systems such as network services.                    security issues using. An excerpt from Mozilla’s blogpost on
+Our approach is based on the following design principles:                     the challenges of IPC fuzzing [31] is shown in Figure 1.
+first, we use hypervisor-based snapshot fuzzing [52, 53, 55] to                  As our evaluation shows, Nyx-Net drastically improves
+ensure noise-free fuzzing and to speed up resetting to a clean                upon the state-of-the-art: compared to AFLnet on their own
+slate. Second, we propose selective emulation of network                      benchmark ProFuzzBench [39], we are able to improve test
+functionality to avoid the heavy cost of real network traffic.                throughput by up to 300x and coverage found by up to 70%.
+This also allows Nyx-Net to control exactly when packets                      Compared to Agamotto [55], the state-of-the-art in snap-
+are consumed in order to avoid guessing the right timeouts.                   shot fuzzing kernel modules, Nyx-Net is able to perform
+   Our prototype implementation of Nyx-Net is built on top                    both snapshot reload and creation operations almost 10x
+of Nyx [52], which it enhances with a set of new capabil-                     faster. Additionally, Nyx-Net is able to find crashes in two
+ities. Most importantly, we enable Nyx to target network                      of ProFuzzBench’s targets that no other fuzzer could de-
+connections and add support for handling the network stack.                   tect previously. In an evaluation with the game Super Mario
+We also extend Nyx’s snapshot capabilities by introducing                     Bros., we show that Nyx-Net is able to solve most levels
+incremental, whole-VM snapshots. The snapshot mechanism                       about 10-30x faster than the state-of-the-art (AFL + Ijon [2])
+is agnostic of the OS running in the VM. Using such snap-                     — demonstrating it’s ability to improve the performance of
+shots increases performance and ensures that all state is                     message-based targets unrelated to networking (see Figure 2
+properly reset between each test case. Furthermore, using                     for a visualization). In fact, when running in parallel, Nyx-
+such snapshots allows us to emulate a significant fraction                    Net is able to solve some levels “faster than light”: solving
+of the network APIs: we run the target until a snapshot is                    the level takes less wall-clock time than playing the level
+taken without major interference (i.e., close to native speed).               perfectly even once. Nyx-Net is even able to exploit a glitch
+When the hooks detect that the target is about to receive                     to solve a level that the authors of Ijon believed to be un-
+the first bytes of fuzzer-supplied input, we take a whole-                    solvable. Lastly, Nyx-Net is not only able to find previously
+system snapshot. Following this snapshot, we now emulate                      unknown bugs in servers such as Lighttpd, but also network
+the network interactions of the target connection to further                  clients such as MySQL client, and even Firefox’s IPC.
+increase speed. As our evaluation shows, precisely emulating
+all network interactions is a difficult task. By only emulating
+the (few) operations on the target connection, we reduce the
+                                                                              In summary, we make the following key contributions:
+need to emulate all I/O functionality faithfully. While we
+                                                                                  • We introduce Nyx-Net, an efficient fuzzing method
+tested our prototype implementation only on two different
+                                                                                    that uses hypervisor-based snapshot fuzzing and selec-
+Linux VM setups (busybox and Ubuntu) as well as targets
+                                                                                    tive emulation of network functionality to avoid the
+running inside a Docker container inside of a Ubuntu VM,
+                                                                                    heavy cost of handling the full network traffic.
+Nyx-Net’s network emulation layer should be compatible
+                                                                                  • We study the concept of incremental snapshots in
+with any POSIX-compliant system.
+                                                                                    fuzzing for complex and slow targets, and show that
+   Note that Nyx-Net is not limited to network interface
+                                                                                    our approach is able to efficiently test different types
+fuzzing. Instead, our approach can fuzz any complex, stateful
+                                                                                    of client and server systems.
+message-based target such as Inter-Process Communication
+                                                                                  • In our evaluation, we show that Nyx-Net outperforms
+(IPC) interfaces. For example, Firefox splits safety-critical
+                                                                                    state-of-the-art fuzzing tools by more than an order
+parts of its codebase into isolated sandbox processes that
+                                                                                    of magnitude in many benchmarks. Furthermore, our
+communicate via various IPC methods such as Unix domain
+                                                                                    prototype implementation found multiple unknown
+sockets and shared memory. We show that Nyx-Net can
+                                                                                    bugs in complex, real-world software.
+efficiently and effectively test these IPC interfaces. In fact,
+after seeing that Mozilla was looking for a tool like Nyx-
+Net, we reached out to them and they decided to integrate
+Nyx-Net into their testing pipeline after finding multiple                      To foster research, we will release Nyx-Net under an open-
+                                                                              source license at https://github.com/RUB-SysSec/nyx-net.
+                                                                          2
+2     Technical Background                                             to move data from stdin to the network socket used by the
+We now discuss the technical difficulties of fuzzing real-             target. This makes fuzzing of more complex network targets
+world network services. We specifically focus on the ap-               possible, but also losses the performance gains coming from
+proach used by existing methods to perform network fuzzing.            network emulation.
+Given that Nyx-Net is based on Nyx, we also elaborate on
+the technical aspects of Nyx relevant for this paper.
+                                                                       2.2   Protocol Fuzzing
+                                                                       Fuzzing network services is further complicated by the fact
+2.1   Network Service Fuzzing                                          that they are much more interactive than software that pro-
+Many widely used network services and servers are still                cesses static file formats. Network services also often incor-
+written in memory unsafe languages for performance rea-                porate features such as compression, encryption, sequence
+sons. This puts such software at significant risk: Most of the         numbers, and checksums that greatly hinder fuzzing efforts.
+complexity is part of some very public (often Internet-wide)              Historically, this problem has been addressed by blind
+attack surface. To make the matter worse, getting memory               generator-style fuzzers: the user simply writes a program that
+safety right in languages that do not enforce memory safety            connects to the target and sends random, but (almost) valid
+is notoriously difficult. Over the last years, fuzzing has be-         protocol runs. This makes it easy to fix the aforementioned
+come one of the primary tools for finding complex memory               problems, but requires expert knowledge of the specific pro-
+safety bugs in an automated way. Of course, this includes              tocol and significant efforts.
+network service fuzzing. For example, AFLnet [46] removed                 The main success criterion of AFL was that only a super-
+AFL’s focus on single files and enabled it to send packets to          ficial or even no understanding of the format being fuzzed is
+target sockets. There have also been various efforts to remap          necessary to use the tool to find bugs. Using AFL requires
+socket-based I/O to file-based I/O [54]. When successful, this         a set of start inputs (so-called seeds). While AFL is often
+approach allows to use pre-existing file-based fuzzers such            able to work even with empty seeds, it usually is more ef-
+as AFL++ [17] to fuzz network services.                                fective if sensible seeds are provided. This is mostly due to
+   However, effectively fuzzing network services remains               the mutation-based fuzzing of AFL and its coverage feed-
+challenging: AFL and most of its derivatives assume that the           back. However, to use these advantages, in addition to writ-
+target is fast and spawns only a single process that runs until        ing a good generator, the user would also have to write a
+the input is consumed. Afterwards, the target is supposed to           good mutator—an additional hurdle to jump that reduces
+terminate immediately. Also, two sub-sequential executions             usage of fuzzing. Nonetheless, there quite a few fuzzers ex-
+should be (mostly) independent of each other. Unfortunately,           ist that allow the user to specify detailed formats used for
+none of these assumptions hold for most network services.              coverage-guided fuzzing. Usually, these fuzzers allow the
+They are often designed with little regard for startup time,           user to provide a grammar or format specification [1, 45].
+persist across connections (often by spawning threads or                  Commonly, the inputs all have to be valid for parsing. As
+sub-processes), and maintain a significant state.                      a consequence, AFLsmart [45] (which uses Peach’s [57] pit
+   AFLnet forces a user to write clean-up scripts that need            file format to specify inputs) has to take great care to handle
+to reset the environment to avoid contaminating results of             broken or otherwise unparseable inputs. Hence, AFLsmart
+later tests. It also employs fixed sleep times to ensure servers       only parses the seed inputs as it is computationally infeasible
+are online and in a good state. Overall, this makes it difficult       to parse new inputs found during fuzzing.
+to test new software and drastically reduces the performance.             Some fuzzers avoid this problem by simply making it im-
+We found that it is not uncommon for AFLnet to only be                 possible to use seed inputs. For example, Nautilus [1] uses
+able to achieve single digit test executions per second.               context-free grammars, but does not allow to provide seeds.
+   To make matters worse, network APIs provided by current             As such, arbitrary grammars including those that are hard to
+operating systems (OSs) are notoriously slow. Establishing a           parse can be used. Similarly, Nyx and syzkaller [58] follow
+connection and reading data from it is far slower than read-           the purely generative approach and allow to specify input
+ing from a file. A common workaround is to avoid network               formats as sequences of typed function calls (or opcodes),
+interfaces entirely: libpreeny [54] introduced a “de-sock”             but forgo the option to provide seeds.
+hook that returns the file descriptor of stdin instead of net-            Lastly, in a far less principled, but just as effective ap-
+work sockets when a new connection is established (this                proach, most fuzzers support registering custom mutators.
+idea is now also part of AFL++). This massively improves               They usually parse inputs on a best effort basis (e.g., by split-
+the performances, but fidelity is low: the vast majority of op-        ting the input at newlines or matching parenthesis), perform
+erations possible on sockets are not supported by stdin. As            some mutations, and then recreate the input. This unloads all
+such, it will simply not work with most real-world software.           the work to the user, but can be highly effective, particularly
+Note that libpreeny also contains a more advanced stdin-               for formats where most structural information can be easily
+to-socket connection that uses a real socket and a new thread          inferred (e.g., line based formats). AFLnet follows a similar
+                                                                   3
+d_bytes = s.data_vec("bytes", s.data_u8("u8"))                               kernel module that is able to reset the memory and some
+n_con = s.node_type("connection", outputs=[e_con])                           limited kernel state of target ring-3 processes to increase
+n_pkt = s.node_type("pkt", borrows=[e_con], d_bytes)                         performance. Agamotto [55] and Nyx both implement such
+                                                                             a mechanism to create a snapshot of a whole VM and to reset
+Listing 1. A (hypothetical) specification for multi-connection network       back to this snapshot after each test. This allows efficient and
+emulation.                                                                   deterministic fuzzing of a whole OS and even hypervisors. As
+                                                                             Nyx-Net is based on Nyx, we now give a short introduction
+                                                                             into how Nyx captures and reapplies VM snapshots.
+approach: it uses mutators based on a handful of rudimentary
+packet boundary parsers for the supported formats.
+                                                                             Nyx Agents Nyx runs the fuzz target inside of a VM con-
+Nyx’s Affine Typed Bytecode As mentioned before, Nyx                         trolled by a modified version of QEMU, and executed by a
+follows the generative approach: the user specifies a set of                 modified build of KVM. QEMU sets up the VM state and
+opcodes that can be chained by Nyx. While the authors only                   emulates devices as needed, while KVM uses hardware vir-
+used the tool to fuzz hypervisors, the opcode-based approach                 tualization extensions provided by modern CPUs to run the
+can potentially be used to fuzz a wide variety of interactive                guest OS inside of the VM natively. This setup provides high
+targets. All the user needs to do is to implement a set of                   performance virtualization. Nyx integrates with both QEMU
+different opcodes (with their respective inputs and outputs).                and KVM to take control of the VM, and to reset the state
+   For example, a network specification handling multiple                    to a given snapshot. The fuzzer uses an agent component
+connections at the same time is shown in Listing 1. First, we                within the VM to control the fuzzing cycle: the agent indi-
+define a data type (d_bytes) that contains the payload of                    cates that the target is ready to receive an input and to create
+actual packets. Then, we define a new opcode (or “node” in                   a snapshot. Then, the agent passes the input to the target
+Nyx’s terminology) that creates a new connection. It takes no                and lastly the agent notifies the fuzzer that the test case was
+inputs and returns a new connection handle (e_con). Lastly,                  finished. To achieve this, the agent uses so-called hypercalls.
+we define an opcode that emits/sends a single packet via a                   Hypercalls are like syscalls but for VMs: they leave the VM
+given connection. To this end, we create a node that borrows                 context and pass the control to the hypervisor. QEMU then
+a connection and contains a vector of bytes.                                 reacts to those events and creates or restores a snapshot.
+   Note that the specification that we use for network targets
+in this paper is even simpler: we usually hook the first con-                Nyx Snapshots To take a snapshot, a copy of the physical
+nection established via a given port and address. Our agent                  memory and all device state is created. To revert back to
+then delivers packets to each function call that attempts to                 a snapshot, all device state is overwritten by the old state.
+read data from this connection (e.g. recv() or read()). Sim-                 Similarly, the VM’s physical memory is overwritten by the
+ilarly, the agent signals readiness when functions such as                   original memory. Since the physical memory is often large
+epoll() or select() try to wait for more data on the given                   (4GB and upwards), its prohibitively expensive to reset the
+connection. All that remains is to fill out the two opcode han-              whole memory. To accelerate this process, both Nyx and
+dlers with actual C code that establishes a connection and                   Agamotto use a variety of optimizations: both fuzzers track
+sends the packet. The fuzzer auto-generates a bytecode for-                  which pages in the VM’s memory have been altered since
+mat and a custom VM that executes the bytecode by calling                    the start of the execution. This way they avoid overwriting
+the corresponding handlers, as well as custom mutators.                      the whole memory in favor of the (few) modified pages.
+                                                                                Modern CPUs provide hardware acceleration features to
+2.3   Hypervisor-Based Snapshot Fuzzing                                      support efficient tracking of the set of modified pages, the
+As explained before, many network applications maintain                      CPU tracks when a page is dirtied during execution. Once
+state between individual test cases or have expensive startup                a certain amount of pages have been dirtied (typically up
+routines. The former reduces reproducibility, while the latter               to 512 pages), the CPU exits the VM context and informs
+reduces test throughput. It turns out that both problems can                 the hypervisor of the pages that were affected. The hyper-
+be largely avoided by a clever trick: by obtaining a snapshot                visor, in this case KVM, maintains a bitmap of pages that
+of the system’s state directly before executing the test case,               were written to. Both Nyx and Agamotto use this bitmap
+we can reset the system to a deterministic state after each test.            to selectively reset the VM’s memory. However, Nyx’s ex-
+The cost of this reset is independent of startup complexity                  tension to KVM also maintains a stack of pages that need
+and only determined by the size of the changes to the state of               to be reset. This allows Nyx to avoid searching the bitmap
+the system caused by executing the test. For example, while                  for pages to be reset after the execution. For some reason,
+starting Firefox requires to load hundreds of megabyte of                    KVM uses 1 byte in the bitmap for each page in the physi-
+code into memory and to initialize all kinds of system APIs,                 cal memory. As a consequence, for a 4GB VM, Nyx’s stack
+handling a handful of IPC packets will typically only dirty a                of dirty pages saves approximately 1MB of memory band-
+few hundred kilobytes of memory. AFL++ contains a Linux                      width per test case over KVM’s approach. Additionally, Nyx
+                                                                         4
+                                                               VM (Root Snapshot)                  slow process, usually involving dozens of context switches.
+                                                             VM (Incremental Snapshot) Agent
+Share Folder                                                               s      Agent
+                                                                                                   This severely limits the fuzzing throughput. Second, many
+                                             Generates               Fetche ket
+                                                         Payload         Pac
+                           Loads   NYX-NET                SHM
+                                                                    Next
+                                                                                   Socket          network protocols tend to be fundamentally slow: many
+    Spec    Seeds
+                                    Fuzzer                                         Emulation
+                    Conf
+                                               Re
+                                                 ad
+                                                   s
+                                                         Bitmap       Writes          Target       messages need to be exchanged to reach “interesting” states.
+                                                          SHM        Coverage     Target
+                                                                                                   Often, a complex handshake has to be performed before data
+                                                                                                   interacting with the actual application logic is exchanged.
+Figure 3. High-level overview of Nyx-Net’s architecture. The fuzzer main-
+                                                                                                   Last, the message formats are often complex and a precise
+tains two snapshots of the same VM, in which the agent component hooks
+the relevant connection of the target                                                              understanding of each field or value involved is hard to ob-
+                                                                                                   tain. As such, the purely generative approach used in Nyx
+implements a custom reset mechanism for the state of emu-                                          is hard to use for network fuzzing. Writing a specification
+lated devices that is much faster than QEMU’s native device                                        that is precise enough to model all corner cases is cumber-
+serialization/deserialization routine.                                                             some and would often take significant manual effort. On the
+                                                                                                   other hand, it is usually easy to obtain some traces of the
+3          Design                                                                                  communication with the target. To address these issues and
+In the following, we describe the design of Nyx-Net and the                                        to make fuzzing networking servers efficient and effective,
+rationale behind each choice we made when designing and                                            we introduce the following techniques.
+building it. First, we give a short threat model that details
+the attack scenarios and surfaces that we concern ourselves                                        3.3   High Performance Networking
+with. Then, we present the architecture of Nyx-Net (see                                            To ensure high performance networking and handle the
+Figure 3 for a high-level overview).                                                               complexity of shared memory based IPC mechanisms, we
+                                                                                                   emulate significant fractions of the relevant functionality. To
+3.1        Threat Model                                                                            this end, we implement a library that adds a variety of hooks
+Any network interface is usually a clear security boundary.                                        into existing libc networking functionality. This library is
+As such, we mostly target various socket style interfaces (e.g.,                                   injected into the target (e.g., via LD_PRELOAD or by compiling
+TCP, UDP, and Unix domain sockets). However, in some con-                                          it directly into the target) and intercepts all relevant calls.
+text (such as sandboxes), this boundary sometimes also in-                                         During startup of the target program, the hooks track vari-
+cludes shared memory. We assume that the attacker has full                                         ous relevant interactions with the OS: we track which file
+control over all data that is being sent to the corresponding                                      descriptors are part of the external attack surface and various
+interfaces. With real networks, this is obvious: an attacker is                                    metadata associated with them. When the fuzzing starts, it
+usually able to send arbitrary data to any TCP/UDP server                                          runs the Nyx bytecode VM to generate data reaching the
+or client. In the case of Unix domain sockets and shared                                           target process on each hooked function call. Functions such
+memory, we assume that the attacker has gained full control                                        as read() or recv() on target file descriptors consume data
+of the sandboxed process and attempts to exploit the higher                                        from packets encoded in the test case. More complex APIs
+privileged process controlling the sandbox. As such, the at-                                       such as epoll() are emulated to indicate which file descrip-
+tacker is also able to send arbitrary data via Unix domain                                         tor (fd) is ready to receive data (e.g., which fds are receiving
+sockets or shared memory.                                                                          packets next according to the bytecode). This library also
+                                                                                                   ensures that packets are consumed correctly across multiple
+3.2        Towards Efficient Network Fuzzing                                                       processes. Synchronizing the state of the bytecode stream is
+Our approach uses hypervisor-based snapshot fuzzing. Hence,                                        relevant if multiple processes are sharing file descriptors/-
+the target is running in a customized VM. At the same time,                                        sockets. For example, forking network servers will usually
+the fuzzer is running outside of the VM to ensure that the                                         inherit a recently opened socket from the main process. Simi-
+fuzzer has full control over the environment. Additionally,                                        larly, complex IPC protocols often contain the ability to share
+this method allows to take a snapshot of the target. During                                        new file descriptors across existing socket connections.
+fuzzing, the snapshot is used to quickly reset the whole vir-                                         By emulating network functionality, we gain the follow-
+tual machine back to a pristine state after each individual test                                   ing advantages: first, we can precisely identify which data
+case. This is already an excellent base to fuzz complex tar-                                       is attacker-controlled and inject our own data at the right
+gets that communicate via network interfaces: the snapshot                                         places. Stemming from the same features, we can automati-
+ensures that all state of network connections inside the VM                                        cally infer the right place to create the initial snapshot. Nyx-
+is correctly reset between test cases. Even common, complex                                        Net automatically places the first snapshot after starting
+patterns such as forking a new process for each incoming                                           the process and directly before the first byte of input data
+connection, writing incoming data to a file system, or even                                        is passed to the target. Second, and maybe even more im-
+a database in another process, are correctly handled.                                              portantly, we can often run a whole test case without hit-
+   However, several distinct challenges remain: first, creat-                                      ting the slow operating system paths handling real network
+ing new network connections inside of the VM is still a                                            data. We can faithfully emulate network behaviors such as
+                                                                                               5
+                   Root Snapshot           Incremental Snapshot                          to ensure that the process of creating this secondary snap-
+            Pkt1       Pkt2        Pkt3    Pkt4        Pkt5       Original Input
+                                                                                         shot takes very little time. While this obviously introduced
+                                   Pkt3’   Pkt4’      Pkt5’
+                                                                                         some engineering effort, it allows for great simplicity in
+                                                                    Mutated Inputs       other aspects of our design: we only ever keep one addi-
+                                   Pkt3    Pkt4       Pkt6’’
+                                                                                         tional snapshot around. Creating incremental snapshots is
+                                                                                         so cheap that storing them would waste space and time. By
+Figure 4. Using incremental snapshots to run mutated tests while skipping
+the common prefix consisting of packets one to three.                                    recreating incremental snapshots on demand, we also avoid
+                                                                                         more complex structures such as trees of incremental snap-
+packets being received in discrete chunks. While TCP is a                                shots building on top of each other [55]. Each time a new
+stream based protocol, at a first glance it often looks like                             input is scheduled for fuzzing, we randomly decide whether
+TCP reads “the same packets” that were written by a single                               to use incremental snapshots for this input (depending on
+call to send(). While fundamentally broken, a frightening                                the inputs performance and number of packets). Then, we
+amount of servers assume that a single call to recv() will                               pick a random packet in the input and create a snapshot af-
+never return data from more than one “packet” (e.g., corre-                              ter sending the given packet. Finally, we fuzz the remaining
+sponding send() call in the client). The same ability is also                            packets for a number of times before discarding the snapshot.
+needed to properly emulate UDP connections, where packet                                 In our experiments, we have seen that even for short state
+boundaries are indeed semantic information.                                              sequences reusing the snapshot as little as 50 times yields
+                                                                                         significant performance increases.
+3.4   Fuzzing with Incremental Snapshots
+                                                                                         Snapshot Scheduling A snapshot placement policy deter-
+After ensuring network traffic is emulated with high pre-
+                                                                                         mines how the fuzzer selects the point at which it takes an
+cision and performance, we still face the challenge that in
+                                                                                         incremental snapshot. To place snapshots, the fuzzer intro-
+many cases, protocols contain long sequences of messages
+                                                                                         duces a special “snapshot” opcode that can be injected at
+(and hence complex states). For example, Firefox’s IPC traffic
+                                                                                         arbitrary positions in the input bytecode. The VM then cre-
+consists of hundreds and thousands of packets containing
+                                                                                         ates an incremental snapshot when this opcode is executed.
+many kilobytes of relevant data. Even with fast network em-
+                                                                                         Nyx-Net utilizes three strategies for snapshot scheduling.
+ulations, the number of such test cases that can be executed
+per second is strictly limited by the time needed to parse                                   Nyx-Net-none As a baseline, running Nyx-Net with-
+and consume these longs sequences. As an example, assume                                        out incremental snapshots is equivalent to a policy
+that we have a stream of 120 packets that we want to fuzz.                                      that always selects the root snapshot.
+Further, assume that we are currently fuzzing only the last                              Taking snapshots towards the end of the input sequence
+20 packets. Each test case will execute the same initial 100                             allows the fuzzer to better exploit its incremental snapshot
+packets over and over again. To overcome this hurdle for                                 capabilities; in some cases though, taking snapshots earlier
+fuzzing performance, we add the ability to use incremen-                                 enables the fuzzer to backtrack and possibly explore branch-
+tal snapshots: Nyx starts each new execution from the root                               ing paths in the sequence. To this end, we implemented two
+snapshot that represents a clean state. Nyx-Net adds the                                 snapshot placement policies to explore this trade-off. The pa-
+ability to quickly create and remove secondary snapshots                                 rameters were empirically determined via small-scale studies
+after executing fragments of the input. This can be used to                              and for sequences smaller than four packets, both policies
+shave off common prefixes from the execution by taking an                                select the root snapshot.
+incremental snapshot after the common prefix was executed.                                   Nyx-Net-balanced On inputs with more than four pack-
+                                                                                                ets, the balanced policy chooses the root snapshot in
+  For example, Nyx-Net starts from the root snapshot and                                        4% of the cases. Otherwise it selects a random index
+executes the first 100 packets of a 120 packet sequence. It then                                in the whole (50%), or only in the second half (50%).
+take a secondary “incremental” snapshot that represents the                                  Nyx-Net-aggressive This policy cycles all available in-
+VM state after executing the first 100 packets. Now, Nyx-Net                                    dices for snapshots. The first time an input is sched-
+runs a handful (tens to hundreds) of test cases that mutate                                     uled, it creates the snapshot at the end of the input.
+only the last 20 packets. After each test case, we reset the                                    Each time no new inputs have been found by fuzzing
+VM state to the incremental snapshot taken after already                                        this snapshot for 50 iterations, we place the snapshot
+processing the initial 100 packets. This process is visualized                                  one packet earlier. When Nyx-Net-aggressive reaches
+both in Figure 2 and Figure 4. This saves the time required to                                  the smallest index, it starts again from the end of the
+handle those packets. As soon as Nyx-Net wants to schedule                                      input.
+another input, the incremental snapshot is discarded, and
+Nyx-Net returns to the root snapshot for the next input.                                 3.5   Generating Complex Inputs
+  In some cases (especially slow targets) we have seen test                              As mentioned earlier, Nyx allows to express interactive proto-
+throughput increase by more than 10x. We took great care                                 cols as input languages for fuzz targets by specifying opcodes
+                                                                                     6
+for each possible interaction with the target. This features              Nyx-Net extends Nyx’s capabilities by introducing a sec-
+makes it easy to adapt Nyx to network fuzzing. Unfortu-                ond level snapshot that is much cheaper to create. This sec-
+nately, the tool does not support to load existing network             ond level snapshot can be used to increase the performance
+traces as seed files. This poses a serious restriction for net-        on slow targets by skipping a whole prefix of each test case.
+work fuzzing. For Nyx, the data exchanged with a hypervisor            Nyx-Net makes taking an incremental snapshot about as
+or emulated hardware is usually structurally rather simple             cheap as resetting the snapshot once. As a consequence, we
+(individual pointers, bitfields, etc.). However, the data passed       do not have to maintain complex data structures to store a
+between clients and servers is often deeply nested and pre-            set of snapshots like Agamotto. Instead, we simply recreate
+cisely modelling all aspects in Nyx’s description mechanism            the snapshot for the current test case whenever needed.
+is difficult. To ease the burden on the user, we introduce a              To obtain such a performance, we make use of similar
+way to convert raw packet dumps into Nyx bytecode inputs.              facilities as resetting the original root snapshot. More specif-
+This converter consists of a library that consumes Nyx’s               ically, we use Nyx-Net’s ability to cheaply report the set of
+format specifications. It uses meta programming to create              dirtied pages since the root snapshot was taken. The incre-
+Python functions for each opcode. When we call those func-             mental snapshot can use this information to obtain a copy of
+tions, the builder object logs each invocation. Finally, the           all relevant memory. We also store another copy of QEMU’s
+builder outputs raw bytecode inputs to be used by our fuzzer.          device state. To speed up resetting the VM to the incremental
+                                                                       snapshot, we maintain a complete second mirror image of
+4     Implementation Details                                           the VM’s physical memory (see Figure 3). However, to avoid
+                                                                       creating an expensive copy of all the physical memory, we
+To evaluate the performance of incremental snapshots and se-
+                                                                       simply remap the existing root snapshot to a second location
+lective emulation, we implemented a prototype of Nyx-Net.
+                                                                       as Copy-On-Write pages. This way, the incremental snapshot
+In the following section, we describe the implementation
+                                                                       itself looks like a complete root snapshot without incurring
+details of our fuzzer. We begin by describing the intricacies
+                                                                       anywhere near the full memory cost. As a consequence, we
+of emulating the network APIs used by real-world software,
+                                                                       do not need to check whether to reset pages from the orig-
+then we present the challenges and solutions of taking in-
+                                                                       inal root snapshot or the incremental one during the VM
+cremental snapshots, and lastly, we discuss turning Nyx’s
+                                                                       reset. To create the incremental snapshot, the pages that
+format specifications into a format that can be used to load
+                                                                       were dirtied by the execution since the root snapshot are
+complex existing network dumps as seeds.
+                                                                       overwritten with the content of the VM’s physical memory.
+                                                                       The Copy-On-Write mapping ensures that the original root
+4.1   Network Emulation
+                                                                       snapshot remains unchanged.
+To speed up network targets for fuzzing purposes and to                   Before creating another incremental snapshot, these pages
+inject our own fuzzing data, we emulate most network APIs.             are overwritten with the content of the root snapshot. Note
+To be able to intercept calls to network APIs, we use an               that this means we accumulate real copies of pages already
+LD_PRELOAD interceptor for common libc functions. Ob-                  present in the root snapshot. In most cases, the executions
+viously, we intercept common networking APIs such as                   affect the same memory. In these cases, reusing the existing
+accept(), recv(), etc. to track network sockets and the                copies avoids more expensive changes to the page tables.
+data sent to each socket. However, we also emulate related             However, in the worst case, this could lead to storing two
+APIs such as the select/poll/epoll interfaces to ensure                identical copies of the root snapshot, causing twice the mem-
+compliant behavior. We also hook many APIs that operate                ory usage. To avoid this, we re-mirror the physical memory
+on file descriptors in general, such as dup() and close() to           used in the incremental snapshot to a clean copy of the orig-
+keep track of aliasing file descriptors that are related to the        inal root memory every 2,000 snapshots created.
+targeted network connection. For example, the dup family                  To handle write accesses to emulated disks, Nyx-Net in-
+of operations is commonly used to pass file descriptors to             troduces a second caching layer to store dirtied sectors repre-
+child processes. Overall, our code hooks a total of 30 libc            senting incremental snapshots. Like Nyx, we use a hashmap
+functions and consists of roughly 2,000 lines of C code.               lookup to find sectors in the snapshot, otherwise we fall back
+                                                                       to Nyx’s root snapshot.
+4.2   Creating Incremental Snapshots
+Nyx only maintains a single root snapshot. Resetting the
+whole VM to this snapshot is very cheap: on small targets,             4.3   Using Incremental Snapshots
+Nyx is able to reset the VM about 12,000 times per second—             One of the core features of Nyx is to allow giving specifi-
+about as fast as forking a similarly complex process once.             cations for interactive targets. Each possible interaction is
+While it is cheap to reset to the root snapshot, creating a            implemented as a small opcode that takes a set of arguments.
+root snapshot is expensive because it requires to copy the             When the fuzzer emits the opcode, the “agent” component
+whole physical memory (often many gigabytes of data).                  performs whatever actions are requested. The opcode can
+                                                                   7
+b = Builder(s)                                                                    4.5   Compile-Time Coverage
+con = b.connection()                                                              Nyx supports only Intel PT to obtain coverage feedback. Yet,
+b.packet(con, "HTTP/1.1 200 OK")
+b.packet(con, "Content-Type: text/html")
+                                                                                  if available, compile-time instrumentation as introduced by
+                                                                                  AFL can be faster and more robust. To ease the use of Nyx-
+Listing 2. A manually created seed file for the multi-connection specifica-       Net on platforms that do not support Intel PT and to improve
+tion from Listing 1.                                                              performance on open-source targets, we enable compatibility
+                                                                                  with AFL’s compile time instrumentations. The shared mem-
+                                                                                  ory that contains the coverage bitmap is optionally exposed
+                                                                                  to the agent. The agent can then redirect AFL’s coverage
+also produce another set of values that may be used as ar-
+                                                                                  data to the shared memory that is used by QEMU.
+guments for future opcodes. Even though we are not using
+most of the features available in Nyx (e.g., affine types or
+even arguments/return values), this model is fundamentally
+a good fit for network fuzzing: the fuzzer is aware of the                        5     Evaluation
+time dimension of each interaction. That is, the fuzzer knows                     To evaluate the consequences of our design choices, we com-
+about individual packets being sent and most importantly                          pare the prototype implementation of Nyx-Net both against
+knows that packets that were not sent yet have also not                           baseline performance and other state-of-the-art network
+affected the program state at all. This is crucial for incre-                     fuzzing tools.
+mental snapshots: we introduce a special “snapshot” opcode                           As we will see, Nyx-Net outperforms the state-of-the-
+that the fuzzer injects at arbitrary positions in the input                       art in network service fuzzing on almost all targets. On the
+stream. When the agent encounters this packet, it requests a                      ProFuzzBench benchmark for network fuzzing, Nyx-Net
+snapshot to be taken by a specific hypercall. Afterwards, the                     uncovers more coverage (usually between 10% and 70%).
+fuzzer continues fuzzing starting from the next packet only.                      Additionally, it usually reaches the same coverage between
+                                                                                  10x to 100x, sometimes even 1000x faster (more details in
+4.4    Creating Seed Files                                                        the Appendix Table 5). In fact, on around half of the targets,
+Since most hypercalls or MMIO accesses in emulated devices                        Nyx-Net finds more coverage in the first five minutes than
+follow reasonably simple patterns, Nyx only supported speci-                      AFLnet in 24 hours. Additionally, Nyx-Net managed to find
+fying the interaction fully. No support for loading seed inputs                   bugs in two targets of ProFuzzBench that no other fuzzers
+exists in Nyx and the fuzzer needs to find all sequences of                       is able to uncover. Lastly, we see that even for simple (in the
+interactions on its own. This is not viable for network based                     case of AFL++ with libpreeny) to moderately complex (in
+fuzzing: protocols tend to be much more complex and it be-                        the case of AFLnet) targets, the approaches used by existing
+comes prohibitively expensive to model them down to the                           methods begin to fail in practice. In contrast, Nyx-Net is not
+last byte in Nyx’s specification format. On the other hand,                       only able to handle all targets in the ProFuzzBench suite, it
+dumping network traffic is easy. As such, loading seed in-                        even works for significantly more complex targets such as
+puts adds tremendous value to fuzzing campaigns. To enable                        Firefox’s IPC.
+using PCAPs as seed inputs, we extended Nyx’s specification
+engine with a Python library that allows to create inputs
+directly from Python code. The library consumes a specifica-                      5.1   Evaluation Setup
+tion and dynamically creates all function for each node. Each                     All experiments were performed on Intel Xeon Gold 6230
+function logs the arguments and returns tracking objects that                     CPUs. Each machine had 52 physical cores and 192GB of
+know which function call returned them. Later, calls that use                     memory as well as an SSD. When running experiments in par-
+those tracking objects as input can track where the values                        allel, each one was pinned to it’s own physical core. We also
+they use, were created. This way, the script builds a graph of                    disabled hyper-threading do reduce variance in performance.
+function calls as well as their arguments and return values.                      In experiments on ProFuzzBench, we used Nyx-Net’s abil-
+Finally, when calling build(), the graph is serialized into                       ity to use AFL’s compile-time instrumentation. This way, we
+the flat bytecode that Nyx uses. An example seed file for the                     can use the same target binary across all fuzzers. Coverage
+specification shown in Listing 1 can be seen in Listing 2.                        experiments where repeated ten times and checked for sta-
+   We use this library in combination with pyshark to turn                        tistical significance as recommended by Klees et al. [32]. We
+PCAP network dumps into seed files. To fragment TCP                               compared against AFLnet and AFLnwe in the most recent
+streams into logical packets, we use the same logic that                          commits supported by ProFuzzBench (0f51f9e and 6ba3a25).
+AFLnet uses. While this is some protocol-specific code, the                       Likewise, we used a recent release of AFL++ (2dac4e7).
+dissectors are usually very simple. For example, one of the                          libpreeny contains two approaches used to turn network
+more common packet boundary dissector uses the CRLF new-                          servers into targets suitable for fuzzing with AFL++. The
+line sequence to split the data stream into logical packets.                      simple one only replaces sockets with stdin by hooking
+                                                                              8
+                                 lightftp                                            kamailio                                      bftpd                                dcmtk                                  dnsmasq                                      exim                                  forked-daapd
+                                                                                                                                                      3000                                    1200                                    4750
+
+                                                                   10000                                     480                                                                                                                                                                      2500
+                 350                                                                                                                                                                          1100                                    4500
+                                                                                                                                                      2950
+                                                                                                             460
+      Branches
+
+
+
+
+                                                        Branches
+                                                                   9000
+                                                                                                                                                                                              1000                                                                                    2000
+                                                                                                                                                                                                                                      4250
+                 300                                                                                                                                  2900
+                                                                                                             440
+                                                                   8000                                                                                                                       900
+                                                                                                                                                                                                                                      4000
+                                                                                                             420                                      2850                                                                                                                            1500
+                 250                                                                                                                                                                          800
+                                                                   7000
+                                                                                                                                                                                                                                      3750
+                                                                                                             400
+                                                                                                                                                      2800                                    700                                                                                     1000
+                 200                                               6000
+                       0h   4h   8h   12h 16h 20h 24h                      0h   4h   8h   12h 16h 20h 24h           0h   4h   8h    12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h    12h 16h 20h 24h                 0h   4h   8h   12h 16h 20h 24h
+
+                                 live555                                             openssh                                  openssl                                  proftpd                                 pure-ftpd                               tinydtls
+                                                                                                            11000                                     5500
+                                                                   3600
+                                                                                                                                                                                              1300
+             3000                                                                                                                                     5000
+                                                                                                                                                                                              1200                                    500
+                                                                   3400
+                                                                                                            10000
+
+
+
+
+                                                                                                                                                                                                                                                                               Branches
+                                                                                                                                                      4500                                    1100
+             2900
+                                                                                                                                                                                                                                      400
+                                                                   3200                                                                                                                       1000
+                                                                                                                                                      4000
+             2800                                                                                                                                                                             900                                                                                                      aflnet
+                                                                                                            9000                                                                                                                      300
+                                                                   3000
+                                                                                                                                                      3500                                                                                                                                             nyxnet-none
+                                                                                                                                                                                              800
+                                                                                                                                                                                                                                                                                                       nyxnet-aggressive
+             2700
+                                                                   2800                                                                               3000                                    700                                     200                                                              nyxnet-balanced
+                                                                                                            8000
+                       0h   4h   8h   12h 16h 20h 24h                      0h   4h   8h   12h 16h 20h 24h           0h   4h   8h    12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h    12h 16h 20h 24h
+
+
+
+
+Figure 5. The median branch coverage across 10 experiments on all ProFuzzBench targets. Note that we use the original plotting tools provided by
+ProFuzzBench. This has two consequences: (i) the first measurement was taken after 10 seconds (sometimes hiding initial progress) and (ii) the y-axis is
+truncated to only show the coverage found after the seed files and hence does not start at 0.
+
+accept(). As this approach is unable to handle most real-                                                                                                                     Table 1. Crashes found by each fuzzer in ProFuzzBench. We excluded
+                                                                                                                                                                              OOM crashes that were only due to the very narrow limits introduced
+world targets, libpreeny also ships a more complex de-                                                                                                                        by the docker setup of ProFuzzBench. On dcmtk, Nyx-Net only finds
+sockifying emulator. We found that it was able to handle                                                                                                                      crashes reliably if Asan is enabled (✓). This is due to the fact that in contrast
+more of the ProFuzzBench targets. Hence, we chose to use                                                                                                                      to AFLnet, Nyx-Net does not build up memory corruption state until it
+the second, better performing emulation layer (desock.c).                                                                                                                     crashes. With Asan, the crash is found within the first 10 seconds. Without
+                                                                                                                                                                              Asan, Nyx-Net is able to find the bug in some runs, but not others depending
+5.2          ProFuzzBench                                                                                                                                                     on the initial memory layout. On pure-ftpd, AFLnet-no-state managed to
+                                                                                                                                                                              trigger an OOM that was due to an internal limit and not the ProFuzzBench
+In the first experiment, we compare Nyx-Net against AFLnet                                                                                                                    limit (*). The targets that AFL++ +libpreeny was unable to run are marked
+and AFL++ in combination with libpreeny’s socket emu-                                                                                                                         with n/a. We excluded targets where no fuzzer found anything of interest.
+lation layer. Each individual fuzzing campaign was ran for
+24h. We use the public ProFuzzBench test suite. It contains                                                                                                                                                              AFL-based                                                           Nyx-Net
+a total of 13 different network services for various types of                                                                                                                        Target               AFLnet          AFLnwe                   AFL++            none                  balanced aggressive
+                                                                                                                                                                                     dcmtk                  ✓                ✓                      n/a              (✓)                     (✓)       ✓
+protocols (from FTP file transfer over VoIP to media stream-                                                                                                                      dnsmasq                   ✓                ✓                       ✓                ✓                       ✓        ✓
+ing). Notably, ProFuzzBench is published and maintained                                                                                                                                exim                  -               -                      n/a               ✓                       ✓        ✓
+                                                                                                                                                                                    live555                 ✓                ✓                      n/a               ✓                       ✓        ✓
+by the authors of AFLnet, and is used to showcase AFLnet’s                                                                                                                         proftpd                   -               -                      n/a               ✓                       ✓        ✓
+strength in fuzzing stateful network targets. We used the                                                                                                                        pure-ftpd                   *               -                      n/a               -                       -        -
+                                                                                                                                                                                   tinydtls                 ✓                ✓                      n/a               ✓                       ✓        ✓
+coverage measurement and reporting features that are part
+of ProFuzzBench. A full set of final coverage results for all
+fuzzers is presented in Table 2 and coverage over time is also                                                                                                                additional targets. A full list of the crashes uncovered can
+shown in Figure 5. Note that on some targets AFL++ with                                                                                                                       be found in Table 1.
+libpreeny is unable to even start the service. On most other
+targets, it makes some initial progress, but as coverage is                                                                                                                   5.3 Incremental Snapshots
+only measured in five minute intervals, most or all coverage
+                                                                                                                                                                              The targets that are part of ProFuzzBench are configured
+was found within the first five minutes and hence it seems
+                                                                                                                                                                              in a way that AFL and its derivatives such as AFLnet and
+that no coverage is found at all. Additionally, AFLnwe signif-
+                                                                                                                                                                              AFLnwe perform reasonably well. To this end, very short
+icantly under-performs compared to AFLnet. We therefore
+                                                                                                                                                                              seeds with only a handful (e.g., usually less than five) of
+excluded both from Figure 5. This results demonstrate how
+                                                                                                                                                                              packets where chosen by the authors. In such a scenario,
+libpreeny is far less powerful than our emulation layer. Simi-
+                                                                                                                                                                              high performance emulation and snapshot fuzzing make
+larly, AFLnet and AFLnet-no-state perform almost identical,
+                                                                                                                                                                              up most of the impact. While incremental snapshots still
+and we excluded AFLnet-no-state from the plots. A com-
+                                                                                                                                                                              increase the throughput, they can not add their full potential.
+plete figure containing plots of all fuzzers can be found in
+                                                                                                                                                                              To evaluate the impact of incremental snapshot, we hence
+the Appendix (Figure 7). Overall, Nyx-Net is outperform-
+                                                                                                                                                                              picked a more complex target with longer runs. Specifically,
+ing AFLnet on all but two targets that show no statistically
+                                                                                                                                                                              we demonstrate how incremental snapshots greatly increase
+significant difference.
+                                                                                                                                                                              the fuzzing throughput when fuzzing the game Super Mario
+   We also investigated each tool’s ability to find crashes in
+                                                                                                                                                                              Bros. also used to showcase other fuzzing tools [2].
+the targets contained in ProFuzzBench. AFLnet, AFLnet-
+no-state and AFLnwe all find crashes in the exact same four                                                                                                                   Super Mario We recreate the Super Mario experiment pre-
+targets. Similarly, Nyx-Net was able to crash the same four                                                                                                                   sented in Ijon and demonstrate how Nyx-Net’s incremental
+targets. Additionally, Nyx-Net also was able to crash two                                                                                                                     snapshots lead to 10x-30x increases over Ijon in time to solve.
+                                                                                                                                                                       9
+Table 2. Median branch coverage found by various fuzzers across 10 runs of 24h each, compared to AFLnet. The column for AFLnet displays the number of
+branches. All other columns show the changes compared to AFLnet. Changes that are statistically significant (𝜌 < 0.05) according to a Mann-Whitney u-test
+are rendered bold.
+
+
+                                              AFL-based                                                      Nyx-Net
+                           AFLnet      AFLnet-no-state AFLnwe              AFL++      Nyx-Net       Nyx-Net-balanced Nyx-Net-aggressive
+                 bftpd      473.5          +1.3%        +1.6%               n/a        +3.1%             +4.3%            +2.2%
+                dcmtk       2953.0         +0.7%        +1.3%               n/a        +1.7%             +1.6%            +1.4%
+             dnsmasq        1082.0         −0.9%        −10.5%             −37.2%      +8.5%            +10.9%            +9.8%
+                  exim      4620.5         +1.5%        −18.0%              n/a        +2.9%             +2.7%            −0.4%
+        forked-daapd        2604.5         +0.1%        −23.4%             −46.7%      +2.5%             +4.5%            +5.5%
+             kamailio       7222.5         −3.1%        −29.9%              n/a        +45.9%           +47.5%            +47.2%
+              lightftp      352.0          +0.4%        −53.4%             −69.3%      +6.7%             +9.4%            +9.8%
+               live555      3011.5         +1.3%        +0.9%               n/a        +0.9%             +1.6%            +2.1%
+             openssh        3609.0         +0.3%        −2.0%              −49.7%      +0.8%             +0.2%            −0.1%
+              openssl       9744.5         −0.2%        −51.2%             −18.8%      +12.4%           +13.0%            +13.0%
+              proftpd       3186.5         −0.9%        +0.4%               n/a        +70.2%           +70.7%            +70.4%
+            pure-ftpd       1201.5         +4.8%        +2.2%               n/a        +11.1%           +12.4%            +11.4%
+              tinydtls      497.0          +3.9%        −38.8%              n/a        +16.3%            +10.6%           +16.8%
+
+Table 3. Test throughput of various AFL based fuzzers and Nyx-Net configurations. Each entry shows the average executions per second ± standard
+deviation across our ten 24h runs. Nyx-Net-none is Nyx-Net without incremental snapshots. “Aggressive” and “balanced” denote the two different strategies
+each. It can be seen that aggressively using incremental snapshots drastically gives the highest test throughput in all cases. However, the biggest gains come
+from the root snapshot avoiding initialization all together.
+
+
+                                          AFL-based                                                              Nyx-Net
+         Target       AFLnet      AFLnet-no-state AFLnwe                   AFL++      Nyx-Net-none         Nyx-Net-balanced         Nyx-Net-aggressive
+          bftpd      4.2 ± 1.9              3.1 ± 1.0     3.5 ± 1.8              -       670.3 ± 42.4            1027.2 ± 53.8             1250.1 ± 88.7
+         dcmtk      33.8 ± 2.3             34.1 ± 3.2    38.4 ± 1.0              -     1716.7 ± 127.3           1673.9 ± 246.5             1782.5 ± 96.3
+      dnsmasq        3.3 ± 1.6              3.6 ± 1.2     1.6 ± 2.0      4.5 ± 0.0     2732.7 ± 167.1           2583.3 ± 135.8            2749.1 ± 142.2
+           exim      4.8 ± 2.2              4.4 ± 2.5    17.8 ± 7.9     69.3 ± 0.2      312.9 ± 116.7             307.9 ± 92.1              299.9 ± 76.7
+ forked-daapd        0.4 ± 0.0              0.4 ± 0.0     0.5 ± 0.0      1.2 ± 0.0         13.0 ± 2.5               13.5 ± 1.7                13.6 ± 2.2
+      kamailio       4.1 ± 0.4              4.3 ± 0.2     4.9 ± 0.0              -       274.8 ± 19.4             352.1 ± 26.5              624.6 ± 56.6
+       lightftp      6.1 ± 1.5              5.6 ± 0.9    13.0 ± 6.6     14.4 ± 0.1     1557.1 ± 352.1           1760.3 ± 306.5            2040.9 ± 264.0
+        live555      7.7 ± 2.6              8.8 ± 2.0    25.9 ± 8.8              -         63.1 ± 5.8              84.2 ± 11.5               105.4 ± 7.7
+      openssh       23.6 ± 8.3              8.1 ± 3.7    29.3 ± 1.0    126.9 ± 3.6        136.4 ± 3.3              215.4 ± 3.3              830.2 ± 33.2
+       openssl       0.3 ± 0.1              0.8 ± 1.6    16.0 ± 0.3     16.8 ± 0.6       454.0 ± 15.0             467.1 ± 21.6              462.3 ± 17.0
+       proftpd       2.6 ± 1.2              1.7 ± 0.7     2.9 ± 1.0              -       332.7 ± 37.1             452.9 ± 73.0             518.1 ± 149.8
+     pure-ftpd       6.3 ± 3.5              5.8 ± 1.3     5.3 ± 2.2              -       849.8 ± 56.9            1450.8 ± 61.5            1806.1 ± 120.2
+       tinydtls      2.2 ± 0.5              2.2 ± 0.2    12.5 ± 0.3              -     1011.2 ± 358.0            942.3 ± 283.5            1228.0 ± 315.7
+
+
+On all levels, Ijon was the slowest fuzzer. Nyx-Net-None                           the difficult part of the current execution by using incre-
+added a modest 4x average speedup (standard deviation 2.4x,                        mental snapshots right in front of the difficult jump, leading
+min/max: 1x/9.4x). Nyx-Net-Balanced managed to achieve                             to solve the level 10x – 20x faster than Ijon. Additionally,
+an 5.8x average speedup (standard deviation: 3x, min/max:                          Ijon’s experiment setup is skipping rendering and removes
+1.6x/12.7x), while Nyx-Net-Aggressive found solutions on                           the framerate limit of 60 FPS.
+average 11x faster (standard deviation: 6.8x, min/max: 1.8,                           Lastly, we parallelize fuzzing to 52 cores. All these speedups
+29.8x). The data of all levels can be found in the Appendix                        together allow us to perform tens of thousands of test cases
+(Figure 4). In fact, when fuzzing some of the simple levels                        per second. As a consequence, Nyx-Net is able to solve the
+on 52 cores in parallel, Nyx-Net is able to find a solution                        first level in less than the 26 seconds wall-clock time needed
+faster than a flawless player optimizing for speed (commonly                       to speedrun the level at normal framerates.
+known as “speedrun”) is able to play the level even once. This                        The original Ijon paper mentioned that Ijon was occa-
+unlikely feature is made possible by a combination of factors:                     sionally able to use wall jumps to escape from pits. However,
+most importantly, as can be seen in Figure 2, Nyx-Net’s                            Nyx-Net actually was able to exploit this ability to much
+incremental snapshot allowed the fuzzer to focus only on                           greater results: Nyx-Net is routinely able to solve a level
+
+                                                                              10
+                         Snapshot Create                                               Snapshot Load                       snapshot. Note that in contrast to the other experiments, this
+                                                                    104
+
+             103
+                                                                                                                           experiment was performed on a Intel Core i7-6700HQ CPU
+                                                                    103                                                    @ 2.60GHz as the larger servers were blocked by more com-
+ Execs/Sec
+
+
+
+
+                                                        Execs/Sec
+             102                                                                                                           putationally expensive experiments. For creating snapshots,
+                     Nyx 512MB                                                    Nyx 512MB
+                                                                    102
+                     Nyx 4GB                                                      Nyx 4GB                                  𝑛 pages were dirtied, a temporary snapshot was created, and
+             101     Agamotto 512MB                                               Agamotto 512MB
+                     Agamotto 4GB
+                                                                    101
+                                                                                  Agamotto 4GB                             𝑛 pages where dirtied again. Then, the old root snapshot was
+                   101    102     103     104     105                     100     101    102     103     104    105
+                                                                                                                           restored. This experiment was repeated 1,000 times each and
+                   Number of Dirty Pages in Target                              Number of Dirty Pages in Target
+                                                                                                                           the average times were measured. Note that the 500 MB VM
+                                                                                                                           was unable to dirty 105 pages as not enough memory could
+Figure 6. Measuring the throughput of creating/loading incremental snap-                                                   be allocated. The results are show in Figure 6. A few notable
+shots with 𝑛 dirty pages on VMs with 512MB and 4GB memory respectively.
+                                                                                                                           results can be observed: first of all, Nyx-Net is almost an
+(2-1) by exploiting a wall jump glitch. Ijon was unable to                                                                 order of magnitude faster than Agamotto in the relevant
+find this glitch and the authors of Ijon believed 2-1 might                                                                range of dirtied pages. As expected, usually creating/restor-
+be impossible to solve. Nyx-Net seems to be able to trigger                                                                ing snapshots on smaller VMs is slightly faster. Surprisingly,
+this glitch somewhat regularly (it was found in two out of                                                                 for both Agamotto and Nyx-Net, restoring large numbers
+three of our configurations).                                                                                              of dirty pages on the 512MB VM is slower than on the 4GB
+                                                                                                                           VM. This is due to the fact that allocating a significant frac-
+Scalability It is important to be able to scale to many cores                                                              tion of the whole available memory is much more work than
+for fuzzing purposes. Naively parallelizing the fuzzer like                                                                allocating the same number of pages if there is plenty of
+Agamotto or Nyx will consume prohibitive amounts of                                                                        memory. Also, for large numbers of dirty pages, Agamotto
+memory (e.g., many 100s or even 1,000s of GBs). We share                                                                   becomes marginally faster than Nyx-Net. This is due to
+the root snapshots between different instances. As a conse-                                                                the fact that when the number of dirty pages approaches
+quence, in our experiments, 80 instances of Nyx-Net only                                                                   the number of pages available, the size of our dirty stack
+require about 2x the memory of a single instance.                                                                          approaches (and eventually even exceeds) the size of the
+                                                                                                                           bitmap used. It should be noted that in contrast to Nyx-Net,
+Snapshot Overhead To better understand the performance
+                                                                                                                           Agamotto maintains a tree of snapshots. After one giga-
+impact of incremental snapshots, we also perform detailed ex-
+                                                                                                                           byte is used to store snapshots, Agamotto begins to discard
+periments evaluating the performance overhead introduced
+                                                                                                                           old snapshots causing it to slow down. This state is usually
+by our approach. To this end, we used three different policies
+                                                                                                                           quickly reached during fuzzing (as well as in this experiment).
+of Nyx-Net for most experiments: None (only a root snap-
+                                                                                                                           We also performed offline experiments where we aborted
+shot is used), Balanced (we are rather conservative about
+                                                                                                                           before Agamotto would start using its LRU policy to evict
+snapshots), and Aggressive (almost every execution is using
+                                                                                                                           snapshots. This increases Agamotto’s performance, as no
+snapshots, and we are mostly placing the snapshot close to
+                                                                                                                           cleanups are performed. However, the performance was still
+the end of the input). This allows us to explore the impact
+                                                                                                                           behind Nyx-Net’s throughput for typical workloads.
+of using incremental snapshots. Our experiments on Pro-
+                                                                                                                              Overall, Nyx-Net is significantly faster across the relevant
+FuzzBench (seen in Table 3) show that while snapshots are
+                                                                                                                           part of the spectrum of snapshot sizes. This observation is
+an additional cost, aggressive snapshot produces the highest
+                                                                                                                           related to multiple factors. First, Nyx-Net uses a simpler
+execution throughput on all targets. Even the balanced strat-
+                                                                                                                           mechanism: while Agamotto constructs trees of prefixed
+egy still usually increases throughput. While it also reduces
+                                                                                                                           snapshots, Nyx-Net only uses a single snapshot. Second,
+throughput in some cases, the difference is usually smaller
+                                                                                                                           Nyx-Net is not iterating the whole bitmap that tracks dirty
+than the variance between the different runs. As mentioned
+                                                                                                                           pages, while Agamotto has to walk the whole bitmap of
+before, ProFuzzBench mostly consists of short sequences
+                                                                                                                           all pages present in the physical memory of the VM. Last,
+of inputs. As discussed earlier, when using incremental snap-
+                                                                                                                           Nyx-Net also uses faster emulated device resets, reducing
+shots on Super Mario, which has longer message sequences,
+                                                                                                                           the fixed cost of resetting devices.
+more aggressive snapshots significantly improve the time to
+solve a target.                                                                                                            5.4   Case Study: MySQL Client
+Agamotto Lastly, we compare our implementation of                                                                          After we evaluated Nyx-Net on various server components,
+incremental snapshots against Agamotto, another recent                                                                     we now present a high-level view of using Nyx-Net for
+fuzzer that was developed to speed up syzkaller with in-                                                                   testing clients. For this case study, we fuzzed MySQL’s client
+cremental snapshots. We used both Agamotto’s implemen-                                                                     software that is used to connect to and administrate MySQL
+tation and ours to create and restore incremental snapshots                                                                databases. Running Nyx-Net requires five steps: (i) obtain
+using the base VM image from our network experiments. We                                                                   the target binary, (ii) pick or create a protocol specification,
+varied the number of dirtied pages and measured the time                                                                   (iii) obtain seed inputs (optionally), (iv) bundles all required
+needed both for creating as well as resetting an incremental                                                               data, and (v) finally run the fuzzer.
+                                                                                                                      11
+      1. In a first step, we obtain a binary of MySQL client to           while evaluating and integrating Nyx-Net into their work-
+         fuzz by compiling the software with AFL’s compiler.              flow. It should also be noted that we only fuzzed a very small
+      2. Next, we need to chose or create a format specifica-             subset of the available packets due to our limited understand-
+         tion. As we do not want to spend the time to learn               ing of Firefox’s IPC mechanisms. After seeing the impact of
+         about this protocol, we simply pick the generic default          Nyx-Net, the fuzzing team at Mozilla is currently planning
+         specification that assumes raw packets.                          to integrate Nyx-Net into their testing pipeline. We were
+      3. To gather seed inputs in step three, we use Wireshark            awarded a $20.000 bug bounty for enabling fuzzing of the
+         to obtain a set of PCAPs. As the capture was taken lo-           IPC interface of Firefox, mainly because our approach solves
+         cally, TCP packets directly correspond to logical pack-          a long-standing problem at Mozilla.
+         ets in the protocol. Hence, we use the generic script to
+         split the PCAP into individual packets used as seed.             5.7   Handling of New Vulnerabilities
+      4. The fourth step is to bundle a share folder that contains
+                                                                          We worked closely with a security engineer at Mozilla to un-
+         all relevant data. We use the packer script that copies          derstand and mitigate the security impact of the bugs found
+         the target, all of its dependencies, and the seeds into          with Nyx-Net. While our three bugs where only null pointer
+         the share folder. It also parses the specification and           dereferences (which are still regarded as high severity), the
+         auto-generates the LD_PRELOAD library that is used               additional two bugs found by Mozilla were exploitable. Dur-
+         as agent component during fuzzing.
+                                                                          ing the evaluation, we also found one crash in MySQL’s
+      5. In the last step, we run the fuzzer by passing the path
+                                                                          client that affects the version of MySQL currently shipped in
+         to the share folder. The fuzzer automatically loads the          Ubuntu. We have not yet had the time to full triage this bug,
+         VM image, which runs a script that downloads the                 but will responsibly disclose it to the maintainers after we
+         share directory and runs the target.                             fully triaged the issue (and before publication of this paper).
+Performing these steps yields an out-of-bound read on the                 Lastly, when fuzzing Lighttpd, we also uncovered an integer
+current version of the client (as shipped by Ubuntu) after a              underflow in malloc that was fixed before it was shipped.
+few minutes of fuzzing on 52 cores. We are currently in the               Additionally, Nyx-Net managed to find two new bugs in
+process of reporting this issue.                                          targets from the ProFuzzBench suite. While no other fuzzer
+                                                                          in our evaluation found these bugs, it seems like these bugs
+5.5     Case Study: Lighttpd                                              have been fixed in the latest release.
+We also used Nyx-Net on Lighttpd’s development branch
+and found a memory corruption issue where a negative                      6     Related Work
+amount of memory could be allocated under specific cir-                   Following the publication of AFL [66], its impact soon caused
+cumstances. We reported the issue and the bug was fixed                   a wave of additional research. Almost every design choice
+before being merged into master.                                          was investigated: AFL’s input mutation algorithm where ex-
+                                                                          tended upon [1, 3, 16, 23, 42, 45] as was its ability to trigger
+5.6     Case Study: Firefox                                               and identify bugs [5, 5, 29, 40, 41, 61, 64]. To improve the
+To demonstrate the versatility of Nyx-Net, we also fuzzed                 strength of AFL’s semi-random mutations, many researchers
+the IPC interface used by Firefox to separate high-risk, sand-            proposed to combine fuzzing with more elaborate program
+boxed content processes from the main process that contains               analysis techniques such as taint tracking [11, 48] and sym-
+all critical data. The fuzzing team at Firefox recently specifi-          bolic or concolic execution [19–22, 27, 37, 44, 56, 59, 65, 68].
+cally asked for this kind of fuzzing in a public blog post [31].             Similarly, as the fast coverage guidance is one of the defin-
+Luckily, Nyx-Net matches their needs very closely. It should              ing features of AFL, it was heavily scrutinized. Additional
+be noted that the IPC interface is much more complex than                 feedback mechanism where invented and tested for improve-
+the usual network services. It combines many different kinds              ments [13, 18, 26, 34, 38, 60]. The last big component of AFL,
+of communication patters, from sockets, over shared memory                after mutating and obtaining coverage feedback, is picking
+to custom actor implementations used by JavaScript code to                which input is fuzzed next. Like the other two components,
+communicate between processes. Nonetheless, Nyx-Net is                    input scheduling has been investigated thoroughly [2, 7–
+able to fuzz Firefox IPC with only some changes to the agent              10, 49, 62]. For a more in-depth overview of recent develop-
+component (the LD_PRELOAD library). Specifically, Firefox                 ments in fuzzing, please refer to Manès et al.’s SoK paper [36].
+uses dozens of processes and threads and approximately a                  To make feedback fuzzing more applicable in various scenar-
+hundred sockets—many of which are needed at the same                      ios, the harnessing was improved. Fuzzers such as syzkaller
+time. We extended the agent to find the relevant sockets                  or kAFL [25, 43, 53, 55, 58, 63] adapted AFL’s fuzzing model
+and to allow the agent to talk to multiple connections at                 to kernel fuzzing. Fuzzers like VDF and Nyx even target
+the same time. While fuzzing Firefox, we found three bugs                 hypervisors [24, 51, 52]. Hypervisor-based fuzzing is also
+and the Firefox team found two additional security issues                 commonly used to fuzz firmware [12, 35, 50, 69] Snapshots
+                                                                     12
+were also used previously to speed up fuzzing. Besides Nyx,                        [10] Sang Kil Cha, Maverick Woo, and David Brumley. Program-adaptive
+Falk proposed to use hypervisor-based snapshot fuzzing [15].                            mutational fuzzing. In IEEE Symposium on Security and Privacy, 2015.
+Similarly, snapshots were used to improve fuzzing of An-                           [11] Peng Chen and Hao Chen. Angora: Efficient Fuzzing by Principled
+                                                                                        Search. In IEEE Symposium on Security and Privacy, 2018.
+droid apps [14]. Agamotto even uses incremental snapshots                          [12] Abraham A Clements, Eric Gustafson, Tobias Scharnowski, Paul
+to accelerate kernel-level fuzzing.                                                     Grosen, David Fritz, Christopher Kruegel, Giovanni Vigna, Saurabh
+                                                                                        Bagchi, and Mathias Payer. HALucinator: Firmware Re-hosting
+                                                                                        Through Abstraction Layer Emulation. In USENIX Security Symposium,
+7    Conclusion                                                                         2020.
+In this paper, we present Nyx-Net, an approach to fuzz com-                        [13] S. Dinesh S. Dinesh, Nathan Burow, Dongyan Xu, and Mathias Payer.
+plex network services with high performance and fidelity. We                            RetroWrite: Statically Instrumenting COTS Binaries for Fuzzing and
+                                                                                        Sanitization. In IEEE Symposium on Security and Privacy, 2020.
+believe that snapshot-based network fuzzing makes fuzzing                          [14] Zhen Dong, Marcel Böhme, Lucia Cojocaru, and Abhik Roychoudhury.
+significantly easier to use: the user does not have to ensure                           Time-travel Testing of Android Apps. In International Conference on
+the absence of artifacts caused by vestigial state from earlier                         Software Engineering (ICSE), 2020.
+executions. At the same time, our app can also clearly outper-                     [15] Brandon Falk. Chocolate Milk. https://github.com/gamozolabs/
+form state-of-the-art approaches based on sending data via                              chocolate_milk. Accessed: November 5, 2021.
+                                                                                   [16] Andrea Fioraldi, Daniele Cono D’Elia, and Emilio Coppa. WEIZZ:
+real network interfaces—often by orders of magnitude. We                                Automatic grey-box fuzzing for structured binary formats. In Interna-
+also found Nyx-Net very easy to use: using Nyx’s support                                tional Symposium on Software Testing and Analysis (ISSTA), 2020.
+for binary-only fuzzing, we can directly take targets from                         [17] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse.
+Ubuntu’s repositories and fuzz test them. Nonetheless, our                              AFL++: Combining incremental steps of fuzzing research. In usenix-
+network emulation is still not 100% accurate in more com-                               woot, 2020.
+                                                                                   [18] Shuitao Gan, Chao Zhang, Xiaojun Qin, Xuwen Tu, Kang Li, Zhongyu
+plex scenarios (e.g., when multiple connection are needed                               Pei, and Zuoning Chen. CollAFL: Path Sensitive Fuzzing. In IEEE
+at the same time). As such, we still needed to perform some                             Symposium on Security and Privacy, 2018.
+changes to the agent when fuzzing Firefox’s IPC. A more                            [19] Patrice Godefroid, Adam Kiezun, and Michael Y Levin. Grammar-
+complete emulation would make Nyx-Net even easier to                                    based whitebox fuzzing. In ACM SIGPLAN Conference on Programming
+use, we leave this engineering challenge as future work.                                Language Design and Implementation (PLDI), 2008.
+                                                                                   [20] Patrice Godefroid, Nils Klarlund, and Koushik Sen. DART: Directed
+                                                                                        Automated Random Testing. In ACM SIGPLAN Conference on Program-
+References                                                                              ming Language Design and Implementation (PLDI), 2005.
+                                                                                   [21] Patrice Godefroid, Michael Y Levin, David A Molnar, et al. Automated
+ [1] Cornelius Aschermann, Tommaso Frassetto, Thorsten Holz, Patrick                    whitebox fuzz testing. In Symposium on Network and Distributed
+     Jauernig, Ahmad-Reza Sadeghi, and Daniel Teuchert. Nautilus: Fish-                 System Security (NDSS), 2008.
+     ing for Deep Bugs with Grammars. In Symposium on Network and                  [22] Istvan Haller, Asia Slowinska, Matthias Neugschwandtner, and Herbert
+     Distributed System Security (NDSS), 2019.                                          Bos. Dowsing for Overflows: A Guided Fuzzer to Find Buffer Boundary
+ [2] Cornelius Aschermann, Sergej Schumilo, Ali Abbasi, and Thorsten                    Violations. In USENIX Security Symposium, 2013.
+     Holz. Ijon: Exploring deep state spaces via fuzzing. In IEEE Symposium        [23] HyungSeok Han, DongHyeon Oh, and Sang Kil Cha. CodeAlchemist:
+     on Security and Privacy, 2020.                                                     Semantics-Aware Code Generation to Find Vulnerabilities in JavaScript
+ [3] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik,                Engines. In Symposium on Network and Distributed System Security
+     and Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Corre-                    (NDSS), 2019.
+     spondence. In Symposium on Network and Distributed System Security
+                                                                                   [24] Andrew Henderson, Heng Yin, Guang Jin, Hao Han, and Hongmei
+     (NDSS), 2019.                                                                      Deng. VDF: Targeted Evolutionary Fuzz Testing of Virtual Devices.
+ [4] Domagoj Babić, Stefan Bucur, Yaohui Chen, Franjo Ivančić, Tim King,                In Symposium on Recent Advances in Intrusion Detection (RAID), 2017.
+     Markus Kusano, Caroline Lemieux, László Szekeres, and Wei Wang.               [25] Jesse Hertz and Tim Newsham. Project Triforce: Run AFL on Ev-
+     Fudge: fuzz driver generation at scale. In ACM SIGSOFT Symposium                   erything! https://www.nccgroup.trust/us/about-us/newsroom-and-
+     on the Foundations of Software Engineering (FSE), 2019.                            events/blog/2016/june/project-triforce-run-afl-on-everything/. Ac-
+ [5] William Blair, Andrea Mambretti, Sajjad Arshad, Michael Weissbacher,               cessed: November 5, 2021.
+     William Robertson, Engin Kirda, and Manuel Egele. HotFuzz: Discov-            [26] Chin-Chia Hsu, Che-Yu Wu, Hsu-Chun Hsiao, and Shih-Kun Huang.
+     ering Algorithmic Denial-of-Service Vulnerabilities Through Guided                 INSTRIM: Lightweight Instrumentation for Coverage-guided Fuzzing.
+     Micro-Fuzzing. In Symposium on Network and Distributed System                      In Symposium on Network and Distributed System Security (NDSS),
+     Security (NDSS), 2020.                                                             Workshop on Binary Analysis Research, 2018.
+ [6] Marcel Böhme and Brandon Falk. Fuzzing: On the exponential cost of            [27] H. Huang, P. Yao, R. Wu, Q. Shi, and C. Zhang. Pangolin: Incremental
+     vulnerability discovery. In ACM SIGSOFT Symposium on the Founda-                   hybrid fuzzing with polyhedral path abstraction. In IEEE Symposium
+     tions of Software Engineering (FSE), 2020.                                         on Security and Privacy, 2020.
+ [7] Marcel Böhme, Valentin JM Manès, and Sang Kil Cha. Boosting Fuzzer            [28] Kyriakos Ispoglou, Daniel Austin, Vishwath Mohan, and Mathias Payer.
+     Efficiency: An Information Theoretic Perspective. In Joint Meeting on              Fuzzgen: Automatic fuzzer generation. In USENIX Security Symposium,
+     Foundations of Software Engineering, 2020.                                         2020.
+ [8] Marcel Böhme, Van-Thuan Pham, Manh-Dung Nguyen, and Abhik                     [29] Yuseok Jeon, Wookhyun Han, Nathan Burow, and Mathias Payer. FuZ-
+     Roychoudhury. Directed greybox fuzzing. In ACM Conference on                       Zan: Efficient Sanitizer Metadata Design for Fuzzing. In USENIX
+     Computer and Communications Security (CCS), 2017.                                  Annual Technical Conference, 2020.
+ [9] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. Coverage-               [30] Jinho Jung, Stephen Tong, Hong Hu, Jungwon Lim, Yonghwi Jin, and
+     based greybox fuzzing as markov chain. In ACM Conference on Com-                   Taesoo Kim. WINNIE: Fuzzing Windows Applications with Harness
+     puter and Communications Security (CCS), 2016.
+                                                                              13
+       Synthesis and Fast Cloning. In Symposium on Network and Distributed                escalation targets. In USENIX Security Symposium, 2020.
+       System Security (NDSS), 2021.                                                 [51] Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner,
+[31]   Christoph Kerschbaumer and Christian Holler. Effectively Fuzzing                   and Thorsten Holz. HYPER-CUBE: High-Dimensional Hypervisor
+       the IPC Layer in Firefox. https://blog.mozilla.org/attack-and-defense/             Fuzzing. In Symposium on Network and Distributed System Security
+       2021/01/27/effectively-fuzzing-the-ipc-layer-in-firefox/. Accessed:                (NDSS), 2020.
+       November 5, 2021.                                                             [52] Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner,
+[32]   George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael                    and Thorsten Holz. Nyx: Greybox hypervisor fuzzing using fast snap-
+       Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and                  shots and affine types. In USENIX Security Symposium, 2021.
+       Communications Security (CCS), 2018.                                          [53] Sergej Schumilo, Cornelius Aschermann, Robert Gawlik, Sebastian
+[33]   Lafintel. Circumventing fuzzing roadblocks with compiler transfor-                 Schinzel, and Thorsten Holz. kAFL: Hardware-Assisted Feedback
+       mations. https://lafintel.wordpress.com/. November 5, 2021.                        Fuzzing for OS Kernels. In USENIX Security Symposium, 2017.
+[34]   Li, Yuekang and Chen, Bihuan and Chandramohan, Mahinthan and                  [54] Yan Shoshitaishvili. Preeny. https://github.com/zardus/preeny. No-
+       Lin, Shang-Wei and Liu, Yang and Tiu, Alwen. Steelix: Program-state                vember 5, 2021.
+       Based Binary Fuzzing. In Joint Meeting on Foundations of Software             [55] Dokyung Song, Felicitas Hetzelt, Jonghwan Kim, Brent Byunghoon
+       Engineering, 2017.                                                                 Kang, Jean-Pierre Seifert, and Michael Franz. Agamotto: Accelerating
+[35]   Dominik Maier, Lukas Seidel, and Shinjo Park. Basesafe: Baseband                   kernel driver fuzzing with lightweight virtual machine checkpoints.
+       sanitized fuzzing through emulation. In ACM Conference on Security                 In USENIX Security Symposium, 2020.
+       and Privacy in Wireless and Mobile Networks, 2020.                            [56] Nick Stephens, John Grosen, Christopher Salls, Andrew Dutcher,
+[36]   Valentin Jean Marie Manès, HyungSeok Han, Choongwoo Han,                           Ruoyu Wang, Jacopo Corbetta, Yan Shoshitaishvili, Christopher
+       Sang Kil Cha, Manuel Egele, Edward J Schwartz, and Maverick Woo.                   Kruegel, and Giovanni Vigna. Driller: Augmenting fuzzing through se-
+       The art, science, and engineering of fuzzing: A survey. In IEEE Trans-             lective symbolic execution. In Symposium on Network and Distributed
+       actions on Software Engineering, 2019.                                             System Security (NDSS), 2016.
+[37]   David Molnar, Xue Cong Li, and David Wagner. Dynamic Test Gener-              [57] Peach Tech. Peach. http://www.peachfuzzer.com/. Accessed: Novem-
+       ation to Find Integer Bugs in x86 Binary Linux Programs. In USENIX                 ber 5, 2021.
+       Security Symposium, 2009.                                                     [58] Dmitry Vyukov. syzkaller: Linux syscall fuzzer. https://github.com/
+[38]   Stefan Nagy and Matthew Hicks. Full-speed fuzzing: Reducing fuzzing                google/syzkaller. Accessed: November 5, 2021.
+       overhead through coverage-guided tracing. In IEEE Symposium on                [59] Tielei Wang, Tao Wei, Guofei Gu, and Wei Zou. TaintScope: A
+       Security and Privacy, 2019.                                                        checksum-aware directed fuzzing tool for automatic software vul-
+[39]   Roberto Natella and Van-Thuan Pham. Profuzzbench: A benchmark                      nerability detection. In IEEE Symposium on Security and Privacy, 2010.
+       for stateful protocol fuzzing. In Proceedings of the 30th ACM SIGSOFT         [60] Yanhao Wang, Xiangkun Jia, Yuwei Liu, Kyle Zeng, Tiffany Bao, Ding-
+       International Symposium on Software Testing and Analysis, 2021.                    hao Wu, and Purui Su. Not All Coverage Measurements Are Equal:
+[40]   Manh-Dung Nguyen, Sébastien Bardin, Richard Bonichon, Roland                       Fuzzing by Coverage Accounting for Input Prioritization. In Sympo-
+       Groz, and Matthieu Lemerre. Binary-level Directed Fuzzing for Use-                 sium on Network and Distributed System Security (NDSS), 2020.
+       After-Free Vulnerabilities. In International Conference on Software           [61] Cheng Wen, Haijun Wang, Yuekang Li, Shengchao Qin, Yang Liu,
+       Engineering (ICSE), 2020.                                                          Zhiwu Xu, Hongxu Chen, Xiaofei Xie, Geguang Pu, and Ting Liu.
+[41]   Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuf-                Memlock: Memory usage guided fuzzing. In International Conference
+       frida. ParmeSan: Sanitizer-guided Greybox Fuzzing. In USENIX Secu-                 on Software Engineering (ICSE), 2020.
+       rity Symposium, 2020.                                                         [62] Maverick Woo, Sang Kil Cha, Samantha Gottlieb, and David Brum-
+[42]   Rohan Padhye, Caroline Lemieux, Koushik Sen, Mike Papadakis, and                   ley. Scheduling black-box mutational fuzzing. In ACM Conference on
+       Yves Le Traon. Validity Fuzzing and Parametric Generators for Effec-               Computer and Communications Security (CCS), 2013.
+       tive Random Testing. In International Conference on Software Engineer-        [63] Meng Xu, Sanidhya Kashyap, Hanqing Zhao, and Taesoo Kim. Krace:
+       ing (ICSE), 2019.                                                                  Data Race Fuzzing for Kernel File Systems. In IEEE Symposium on
+[43]   Hui Peng and Mathias Payer. USBFuzz: A Framework for Fuzzing USB                   Security and Privacy, 2020.
+       Drivers by Device Emulation. In USENIX Security Symposium, 2020.              [64] Wei You, Xuwei Liu, Shiqing Ma, David Perry, Xiangyu Zhang, and
+[44]   Hui Peng, Yan Shoshitaishvili, and Mathias Payer. T-Fuzz: Fuzzing by               Bin Liang. Slf: fuzzing without valid seed inputs. In International
+       Program Transformation. In IEEE Symposium on Security and Privacy,                 Conference on Software Engineering (ICSE), 2019.
+       2018.                                                                         [65] Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. QSYM:
+[45]   V. Pham, M. Bohme, A. E. Santosa, A. Caciulescu, and A. Roychoudhury.              A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing.
+       Smart greybox fuzzing. IEEE Transactions on Software Engineering,                  In USENIX Security Symposium, 2018.
+       47(09), 2021.                                                                 [66] Michał Zalewski. american fuzzy lop. http://lcamtuf.coredump.cx/afl/.
+[46]   Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. AFLNET:                      Accessed: November 5, 2021.
+       A Greybox Fuzzer for Network Protocols. In IEEE International Con-            [67] Z. Zhang, W. You, G. Tao, Y. Aafer, X. Liu, and X. Zhang. STOCHFUZZ:
+       ference on Software Testing, 2020.                                                 Sound and Cost-effective Fuzzing of Stripped Binaries by Incremental
+[47]   LLVM Project. libfuzzer. https://llvm.org/docs/LibFuzzer.html. No-                 and Stochastic Rewriting. In IEEE Symposium on Security and Privacy,
+       vember 5, 2021.                                                                    2021.
+[48]   Sanjay Rawat, Vivek Jain, Ashish Kumar, Lucian Cojocar, Cristiano             [68] Lei Zhao, Yue Duan, Heng Yin, and Jifeng Xuan. Send Hardest Prob-
+       Giuffrida, and Herbert Bos. VUzzer: Application-aware Evolutionary                 lems My Way: Probabilistic Path Prioritization for Hybrid Fuzzing. In
+       Fuzzing. In Symposium on Network and Distributed System Security                   Symposium on Network and Distributed System Security (NDSS), 2019.
+       (NDSS), 2017.                                                                 [69] Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong
+[49]   Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos, Jonathan M                    Zhu, and Limin Sun. Firm-afl: High-throughput greybox fuzzing of
+       Foote, David Warren, Gustavo Grieco, and David Brumley. Optimizing                 iot firmware via augmented process emulation. In USENIX Security
+       seed selection for fuzzing. In USENIX Security Symposium, 2014.                    Symposium, 2019.
+[50]   Jan Ruge, Jiska Classen, Francesco Gringoli, and Matthias Hollick.
+       Frankenstein: Advanced wireless fuzzing to exploit new bluetooth
+
+                                                                                14
+Appendix
+
+
+A     Super Mario Experiment
+                                                                                                                   𝑛
+Table 4. Times (HH:MM:SS) that various fuzzers need to solve Super Mario levels (median of three).                 3   indicates that only 𝑛 out of the three runs solved the
+level. The best configuration also shows the speedup over raw Ijon.
+
+                                        Level         Ijon        Nyx-Net-none          Nyx-Net-balanced       Nyx-Net-aggressive
+                                         1-1      00:46:35       00:17:53              00:07:36                00:04:21    (10.7x)
+                                         1-2      02:52:36       00:45:57              00:38:33                00:10:08    (17.0x)
+                                         1-3      00:39:31       00:07:08              00:07:40                00:04:41     (8.4x)
+                                         1-4      00:29:00       00:03:27              00:09:59                00:02:00    (14.5x)
+                                                                            1                     1
+                                         2-1           -         11:21:19   3          03:12:49   3                 -
+                                         2-2      01:02:30       00:46:54              00:33:16                00:23:14     (2.7x)
+                                         2-3      01:47:13       00:34:42              00:08:27                00:03:36    (29.8x)
+                                         2-4      01:22:52       00:09:31              00:07:48                00:04:16    (19.4x)
+                                         3-1      03:33:49       00:35:42              00:24:14                00:09:45    (21.9x)
+                                         3-2      01:14:07       00:18:13              00:08:23                00:05:33    (13.4x)
+                                         3-3      00:15:59       00:05:04       (3.2x) 00:05:18                00:05:25
+                                         3-4      00:31:54       00:10:56              00:10:50                00:02:50    (11.3x)
+                                         4-1      01:18:24       00:08:19              00:09:35                00:04:09    (18.9x)
+                                         4-2      00:22:42       00:22:23              00:13:50                00:12:19     (1.8x)
+                                         4-3      00:31:36       00:09:14              00:06:37         (4.8x) 00:07:39
+                                         4-4      00:10:33       00:03:55              00:02:54                00:01:42     (6.2x)
+                                         5-1      00:55:11       00:25:54              00:12:12                00:07:00     (7.9x)
+                                         5-2      01:30:17       00:13:31              00:10:19                00:08:38    (10.5x)
+                                         5-3      00:23:29       00:14:24              00:05:29                00:05:00     (4.7x)
+                                         5-4      00:12:31       00:11:17              00:04:57                00:04:17     (2.9x)
+                                         6-1      00:40:28       00:13:42              00:12:40                00:05:11     (7.8x)
+                                                             2
+                                         6-2      05:09:52   3   02:29:49              01:18:50                00:31:54     (9.7x)
+                                         6-3      00:27:01       00:03:20       (8.1x) 00:03:57                00:05:22
+                                         6-4      00:29:28       00:05:33              00:03:36                00:01:35    (18.6x)
+                                         7-1      01:39:41       00:14:21              00:10:09                00:06:29    (15.4x)
+                                         7-2      01:18:41       00:41:15              00:35:25                00:24:16     (3.2x)
+                                         7-3      01:49:48       00:45:11              00:17:21                00:05:08    (21.4x)
+                                         7-4      00:52:48       00:09:41              00:04:38        (11.4x) 00:07:08
+                                                             2
+                                         8-1      11:10:34   3   03:57:19              01:24:57                00:49:27    (13.6x)
+                                         8-2      05:04:01       03:43:08              00:45:00                00:28:48    (10.6x)
+                                         8-3      00:27:01       00:09:50              00:10:04                00:03:34     (7.6x)
+
+
+
+
+B     Time to Equal Coverage
+
+Table 5. This table shows at what time AFLnet found its final coverage and how much faster Nyx-Net was able to obtain the same coverage. Note that in
+some cases Nyx-Net is able to find more coverage in a minute than AFLnet does in 24h, and the time resolution of our coverage measurements is limited
+to one minute. As Nyx-Net never exceeded AFLnet’s coverage on exim, the values are omitted. These numbers should be taken with a grain of salt, as
+even small increases in coverage can easily translate to significant improvements in terms of "Time to Equal Coverage" due to the logarithmic nature of new
+coverage found.
+
+                              Target            AFLnet time to Final Coverage        Nyx-Net          Nyx-Net-balanced    Nyx-Net-aggressive
+                              bftpd                       15:32:00                      1x                   24x                  6x
+                              dcmtk                       21:34:00                     51x                  41x                  28x
+                              dnsmasq                     23:32:00                     235x                 201x                 282x
+                              exim                        19:31:00                      2x                   1x                    -
+                              forked-daapd                23:19:00                      2x                   8x                  14x
+                              kamailio                    15:10:00                     910x                 910x                 910x
+                              lightftp                    18:38:00                     139x                 372x                1118x
+                              live555                     23:30:00                      5x                   5x                   7x
+                              openssh                     23:47:00                      1x                   1x                    -
+                              openssl                     23:54:00                     717x                 717x                 717x
+                              proftpd                     23:42:00                    1422x                1422x                1422x
+                              pure-ftpd                   23:27:00                     234x                 469x                 234x
+                              tinydtls                    22:58:00                    1378x                1378x                1378x
+
+
+
+
+                                                                                      15
+C                     Coverage Plots
+                           lightftp                                            kamailio                                      bftpd                                dcmtk                                  dnsmasq                                      exim                                  forked-daapd
+                                                                                                                                                3000                                    1200                                    4750
+
+           350                                               10000                                                                                                                                                                                                              2500
+                                                                                                       475
+                                                                                                                                                2950                                    1100                                    4500
+                                                             9000
+           300
+Branches
+
+
+
+
+                                                  Branches   8000
+                                                                                                       450                                      2900                                    1000
+                                                                                                                                                                                                                                4250                                            2000
+           250
+                                                                                                       425                                      2850                                    900
+                                                             7000
+                                                                                                                                                                                                                                4000
+           200                                                                                                                                                                                                                                                                  1500
+                                                             6000                                                                               2800
+                                                                                                       400                                                                              800
+           150                                                                                                                                                                                                                  3750
+                                                             5000                                                                               2750
+                                                                                                                                                                                        700                                                                                     1000
+                                                                                                       375
+           100
+                 0h   4h   8h   12h 16h 20h 24h                      0h   4h   8h   12h 16h 20h 24h           0h   4h   8h    12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h    12h 16h 20h 24h                 0h   4h   8h   12h 16h 20h 24h
+
+                           live555                                             openssh                                  openssl                                   proftpd                                pure-ftpd                               tinydtls
+                                                                                                      11000
+       3000                                                  3500                                                                               5000
+                                                                                                      10000                                                                                                                     500
+                                                             3250                                                                                                                       1200
+                                                                                                                                                4000
+                                                                                                      9000                                                                                                                                                                                       aflnet
+
+
+
+
+                                                                                                                                                                                                                                                                         Branches
+       2800                                                  3000
+                                                                                                                                                                                                                                400
+                                                                                                                                                3000                                                                                                                                             aflnet-no-state
+                                                             2750                                     8000                                                                              1000
+                                                                                                                                                                                                                                                                                                 aflnwe
+       2600                                                  2500                                     7000                                      2000                                                                            300                                                              aflpp
+                                                             2250                                                                                                                       800                                                                                                      nyxnet-none
+                                                                                                      6000
+                                                                                                                                                1000                                                                            200                                                              nyxnet-aggressive
+       2400                                                  2000
+                                                                                                      5000                                                                                                                                                                                       nyxnet-balanced
+                                                                                                                                                  0                                     600
+                 0h   4h   8h   12h 16h 20h 24h                      0h   4h   8h   12h 16h 20h 24h           0h   4h   8h    12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h   12h 16h 20h 24h          0h   4h   8h    12h 16h 20h 24h
+
+
+
+
+                                                             Figure 7. The median branch coverage across 10 experiments of all fuzzers on all ProFuzzBench targets.
+
+
+
+
+                                                                                                                                                                 16
+

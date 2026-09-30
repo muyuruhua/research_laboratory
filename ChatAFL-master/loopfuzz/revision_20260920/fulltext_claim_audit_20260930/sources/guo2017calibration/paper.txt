@@ -1,0 +1,686 @@
+                             On Calibration of Modern Neural Networks
+
+
+                            Chuan Guo * 1 Geoff Pleiss * 1 Yu Sun * 1 Kilian Q. Weinberger 1
+
+
+                          Abstract                                                         LeNet (1998)             ResNet (2016)
+                                                                                            CIFAR-100                CIFAR-100
+                                                                                   1.0
+      Confidence calibration – the problem of predict-
+
+
+
+
+                                                                                                    Accuracy
+
+
+
+
+                                                                                                                             Accuracy
+                                                                                              Avg. confidence
+
+
+
+
+                                                                                                                                        Avg. confidence
+      ing probability estimates representative of the                              0.8
+
+
+
+
+                                                                    % of Samples
+      true correctness likelihood – is important for
+                                                                                   0.6
+      classification models in many applications. We
+      discover that modern neural networks, unlike                                 0.4
+      those from a decade ago, are poorly calibrated.
+      Through extensive experiments, we observe that                               0.2
+      depth, width, weight decay, and Batch Normal-                                0.0
+      ization are important factors influencing calibra-                              0.0 0.2 0.4 0.6 0.8 1.0   0.0 0.2 0.4 0.6 0.8 1.0
+      tion. We evaluate the performance of various                                 1.0
+                                                                                             Outputs                   Outputs
+      post-processing calibration methods on state-of-                             0.8       Gap                       Gap
+      the-art architectures with image and document
+                                                                    Accuracy
+
+
+      classification datasets. Our analysis and exper-                             0.6
+      iments not only offer insights into neural net-                              0.4
+      work learning, but also provide a simple and
+      straightforward recipe for practical settings: on                            0.2
+                                                                                              Error=44.9                Error=30.6
+      most datasets, temperature scaling – a single-                               0.0
+      parameter variant of Platt Scaling – is surpris-                                0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0
+      ingly effective at calibrating predictions.                                                     Confidence
+
+                                                                     Figure 1. Confidence histograms (top) and reliability diagrams
+                                                                     (bottom) for a 5-layer LeNet (left) and a 110-layer ResNet (right)
+1. Introduction                                                      on CIFAR-100. Refer to the text below for detailed illustration.
+Recent advances in deep learning have dramatically im-
+                                                                     If the detection network is not able to confidently predict
+proved neural network accuracy (Simonyan & Zisserman,
+                                                                     the presence or absence of immediate obstructions, the car
+2015; Srivastava et al., 2015; He et al., 2016; Huang et al.,
+                                                                     should rely more on the output of other sensors for braking.
+2016; 2017). As a result, neural networks are now entrusted
+                                                                     Alternatively, in automated health care, control should be
+with making complex decisions in applications, such as ob-
+                                                                     passed on to human doctors when the confidence of a dis-
+ject detection (Girshick, 2015), speech recognition (Han-
+                                                                     ease diagnosis network is low (Jiang et al., 2012). Specif-
+nun et al., 2014), and medical diagnosis (Caruana et al.,
+                                                                     ically, a network should provide a calibrated confidence
+2015). In these settings, neural networks are an essential
+                                                                     measure in addition to its prediction. In other words, the
+component of larger decision making pipelines.
+                                                                     probability associated with the predicted class label should
+In real-world decision making systems, classification net-           reflect its ground truth correctness likelihood.
+works must not only be accurate, but also should indicate
+                                                                     Calibrated confidence estimates are also important for
+when they are likely to be incorrect. As an example, con-
+                                                                     model interpretability. Humans have a natural cognitive in-
+sider a self-driving car that uses a neural network to detect
+                                                                     tuition for probabilities (Cosmides & Tooby, 1996). Good
+pedestrians and other obstructions (Bojarski et al., 2016).
+                                                                     confidence estimates provide a valuable extra bit of infor-
+  *
+    Equal contribution, alphabetical order. 1 Cornell University.    mation to establish trustworthiness with the user – espe-
+Correspondence to: Chuan Guo <cg563@cornell.edu>, Geoff              cially for neural networks, whose classification decisions
+Pleiss <geoff@cs.cornell.edu>, Yu Sun <ys646@cornell.edu>.           are often difficult to interpret. Further, good probability
+                                                                     estimates can be used to incorporate neural networks into
+Proceedings of the 34 th International Conference on Machine
+Learning, Sydney, Australia, PMLR 70, 2017. Copyright 2017           other probabilistic models. For example, one can improve
+by the author(s).                                                    performance by combining network outputs with a lan-
+guage model in speech recognition (Hannun et al., 2014;            0.8, we expect that 80 should be correctly classified. More
+Xiong et al., 2016), or with camera information for object         formally, we define perfect calibration as
+detection (Kendall & Cipolla, 2016).                                                           
+                                                                             P Ŷ = Y | P̂ = p = p, ∀p ∈ [0, 1]            (1)
+In 2005, Niculescu-Mizil & Caruana (2005) showed that
+                                                                   where the probability is over the joint distribution. In all
+neural networks typically produce well-calibrated proba-
+                                                                   practical settings, achieving perfect calibration is impos-
+bilities on binary classification tasks. While neural net-
+                                                                   sible. Additionally, the probability in (1) cannot be com-
+works today are undoubtedly more accurate than they were
+                                                                   puted using finitely many samples since P̂ is a continuous
+a decade ago, we discover with great surprise that mod-
+                                                                   random variable. This motivates the need for empirical ap-
+ern neural networks are no longer well-calibrated. This
+                                                                   proximations that capture the essence of (1).
+is visualized in Figure 1, which compares a 5-layer LeNet
+(left) (LeCun et al., 1998) with a 110-layer ResNet (right)
+(He et al., 2016) on the CIFAR-100 dataset. The top row            Reliability Diagrams (e.g. Figure 1 bottom) are a visual
+shows the distribution of prediction confidence (i.e. prob-        representation of model calibration (DeGroot & Fienberg,
+abilities associated with the predicted label) as histograms.      1983; Niculescu-Mizil & Caruana, 2005). These diagrams
+The average confidence of LeNet closely matches its accu-          plot expected sample accuracy as a function of confidence.
+racy, while the average confidence of the ResNet is substan-       If the model is perfectly calibrated – i.e. if (1) holds – then
+tially higher than its accuracy. This is further illustrated in    the diagram should plot the identity function. Any devia-
+the bottom row reliability diagrams (DeGroot & Fienberg,           tion from a perfect diagonal represents miscalibration.
+1983; Niculescu-Mizil & Caruana, 2005), which show ac-             To estimate the expected accuracy from finite samples, we
+curacy as a function of confidence. We see that LeNet is           group predictions into M interval bins (each of size 1/M )
+well-calibrated, as confidence closely approximates the ex-        and calculate the accuracy of each bin. Let Bm be the set
+pected accuracy (i.e. the bars align roughly along the diag-       of indices of samples whose prediction confidence falls into
+onal). On the other hand, the ResNet’s accuracy is better,         the interval Im = ( m−1
+                                                                                        M , M ]. The accuracy of Bm is
+                                                                                            m
+but does not match its confidence.
+                                                                                             1 X
+Our goal is not only to understand why neural networks                         acc(Bm ) =              1(ŷi = yi ),
+                                                                                           |Bm |
+                                                                                                   i∈Bm
+have become miscalibrated, but also to identify what meth-
+ods can alleviate this problem. In this paper, we demon-           where ŷi and yi are the predicted and true class labels for
+strate on several computer vision and NLP tasks that neu-          sample i. Basic probability tells us that acc(Bm ) is an un-
+ral networks produce confidences that cannot represent true        biased and consistent estimator of P(Ŷ = Y | P̂ ∈ Im ).
+probabilities. Additionally, we offer insight and intuition        We define the average confidence within bin Bm as
+into network training and architectural trends that may                                            1 X
+                                                                                  conf(Bm ) =                 p̂i ,
+cause miscalibration. Finally, we compare various post-                                         |Bm |
+                                                                                                        i∈Bm
+processing calibration methods on state-of-the-art neural
+networks, and introduce several extensions of our own.             where p̂i is the confidence for sample i. acc(Bm ) and
+Surprisingly, we find that a single-parameter variant of Platt     conf(Bm ) approximate the left-hand and right-hand sides
+scaling (Platt et al., 1999) – which we refer to as temper-        of (1) respectively for bin Bm . Therefore, a perfectly cal-
+ature scaling – is often the most effective method at ob-          ibrated model will have acc(Bm ) = conf(Bm ) for all
+taining calibrated probabilities. Because this method is           m ∈ {1, . . . , M }. Note that reliability diagrams do not dis-
+straightforward to implement with existing deep learning           play the proportion of samples in a given bin, and thus can-
+frameworks, it can be easily adopted in practical settings.        not be used to estimate how many samples are calibrated.
+
+
+2. Definitions                                                     Expected Calibration Error (ECE). While reliability
+                                                                   diagrams are useful visual tools, it is more convenient to
+The problem we address in this paper is supervised multi-          have a scalar summary statistic of calibration. Since statis-
+class classification with neural networks. The input X ∈ X         tics comparing two distributions cannot be comprehensive,
+and label Y ∈ Y = {1, . . . , K} are random variables              previous works have proposed variants, each with a unique
+that follow a ground truth joint distribution π(X, Y ) =           emphasis. One notion of miscalibration is the difference in
+π(Y |X)π(X). Let h be a neural network with h(X) =                 expectation between confidence and accuracy, i.e.
+(Ŷ , P̂ ), where Ŷ is a class prediction and P̂ is its associ-                   h                          i
+                                                                                 E P Ŷ = Y | P̂ = p − p                    (2)
+ated confidence, i.e. probability of correctness. We would                       P̂
+like the confidence estimate P̂ to be calibrated, which in-        Expected Calibration Error (Naeini et al., 2015) – or ECE
+tuitively means that P̂ represents a true probability. For         – approximates (2) by partitioning predictions into M
+example, given 100 predictions, each with confidence of            equally-spaced bins (similar to the reliability diagrams) and
+                        Varying Depth                 Varying Width                Using Normalization           Varying Weight Decay
+                      ResNet - CIFAR-100           ResNet-14 - CIFAR-100           ConvNet - CIFAR-100          ResNet-110 - CIFAR-100
+            0.7
+                                        Error                        Error                          Error                           Error
+            0.6
+                                        ECE                          ECE                            ECE                             ECE
+            0.5
+Error/ECE
+
+
+
+
+            0.4
+            0.3
+            0.2
+            0.1
+            0.0
+                  0    20 40 60 80 100 120        0   50 100 150 200 250 300       Without     With           10−5    10−4    10−3      10−2
+                            Depth                      Filters per layer           Batch Normalization                Weight decay
+
+ Figure 2. The effect of network depth (far left), width (middle left), Batch Normalization (middle right), and weight decay (far right) on
+ miscalibration, as measured by ECE (lower is better).
+
+ taking a weighted average of the bins’ accuracy/confidence                    3. Observing Miscalibration
+ difference. More precisely,
+                                                                               The architecture and training procedures of neural net-
+                        XM
+                            |Bm |                                              works have rapidly evolved in recent years. In this sec-
+                  ECE =           acc(Bm ) − conf(Bm ) ,              (3)
+                              n                                                tion we identify some recent changes that are responsible
+                        m=1
+                                                                               for the miscalibration phenomenon observed in Figure 1.
+ where n is the number of samples. The difference between
+                                                                               Though we cannot claim causality, we find that model
+ acc and conf for a given bin represents the calibration gap
+                                                                               capacity and lack of regularization are closely related to
+ (red bars in reliability diagrams – e.g. Figure 1). We use
+                                                                               model (mis)calibration.
+ ECE as the primary empirical metric to measure calibra-
+ tion. See Section S1 for more analysis of this metric.
+                                                                               Model capacity. The model capacity of neural networks
+ Maximum Calibration Error (MCE). In high-risk ap-                             has increased at a dramatic pace over the past few years.
+ plications where reliable confidence measures are abso-                       It is now common to see networks with hundreds, if not
+ lutely necessary, we may wish to minimize the worst-case                      thousands of layers (He et al., 2016; Huang et al., 2016)
+ deviation between confidence and accuracy:                                    and hundreds of convolutional filters per layer (Zagoruyko
+                                                                             & Komodakis, 2016). Recent work shows that very deep
+              max P Ŷ = Y | P̂ = p − p .             (4)                      or wide models are able to generalize better than smaller
+                        p∈[0,1]
+                                                                               ones, while exhibiting the capacity to easily fit the training
+ The Maximum Calibration Error (Naeini et al., 2015) – or                      set (Zhang et al., 2017).
+ MCE – estimates an upper bound of this deviation. Simi-
+ larly to ECE, this approximation involves binning:                            Although increasing depth and width may reduce classi-
+                                                                               fication error, we observe that these increases negatively
+                  MCE =           max     |acc(Bm ) − conf(Bm )| .    (5)
+                           m∈{1,...,M }                                        affect model calibration. Figure 2 displays error and ECE
+ In reliability diagrams, MCE measures the largest calibra-                    as a function of depth and width on a ResNet trained on
+ tion gap (red bars) across all bins, whereas ECE measures a                   CIFAR-100. The far left figure varies depth for a network
+ weighted average of all gaps. For perfectly calibrated clas-                  with 64 convolutional filters per layer, while the middle left
+ sifiers, MCE and ECE both equal 0.                                            figure fixes the depth at 14 layers and varies the number
+                                                                               of convolutional filters per layer. Though even the small-
+ Negative log likelihood is a standard measure of a prob-                      est models in the graph exhibit some degree of miscalibra-
+ abilistic model’s quality (Friedman et al., 2001). It is also                 tion, the ECE metric grows substantially with model ca-
+ referred to as the cross entropy loss in the context of deep                  pacity. During training, after the model is able to correctly
+ learning (Bengio et al., 2015). Given a probabilistic model                   classify (almost) all training samples, NLL can be further
+ π̂(Y |X) and n samples, NLL is defined as:                                    minimized by increasing the confidence of predictions. In-
+                           n
+                                                                               creased model capacity will lower training NLL, and thus
+                          X
+                   L=−        log(π̂(yi |xi ))             (6)                 the model will be more (over)confident on average.
+                                        i=1
+ It is a standard result (Friedman et al., 2001) that, in expec-               Batch Normalization (Ioffe & Szegedy, 2015) improves
+ tation, NLL is minimized if and only if π̂(Y |X) recovers                     the optimization of neural networks by minimizing distri-
+ the ground truth conditional distribution π(Y |X).                            bution shifts in activations within the neural network’s hid-
+                                     NLL Overfitting on CIFAR−100               plays training error and ECE for a 110-layer ResNet with
+                              45
+                                                                 Test error     varying amounts of weight decay. The only other forms
+                                                                 Test NLL       of regularization are data augmentation and Batch Normal-
+                              40                                                ization. We observe that calibration and accuracy are not
+   Error (%) / NLL (scaled)
+
+
+
+
+                                                                                optimized by the same parameter setting. While the model
+                              35                                                exhibits both over-regularization and under-regularization
+                                                                                with respect to classification error, it does not appear that
+                                                                                calibration is negatively impacted by having too much
+                              30
+                                                                                weight decay. Model calibration continues to improve
+                                                                                when more regularization is added, well after the point of
+                              25                                                achieving optimal accuracy. The slight uptick at the end of
+                                                                                the graph may be an artifact of using a weight decay factor
+                                                                                that impedes optimization.
+                              20
+                                0   100     200           300   400       500
+                                                  Epoch
+                                                                                NLL can be used to indirectly measure model calibra-
+                                                                                tion. In practice, we observe a disconnect between NLL
+Figure 3. Test error and NLL of a 110-layer ResNet with stochas-
+tic depth on CIFAR-100 during training. NLL is scaled by a con-                 and accuracy, which may explain the miscalibration in Fig-
+stant to fit in the figure. Learning rate drops by 10x at epochs 250            ure 2. This disconnect occurs because neural networks can
+and 375. The shaded area marks between epochs at which the best                 overfit to NLL without overfitting to the 0/1 loss. We ob-
+validation loss and best validation error are produced.                         serve this trend in the training curves of some miscalibrated
+                                                                                models. Figure 3 shows test error and NLL (rescaled to
+den layers. Recent research suggests that these normal-                         match error) on CIFAR-100 as training progresses. Both
+ization techniques have enabled the development of very                         error and NLL immediately drop at epoch 250, when the
+deep architectures, such as ResNets (He et al., 2016) and                       learning rate is dropped; however, NLL overfits during the
+DenseNets (Huang et al., 2017). It has been shown that                          remainder of training. Surprisingly, overfitting to NLL is
+Batch Normalization improves training time, reduces the                         beneficial to classification accuracy. On CIFAR-100, test
+need for additional regularization, and can in some cases                       error drops from 29% to 27% in the region where NLL
+improve the accuracy of networks.                                               overfits. This phenomenon renders a concrete explanation
+While it is difficult to pinpoint exactly how Batch Normal-                     of miscalibration: the network learns better classification
+ization affects the final predictions of a model, we do ob-                     accuracy at the expense of well-modeled probabilities.
+serve that models trained with Batch Normalization tend to                      We can connect this finding to recent work examining the
+be more miscalibrated. In the middle right plot of Figure 2,                    generalization of large neural networks. Zhang et al. (2017)
+we see that a 6-layer ConvNet obtains worse calibration                         observe that deep neural networks seemingly violate the
+when Batch Normalization is applied, even though classi-                        common understanding of learning theory that large mod-
+fication accuracy improves slightly. We find that this result                   els with little regularization will not generalize well. The
+holds regardless of the hyperparameters used on the Batch                       observed disconnect between NLL and 0/1 loss suggests
+Normalization model (i.e. low or high learning rate, etc.).                     that these high capacity models are not necessarily immune
+                                                                                from overfitting, but rather, overfitting manifests in proba-
+Weight decay, which used to be the predominant regu-                            bilistic error rather than classification error.
+larization mechanism for neural networks, is decreasingly
+utilized when training modern neural networks. Learning                         4. Calibration Methods
+theory suggests that regularization is necessary to prevent
+overfitting, especially as model capacity increases (Vapnik,                    In this section, we first review existing calibration meth-
+1998). However, due to the apparent regularization effects                      ods, and introduce new variants of our own. All methods
+of Batch Normalization, recent research seems to suggest                        are post-processing steps that produce (calibrated) proba-
+that models with less L2 regularization tend to generalize                      bilities. Each method requires a hold-out validation set,
+better (Ioffe & Szegedy, 2015). As a result, it is now com-                     which in practice can be the same set used for hyperparam-
+mon to train models with little weight decay, if any at all.                    eter tuning. We assume that the training, validation, and
+The top performing ImageNet models of 2015 all use an or-                       test sets are drawn from the same distribution.
+der of magnitude less weight decay than models of previous
+years (He et al., 2016; Simonyan & Zisserman, 2015).                            4.1. Calibrating Binary Models
+We find that training with less weight decay has a negative                     We first introduce calibration in the binary setting, i.e.
+impact on calibration. The far right plot in Figure 2 dis-                      Y = {0, 1}. For simplicity, throughout this subsection,
+we assume the model outputs only the confidence for the               model averaging. Essentially, BBQ marginalizes out all
+positive class.1 Given a sample xi , we have access to p̂i –          possible binning schemes to produce q̂i . More formally, a
+the network’s predicted probability of yi = 1, as well as             binning scheme s is a pair (M, I) where M is the number
+zi ∈ R – which is the network’s non-probabilistic output,             of bins, and I is a corresponding partitioning of [0, 1] into
+or logit. The predicted probability p̂i is derived from zi us-        disjoint intervals (0 = a1 ≤ a2 ≤ . . . ≤ aM +1 = 1). The
+ing a sigmoid function σ; i.e. p̂i = σ(zi ). Our goal is to           parameters of a binning scheme are θ1 , . . . , θM . Under this
+produce a calibrated probability q̂i based on yi , p̂i , and zi .     framework, histogram binning and isotonic regression both
+                                                                      produce a single binning scheme, whereas BBQ considers
+Histogram binning (Zadrozny & Elkan, 2001) is a sim-                  a space S of all possible binning schemes for the valida-
+ple non-parametric calibration method. In a nutshell, all             tion dataset D. BBQ performs Bayesian averaging of the
+uncalibrated predictions p̂i are divided into mutually ex-            probabilities produced by each scheme:2
+                                                                                            X
+clusive bins B1 , . . . , BM . Each bin is assigned a calibrated       P(q̂te | p̂te , D) =   P(q̂te , S = s | p̂te , D)
+score θm ; i.e. if p̂i is assigned to bin Bm , then q̂i = θm . At                             s∈S
+test time, if prediction p̂te falls into bin Bm , then the cali-                              X
+brated prediction q̂te is θm . More precisely, for a suitably
+                                                                                          =         P(q̂te | p̂te , S = s, D) P(S = s | D).
+                                                                                              s∈S
+chosen M (usually small), we first define bin boundaries
+0 = a1 ≤ a2 ≤ . . . ≤ aM +1 = 1, where the bin Bm                     where P(q̂te | p̂te , S = s, D) is the calibrated probability
+is defined by the interval (am , am+1 ]. Typically the bin            using binning scheme s. Using a uniform prior, the weight
+boundaries are either chosen to be equal length intervals or          P(S = s | D) can be derived using Bayes’ rule:
+to equalize the number of samples in each bin. The predic-                                            P(D | S = s)
+tions θi are chosen to minimize the bin-wise squared loss:                      P(S = s | D) = P                      0
+                                                                                                                        .
+                                                                                                    s0 ∈S P(D | S = s )
+                                                                      The parameters θ1 , . . . , θM can be viewed as parameters of
+               M X
+               X n
+                                                          2           M independent binomial distributions. Hence, by placing
+    min                  1(am ≤ p̂i < am+1 ) (θm − yi ) , (7)
+  θ1 ,...,θM                                                          a Beta prior on θ1 , . . . , θM , we can obtain a closed form
+               m=1 i=1
+                                                                      expression for the marginal likelihood P(D | S = s). This
+where 1 is the indicator function. Given fixed bins bound-
+                                                                      allows us to compute P(q̂te | p̂te , D) for any test input.
+aries, the solution to (7) results in θm that correspond to the
+average number of positive-class samples in bin Bm .
+                                                                      Platt scaling (Platt et al., 1999) is a parametric approach
+                                                                      to calibration, unlike the other approaches. The non-
+Isotonic regression (Zadrozny & Elkan, 2002), arguably                probabilistic predictions of a classifier are used as features
+the most common non-parametric calibration method,                    for a logistic regression model, which is trained on the val-
+learns a piecewise constant function f to transform un-               idation set to return probabilities. More specifically, in the
+calibrated outputs; i.e. q̂i = f (p̂i ). Specifically, iso-           context of neural networks (Niculescu-Mizil & Caruana,
+tonic
+Pn regression produces           f to minimize the square loss        2005), Platt scaling learns scalar parameters a, b ∈ R and
+   i=1 (f (p̂i ) − y i )2
+                          . Because f is constrained to be piece-     outputs q̂i = σ(azi + b) as the calibrated probability. Pa-
+wise constant, we can write the optimization problem as:              rameters a and b can be optimized using the NLL loss over
+                                                                      the validation set. It is important to note that the neural
+                  M X
+                  X n
+                                                              2       network’s parameters are fixed during this stage.
+       min                  1(am ≤ p̂i < am+1 ) (θm − yi )
+         M
+    θ1 ,...,θM   m=1 i=1
+   a1 ,...,aM +1                                                      4.2. Extension to Multiclass Models
+    subject to 0 = a1 ≤ a2 ≤ . . . ≤ aM +1 = 1,                       For classification problems involving K > 2 classes, we
+                  θ1 ≤ θ2 ≤ . . . ≤ θM .                              return to the original problem formulation. The network
+where M is the number of intervals; a1 , . . . , aM +1 are the        outputs a class prediction ŷi and confidence score p̂i for
+interval boundaries; and θ1 , . . . , θM are the function val-        each input xi . In this case, the network logits zi are vectors,
+                                                                                                (k)
+ues. Under this parameterization, isotonic regression is a            where ŷi = argmaxk zi , and p̂i is typically derived using
+strict generalization of histogram binning in which the bin           the softmax function σSM :
+boundaries and bin predictions are jointly optimized.                                  exp(zi )
+                                                                                                     (k)
+                                                                      σSM (zi )(k) = PK        (j)
+                                                                                                   ,             p̂i = max σSM (zi )(k) .
+                                                                                                                         k
+                                                                                      j=1 exp(zi )
+Bayesian Binning into Quantiles (BBQ) (Naeini et al.,
+2015) is a extension of histogram binning using Bayesian              The goal is to produce a calibrated confidence q̂i and (pos-
+                                                                      sibly new) class prediction ŷi0 based on yi , ŷi , p̂i , and zi .
+  1
+    This is in contrast with the setting in Section 2, in which the
+                                                                         2
+model produces both a class prediction and confidence.                       Because the validation dataset is finite, S is as well.
+      Dataset                Model      Uncalibrated   Hist. Binning   Isotonic   BBQ     Temp. Scaling   Vector Scaling   Matrix Scaling
+       Birds             ResNet 50        9.19%           4.34%        5.22%      4.12%      1.85%             3.0%           21.13%
+       Cars              ResNet 50         4.3%           1.74%        4.29%      1.84%      2.35%            2.37%            10.5%
+    CIFAR-10            ResNet 110         4.6%           0.58%        0.81%      0.54%      0.83%            0.88%            1.0%
+    CIFAR-10          ResNet 110 (SD)     4.12%           0.67%        1.11%       0.9%       0.6%            0.64%            0.72%
+    CIFAR-10          Wide ResNet 32      4.52%           0.72%        1.08%      0.74%      0.54%             0.6%            0.72%
+    CIFAR-10           DenseNet 40        3.28%           0.44%        0.61%      0.81%      0.33%            0.41%            0.41%
+    CIFAR-10              LeNet 5         3.02%           1.56%        1.85%      1.59%      0.93%            1.15%            1.16%
+    CIFAR-100           ResNet 110        16.53%          2.66%        4.99%      5.46%      1.26%            1.32%           25.49%
+    CIFAR-100         ResNet 110 (SD)     12.67%          2.46%        4.16%      3.58%      0.96%            0.9%            20.09%
+    CIFAR-100         Wide ResNet 32       15.0%          3.01%        5.85%      5.77%      2.32%            2.57%           24.44%
+    CIFAR-100          DenseNet 40        10.37%          2.68%        4.51%      3.59%      1.18%            1.09%           21.87%
+    CIFAR-100             LeNet 5          4.85%          6.48%        2.35%      3.77%      2.02%            2.09%           13.24%
+     ImageNet          DenseNet 161       6.28%           4.52%        5.18%      3.51%      1.99%            2.24%               -
+     ImageNet           ResNet 152        5.48%           4.36%        4.77%      3.56%      1.86%            2.23%               -
+      SVHN            ResNet 152 (SD)     0.44%           0.14%        0.28%      0.22%      0.17%            0.27%            0.17%
+     20 News              DAN 3           8.02%           3.6%         5.52%      4.98%      4.11%            4.61%            9.1%
+     Reuters              DAN 3           0.85%           1.75%        1.15%      0.97%      0.91%            0.66%           1.58%
+   SST Binary           TreeLSTM          6.63%           1.93%        1.65%      2.27%      1.84%            1.84%           1.84%
+ SST Fine Grained       TreeLSTM          6.71%           2.09%        1.65%      2.61%      2.56%            2.98%           2.39%
+
+Table 1. ECE (%) (with M = 15 bins) on standard vision and NLP datasets before calibration and with various calibration methods.
+The number following a model’s name denotes the network depth.
+
+Extension of binning methods. One common way of ex-                     T is called the temperature, and it “softens” the softmax
+tending binary calibration methods to the multiclass setting            (i.e. raises the output entropy) with T > 1. As T → ∞,
+is by treating the problem as K one-versus-all problems                 the probability q̂i approaches 1/K, which represents max-
+(Zadrozny & Elkan, 2002). For k = 1, . . . , K, we form a               imum uncertainty. With T = 1, we recover the original
+binary calibration problem where the label is 1(yi = k)                 probability p̂i . As T → 0, the probability collapses to a
+and the predicted probability is σSM (zi )(k) . This gives              point mass (i.e. q̂i = 1). T is optimized with respect to
+us K calibration models, each for a particular class. At                NLL on the validation set. Because the parameter T does
+test time, we obtain an unnormalized probability vector                 not change the maximum of the softmax function, the class
+   (1)           (K)          (k)
+[q̂i , . . . , q̂i ], where q̂i is the calibrated probability for       prediction ŷi0 remains unchanged. In other words, temper-
+class k. The new class prediction ŷi0 is the argmax of the             ature scaling does not affect the model’s accuracy.
+vector, and the new confidence q̂i0 is the max of the vector            Temperature scaling is commonly used in settings such as
+                     PK (k)
+normalized by k=1 q̂i . This extension can be applied                   knowledge distillation (Hinton et al., 2015) and statistical
+to histogram binning, isotonic regression, and BBQ.                     mechanics (Jaynes, 1957). To the best of our knowledge,
+                                                                        we are not aware of any prior use in the context of calibrat-
+Matrix and vector scaling are two multi-class exten-                    ing probabilistic models.3 The model is equivalent to max-
+sions of Platt scaling. Let zi be the logits vector produced            imizing the entropy of the output probability distribution
+before the softmax layer for input xi . Matrix scaling ap-              subject to certain constraints on the logits (see Section S2).
+plies a linear transformation Wzi + b to the logits:
+                q̂i = max σSM (Wzi + b)(k) ,                            4.3. Other Related Works
+                         k
+                                                               (8)      Calibration and confidence scores have been studied in var-
+                ŷi0 = argmax (Wzi + b)(k) .                            ious contexts in recent years. Kuleshov & Ermon (2016)
+                             k
+The parameters W and b are optimized with respect to                    study the problem of calibration in the online setting, where
+NLL on the validation set. As the number of parameters                  the inputs can come from a potentially adversarial source.
+for matrix scaling grows quadratically with the number of               Kuleshov & Liang (2015) investigate how to produce cal-
+classes K, we define vector scaling as a variant where W                ibrated probabilities when the output space is a structured
+is restricted to be a diagonal matrix.                                  object. Lakshminarayanan et al. (2016) use ensembles of
+                                                                        networks to obtain uncertainty estimates. Pereyra et al.
+                                                                        (2017) penalize overconfident predictions as a form of reg-
+Temperature scaling, the simplest extension of Platt                    ularization. Hendrycks & Gimpel (2017) use confidence
+scaling, uses a single scalar parameter T > 0 for all classes.
+                                                                            3
+Given the logit vector zi , the new confidence prediction is                To highlight the connection with prior works we define tem-
+                                                                        perature scaling in terms of T1 instead of a multiplicative scalar.
+                    q̂i = max σSM (zi /T )(k) .                (9)
+                             k
+scores to determine if samples are out-of-distribution.         3. Stanford Sentiment Treebank (SST) (Socher et al.,
+                                                                   2013): Movie reviews, represented as sentence parse
+Bayesian neural networks (Denker & Lecun, 1990;
+                                                                   trees that are annotated by sentiment. Each sample in-
+MacKay, 1992) return a probability distribution over out-
+                                                                   cludes a coarse binary label and a fine grained 5-class
+puts as an alternative way to represent model uncertainty.
+                                                                   label. As described in (Tai et al., 2015), the train-
+Gal & Ghahramani (2016) draw a connection between
+                                                                   ing/validation/test sets contain 6920/872/1821 docu-
+Dropout (Srivastava et al., 2014) and model uncertainty,
+                                                                   ments for binary, and 544/1101/2210 for fine-grained.
+claiming that sampling models with dropped nodes is a
+way to estimate the probability distribution over all pos-     On 20 News and Reuters, we train Deep Averaging Net-
+sible models for a given sample. Kendall & Gal (2017)          works (DANs) (Iyyer et al., 2015) with 3 feed-forward
+combine this approach with a model that outputs a predic-      layers and Batch Normalization. These networks obtain
+tive mean and variance for each data point. This notion        competitive accuracy using the optimization hyperparam-
+of uncertainty is not restricted to classification problems.   eters suggested by the original paper. On SST, we train
+In contrast, our framework, which does not require model       TreeLSTMs (Long Short Term Memory) (Tai et al., 2015)
+sampling, returns a confidence for a given output rather       using the default settings in the authors’ code.
+than returning a distribution of possible outputs.
+                                                               Calibration Results. Table 1 displays model calibration,
+5. Results                                                     as measured by ECE (with M = 15 bins), before and af-
+                                                               ter applying the various methods (see Section S3 for MCE,
+We apply the calibration methods in Section 4 to image         NLL, and error tables). It is worth noting that most datasets
+classification and document classification neural networks.    and models experience some degree of miscalibration, with
+For image classification we use 6 datasets:                    ECE typically between 4 to 10%. This is not architecture
+                                                               specific: we observe miscalibration on convolutional net-
+ 1. Caltech-UCSD Birds (Welinder et al., 2010):
+                                                               works (with and without skip connections), recurrent net-
+    200 bird species.         5994/2897/2897 images for
+                                                               works, and deep averaging networks. The two notable ex-
+    train/validation/test sets.
+                                                               ceptions are SVHN and Reuters, both of which experience
+ 2. Stanford Cars (Krause et al., 2013): 196 classes of
+                                                               ECE values below 1%. Both of these datasets have very
+    cars by make, model, and year. 8041/4020/4020 im-
+                                                               low error (1.98% and 2.97%, respectively); and therefore
+    ages for train/validation/test.
+                                                               the ratio of ECE to error is comparable to other datasets.
+ 3. ImageNet 2012 (Deng et al., 2009): Natural scene im-
+    ages from 1000 classes. 1.3 million/25,000/25,000          Our most important discovery is the surprising effective-
+    images for train/validation/test.                          ness of temperature scaling despite its remarkable simplic-
+ 4. CIFAR-10/CIFAR-100 (Krizhevsky & Hinton, 2009):            ity. Temperature scaling outperforms all other methods on
+    Color images (32 × 32) from 10/100 classes.                the vision tasks, and performs comparably to other methods
+    45,000/5,000/10,000 images for train/validation/test.      on the NLP datasets. What is perhaps even more surpris-
+ 5. Street View House Numbers (SVHN) (Netzer et al.,           ing is that temperature scaling outperforms the vector and
+    2011):     32 × 32 colored images of cropped               matrix Platt scaling variants, which are strictly more gen-
+    out house numbers from Google Street View.                 eral methods. In fact, vector scaling recovers essentially
+    604,388/6,000/26,032 images for train/validation/test.     the same solution as temperature scaling – the learned vec-
+                                                               tor has nearly constant entries, and therefore is no different
+We train state-of-the-art convolutional networks: ResNets      than a scalar transformation. In other words, network mis-
+(He et al., 2016), ResNets with stochastic depth (SD)          calibration is intrinsically low dimensional.
+(Huang et al., 2016), Wide ResNets (Zagoruyko & Ko-
+modakis, 2016), and DenseNets (Huang et al., 2017). We         The only dataset that temperature scaling does not calibrate
+use the data preprocessing, training procedures, and hyper-    is the Reuters dataset. In this instance, only one of the
+parameters as described in each paper. For Birds and Cars,     above methods is able to improve calibration. Because this
+we fine-tune networks pretrained on ImageNet.                  dataset is well-calibrated to begin with (ECE ≤ 1%), there
+                                                               is not much room for improvement with any method, and
+For document classification we experiment with 4 datasets:     post-processing may not even be necessary to begin with.
+                                                               It is also possible that our measurements are affected by
+ 1. 20 News: News articles, partitioned into 20 cate-
+                                                               dataset split or by the particular binning scheme.
+    gories by content. 9034/2259/7528 documents for
+    train/validation/test.                                     Matrix scaling performs poorly on datasets with hundreds
+ 2. Reuters: News articles, partitioned into 8 cate-           of classes (i.e. Birds, Cars, and CIFAR-100), and fails
+    gories by topic. 4388/1097/2189 documents for              to converge on the 1000-class ImageNet dataset. This is
+    train/validation/test.                                     expected, since the number of parameters scales quadrat-
+                 Uncal. - CIFAR-100            Temp. Scale - CIFAR-100            Hist. Bin. - CIFAR-100            Iso. Reg. - CIFAR-100
+                  ResNet-110 (SD)                 ResNet-110 (SD)                    ResNet-110 (SD)                   ResNet-110 (SD)
+           1.0
+                      Outputs                          Outputs                           Outputs                           Outputs
+           0.8        Gap                              Gap                               Gap                               Gap
+Accuracy
+
+
+
+
+           0.6
+
+           0.4
+
+           0.2
+                        ECE=12.67                          ECE=0.96                          ECE=2.46                         ECE=4.16
+           0.0
+              0.0 0.2 0.4 0.6 0.8 1.0         0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0                    0.0 0.2 0.4 0.6 0.8 1.0
+                                                               Confidence
+
+             Figure 4. Reliability diagrams for CIFAR-100 before (far left) and after calibration (middle left, middle right, far right).
+
+
+ically with the number of classes. Any calibration model                     ing solution with conjugate gradient descent requires at
+with tens of thousands (or more) parameters will overfit to                  least 2 orders of magnitude more time. Histogram binning
+a small validation set, even when applying regularization.                   and isotonic regression take an order of magnitude longer
+                                                                             than temperature scaling, and BBQ takes roughly 3 orders
+Binning methods improve calibration on most datasets, but
+                                                                             of magnitude more time.
+do not outperform temperature scaling. Additionally, bin-
+ning methods tend to change class predictions which hurts
+accuracy (see Section S3). Histogram binning, the simplest                   Ease of implementation. BBQ is arguably the most dif-
+binning method, typically outperforms isotonic regression                    ficult to implement, as it requires implementing a model
+and BBQ, despite the fact that both methods are strictly                     averaging scheme. While all other methods are relatively
+more general. This further supports our finding that cali-                   easy to implement, temperature scaling may arguably be
+bration is best corrected by simple models.                                  the most straightforward to incorporate into a neural net-
+                                                                             work pipeline. In Torch7 (Collobert et al., 2011), for ex-
+Reliability diagrams. Figure 4 contains reliability dia-                     ample, we implement temperature scaling by inserting a
+grams for 110-layer ResNets on CIFAR-100 before and af-                      nn.MulConstant between the logits and the softmax,
+ter calibration. From the far left diagram, we see that the                  whose parameter is 1/T . We set T = 1 during training, and
+uncalibrated ResNet tends to be overconfident in its pre-                    subsequently find its optimal value on the validation set.
+dictions. We then can observe the effects of temperature
+scaling (middle left), histogram binning (middle right), and                 6. Conclusion
+isotonic regression (far right) on calibration. All three dis-
+played methods produce much better confidence estimates.                     Modern neural networks exhibit a strange phenomenon:
+Of the three methods, temperature scaling most closely re-                   probabilistic error and miscalibration worsen even as clas-
+covers the desired diagonal function. Each of the bins are                   sification error is reduced. We have demonstrated that
+well calibrated, which is remarkable given that all the prob-                recent advances in neural network architecture and train-
+abilities were modified by only a single parameter. We in-                   ing – model capacity, normalization, and regularization
+clude reliability diagrams for other datasets in Section S4.                 – have strong effects on network calibration. It remains
+                                                                             future work to understand why these trends affect cali-
+Computation time. All methods scale linearly with the                        bration while improving accuracy. Nevertheless, simple
+number of validation set samples. Temperature scaling                        techniques can effectively remedy the miscalibration phe-
+is by far the fastest method, as it amounts to a one-                        nomenon in neural networks. Temperature scaling is the
+dimensional convex optimization problem. Using a conju-                      simplest, fastest, and most straightforward of the methods,
+gate gradient solver, the optimal temperature can be found                   and surprisingly is often the most effective.
+in 10 iterations, or a fraction of a second on most modern
+hardware. In fact, even a naive line-search for the optimal                  Acknowledgments
+temperature is faster than any of the other methods. The
+computational complexity of vector and matrix scaling are                    The authors are supported in part by the III-1618134, III-
+linear and quadratic respectively in the number of classes,                  1526012, and IIS-1149882 grants from the National Sci-
+reflecting the number of parameters in each method. For                      ence Foundation, as well as the Bill and Melinda Gates
+CIFAR-100 (K = 100), finding a near-optimal vector scal-                     Foundation and the Office of Naval Research.
+References                                                     Hinton, Geoffrey, Vinyals, Oriol, and Dean, Jeff. Distilling
+                                                                 the knowledge in a neural network. 2015.
+Bengio, Yoshua, Goodfellow, Ian J, and Courville, Aaron.
+  Deep learning. Nature, 521:436–444, 2015.                    Huang, Gao, Sun, Yu, Liu, Zhuang, Sedra, Daniel, and
+                                                                 Weinberger, Kilian. Deep networks with stochastic
+Bojarski, Mariusz, Del Testa, Davide, Dworakowski,
+                                                                 depth. In ECCV, 2016.
+  Daniel, Firner, Bernhard, Flepp, Beat, Goyal, Prasoon,
+  Jackel, Lawrence D, Monfort, Mathew, Muller, Urs,            Huang, Gao, Liu, Zhuang, Weinberger, Kilian Q, and
+  Zhang, Jiakai, et al. End to end learning for self-driving     van der Maaten, Laurens. Densely connected convolu-
+  cars. arXiv preprint arXiv:1604.07316, 2016.                   tional networks. In CVPR, 2017.
+Caruana, Rich, Lou, Yin, Gehrke, Johannes, Koch, Paul,         Ioffe, Sergey and Szegedy, Christian. Batch normalization:
+  Sturm, Marc, and Elhadad, Noemie. Intelligible models           Accelerating deep network training by reducing internal
+  for healthcare: Predicting pneumonia risk and hospital          covariate shift. 2015.
+  30-day readmission. In KDD, 2015.
+                                                               Iyyer, Mohit, Manjunatha, Varun, Boyd-Graber, Jordan,
+Collobert, Ronan, Kavukcuoglu, Koray, and Farabet,               and Daumé III, Hal. Deep unordered composition rivals
+  Clément. Torch7: A matlab-like environment for ma-            syntactic methods for text classification. In ACL, 2015.
+  chine learning. In BigLearn Workshop, NIPS, 2011.
+                                                               Jaynes, Edwin T. Information theory and statistical me-
+Cosmides, Leda and Tooby, John. Are humans good intu-
+                                                                 chanics. Physical review, 106(4):620, 1957.
+  itive statisticians after all? rethinking some conclusions
+  from the literature on judgment under uncertainty. cog-      Jiang, Xiaoqian, Osl, Melanie, Kim, Jihoon, and Ohno-
+  nition, 58(1):1–73, 1996.                                       Machado, Lucila. Calibrating predictive model estimates
+                                                                  to support personalized medicine. Journal of the Amer-
+DeGroot, Morris H and Fienberg, Stephen E. The compar-
+                                                                  ican Medical Informatics Association, 19(2):263–274,
+  ison and evaluation of forecasters. The statistician, pp.
+                                                                  2012.
+  12–22, 1983.
+                                                               Kendall, Alex and Cipolla, Roberto. Modelling uncertainty
+Deng, Jia, Dong, Wei, Socher, Richard, Li, Li-Jia, Li, Kai,
+                                                                 in deep learning for camera relocalization. 2016.
+  and Fei-Fei, Li. Imagenet: A large-scale hierarchical
+  image database. In CVPR, pp. 248–255, 2009.                  Kendall, Alex and Gal, Yarin. What uncertainties do we
+Denker, John S and Lecun, Yann. Transforming neural-net          need in bayesian deep learning for computer vision?
+  output levels to probability distributions. In NIPS, pp.       arXiv preprint arXiv:1703.04977, 2017.
+  853–859, 1990.                                               Krause, Jonathan, Stark, Michael, Deng, Jia, and Fei-Fei,
+Friedman, Jerome, Hastie, Trevor, and Tibshirani, Robert.        Li. 3d object representations for fine-grained catego-
+  The elements of statistical learning, volume 1. Springer       rization. In IEEE Workshop on 3D Representation and
+  series in statistics Springer, Berlin, 2001.                   Recognition (3dRR), Sydney, Australia, 2013.
+
+Gal, Yarin and Ghahramani, Zoubin. Dropout as a bayesian       Krizhevsky, Alex and Hinton, Geoffrey. Learning multiple
+  approximation: Representing model uncertainty in deep          layers of features from tiny images, 2009.
+  learning. In ICML, 2016.                                     Kuleshov, Volodymyr and Ermon, Stefano. Reliable con-
+Girshick, Ross. Fast r-cnn. In ICCV, pp. 1440–1448, 2015.        fidence estimation via online learning. arXiv preprint
+                                                                 arXiv:1607.03594, 2016.
+Hannun, Awni, Case, Carl, Casper, Jared, Catanzaro,
+  Bryan, Diamos, Greg, Elsen, Erich, Prenger, Ryan,            Kuleshov, Volodymyr and Liang, Percy. Calibrated struc-
+  Satheesh, Sanjeev, Sengupta, Shubho, Coates, Adam,             tured prediction. In NIPS, pp. 3474–3482, 2015.
+  et al. Deep speech: Scaling up end-to-end speech recog-
+                                                               Lakshminarayanan, Balaji, Pritzel, Alexander, and Blun-
+  nition. arXiv preprint arXiv:1412.5567, 2014.
+                                                                 dell, Charles. Simple and scalable predictive uncer-
+He, Kaiming, Zhang, Xiangyu, Ren, Shaoqing, and Sun,             tainty estimation using deep ensembles. arXiv preprint
+  Jian. Deep residual learning for image recognition. In         arXiv:1612.01474, 2016.
+  CVPR, pp. 770–778, 2016.
+                                                               LeCun, Yann, Bottou, Léon, Bengio, Yoshua, and Haffner,
+Hendrycks, Dan and Gimpel, Kevin. A baseline for de-             Patrick. Gradient-based learning applied to document
+  tecting misclassified and out-of-distribution examples in      recognition. Proceedings of the IEEE, 86(11):2278–
+  neural networks. In ICLR, 2017.                                2324, 1998.
+                          Supplementary Materials: On Calibration of Modern Neural Networks
+
+MacKay, David JC. A practical bayesian framework for          Xiong, Wayne, Droppo, Jasha, Huang, Xuedong, Seide,
+ backpropagation networks. Neural computation, 4(3):            Frank, Seltzer, Mike, Stolcke, Andreas, Yu, Dong,
+ 448–472, 1992.                                                 and Zweig, Geoffrey. Achieving human parity in
+                                                                conversational speech recognition.  arXiv preprint
+Naeini, Mahdi Pakdaman, Cooper, Gregory F, and                  arXiv:1610.05256, 2016.
+  Hauskrecht, Milos. Obtaining well calibrated probabili-
+  ties using bayesian binning. In AAAI, pp. 2901, 2015.       Zadrozny, Bianca and Elkan, Charles. Obtaining cal-
+                                                                ibrated probability estimates from decision trees and
+Netzer, Yuval, Wang, Tao, Coates, Adam, Bissacco,
+                                                                naive bayesian classifiers. In ICML, pp. 609–616, 2001.
+  Alessandro, Wu, Bo, and Ng, Andrew Y. Reading dig-
+  its in natural images with unsupervised feature learning.   Zadrozny, Bianca and Elkan, Charles. Transforming classi-
+  In Deep Learning and Unsupervised Feature Learning            fier scores into accurate multiclass probability estimates.
+  Workshop, NIPS, 2011.                                         In KDD, pp. 694–699, 2002.
+Niculescu-Mizil, Alexandru and Caruana, Rich. Predicting      Zagoruyko, Sergey and Komodakis, Nikos. Wide residual
+  good probabilities with supervised learning. In ICML,         networks. In BMVC, 2016.
+  pp. 625–632, 2005.
+                                                              Zhang, Chiyuan, Bengio, Samy, Hardt, Moritz, Recht, Ben-
+Pereyra, Gabriel, Tucker, George, Chorowski, Jan, Kaiser,       jamin, and Vinyals, Oriol. Understanding deep learning
+  Łukasz, and Hinton, Geoffrey. Regularizing neural             requires rethinking generalization. In ICLR, 2017.
+  networks by penalizing confident output distributions.
+  arXiv preprint arXiv:1701.06548, 2017.
+Platt, John et al. Probabilistic outputs for support vec-
+  tor machines and comparisons to regularized likelihood
+  methods. Advances in large margin classifiers, 10(3):
+  61–74, 1999.
+Simonyan, Karen and Zisserman, Andrew. Very deep con-
+  volutional networks for large-scale image recognition. In
+  ICLR, 2015.
+Socher, Richard, Perelygin, Alex, Wu, Jean, Chuang, Ja-
+  son, Manning, Christopher D., Ng, Andrew, and Potts,
+  Christopher. Recursive deep models for semantic com-
+  positionality over a sentiment treebank. In EMNLP, pp.
+  1631–1642, 2013.
+Srivastava, Nitish, Hinton, Geoffrey, Krizhevsky, Alex,
+  Sutskever, Ilya, and Salakhutdinov, Ruslan. Dropout: A
+  simple way to prevent neural networks from overfitting.
+  Journal of Machine Learning Research, 15:1929–1958,
+  2014.
+Srivastava, Rupesh Kumar, Greff, Klaus, and Schmid-
+  huber, Jürgen. Highway networks. arXiv preprint
+  arXiv:1505.00387, 2015.
+Tai, Kai Sheng, Socher, Richard, and Manning, Christo-
+  pher D. Improved semantic representations from tree-
+  structured long short-term memory networks. 2015.
+Vapnik, Vladimir N. Statistical Learning Theory. Wiley-
+  Interscience, 1998.
+Welinder, P., Branson, S., Mita, T., Wah, C., Schroff, F.,
+ Belongie, S., and Perona, P. Caltech-UCSD Birds 200.
+ Technical Report CNS-TR-2010-001, California Insti-
+ tute of Technology, 2010.
+

@@ -1,0 +1,226 @@
+[
+  {
+    "file": "main.revised.tex",
+    "line": 113,
+    "kind": "table*",
+    "label": "tab:boundary",
+    "number": "1",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Motivating hypotheses and current evidence.}\n\\label{tab:boundary}\n\\begin{tabularx}{\\textwidth}{l Y Y Y}\n\\toprule\nTarget & Hypothesis & Required observation & Current interpretation \\\\\n\\midrule\nForked-daapd & Overestimation: IPSM growth without downstream code gain. & Growing IPSM structure with low episode code reward. & Prior endpoint code regression not reproduced. \\\\\nLighttpd1 & Underestimation: code progress within shallow response states. & Code-branch gain with little IPSM gain, linked to executions. & Both endpoints increase; hidden productivity remains unverified. \\\\\nLightFTP & Saturation: IPSM novelty after code progress plateaus. & Aligned code/IPSM trajectories across saturation. & Near-equal endpoints; matched-version trajectories still needed. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 128,
+    "kind": "figure*",
+    "label": "fig:mismatch",
+    "number": "1",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=0.92\\textwidth]{revision_20260920/figures_updated_20260930/native_endpoints.pdf}\n\\caption{A/D code and IPSM endpoints (mean $\\pm$ SD; actual $n$ shown).}\n\\label{fig:mismatch}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 153,
+    "kind": "table*",
+    "label": "tab:novelty",
+    "number": "2",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Prior mechanisms and novelty boundaries.}\n\\label{tab:novelty}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nPrior work & Established focus & Present boundary \\\\\n\\midrule\nAFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate the response proxy; no semantic-state recovery. \\\\\nChatAFL; LLM synthesis & Protocol-informed message/sequence generation. & Execute-before-promote; bounded provisional validation. \\\\\nThe Bandit's States~\\cite{bandits_states2023} & Bandit-based protocol-state selection. & Established selection framework; coupled proxy calibration and admission here. \\\\\nT-Scheduler~\\cite{tscheduler2024}; Entropic~\\cite{entropic2020} & Posterior- or entropy-based seed scheduling. & Established allocation methods; response-proxy calibration here. \\\\\nSeqFuzzSDN~\\cite{seqfuzzsdn2026} & Learned state models; message-sequence planning. & Response-proxy productivity; candidate admission. \\\\\nMagma~\\cite{magma2020}; evaluation methodology & Ground-truth bug conditions; repeated evaluation. & Information-controlled network rediscovery; minimal security-patch pairs. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 195,
+    "kind": "table*",
+    "label": "tab:predicates",
+    "number": "3",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Admission predicates and required evidence.}\n\\label{tab:predicates}\n\\begin{tabularx}{\\textwidth}{l Y Y Y}\n\\toprule\nPredicate & Positive evidence & Example failure & Required evidence \\\\\n\\midrule\n$P$ & Prespecified structure and format. & Missing field; invalid length/delimiter. & Candidate identity; validation criteria; reason; hypothesis version. \\\\\n$U$ & Adapter accepts response. & Rejection; timeout/reset/drop; unparseable reply. & Response identity; acceptance criteria; failures; exceptions. \\\\\n$R$ & Target/frontier reached or documented sink escape. & Repeated sink; missed destination. & Source/target; observed state sequence. \\\\\n$\\gcode$ & New code branch/code edge or code-supported favored entry. & IPSM-only novelty. & Pre/post code coverage; novelty class; favored reason. \\\\\n$\\gstate$ & New IPSM node, state edge, or path. & Known IPSM structure. & Pre/post IPSM; new transitions. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 230,
+    "kind": "figure*",
+    "label": "fig:architecture",
+    "number": "2",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\n\\begin{tikzpicture}[\n  font=\\fontsize{9}{11}\\selectfont,\n  box/.style={draw=black!75,line width=0.6pt,rounded corners=2pt,\n    align=center,text width=23mm,minimum width=26mm,\n    minimum height=13mm,inner sep=3pt},\n  flow/.style={-{Latex[length=2.5mm,width=1.7mm]},\n    draw=black!85,line width=0.85pt,rounded corners=2pt,\n    shorten <=1pt,shorten >=1pt},\n  failure/.style={flow,draw=black!65,line width=0.7pt,dash pattern=on 3pt off 2pt},\n  failbranch/.style={draw=black!65,line width=0.7pt,dash pattern=on 3pt off 2pt},\n  condition/.style={font=\\fontsize{8.5}{10}\\selectfont,\n    text=black,fill=white,inner sep=1.2pt,align=center}]\n\\node[box,fill=blue!5] (llm) at (0,2.8) {LLM\\\\proposal};\n\\node[box] (p) at (4.4,2.8) {Structural\\\\check $P$};\n\\node[box] (trial) at (8.8,2.8) {Bounded trial\\\\check $U,R$};\n\\node[box,fill=blue!5] (gain) at (13.2,2.8) {Separate\\\\$\\gcode,\\gstate$};\n\\node[box,fill=black!4] (rej) at (0,0) {Reject / expire\\\\retain evidence};\n\\node[box,fill=orange!12] (prov) at (4.4,0) {Provisional\\\\queue};\n\\node[box,fill=orange!5] (validation) at (8.8,0) {Descendant\\\\validation};\n\\node[box,fill=blue!8] (dur) at (13.2,0) {Durable\\\\queue};\n\n\\draw[flow] (llm.east)--(p.west);\n\\draw[flow] (p.east)--node[condition,above] (p_ok) {pass}(trial.west);\n\\draw[flow] (trial.east)--node[condition,above] (ur_ok) {pass}(gain.west);\n\\draw[flow] (gain.south)--node[condition,right] (code_gate) {$\\gcode$}(dur.north);\n\\draw[flow] ([xshift=-7mm]gain.south)--(12.5,1.4)--\n  node[condition,above] (state_gate) {$\\gstate$ only}(4.4,1.4)--(prov.north);\n\\draw[flow] (prov.east)--(validation.west);\n\\draw[flow] (validation.east)--node[condition,below] (promotion) {Validated\\\\code gain}(dur.west);\n\n\\coordinate (p_reject) at (4.4,4.2);\n\\coordinate (trial_reject) at (8.8,4.2);\n\\coordinate (gain_reject) at (13.2,4.2);\n\\draw[failure] (gain_reject)--(-2.1,4.2)--(-2.1,0)--(rej.west);\n\\draw[failbranch] (p.north)--node[condition,right] (p_fail) {$\\neg P$}(p_reject);\n\\draw[failbranch] (trial.north)--node[condition,right] (ur_fail) {$\\neg U\\lor\\neg R$}(trial_reject);\n\\draw[failbranch] (gain.north)--node[condition,left] (no_gain) {Neither gain}(gain_reject);\n\\fill[black!65] (p_reject) circle[radius=1pt];\n\\fill[black!65] (trial_reject) circle[radius=1pt];\n\\draw[failure] (validation.south)--(8.8,-1.35)--\n  node[condition,above] (expiry) {Budget exhausted}(0,-1.35)--(rej.south);\n\\end{tikzpicture}\n\\caption{Evidence-gated admission with provisional and durable queues.}\n\\label{fig:architecture}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 341,
+    "kind": "figure",
+    "label": "fig:posterior",
+    "number": "3",
+    "block": "\\begin{figure}[!tbp]\n\\centering\n\\begin{tikzpicture}[>=Latex,font=\\small,\nbox/.style={draw,rounded corners,align=center,text width=61mm,minimum height=9mm},\narr/.style={->,thick}]\n\\node[box] (pre) {Record pre-update mean and Thompson sample};\n\\node[box,below=5mm of pre] (run) {Select state; execute a fixed-energy episode};\n\\node[box,below=5mm of run] (reward) {Observe independent code reward};\n\\node[box,below=5mm of reward] (update) {Discounted update of productivity estimates};\n\\draw[arr](pre)--(run);\\draw[arr](run)--(reward);\\draw[arr](reward)--(update);\n\\end{tikzpicture}\n\\caption{Online productivity calibration using pre-update predictions and code rewards.}\n\\label{fig:posterior}\n\\end{figure}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 396,
+    "kind": "table*",
+    "label": "tab:implementation",
+    "number": "4",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Operational criteria and evidence limitations.}\n\\label{tab:implementation}\n\\begin{tabularx}{\\textwidth}{Y Y Y}\n\\toprule\nRequirement & Current boundary & Evaluation consequence \\\\\n\\midrule\nGate precedes durable promotion & Retention may precede $U/R$ verification. & Disposition labels do not verify queue protection. \\\\\nIndependent state-only trial evidence & State assessment depends on prior retention. & Zero provisional events do not establish a low state-only rate. \\\\\nFull structural and reachability checks & $P$: structural recognition; $R$: generic transition. & Full validity and target reachability remain unverified. \\\\\nMain reward is new code coverage & Observed novelty may reflect execution frequency. & Separate code branches, execution frequency, and retention. \\\\\nFixed-energy episode & Variable mutation energy; zero-execution attempts. & Raw episodes do not provide equal opportunities. \\\\\nStrict provisional budget & Limits checked after whole fuzzing rounds. & 64-mutation/30-second limits may be exceeded. \\\\\nVerified run configuration & Effective settings may differ from initial declarations. & Verify conditions throughout each experimental trial. \\\\\nEqual total call/token caps & 64-call cap covers plateau use; token enforcement unverified. & Total-budget fairness remains unverified. \\\\\nRepair disabled in C/D/E & Actual repair conditions are incompletely established. & Reported arm identity does not establish adherence. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 420,
+    "kind": "table*",
+    "label": "tab:events",
+    "number": "5",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\footnotesize\n\\caption{Observation classes and required measurements.}\n\\label{tab:events}\n\\begin{tabularx}{\\textwidth}{@{}>{\\raggedright\\arraybackslash}p{0.27\\textwidth} Y Y@{}}\n\\toprule\nObservation class & Experimental context & Measurements / outcomes \\\\\n\\midrule\nExperimental conditions & Arm; target/fuzzer versions; execution environment; model/service version; sampling parameters; random seed. & Call/token limits; CPU/memory allocation; observation period; termination reason. \\\\\nCandidate generation & Candidate and prompt identity; parentage; original request/response; action; source/intended states. & Input/output tokens; generation time. \\\\\nAdmission trial & Candidate/trial correspondence; $P/U/R$ and reasons; response identity; failures; state sequence; target reachability. & Pre/post IPSM nodes/state edges and code coverage; coverage-based priority; latency; decision. \\\\\nProvisional validation & Candidate identity; validation budget; first productive descendant. & Descendant executions/code gain; conversion time; promotion latency; expiration/censoring. \\\\\nState-selection episode & Episode/state/seed identity; pre-update $\\alpha,\\beta,\\widehat{\\theta}$; Thompson sample; frontier/selection scores. & Mutation count; code-branch/IPSM state-edge gain; reward; post-update $\\alpha,\\beta$; duration; completion. \\\\\nSecurity outcome & Anonymous oracle identity; reproducing input; diagnostic evidence; root cause. & Reached/triggered; first trigger time; vulnerable/patched outcomes. \\\\\nRepair (optional) & Repair lineage; failure/counterexample; original/revised hypothesis; changed component. & Pre/post validation; post-repair predicates/descendant gain; tokens/latency. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 456,
+    "kind": "table*",
+    "label": "tab:arms",
+    "number": "6",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Required configurations for arms A--E.}\n\\label{tab:arms}\n\\begin{tabularx}{\\textwidth}{l c Y Y Y}\n\\toprule\nArm & LLM & Admission & Scheduler & Role \\\\\n\\midrule\nA: AFLNet & No & Original AFLNet & AFLNet & Non-LLM baseline. \\\\\nB: Controlled ChatAFL & Yes & ChatAFL direct/open-loop & ChatAFL lineage & B--A: controlled LLM-lineage change. \\\\\nC: LoopFuzz-direct & Yes & Parseable candidates directly durable & Fixed LoopFuzz & Admission counterfactual. \\\\\nD: LoopFuzz-gated-fixed & Yes & Evidence gate + provisional queue & Same fixed LoopFuzz & D--C: admission effect. \\\\\nE: LoopFuzz-gated-calibrated & Yes & Identical to D & Productivity calibration & E--D: calibration effect. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 480,
+    "kind": "table*",
+    "label": "tab:targets",
+    "number": "7",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Targets, protocols, and experimental conditions. Versions are the source pins recorded in the benchmark Dockerfiles; endpoint, seed, dictionary, and reset entries are taken from the per-run invocation recorded inside each archive.}\n\\label{tab:targets}\n\\begin{tabularx}{\\textwidth}{l l l l Y}\n\\toprule\nTarget & Protocol & Pinned source revision & Endpoint (localhost) & Seeds / dictionary / reset \\\\\n\\midrule\nLightFTP & FTP & 139af7c & tcp/2200 & in-ftp; ftp.dict; ftpclean script \\\\\nbftpd & FTP & 6.1 release & tcp/21 & in-ftp; ftp.dict; clean script \\\\\nProFTPD & FTP & 61e621e743346 & tcp/21 & in-ftp; ftp.dict; clean script \\\\\nPure-FTPd & FTP & 10122d9f & tcp/21 & in-ftp; ftp.dict; clean script \\\\\nExim & SMTP & d6a5a05b84 & tcp/25 & in-smtp; smtp.dict; clean script \\\\\nLive555 & RTSP & live.2023.05.10 & tcp/8554 & in-rtsp; rtsp.dict; no reset script recorded \\\\\nKamailio & SIP & a2209018fb03d & udp/5060 & in-sip; no dictionary; run\\_pjsip reset \\\\\nForked-daapd & DAAP/DACP & 2ca10d9 & tcp/3689 & in-daap; no dictionary; no reset script recorded \\\\\nLighttpd1 & HTTP & 9f38b63cae3e2 & tcp/8080 & in-http; http.dict; no reset script recorded \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 512,
+    "kind": "table*",
+    "label": "tab:llm",
+    "number": "8",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Shared LLM settings required for B--E. Recorded values are verified against the end-of-run configuration event embedded in every C/D/E and $\\gamma$-sensitivity archive; ChatAFL archives embed no equivalent record, so B's participation remains unverified.}\n\\label{tab:llm}\n\\begin{tabularx}{\\textwidth}{Y c Y}\n\\toprule\nParameter & Prespecified value & Comparability requirement \\\\\n\\midrule\nModel, version, and inference service & codex-auto-review via cctq.ai chat-completions endpoint & Identical resolved version; name alone insufficient. \\\\\nTemperature by call class & grammar 0.5; plateau 1.2 & Match each call class across arms. \\\\\nTop-$p$ / presence and frequency penalties & top-$p$ 1.0; penalties unrecorded & Explicit values or documented defaults. \\\\\nMaximum output tokens per attempt & 4,096 & Shared limit; include truncated/failed responses. \\\\\nMaximum attempted calls / total tokens & call cap 64; token cap 0 (unset) & Count all call classes and retries. \\\\\nTimeout and repeated-request policy & \\missing & Identical policy; account for waiting and failures. \\\\\nModel-side seed / support status & \\missing & Record support; no determinism guarantee. \\\\\nPrompt corpus / template version & \\missing & Shared information policy; traceable prompts/responses. \\\\\nPlateau cadence / threshold / reset & state-edge threshold 512; cadence unrecorded & Shared intervention and state-growth criteria. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 591,
+    "kind": "figure*",
+    "label": "fig:reliability",
+    "number": "4",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=0.90\\textwidth]{revision_20260920/figures_updated_20260930/logged_reward_reliability.pdf}\n\\caption{E-arm proxy-reward calibration. Points: bin means; bars: 95\\% CIs.}\n\\label{fig:reliability}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 615,
+    "kind": "table*",
+    "label": "tab:mainresults",
+    "number": "13",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD.}\n\\label{tab:mainresults}\n\\begin{tabularx}{\\textwidth}{l *{5}{>{\\centering\\arraybackslash}X}}\n\\toprule\nTarget & A & B & C & D & E \\\\\n\\midrule\nLightFTP & \\shortstack{71.0$\\pm$0.0\\,(n=13)\\\\1758.5$\\pm$33.8} & \\shortstack{71.3$\\pm$0.9\\,(n=11)\\\\1728.1$\\pm$36.5} & \\shortstack{80.6$\\pm$15.5\\,(n=10)\\\\1987.7$\\pm$394.1} & \\shortstack{71.7$\\pm$2.3\\,(n=15)\\\\1780.7$\\pm$45.2} & \\shortstack{73.9$\\pm$4.5\\,(n=10)\\\\1825.0$\\pm$107.6} \\\\\n\\addlinespace[3pt]\nbftpd & \\shortstack{486.0$\\pm$8.8\\,(n=10)\\\\11868.7$\\pm$165.6} & \\shortstack{492.2$\\pm$14.1\\,(n=10)\\\\12068.6$\\pm$323.8} & \\shortstack{498.9$\\pm$12.2\\,(n=10)\\\\12082.0$\\pm$451.0} & \\shortstack{502.7$\\pm$7.5\\,(n=10)\\\\12267.7$\\pm$387.9} & \\shortstack{503.7$\\pm$7.1\\,(n=10)\\\\12416.6$\\pm$220.9} \\\\\n\\addlinespace[3pt]\nProFTPD & \\shortstack{5053.8$\\pm$97.4\\,(n=10)\\\\122652.5$\\pm$1730.1} & \\shortstack{5205.9$\\pm$166.7\\,(n=10)\\\\125217.7$\\pm$2989.1} & \\shortstack{5446.3$\\pm$194.7\\,(n=10)\\\\130538.5$\\pm$4511.6} & \\shortstack{5428.1$\\pm$104.0\\,(n=12)\\\\132539.2$\\pm$2868.9} & \\shortstack{5469.8$\\pm$215.7\\,(n=10)\\\\130564.7$\\pm$4604.1} \\\\\n\\addlinespace[3pt]\nPure-FTPd & \\shortstack{1076.4$\\pm$89.6\\,(n=11)\\\\23054.1$\\pm$2084.4} & \\shortstack{1109.3$\\pm$40.0\\,(n=10)\\\\24976.6$\\pm$1126.8} & \\shortstack{1221.2$\\pm$48.9\\,(n=10)\\\\28860.8$\\pm$1645.7} & \\shortstack{1223.3$\\pm$29.7\\,(n=10)\\\\27863.9$\\pm$1496.9} & \\shortstack{1215.4$\\pm$63.7\\,(n=10)\\\\27894.3$\\pm$1737.6} \\\\\n\\addlinespace[3pt]\nExim & \\shortstack{3798.8$\\pm$43.3\\,(n=10)\\\\91083.0$\\pm$1031.5} & \\shortstack{3761.7$\\pm$60.4\\,(n=10)\\\\91301.7$\\pm$1501.4} & \\shortstack{3896.1$\\pm$25.6\\,(n=10)\\\\94880.1$\\pm$928.3} & \\shortstack{3914.9$\\pm$20.9\\,(n=10)\\\\93659.0$\\pm$573.1} & \\shortstack{3858.3$\\pm$32.8\\,(n=10)\\\\93123.6$\\pm$924.6} \\\\\n\\addlinespace[3pt]\nLive555 & \\shortstack{2893.6$\\pm$14.5\\,(n=10)\\\\71127.4$\\pm$517.3} & \\shortstack{2882.4$\\pm$22.0\\,(n=10)\\\\71224.8$\\pm$422.5} & \\shortstack{3075.7$\\pm$34.4\\,(n=10)\\\\73511.0$\\pm$562.9} & \\shortstack{3067.1$\\pm$29.5\\,(n=12)\\\\75436.1$\\pm$712.2} & \\shortstack{3054.2$\\pm$20.5\\,(n=10)\\\\72378.5$\\pm$1049.8} \\\\\n\\addlinespace[3pt]\nKamailio & \\shortstack{10002.6$\\pm$144.2\\,(n=10)\\\\242853.7$\\pm$2772.6} & \\shortstack{10644.3$\\pm$96.5\\,(n=10)\\\\257606.8$\\pm$2082.0} & \\shortstack{10800.6$\\pm$129.0\\,(n=10)\\\\260260.9$\\pm$2942.4} & \\shortstack{10631.2$\\pm$472.9\\,(n=12)\\\\254332.1$\\pm$9492.1} & \\shortstack{10830.0$\\pm$91.3\\,(n=10)\\\\259377.2$\\pm$2649.6} \\\\\n\\addlinespace[3pt]\nForked-daapd & \\shortstack{2330.8$\\pm$60.0\\,(n=10)\\\\54453.2$\\pm$1494.1} & \\shortstack{2169.6$\\pm$113.0\\,(n=10)\\\\49393.2$\\pm$3335.9} & \\shortstack{2585.4$\\pm$86.2\\,(n=10)\\\\61776.8$\\pm$1863.7} & \\shortstack{2670.2$\\pm$87.3\\,(n=12)\\\\63646.7$\\pm$1977.0} & \\shortstack{2609.0$\\pm$96.6\\,(n=11)\\\\61843.9$\\pm$1570.4} \\\\\n\\addlinespace[3pt]\nLighttpd1 & \\shortstack{1940.7$\\pm$21.2\\,(n=10)\\\\46909.4$\\pm$235.7} & \\shortstack{1884.1$\\pm$25.3\\,(n=10)\\\\45075.8$\\pm$729.3} & \\shortstack{2145.0$\\pm$69.8\\,(n=10)\\\\53003.8$\\pm$1613.7} & \\shortstack{2126.7$\\pm$15.7\\,(n=11)\\\\51223.2$\\pm$621.1} & \\shortstack{2068.1$\\pm$44.5\\,(n=10)\\\\50385.1$\\pm$941.3} \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 644,
+    "kind": "figure*",
+    "label": "fig:trajectories",
+    "number": "5",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=\\textwidth]{revision_20260920/figures_updated_20260930/coverage_trajectories.pdf}\n\\caption{A--E code-branch trajectories: medians and interquartile ranges.}\n\\label{fig:trajectories}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 650,
+    "kind": "figure*",
+    "label": "fig:posterior_cases",
+    "number": "6",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=\\textwidth]{revision_20260920/figures_updated_20260930/posterior_cases.pdf}\n\\caption{E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom).}\n\\label{fig:posterior_cases}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 656,
+    "kind": "table*",
+    "label": "tab:mechanisms",
+    "number": "14",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\footnotesize\n\\caption{C/D/E mechanism observations; blanks indicate unvalidated evidence.}\n\\label{tab:mechanisms}\n\\begin{tabularx}{\\textwidth}{>{\\raggedright\\arraybackslash}p{0.19\\textwidth} *{3}{>{\\centering\\arraybackslash}p{0.14\\textwidth}} Y}\n\\toprule\nMetric & C & D & E & Denominator / interpretation \\\\\n\\midrule\nCandidate records & 1,326 & 2,227 & 746 & Distinct candidates within each experimental record. \\\\\nTrial records & 1,326 & 2,226 & 745 & Distinct trials within each experimental record. \\\\\nReject / durable labels & 0 / 1,326 & 2,203 / 23 & 736 / 9 & Reported trial outcomes. \\\\\nFirst failed $P/U/R$ & 0 / 1,208 / 0 & 0 / 2,071 / 0 & 0 / 698 / 0 & First false $P$, then $U$, then $R$; denominator: trials. \\\\\nDirect durable rate & 100.0\\% (1,326/1,326) & 1.0\\% (23/2,227) & 1.2\\% (9/746) & Durable labels / generated candidates. \\\\\nState-only provisional rate & disabled & 0.0\\% (0/2{,}227) & 0.0\\% (0/746) & All candidates; disabled for C. \\\\\nProvisional conversion / expiration & disabled & none (0 admitted) & none (0 admitted) & Provisional admissions; include pending/censored cases. \\\\\nTrial latency (ms) & 439.2$\\pm$405.9 ($n=67$) & 403.6$\\pm$574.6 ($n=81$) & 806.5$\\pm$554.0 ($n=62$) & Mean $\\pm$ SD of within-run trial means; contributing runs only. \\\\\nPromotion latency & \\missing & \\missing & \\missing & Verified queue-promotion timestamps required. \\\\\nDownstream productivity@64 & \\missing & \\missing & \\missing & Descendant code gain; exclude admission gain. \\\\\nQueue size / nonproductive retention & \\missing & \\missing & \\missing & Queue state and C--D counterfactual. \\\\\nShadow-validation false-negative rate & \\missing & \\missing & \\missing & Random rejected-candidate sample. \\\\\nCode-branch gain per episode & \\missing & \\missing & \\missing & Completed equal-energy episodes. \\\\\nBS / ECE / AP & \\missing & \\missing & \\missing & Fixed-energy code-branch reward; proxy diagnostics: \\namedref{Table}{tab:logged_calibration}. \\\\\nCode gain per candidate / 1,000 tokens & \\missing & \\missing & \\missing & Joined code gain and complete usage. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 683,
+    "kind": "figure*",
+    "label": "fig:dispositions",
+    "number": "7",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=\\textwidth]{revision_20260920/figures_updated_20260930/candidate_dispositions.pdf}\n\\caption{C/D/E reported dispositions (left) and first failed $P/U/R$ predicates (right).}\n\\label{fig:dispositions}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 702,
+    "kind": "figure*",
+    "label": "fig:cost",
+    "number": "8",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=\\textwidth]{revision_20260920/figures_updated_20260930/token_cost_coverage.pdf}\n\\caption{Reported tokens versus terminal code branches, by target and arm.}\n\\label{fig:cost}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 708,
+    "kind": "figure*",
+    "label": "fig:callcost",
+    "number": "9",
+    "block": "\\begin{figure*}[!tbp]\n\\centering\\includegraphics[width=\\textwidth]{revision_20260920/figures_updated_20260930/call_cost_coverage.pdf}\n\\caption{Reported model calls versus terminal code branches, by target and arm.}\n\\label{fig:callcost}\n\\end{figure*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 714,
+    "kind": "table",
+    "label": "tab:repair",
+    "number": "16",
+    "block": "\\begin{table}[!tbp]\n\\centering\\small\n\\caption{Optional repair diagnostics; unavailable values remain blank.}\n\\label{tab:repair}\n\\begin{tabularx}{\\columnwidth}{Y c c}\n\\toprule\nMetric & E, repair off & E, repair on \\\\\n\\midrule\nRepair opportunities / attempts & 0 (no event files) & \\missing \\\\\nBefore/after validation success & \\missing & \\missing \\\\\nPost-repair descendant code gain & \\missing & \\missing \\\\\nChanged fields / locality & \\missing & \\missing \\\\\nToken / latency cost & \\missing & \\missing \\\\\nIndependent effect / interval & \\missing & \\missing \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 739,
+    "kind": "table*",
+    "label": "tab:cve",
+    "number": "17",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Vulnerability cases and supporting evidence (L: direct observation; R: report).}\n\\label{tab:cve}\n\\begin{tabularx}{\\textwidth}{@{}>{\\raggedright\\arraybackslash}p{0.20\\textwidth} >{\\raggedright\\arraybackslash}p{0.19\\textwidth} Y Y@{}}\n\\toprule\nCase / interface & Reported vulnerable version & Trigger evidence / oracle & Patch or control evidence \\\\\n\\midrule\n\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP & Reported vulnerable version; ASan; 65,535-byte command buffer & 60,006-byte input; heap-buffer-overflow: one-byte read beyond a 65,568-byte region (L). & Reported security patch; three rejections, no ASan (L); same input/buffer. \\\\\n\\addlinespace[3pt]\n\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP & Campaign: 2023.05.10; public report: 2026.02.26 (R) & 728-byte public PoC; heap-use-after-free (L). Fuzzer-discovered input absent. & Attempted local patch: 1/1 still triggers (R); upstream-patch comparison absent. \\\\\n\\addlinespace[3pt]\n\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP & Reported vulnerable version; TCP required & 278-byte input; parsed Content-Length $-10$ (L): overflow predicate, not crash count. & Oracle pair \\texttt{o-kam-01} (L, Sept.~30): patched build 0/253 negative-value lines; upstream guard logged. \\\\\n\\addlinespace[3pt]\nSMARTPL availability case\\newline forked-daapd / HTTP & Reported version 27.2 & 148-byte input; lexer errors; health probe fails; process alive (R). Direct replay evidence absent. & No patched replay/CVE; parser reportedly removed in 28.4. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 769,
+    "kind": "table*",
+    "label": "tab:cveresults",
+    "number": "18",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Reported replay batches and separate controls; original denominators retained.}\n\\label{tab:cveresults}\n\\begin{tabularx}{\\textwidth}{@{}>{\\raggedright\\arraybackslash}p{0.20\\textwidth} Y Y Y@{}}\n\\toprule\nCase & Vulnerable-side batches (R) & Patched or diagnostic control & Interpretation / missing evidence \\\\\n\\midrule\n\\mbox{CVE-2023-51713} & Earlier batches: 1/1 seed; 1/1 fuzzer crash; 3/3 batch crashes. Full oracle-pair replay (L, Sept.~30): 172/233 in-campaign crash inputs (121 and 112 per run) trigger the \\texttt{make\\_ftp\\_cmd} ASan predicate on the vulnerable image; 61/233 and 9/9 teardown inputs do not reproduce standalone. & Oracle pair \\texttt{o-pftp-01}: patched image 0/242 ASan activations (L, Sept.~30); earlier fix batch 0/3. & Crash-artifact replay with a verified version pair, not campaign recall; no time-to-trigger or arm-level discovery probability. \\\\\n\\addlinespace[3pt]\n\\mbox{CVE-2026-38998} & 1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9. Full single-side replay of all 88 recorded campaign crash inputs (L, Sept.~30): 82 terminate the campaign-build server, 6 survive. & Local patch: 1/1 still triggers (R); patched-image comparison absent; campaign build has no ASan. & Unpooled batches; the 82/88 result is reproduction on the campaign build and does not attribute the crashes to the use-after-free. \\\\\n\\addlinespace[3pt]\n\\mbox{CVE-2026-39863} & 1/1 seed; earlier sampled batches: 3/4, 19/20, 19/20, 50/51. Full queue-entry census (L, Sept.~30): all 253 campaign queue entries carrying Content-Length $\\geq 2^{31}$ (77 and 176 per run) replayed on the oracle pair; 102/253 produce the negative-value artifact on the vulnerable build (36/77 and 66/176), with overflow values $-2147483648$, $-1$, and $-954437177$. & Oracle pair \\texttt{o-kam-01} (minimal upstream guard): 0/253 negative-value lines; 193/253 log the upstream large-value guard (L, Sept.~30). & Census of precondition-satisfying queue entries, not campaign recall; 151/253 do not produce the artifact (ordering or parse path unlocated); no time-to-trigger. \\\\\n\\addlinespace[3pt]\nSMARTPL availability case & 5/5 advisory repeats; 3/3 48-message-seed repeats; 1/1 later advisory replay. & All five recorded campaign hangs: 0/5 SMARTPL hits (R); patched replay absent. & Known-input unavailability; no campaign rediscovery or CVE. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "main.revised.tex",
+    "line": 810,
+    "kind": "table*",
+    "label": "tab:threats",
+    "number": "19",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Validity threats, required controls, and evidence limits.}\n\\label{tab:threats}\n\\begin{tabularx}{\\textwidth}{l Y Y}\n\\toprule\nDimension & Required control & Current limitation \\\\\n\\midrule\nInternal & Admission-only C--D; scheduling-only E--D; repair off; paired initial states. & Missing observations; differing operation order. \\\\\nConstruct & Separate IPSM state edges, code branches, bitmap counts, and reached/triggered events. & Observed proxies incompletely measure the intended criteria. \\\\\nStatistical & Repeated trials; test families; effect sizes; clustered/hierarchical intervals; censoring. & Partial, unequal-duration data; no confirmatory effects. \\\\\nSelection & Intention-to-run accounting; prespecified infrastructure repetitions. & Uninitiated trials unobserved; additional records need not be independent. \\\\\nReproducibility & Identical versions, conditions, seeds, prompts, and measurement definitions. & Unresolved model versions and incomplete experimental provenance. \\\\\nExternal & Multiple targets/protocols; negative cases; adapter assumptions. & Encrypted/opaque binary protocols untested. \\\\\nSecurity & Minimal patch pairs; independent triggers; information separation. & Controlled A--E and version-pair evidence incomplete; pretraining leakage unresolved. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "line": 2,
+    "kind": "table*",
+    "label": "tab:observed_inventory",
+    "number": "9",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Current archive inventory. A and D use benchmark rows; D is counted once because the supplied \\texttt{ablation/gated\\_fixed} directory duplicates benchmark LoopFuzz. Nominal target is 10 runs per target. Status and exit-code labels are descriptive.}\n\\label{tab:observed_inventory}\n\\begin{tabular}{lrrrrrl}\n\\toprule\nTarget & AFLNet & ChatAFL & LoopFuzz(D) & Completed(D) & Exit 137(D) & Duration (min) \\\\\n\\midrule\nLightFTP & 13 & 11 & 15 & 15 & 0 & 1473--1522 \\\\\nbftpd & 10 & 10 & 10 & 10 & 0 & 1499--1510 \\\\\nProFTPD & 10 & 10 & 12 & 12 & 0 & 1489--1518 \\\\\nPure-FTPd & 11 & 10 & 10 & 10 & 0 & 1460--1472 \\\\\nExim & 10 & 10 & 10 & 10 & 0 & 1477--1486 \\\\\nLive555 & 10 & 10 & 12 & 12 & 0 & 1489--1505 \\\\\nKamailio & 10 & 10 & 12 & 12 & 0 & 1472--1518 \\\\\nForked-daapd & 10 & 10 & 12 & 12 & 0 & 1474--1524 \\\\\nLighttpd1 & 10 & 10 & 11 & 11 & 0 & 1469--1523 \\\\\n\\bottomrule\n\\end{tabular}\n\\end{table*}"
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "line": 22,
+    "kind": "table*",
+    "label": "tab:observed_endpoints",
+    "number": "10",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Exploratory native terminal endpoints from current summary rows (mean $\\pm$ sample SD). All available A and D rows are retained; unequal stopping times and source-build uncertainty preclude causal comparisons.}\n\\label{tab:observed_endpoints}\n\\begin{tabular}{lrrrr}\n\\toprule\n & \\multicolumn{2}{c}{Code branches (\\texttt{b\\_abs})} & \\multicolumn{2}{c}{IPSM state edges} \\\\\nTarget & AFLNet & LoopFuzz(D) & AFLNet & LoopFuzz(D) \\\\\n\\midrule\nLightFTP & 71.0$\\pm$0.0 & 71.7$\\pm$2.3 & 187.3$\\pm$11.3 & 207.0$\\pm$17.0 \\\\\nbftpd & 486.0$\\pm$8.8 & 502.7$\\pm$7.5 & 163.1$\\pm$15.4 & 226.7$\\pm$14.0 \\\\\nProFTPD & 5053.8$\\pm$97.4 & 5428.1$\\pm$104.0 & 190.5$\\pm$27.9 & 305.3$\\pm$20.3 \\\\\nPure-FTPd & 1076.4$\\pm$89.6 & 1223.3$\\pm$29.7 & 236.5$\\pm$26.7 & 321.4$\\pm$11.1 \\\\\nExim & 3798.8$\\pm$43.3 & 3914.9$\\pm$20.9 & 88.8$\\pm$5.2 & 152.7$\\pm$9.3 \\\\\nLive555 & 2893.6$\\pm$14.5 & 3067.1$\\pm$29.5 & 96.1$\\pm$8.6 & 170.1$\\pm$11.1 \\\\\nKamailio & 10002.6$\\pm$144.2 & 10631.2$\\pm$472.9 & 109.4$\\pm$9.7 & 128.2$\\pm$26.6 \\\\\nForked-daapd & 2330.8$\\pm$60.0 & 2670.2$\\pm$87.3 & 21.6$\\pm$2.1 & 22.8$\\pm$2.9 \\\\\nLighttpd1 & 1940.7$\\pm$21.2 & 2126.7$\\pm$15.7 & 17.7$\\pm$2.5 & 28.9$\\pm$2.7 \\\\\n\\bottomrule\n\\end{tabular}\n\\end{table*}"
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "line": 43,
+    "kind": "table*",
+    "label": "tab:observed_log_counts",
+    "number": "11",
+    "block": "\\begin{table*}[!tbp]\n\\centering\\small\n\\caption{Logged schema-v2 counts in current LoopFuzz D archives. Reject, provisional, and durable are recorded labels, not independently verified queue membership.}\n\\label{tab:observed_log_counts}\n\\begin{tabular}{lrrrrrr}\n\\toprule\nTarget & Candidates & Trials & Reject & Provisional & Durable & Episodes \\\\\n\\midrule\nLightFTP & 48 & 48 & 44 & 0 & 4 & 13604 \\\\\nbftpd & 13 & 13 & 13 & 0 & 0 & 3249 \\\\\nProFTPD & 0 & 0 & 0 & 0 & 0 & 2395 \\\\\nPure-FTPd & 173 & 173 & 166 & 0 & 7 & 5378 \\\\\nExim & 24 & 24 & 24 & 0 & 0 & 2650 \\\\\nLive555 & 851 & 851 & 844 & 0 & 7 & 7687 \\\\\nKamailio & 253 & 253 & 249 & 0 & 4 & 9004 \\\\\nForked-daapd & 412 & 411 & 410 & 0 & 1 & 12056 \\\\\nLighttpd1 & 453 & 453 & 453 & 0 & 0 & 21570 \\\\\n\\bottomrule\n\\end{tabular}\n\\end{table*}"
+  },
+  {
+    "file": "figures_updated_20260930/logged_calibration_table.tex",
+    "line": 2,
+    "kind": "table*",
+    "label": "tab:logged_calibration",
+    "number": "12",
+    "block": "\\begin{table*}[t]\n\\centering\\footnotesize\n\\caption{E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\\ref{tab:mechanisms}.}\n\\label{tab:logged_calibration}\n\\begin{tabularx}{\\textwidth}{l r r *{4}{>{\\centering\\arraybackslash}X}}\n\\toprule\nTarget & $n$ & Episodes & BS & Reference BS & ECE (10 bins) & AUPRC (AP) \\\\\n\\midrule\nLightFTP & 10 & 6,622 & \\shortstack{0.188\\\\{[0.178, 0.198]}} & \\shortstack{0.183\\\\{[0.172, 0.195]}} & \\shortstack{0.166\\\\{[0.161, 0.172]}} & \\shortstack{0.452\\\\{[0.430, 0.471]}} \\\\\nbftpd & 10 & 2,643 & \\shortstack{0.249\\\\{[0.243, 0.257]}} & \\shortstack{0.247\\\\{[0.243, 0.252]}} & \\shortstack{0.105\\\\{[0.094, 0.119]}} & \\shortstack{0.517\\\\{[0.493, 0.542]}} \\\\\nProFTPD & 10 & 1,002 & \\shortstack{0.183\\\\{[0.179, 0.188]}} & \\shortstack{0.144\\\\{[0.126, 0.157]}} & \\shortstack{0.137\\\\{[0.106, 0.174]}} & \\shortstack{0.810\\\\{[0.781, 0.844]}} \\\\\nPure-FTPd & 10 & 2,848 & \\shortstack{0.227\\\\{[0.217, 0.234]}} & \\shortstack{0.243\\\\{[0.233, 0.248]}} & \\shortstack{0.053\\\\{[0.041, 0.071]}} & \\shortstack{0.700\\\\{[0.675, 0.722]}} \\\\\nExim & 10 & 1,057 & \\shortstack{0.230\\\\{[0.221, 0.239]}} & \\shortstack{0.219\\\\{[0.211, 0.227]}} & \\shortstack{0.126\\\\{[0.106, 0.149]}} & \\shortstack{0.703\\\\{[0.675, 0.734]}} \\\\\nLive555 & 10 & 2,259 & \\shortstack{0.224\\\\{[0.212, 0.233]}} & \\shortstack{0.218\\\\{[0.207, 0.229]}} & \\shortstack{0.082\\\\{[0.067, 0.103]}} & \\shortstack{0.742\\\\{[0.712, 0.771]}} \\\\\nKamailio & 10 & 6,374 & \\shortstack{0.163\\\\{[0.153, 0.171]}} & \\shortstack{0.161\\\\{[0.149, 0.173]}} & \\shortstack{0.042\\\\{[0.032, 0.055]}} & \\shortstack{0.858\\\\{[0.847, 0.866]}} \\\\\nForked-daapd & 11 & 1,382 & \\shortstack{0.254\\\\{[0.245, 0.262]}} & \\shortstack{0.253\\\\{[0.251, 0.256]}} & \\shortstack{0.089\\\\{[0.070, 0.119]}} & \\shortstack{0.596\\\\{[0.560, 0.623]}} \\\\\nLighttpd1 & 10 & 2,197 & \\shortstack{0.231\\\\{[0.225, 0.237]}} & \\shortstack{0.251\\\\{[0.250, 0.253]}} & \\shortstack{0.085\\\\{[0.072, 0.096]}} & \\shortstack{0.665\\\\{[0.639, 0.688]}} \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+  },
+  {
+    "file": "observed_costs.updated_20260930.tex",
+    "line": 2,
+    "kind": "table",
+    "label": "tab:observed_costs",
+    "number": "15",
+    "block": "\\begin{table}[!tbp]\n\\centering\\small\n\\caption{Recorded LoopFuzz D costs from current benchmark archives: per-run minimum--maximum by target. Total tokens combine prompt and completion counters; k denotes 1,000 tokens.}\n\\label{tab:observed_costs}\n\\begin{tabular}{lrr}\n\\toprule\nTarget & Model calls & Total tokens (k) \\\\\n\\midrule\nLightFTP & 59--161 & 106.0--224.7 \\\\\nbftpd & 199--248 & 198.0--301.8 \\\\\nProFTPD & 188--192 & 170.1--198.8 \\\\\nPure-FTPd & 207--242 & 200.2--264.1 \\\\\nExim & 106--123 & 109.4--151.0 \\\\\nLive555 & 123--189 & 264.1--433.1 \\\\\nKamailio & 56--108 & 157.0--285.5 \\\\\nForked-daapd & 52--163 & 103.4--540.9 \\\\\nLighttpd1 & 131--187 & 168.5--252.5 \\\\\n\\bottomrule\n\\end{tabular}\n\\end{table}"
+  }
+]

@@ -1,0 +1,2112 @@
+BLuEMan: A Stateful Simulation-based Fuzzing
+ Framework for Open-Source RTOS Bluetooth
+       Low Energy Protocol Stacks
+Wei-Che Kao, Yen-Chia Chen, Yu-Sheng Lin, Yu-Cheng Yang, Chi-Yu Li,
+  and Chun-Ying Huang, National Yang Ming Chiao Tung University
+    https://www.usenix.org/conference/usenixsecurity25/presentation/kao
+
+
+
+
+   This paper is included in the Proceedings of the
+          34th USENIX Security Symposium.
+                August 13–15, 2025 • Seattle, WA, USA
+                            978-1-939133-52-6
+
+
+                  Open access to the Proceedings of the
+         34th USENIX Security Symposium is sponsored by USENIX.
+    BLuEMan: A Stateful Simulation-based Fuzzing Framework for Open-Source
+                 RTOS Bluetooth Low Energy Protocol Stacks
+
+              Wei-Che Kao                                 Yen-Chia Chen                                 Yu-Sheng Lin
+    National Yang Ming Chiao Tung University     National Yang Ming Chiao Tung University     National Yang Ming Chiao Tung University
+
+             Yu-Cheng Yang                                    Chi-Yu Li                              Chun-Ying Huang
+    National Yang Ming Chiao Tung University     National Yang Ming Chiao Tung University     National Yang Ming Chiao Tung University
+
+
+
+                           Abstract                                     has uncovered vulnerabilities in Bluetooth protocol stacks
+                                                                        across different versions, with some flaws enabling Denial-
+Bluetooth Low Energy (BLE) is a dominant wireless commu-
+                                                                        of-Service (DoS) attacks and code execution. Prominent ex-
+nication technology widely used in low-power, short-range
+                                                                        amples include the Blueborne [5], BlueFrag [21], and Bleed-
+applications. Its broad adoption and inherent security vulner-
+                                                                        ingbit [4] vulnerabilities, which have been shown to allow
+abilities in certain implementations have prompted numer-
+                                                                        malicious actors to exploit affected devices. These security
+ous efforts to identify flaws in BLE protocol stacks. Despite
+                                                                        issues highlight the critical need for effective detection meth-
+these efforts, many existing fuzz testing methods face sub-
+                                                                        ods within the Bluetooth protocol, driving numerous stud-
+stantial limitations in scalability and applicability. To address
+                                                                        ies [15, 16, 18, 20, 23, 28, 31] to develop fuzz testing method-
+these challenges, we propose BLuEMan, a simulation-based
+                                                                        ologies specifically tailored for Bluetooth stacks.
+fuzzing framework that integrates a Real-Time Operating
+                                                                           However, current fuzz testing solutions for BLE devices
+System (RTOS) with a software-based physical layer simula-
+                                                                        face limitations in scalability and applicability. Broadly, these
+tor. BLuEMan executes the actual BLE protocol stack while
+                                                                        solutions can be categorized into two approaches: platform-
+simulating interactions between BLE targets. This design en-
+                                                                        based approach and emulation-based. Platform-based ap-
+sures scalability for rapid testing across various targets while
+                                                                        proaches rely on specific hardware or dedicated OS environ-
+maintaining high applicability to various platforms. Our eval-
+                                                                        ments to conduct fuzzing tests. While they offer high fidelity
+uation demonstrates that BLuEMan achieves fuzzing rates
+                                                                        through direct interaction with actual platforms, they lack scal-
+up to 18.0 and 162.3 times faster than typical simulation-
+                                                                        ability for testing across target platforms. Emulation-based
+based and platform-based approaches, respectively. Moreover,
+                                                                        methods simulate the behavior of hardware or system envi-
+BLuEMan has uncovered four new vulnerabilities in BLE
+                                                                        ronments, providing scalability for testing, but they often fall
+protocol stacks, all of which have been reported and assigned
+                                                                        short in fully replicating the behavior of real targets and are
+CVEs. This approach provides valuable insights into efficient
+                                                                        typically restricted to specific systems or hardware chipsets.
+vulnerability discovery for BLE protocol stack developers.
+                                                                           To address the requirements for scalability and applicability
+                                                                        in fuzz testing BLE protocol stacks, we propose BLuEMan, a
+1   Introduction                                                        stateful simulation-based full-stack fuzzer designed for open-
+                                                                        source BLE stack implementations. BLuEMan leverages a
+The rapid expansion of the Internet of Things (IoT) and wear-           Real-Time Operating System (RTOS) to execute the actual
+able devices has driven a significant increase in demand for            BLE protocol stack, ensuring both high fidelity and scalability.
+wireless communication technologies. In particular, most                It incorporates a software-based physical layer simulator to
+short-range communication for these battery-constrained de-             simulate interactions between BLE targets. This framework
+vices relies on Bluetooth Low Energy (BLE), a low-power                 supports various RTOS platforms with high applicability, in-
+communication technology. According to market research                  cluding Zephyr [37], NimBLE [3], and BTstack [7], as well
+from the Bluetooth Special Interest Group [9], annual ship-             as all BLE stacks ported to these environments.
+ments of Bluetooth devices have reached billions, with over                BLuEMan is also distinguished by its high compatibility,
+80% of them supporting the BLE protocol. This widespread                flexibility, traceability, and portability: (1) Compatibility: The
+adoption highlights the popularity and critical role of BLE in          framework compiles into a single ELF executable, allowing
+modern technological ecosystems.                                        seamless integration with existing debugging, instrumentation,
+   The widespread adoption of BLE devices has brought sig-              and state monitoring tools. (2) Flexibility: By introducing a
+nificant attention to their security vulnerabilities. Research          stackable mutation architecture, BLuEMan can fuzz different
+
+
+
+USENIX Association                                                                          34th USENIX Security Symposium           6259
+protocol layers and support customized protocols, making it
+highly adaptable. (3) Traceability: Using a novel Man-In-The-                  Application
+
+
+
+
+                                                                                                                         Information
+                                                                                        Heart Rate
+Middle (MITM) architecture, BLuEMan deploys a packet
+
+
+
+
+                                                                                                      Battery
+
+
+                                                                                                                Sensor
+                                                                                HID
+interceptor that facilitates comprehensive fuzz testing and
+enables fine-grained traceability. (4) Portability: BLuEMan
+leverages a Linux Foundation-backed open-source framework
+and supports BLE protocol stacks portable to the Nordic                        Host
+NRF52/53/54-series simulated boards with BLE hardware.                                        Generic Access Proﬁle (GAP)
+
+   We evaluated BLuEMan by comparing it against prior                                      Generic Attribute Proﬁle (GATT)
+notable Bluetooth fuzzers. BLuEMan demonstrated supe-
+                                                                                Attribute Protocol (ATT)           Security Manager (SM)
+rior speed and flexibility, primarily due to its reliance on
+a physical-layer simulator. Specifically, it achieves fuzzing                    Logical Link Control & Adaptation Layer Protocol
+                                                                                                     (L2CAP)
+rates up to 18.0 and 162.3 times faster than typical simulation-
+based (BTFuzz [23]) and platform-based (SweynTooth [16])                                  Host Controller Interface (HCI)
+approaches, respectively. In addition, BLuEMan’s field-aware
+                                                                               Controller
+mutation method outperforms traditional AFL-based muta-
+                                                                                                        Link Layer (LL)
+tion in edge coverage, yielding improvements ranging from
+6.14% to 256.49% on the standard BLE stack.                                                          Physical Layer (PHY)
+   More importantly, BLuEMan identified four new vulnera-
+bilities across different layers of the BLE protocol stack, all of                 Figure 1: The BLE protocol stack.
+which have been assigned CVEs. We dedicated approximately
+three months collaborating with the developers involved to
+validate the identified vulnerabilities, reproduce them on their
+                                                                     BLE Protocol Stack. Figure 1 illustrates the BLE protocol
+platforms, and ensure they were properly patched. This work
+                                                                     stack, comprising the app, host, and controller layers from
+offers valuable insights into efficient vulnerability discovery
+                                                                     top to bottom. The app layer offers various services, such as
+for BLE protocol stack developers.
+                                                                     HID (Human Interface Device), heart rate monitoring, and bat-
+   The remainder of this paper is organized as follows. Sec-         tery status reporting. The host manages high-level protocols,
+tion 2 presents the necessary BLE background. Section 3              data exchange, and app logic, while the controller handles
+presents an overview of BLuEMan’s objective, design, and             low-level, timing-critical operations at the radio and link lay-
+real-world impact. Sections 4, 5, and 6 design, implement,           ers. The host and controller communicate via the HCI (Host
+and evaluate BLuEMan, respectively. Section 7 discusses the          Controller Interface). Depending on the implementation, they
+limitations and potential extensions. Section 8 presents related     can be located on separate chips (connected via a physical
+work, and Section 9 concludes the paper.                             interface such as UART (Universal Asynchronous Receiver-
+                                                                     Transmitter) or USB) or integrated on the same chip, using
+                                                                     shared memory for interaction.
+2   BLE Primer
+                                                                        The host contains five major components: GAP (Generic
+                                                                     Access Profile), GATT (Generic Attribute Profile), ATT (At-
+BLE is a low-energy, short-range wireless communication
+                                                                     tribute Protocol), L2CAP (Logical Link Control and Adap-
+technology introduced as part of the Bluetooth 4.0 core speci-
+                                                                     tation Layer Protocol), and SM (Security Manager). GAP
+fication [8]. It supports four primary device modes. (1) Broad-
+                                                                     defines device modes, manages device discovery, and han-
+caster: periodically broadcasts packets of data to nearby BLE
+                                                                     dles the connection process. Once connected, GATT enables
+observers without requiring a formal connection. (2) Observer:
+                                                                     structured data exchange using the ATT for attribute-level
+listens for and receives broadcast messages from other BLE
+                                                                     operations. L2CAP provides data multiplexing for higher lay-
+devices. (3) Peripheral: sends advertising packets and awaits
+                                                                     ers, ensuring efficient data transmission over the BLE link.
+incoming connections from central devices, enabling periodic
+                                                                     SM ensures device security by managing authentication, en-
+data exchange and facilitating interactive apps; (4) Central:
+                                                                     cryption, and data integrity to secure BLE communication.
+acts as the main controller, responsible for discovering, con-
+                                                                     On the other hand, the controller consists of the PHY (Phys-
+necting to, and managing peripheral devices; it structures data
+                                                                     ical) and LL (Link Layer) layers. The PHY layer operates
+exchange with peripherals using the GATT (Generic Attribute
+                                                                     on the 2.4 GHz ISM band and employs various modulation
+Protocol). The broadcaster and observer modes are commonly
+                                                                     techniques, whereas the LL layer manages packet scheduling,
+applied in location-based services, asset tracking, and event
+                                                                     role management, and timing parameters, such as connection
+management, while the peripheral and central modes are inte-
+                                                                     intervals, advertising intervals, and window lengths.
+gral to wearables, medical devices, smart home technologies,
+and similar apps.                                                    BLE Packet Type. BLE packets are categorized into two
+
+
+
+6260    34th USENIX Security Symposium                                                                                                 USENIX Association
+Preamble
+
+
+
+
+                Access                                              PDU ( ≤ 257 )                            platform must be individually acquired, configured, and inte-
+                                                                                                      CRC
+                address          LL                                                                    (3)
+(1)               (4)          header
+                                 (2)
+                                                                    LL payload ( ≤ 255 )                     grated into a testing environment, which can be both resource-
+                                                                                                             intensive and complex. Second, extracting critical runtime
+                                                                                                             state information from target platforms often requires exten-
+                PDF type           RFU ChSel TxAdd RxAdd                            Length
+                 (4bits)           (1bit) (1bit) (1bit) (1bit)                      (8bits)                  sive reverse engineering and the development of sophisticated
+                           Figure 2: BLE advertising packet format.                                          tools, such as internalblue [26].
+                                                                                                                On the other hand, emulation-based methods utilize soft-
+                                                                    PDU ( ≤ 257 )
+                                                                                                             ware to simulate the behavior of hardware or system envi-
+                                                                                                             ronments. Such emulators are designed to provide controlled,
+Preamble
+
+
+
+
+                Access                                     LL payload ( ≤ 251 )
+                                                                                                      CRC
+                address          LL
+                                             L2CAP                                             MIC     (3)
+                                                                                                             flexible, and often faster testing without requiring actual hard-
+                  (4)          header                          Information payload ( ≤ 247 )
+                                 (2)
+                                            header (4)                                          (4)          ware. For example, the QEMU emulator can replicate entire
+(1)                                     Length     CID      ATT
+                                                           opcode   ATT parameters ( ≤ 246 )
+                                          (2)      (2)       (1)
+                                                                                                             system architectures for running virtualized OS environments,
+                                                                                                             where security vulnerabilities in specific apps and protocols
+            LLID     NESN SN        MD            RFU                               Length
+                                                                                                             can be tested and identified. These approaches are highly
+           (2bits)   (1bit) (1bit) (1bit)        (3bits)                            (8bits)
+                                                                                                             scalable, allowing rapid testing across multiple targets and
+            Figure 3: BLE data packet format: ATT as an example.                                             offering flexibility to explore various configurations auto-
+                                                                                                             matically within the emulator. Moreover, they often provide
+                                                                                                             simpler access to runtime state information.
+main types: advertising packets and data packets. Advertising                                                   Nevertheless, emulation-based solutions are not without
+packets are used during the advertising and scanning phases                                                  their limitations. The primary drawback is that emulated tar-
+of BLE communication. They enable devices to announce                                                        gets may not fully replicate the behavior of actual protocols
+presence and capabilities, broadcast information, and estab-                                                 and implementations, possibly overlooking some vulnerabil-
+lish connections. Figure 2 illustrates the advertising packet                                                ities. Moreover, their applicability is restricted to specific
+format, which mainly includes a constant access address of                                                   systems and hardware chipsets. For example, the approach
+0x8E89BED6, an advertising type specified in the PDU type                                                    by Huster et al. [20] can only test systems that support Vir-
+field of the LL header, and the LL payload length field.                                                     tIO [32], such as the Linux OS. Similarly, Frankenstein [31]
+   Data packets facilitate communication between a central                                                   is confined to particular chipsets, such as Cypress and Broad-
+device and a peripheral during an established connection.                                                    com Bluetooth, and requires substantial effort to reconstruct
+Figure 3 shows an example of an ATT data packet. In the                                                      runtime state information.
+LL header, the LLID field indicates the packet type (L2CAP
+                                                                                                                To address these limitations, we propose a simulation-
+or LL control), whereas the length field specifies the total
+                                                                                                             based fuzzing framework, BLuEMan, for testing BLE pro-
+length of the LL payload plus the MIC (Message Integrity
+                                                                                                             tocol stacks. BLuEMan integrates the advantages of both
+Check). The LL payload comprises the L2CAP header and
+                                                                                                             platform-based and emulation-based approaches while tack-
+information payload. The CID (Channel ID) in the L2CAP
+                                                                                                             ling three major challenges: (1) generating high-quality seeds
+header identifies the protocol of the information payload (e.g.,
+                                                                                                             for effective fuzzing; (2) ensuring runtime scalability in terms
+0x0004 for ATT). The information payload includes an ATT
+                                                                                                             of environment setup cost, coverage measurement, fuzzing
+opcode (operation code), defining the operation type (e.g.,
+                                                                                                             speed, and crash verification; and (3) accommodating the
+request and response) and related parameters.
+                                                                                                             increasing complexity of Bluetooth protocol development,
+                                                                                                             which demands more sophisticated and resource-intensive
+3               Overview                                                                                     fuzzing strategies. To overcome these challenges, BLuEMan
+                                                                                                             introduces three novel methods: (1) employing an MITM ar-
+Current research on BLE stack fuzzing can be broadly classi-                                                 chitecture to generate high-quality seeds from real BLE apps;
+fied into platform-based [15, 16, 28] and emulation-based [20,                                               (2) utilizing the single ELF model in RTOSs to enable ultra-
+23, 31] approaches. Platform-based approaches rely on spe-                                                   fast fuzzing with scalable performance; and (3) exploring
+cific hardware or dedicated OS environments as the founda-                                                   protocol states via probabilistic mutation of packet sequences,
+tion for conducting fuzzing tests. Examples of platform-based                                                eliminating the need to emulate complex BLE state machines.
+fuzzing include using FPGAs (Field-Programmable Gate Ar-                                                        Specifically, BLuEMan utilizes an RTOS to execute the
+rays) or specific IoT devices to identify vulnerabilities in em-                                             actual BLE protocol stack, achieving both high fidelity and
+bedded systems. The OS fuzzing examples primarily target                                                     scalability. High fidelity is ensured by testing the real protocol
+RTOS to uncover software vulnerabilities. These approaches                                                   implementation, while scalability is enabled by leveraging the
+excel at providing high fidelity by closely simulating real-                                                 flexibility of RTOS software simulator to facilitate rapid test-
+world scenarios and interacting directly with actual platforms.                                              ing across various targets. Moreover, BLuEMan incorporates
+   However, platform-based solutions face significant scala-                                                 a software-based PHY simulator to simulate interactions at
+bility challenges for two primary reasons. First, each target                                                the physical layer between BLE targets, such as a BLE central
+
+
+
+USENIX Association                                                                                                              34th USENIX Security Symposium           6261
+    Table 1: Overview of the discovered vulnerabilities.
+                                                                                             Corpus                   Interacting App
+ Layer    CVE              Vulnerability Type   Elapsed Time                                 Queue
+ LL       CVE-2023-4424    Buffer overflow      5 m 24 s
+ ATT      CVE-2024-3077    Integer underflow    3372 m 15 s                                       get/update corpus           fifo
+ SM       CVE-2024-3332    Race condition       1 m 10 s
+ LL       CVE-2024-4785    Divide by zero       1943 m 44 s                                                             Physical
+                                                                                                                          Layer
+                                                                                                                        Simulator
+                                                                                             Packet
+and a BLE peripheral.                                                                        Mutator                          fifo
+   BLuEMan is aimed at testing open-source BLE protocol
+
+
+
+
+                                                                           runtime state
+                                                                                                           message
+stacks. It currently supports a variety of RTOS platforms with                                              queue        Packet
+integrated BLE stacks, including Zephyr [37], NimBLE [3],                                                              Interceptor
+and BTstack [7]. BLuEMan’s flexible design can be applied
+to any open-source BLE protocol stack that can be ported to                                   State
+                                                                                             Collector    shared        Target App
+these RTOS environments.
+                                                                                                          memory
+Objectives and Design Components. To meet the require-                                     Figure 4: BLuEMan architecture.
+ments of scalability and effective fuzz testing, BLuEMan is
+designed with the following objectives and the corresponding
+components:                                                        the effectiveness of BLuEMan in identifying vulnerabilities
+                                                                   across different layers without the overhead of managing com-
+• Efficiency: BLuEMan executes actual BLE protocol stacks          plex state machines [15, 16, 23, 28]. Notably, all the identified
+  without the overhead associated with interacting with actual     CVEs can remotely cause DoS in the affected BLE protocol
+  platforms or processing within a simulation environment.         stacks, with three being exploitable without requiring pairing.
+  This design inherently enables faster fuzzing than tradi-        This is primarily due to incorrect code behavior or memory
+  tional methods.                                                  corruption, such as buffer overflows in the BLE reception
+• Compatibility: BLuEMan compiles the entire RTOS, BLE             buffer. Typically, a device crash results in an automatic restart.
+  stack, and PHY simulator into a single ELF executable.           However, in the worst-case scenario, the targeted device may
+  This integration simplifies compatibility with existing de-      require a manual hardware reset to resume normal operation,
+  velopment tools, such as debugging, instrumentation, and         depending on the implementation of its hard fault handling
+  state monitoring.                                                mechanism [16]. All the identified CVEs have been reported
+• Flexibility: BLuEMan incorporates a stackable mutation           to the respective developers and subsequently patched.
+  architecture within its packet mutator. This architecture
+  identifies protocol layers and performs mutations based          4    BLuEMan Design
+  on customizable fuzzing weights, offering flexibility for
+  fuzzing different layers. Moreover, it is extensible, allowing   In this section, we introduce the BLuEMan framework and
+  support for custom protocols by implementing each as a           design components. Figure 4 shows its architecture overview.
+  plugin within the stackable architecture.                        We employ a PHY layer simulator for packet delivery be-
+• Traceability: BLuEMan employs a novel MITM architec-             tween BLE devices for better fuzzing performance. All the
+  ture, deploying a packet interceptor by patching the bridg-      BLE apps, the stack, and the PHY layer bridging interfaces
+  ing interface at the PHY simulator. This approach not only       are compiled as a single ELF executable. The gray boxes
+  enables comprehensive fuzz testing but also ensures fine-        in the figure indicate the new components introduced in the
+  grained traceability for monitoring and analysis.                framework:
+• Portability: The design of BLuEMan leverages a popu-
+  lar open-source framework. Furthermore, by using Nordic          • Packet Interceptor: Sits between the interacting app and
+  NRF52/53/54-series simulated boards with BLE hardware,             the target app, intercepting packets sent to the target and
+  our proposed approach is capable of assessing any BLE              forwarding packets from the target back to the interacting
+  stack that can be ported to the hardware.                          app.
+                                                                   • State Collector: Collects runtime information from the
+Real-world Impact. We discovered four new vulnerabilities            target app.
+using BLuEMan, all of which have been assigned CVEs, as            • Corpus Queue: Stores effective test cases.
+detailed in Table 1. These vulnerabilities span multiple proto-    • Packet Mutator: Generates fuzzing test cases by mutating
+col layers, including LL, ATT, and SM, and involve various           received packets.
+types of vulnerabilities: buffer overflow, integer underflow,
+race condition, and divide by zero. These findings highlight           When two BLE devices’ ELFs are ready, we invoke them
+
+
+
+6262     34th USENIX Security Symposium                                                                                USENIX Association
+to communicate with each other. The packet interceptor in-                           BLE device                                       BLE device
+                                                                                     (interacting)             BabbleSim               (target)
+tercepts a packet sent from the interacting app to the target                             with                 Middleware                with
+                                                                                      BabbleSim                                       BabbleSim
+app and forwards the packet for mutation. A mutated packet
+(test case) is fed to the target app to perform a fuzzing task.
+The mutation is performed on either the packet’s payload or a                                    ➊                       ➋
+                                                                                                             ➍                      ➌
+selected test case from the corpus queue. Once the target app                                         fifo                   fifo
+
+has processed a mutated packet, the state collector collects                                     (a) The typical packet flow.
+its runtime information, e.g., code coverage, and determines
+whether the test case is effective. The corpus queue is updated
+based on the state collector’s judgment.
+                                                                         BLE device                                      BLE device
+   Our fuzzing framework features a novel design that per-               (interacting)            BabbleSim               (target)
+                                                                              with                Middleware                with
+forms mutations on payloads captured from interactions be-                BabbleSim                                      BabbleSim                 Packet
+tween apps. This approach achieves two key goals: (1) gen-                                                                   ⑥      ⑤              Mutator
+
+erating high-quality initial seeds and (2) enabling deeper ex-                      ①                        ②              Packet ③
+ploration of protocol states. Prior research has shown that                                      ⑧                       ⑦Interceptor          ④
+                                                                                          fifo                    fifo              message queue
+the quality of initial seeds significantly impacts fuzzing ef-
+fectiveness [19, 20]. To this end, our design leverages interac-                         (b) Work with the packet interceptor.
+tions between different combinations of target and interacting            Figure 5: Packet flow for the PHY layer simulator.
+apps to produce effective initial seeds and enhance testing
+coverage. An initial seed, also referred to as a test case or
+corpus throughout this paper, is composed of a sequence of         passed from the PHY simulator to the mutator.
+BLE packets captured during communication between an in-              Figure 5 illustrates the packet flow with and without the
+teracting app and a target app. For example, in a heart-rate       packet interceptor. In the default setup (Figure 5a), a packet
+measurement app, interactions between the peripheral (inter-       sent from the interacting app to the target app travels through
+acting) and central (target) apps yield protocol messages at       the PHY simulator middleware and follows a direct return
+various layers, such as L2CAP and ATT, which are then used         path to the sender, as indicated by the black circled steps 1 to 4.
+for fuzzing.                                                       In contrast, with the packet interceptor enabled (Figure 5b),
+   To support deeper state exploration, the interacting apps       the packet is intercepted after transmission (steps 1 to 3),
+are implemented based on BLE protocol specifications, en-          sent to the mutator, and then returned to the target app for
+suring comprehensive coverage of BLE states. Mutations             processing (steps 4 and 5). The packet is then processed by
+are applied to randomly selected packets and protocol layers       the BLE stack integrated with the target app, and a response
+within these captured interactions. By integrating stateful pay-   is generated and sent back to the sender (steps 6 to 8).
+loads generated from real protocol exchanges with a stateless
+fuzzer, BLuEMan forms a stateful fuzzing framework capable
+of targeting BLE protocol implementations at any state. To
+                                                                   4.2       State Collector
+maintain robustness and simplify vulnerability detection, the      The state collector is designed to provide sufficient informa-
+fuzzed ELF executables are restarted in each fuzzing round,        tion to guide the fuzzing process in accurately selecting more
+preventing the accumulation of program error states.               effective test cases from the corpus queue. Our framework
+                                                                   achieves this by collecting runtime state information from
+                                                                   the target BLE stack under test. A key advantage of using
+4.1    Packet Interceptor
+                                                                   a PHY simulator is its ability to compile the entire RTOS,
+The packet interceptor plays a crucial role in the proposed        Bluetooth stack, and simulator into a single ELF executable,
+framework. We integrate our approach with a PHY simula-            facilitating seamless integration with development tools such
+tor to capture packets exchanged between the involved apps.        as debuggers, instrumentation utilities, and state monitors.
+By using a simulator, we avoid the complexity of over-the-            In our framework, we port AFL’s edge code coverage mech-
+air packet capture and gain a streamlined mechanism for            anism into the state collector and perform target instrumen-
+packet interception and manipulation. The packet interceptor       tation using afl-gcc, thereby enabling edge coverage col-
+is implemented by patching the bridging interface offered          lection. To focus the fuzzing effort, runtime state collection
+by the PHY simulator–specifically, by modifying the packet-        is restricted to BLE-relevant components by patching the
+receiving routine to invoke the interceptor before the packet is   compiler to instrument only selected source code directories.
+returned. The interceptor routine operates in a blocking man-         Beyond edge coverage, researchers can customize the
+ner: it forwards the intercepted packet to the packet mutator      framework to collect other types of coverage by modifying
+and waits for the mutated payload to be returned. This design      the coverage collection module. Moreover, sanitizers like UB-
+grants the packet interceptor complete control over the data       San (UndefinedBehaviorSanitizer), MSan (MemorySanitizer),
+
+
+
+USENIX Association                                                                               34th USENIX Security Symposium                              6263
+                                                  State Collector                             Corpus        Algorithm 1 The Packet Mutation Algorithm
+                                                                                              Queue
+                            Log Crashed               Update              Test Case
+                             Test Case               Coverage     Ⓐ       Discarded                         Input: pkt: Input packet (original).
+                               ⑧ Yes                      No                     No
+                                                      ⑩                     ⑫
+                                                                                                            Input: wx : Weight for not performing mutation.
+                 ⑦               App          ⑨         App
+                                                                  ⑪
+                                                                            Effective                       Input: L: List of available protocols. Each element is in the
+         BLE                   Crashed?      No     Terminated?   Yes      Test Case?
+        Stack                                                                                                   form of {R, w, M}, where R is the recognization func-
+                                                                            Ⓒ       Yes
+                                                                                                                tion, w is the weight for mutation, and M is the mutation
+                           Packet Mutator
+           ⑥
+                                          Packet Collector
+                                                                                                                function.
+        Packet
+                                          (non-initial-seed) Ⓓ
+                                                                                                            Output: pkt ′ : Output packet (mutated).
+         OUT               ⑤                                                                                 1: L’ ← ∅ ▷ The array containing the detected protocols.
+                                          Packet Collector
+                                           (initial-seed) Ⓑ                                                  2: for p ∈ L do
+                                               ②    Yes
+                                                                                ④                            3:     if p.R(pkt) is true then
+                                              Empty                                                          4:           p.w ← UpdateWeight(p)
+        Packet             ①                                ③                             Ⓔ
+                                              Corpus                  Packet Mutation
+          IN                                                No
+                                              Queue?
+                                                                                                             5:           add p to L′
+      Target App                                                                                             6:     end if
+         Primary workﬂow              Signaling message                   Load/Store packets upon request    7: end for
+                                                                                                             8: n ← number of elements in L′
+Figure 6: The packet-driven workflow of the packet mutator.
+                                                                                                             9: add {∅, wx , ∅} to L′
+                                                                                                            10: W ← ∑ p.w ∀p ∈ L′
+and ASan (AddressSanitizer) can be enabled to improve the                                                   11: m ← −1                                  ▷ Mutation index
+detection of undefined behavior and memory corruption er-                                                   12: pr ← draw a probability from [0, 1]
+rors.                                                                                                       13: wL ← 0
+                                                                                                            14: for i = 0 to (n − 1) do
+                                                                                                            15:     wU ← wL + L′ [i].w/W
+4.3       Corpus Queue                                                                                      16:     if wL ≤ pr < wU then
+The corpus queue stores candidate test cases for fuzzing. Ini-                                              17:           m←i                    ▷ Assign mutation index
+tially empty, it is populated with effective test cases as the                                              18:     end if
+fuzzing process progresses. Each entry in the corpus queue                                                  19:     wL ← wU
+represents a sequence of multiple BLE packets collected in                                                  20: end for
+the same fuzzing round. Thanks to the packet interceptor,                                                   21: if m > −1 then
+valid BLE packets exchanged between the interacting and tar-                                                22:      pkt ′ ← L′ [m].M(pkt)
+get apps are captured early in the fuzzing process and added                                                23: else
+as initial candidates. Subsequent test cases are derived from                                               24:      pkt ′ ← pkt
+these initial entries to further expand the corpus.                                                         25: end if
+   Only test cases that do not crash the target app are retained                                            26: return pkt ′
+in the corpus queue. If a test case causes a crash, it is sepa-
+rately logged and preserved for further analysis and validation.
+                                                                                                            be logged 8 , used to update coverage 10 , or discarded 12 ,
+                                                                                                            depending on whether the runtime state indicates a crash,
+4.4       Packet Mutator
+                                                                                                            termination, or effective behavior (i.e., increased coverage).
+The packet mutator is the most critical component of the                                                       During the initial seed collection process, the state collector
+framework. We propose a modular, packet-driven workflow                                                     updates coverage information for each processed packet in
+and a stackable mutation architecture to enable an efficient                                                the packet collector A . This process halts if no new coverage
+and flexible fuzzing process. The modular workflow ensures                                                  is observed in the most recent n packets. For non-initial-seed
+streamlined execution, while the stackable architecture allows                                              packets, the coverage state is only reported when the target
+weighted fuzzing based on identified protocol layers. This                                                  app terminates normally at the end of a fuzzing round B .
+process is illustrated in Figure 6. It is triggered upon receiv-                                            In both cases–either when initial seed collection halts or a
+ing an input packet 1 . Depending on whether the corpus                                                     fuzzing round ends–the packets stored in the packet collector
+queue is empty, the mutator either collects an initial seed 2                                               are treated as a complete test case and added to the corpus
+or performs packet mutation 3 . All packets processed by                                                    queue ( C and D ).
+the mutator are duplicated and stored in a packet collector,                                                   To enhance fuzzing flexibility, we introduce a stackable
+which is later used to maintain the fuzzing corpus. The output                                              mutation architecture capable of recognizing protocol layers
+packet 5 is then sent to the target app 6 to fuzz the BLE                                                   and applying mutations based on preferred fuzzing weights.
+stack. After the packet is processed, the target app’s runtime                                              Each supported protocol is implemented as a plugin, which in-
+state is recorded by the state collector. The test case used may                                            cludes: a protocol recognition function (Ri ), a mutation weight
+
+
+
+6264       34th USENIX Security Symposium                                                                                                              USENIX Association
+                                                                       Initiator                   Responder                                                                   send: Security Req
+(wi ), and a protocol mutation function (Mi ). The recognition        (Central)                    (Peripheral)
+                                                                                                                               recv'ed: (secure)
+                                                                                                                                                                               (optional)
+                                                                                                                                                                (a) Idle
+module identifies the presence of a specific protocol header                   (1) Pairing Requ
+                                                                                                   est
+                                                                                                                                 Pairing Req
+
+                                                                                                                                                                    recv'ed: (legacy)
+and payload in the packet. If the protocol is detected, a fuzzing                  Pairing Respons
+                                                                                                    e
+                                                                                                                                                 recv'ed:
+                                                                                                                                                                    Pairing Req
+
+                                                                              (2) Pairing Public
+                                                                                                   Key
+                                                                                                                     (f) Wait                 LL_ENC_REQ        (b) Wait
+probability is sampled to determine whether its header or pay-                     Pairing Public
+                                                                                                  Key
+                                                                                                                    Public Key                              Pairing Conﬁrm
+                                                                                                                           recv'ed: Public Key                      recv'ed:
+load should be mutated. The corresponding protocol mutation                         Pairing Conﬁrm                         send: Conﬁrmation                        Pairing Conﬁrm
+                                                                               (3) Pairing Rand
+                                                                                                   om                  (g)Wait                                  (c) Wait
+module then performs the actual mutation.                                           Pairing Random                Pairing Random                            Pairing Random
+                                                                             (4) Pairing DHKey                             recv'ed:                                 recv'ed:
+   The stackable mutation architecture allows researchers to                                      Check
+                                                                                                                           Nonce                                    Pairing Random
+                                                                                              Check
+                                                                              Pairing DHKey                         (h) Wait                                    (d) Key                 pairing failed
+design and implement fuzzers for unsupported or customized                     Identity Informati
+                                                                                                  on
+                                                                                                                  DHKey Check              recv'ed:           Distribution
+                                                                                                  Info.
+                                                                               Identity Address                                            DHKey Check
+protocols. In the case of BLE fuzzing, we provide implemen-                   (5) Identity Informatio
+                                                                                                         n
+                                                                                                                          pairing failed
+                                                                                                                                                                    recv'ed: Key
+
+                                                                              (6) Identity Addr
+tations for the LL, L2CAP, SMP, and ATT protocols. Notably,                                       Info.                  legacy pairing
+                                                                                                                                                            (e) Final State
+                                                                                                                   secure conn. pairing
+each protocol fuzzer can be configured to target the protocol
+header, payload, or both. In general, we apply field-aware           (a) Packet Sequence.                                      (b) Simplified State Machine.
+mutations to protocol headers to ensure that mutated packets         Figure 7: Example of SM pairing: packet sequence and state
+can pass the basic validation checks regulated by the protocol       machine mapping.
+specifications.
+   Specifically, BLuEMan incorporates mutation operations
+from traditional fuzzers, such as the havoc operations               4.5            Packet-driven State Machine Traversal
+from AFL, and enhances their effectiveness through three
+                                                                     One key novelty of BLuEMan is its ability to explore proto-
+lightweight mutation constraints: (1) restricting bitwise muta-
+                                                                     col states without emulating BLE state machines. It takes a
+tions to the Link Layer, (2) keeping the upper-layer protocol
+                                                                     packet-driven approach to state machine traversal by associat-
+fields (e.g., the LLID field in the LL protocol) unchanged, and
+                                                                     ing packet sequences with state transitions. To illustrate this,
+(3) adjusting length fields in response to changes in payload
+                                                                     we use the SM pairing process as an example.
+size. The traditional mutators promote testing diversity, while
+the added constraints help maintain protocol correctness.               Figure 7a shows the LE Secure Connections Pairing packet
+                                                                     sequence using the Just Works method, which is naturally
+   The packet mutation algorithm is detailed in Algorithm 1.
+                                                                     generated by the sm_pairing apps during interactions be-
+Given an input packet pkt, a weight wx representing the prob-
+                                                                     tween the central and peripheral apps. In contrast, Figure 7b
+ability of skipping mutation, and a list of available protocols
+                                                                     presents a simplified peripheral state machine for LE pair-
+L, the algorithm returns either a mutated packet or the original
+                                                                     ing using the same method. Starting from the idle state, the
+input packet, based on the assigned weights and a sampled
+                                                                     peripheral transitions through states (a), (f)–(h), and (d)–(e),
+probability. Each protocol in the list L is represented as a tuple
+                                                                     guided by the packet sequence (1)–(6) produced within BLuE-
+{R, w, M}, where R is the protocol recognition function, w is
+                                                                     Man. Our mutation strategy probabilistically selects different
+the mutation weight, and M is the mutation function.
+                                                                     packets and protocol layers from these live interactions to
+   The algorithm starts by determining which protocols are
+                                                                     mutate, enabling exploration of any state reachable by the
+present in the input packet (lines 1-7), storing all detected
+                                                                     BLE apps under test.
+protocols in a separate array, L′ . To simplify implementation,
+                                                                        A compelling example of the effectiveness of this approach
+a dummy protocol {∅, wx , ∅} is appended to the end of L′
+                                                                     is the discovery of CVE-2024-3332 (see Appendix B.3). Al-
+(line 9). The total mutation weight W is then calculated by
+                                                                     though the root cause lies in a race condition between the
+summing the weights of all protocols in L′ (line 10). Next,
+                                                                     HCI and SM pairing protocol implementations, the vulner-
+the algorithm samples a probability from the range [0, 1],
+                                                                     ability is only triggered when the SM protocol reaches the
+determines which protocol to mutate, and stores the selection
+                                                                     “Key Distribution" state, highlighting the practical value of
+in an index variable m (lines 11-20). While line 12 draws a
+                                                                     our method.
+uniform random probability, the actual likelihood of selecting
+each protocol is influenced by the UpdateWeight function,
+which adjusts weights based on the runtime coverage of each          5      Implementation
+protocol layer. Finally, the algorithm invokes the mutation
+function L′ [m].M on the input packet pkt. If no protocol is         Our proposed framework is integrated with a selected RTOS
+selected, the original input packet is returned unchanged.           and a PHY simulator. Unless otherwise specified, we adopt
+   It is important to note that the fuzzing speed of the packet-     the Zephyr RTOS, a general-purpose RTOS maintained by the
+driven workflow largely depends on the interaction frequency         Linux Foundation, which supports over 750 boards. Among
+between the selected interacting app and the target app. To          the available open-source simulators, BabbleSim [6] and
+maintain progress, if no interaction is detected within a speci-     RootCanal [17] are two widely used options. Based on the
+fied timeout threshold (2 s by default in this study), both apps     completeness of their BLE implementations, we choose Bab-
+are terminated and restarted for a new fuzzing round. For            bleSim as the PHY simulator to capture packet exchanges
+further details on fuzzing speed, please refer to Section 6.1.       between apps. Both BabbleSim and Zephyr are patched to sup-
+
+
+
+USENIX Association                                                                                           34th USENIX Security Symposium                                                        6265
+                     Protocol Stack    Protocol Stack    Protocol Stack
+ Simulated
+  Devices
+
+                       Software          Software          Software                                                                               other
+                                                                                                                       Application               device
+                      Baseband          Baseband          Baseband                                                                               binary
+                    HW Accelerators   HW Accelerators   HW Accelerators                                    other    Zephyr
+                                                                                    Application           device    Kernel
+                        Modem             Modem             Modem                                                              Drivers   radio
+                                                                                Zephyr
+  BabbleSim PHY
+
+
+
+
+                                                                                Kernel                                                   stack
+                                                                                              Drivers              POSIX
+                                                                          Architecture/SOC                                   HW models
+                                                                          dependent layer
+
+                                                                           CPU/SOC       HW peripherals               Host OS Kernel
+                                        Shared Medium                                                                  (i.e., Linux)
+
+
+                                                                              (a) With physical hardware.            (b) with POSIX API.
+Figure 8: BabbleSim PHY: shared medium and device inter-
+                                                                                     Figure 9: Zephyr architecture comparison [36].
+face.
+
+                                                                          Integration. We further adopt the PHY simulator in the
+port the BLuEMan framework. BLuEMan also incorporates                     targeted RTOS and BLE protocol stack implementation.
+instrumentation, coverage collection, and mutation operators              Specifically, we evaluate our approach using two RTOS plat-
+adapted from the AFL fuzzer.                                              forms, Zephyr [37] (supported by the Linux Foundation) and
+   In this section, we briefly introduce BabbleSim and discuss            Mynewt [3] (supported by the Apache Foundation), along
+the necessary integration steps. BLuEMan is publicly avail-               with their built-in BLE protocol stacks. Other BLE protocol
+able at https://doi.org/10.5281/zenodo.15601101 and                       stacks, such as BTstack [7], that can be adapted to run on
+https://github.com/zoolab-org/blueman.artifact.                           either Zephyr or Mynewt can also be evaluated using our
+BabbleSim. BabbleSim is a simulator designed for shared                   framework.
+medium networks at the physical layer, where the shared                      We use Zephyr as an example to illustrate the integration of
+medium represents wireless communication in the 2.4GHz                    our framework with an RTOS. Figure 9 compares the Zephyr
+ISM band. The BabbleSim PHY, illustrated in Figure 8, is di-              architecture on hardware versus a PHY simulator, i.e., Bab-
+vided into two main components: (1) the shared medium and                 bleSim. As shown in Figures 9a and 9b, Zephyr provides a
+(2) the simulated modems that use BabbleSim’s library func-               POSIX-compatible implementation to replace architecture-
+tions. Programs with these simulated modems are referred                  and SoC1 -dependent layers and CPU/SoC hardware. For in-
+to as simulated devices. The propagation in the simulated                 stance, architecture-specific halt instructions are implemented
+medium closely replicates real-world wireless communica-                  using the POSIX API exit function. Additionally, Zephyr
+tion in the 2.4GHz ISM band, with BabbleSim’s library en-                 allows the driver to interface with the modem API (the radio
+abling simulated devices to communicate wirelessly through                stack in Figure 9b) provided by the BabbleSim project. By
+the shared medium. Multiple simulated devices can connect                 substituting hardware peripherals with software-simulated
+to a single simulated medium.                                             radios, each Bluetooth device/app is treated as a standalone
+   BabbelSim supports compiling device and app codes into                 app running in a typical OS environment, suitable for fuzzing.
+ELF executables, allowing it to run on Linux systems. This
+feature provides developers with flexibility and ease of use,
+                                                                          6      Evaluation
+enabling direct simulation and testing of wireless communica-
+tion protocols within a Linux environment. BabbleSim allows               In this section, we evaluate BLuEMan from multiple per-
+developers to harness the powerful capabilities of the Linux              spectives and summarize the results in the form of research
+platform for efficient development and testing.                           questions (RQ). We begin by describing the experimental
+   Through BabbleSim’s modular library, developers can im-                setting and our comparison with existing Bluetooth fuzzers.
+plement communication protocols for the 2.4GHz ISM band,
+                                                                          Experimental Setting. Experiments are conducted on a
+such as Bluetooth Low Energy, Thread, and 6LoWPAN. A
+                                                                          server equipped with an Intel(R) Xeon(R) Gold 5118 CPU and
+notable project, ext_nRF_hw_models, involves developing
+                                                                          48 GB RAM, running Debian 12 Linux OS. We select several
+software-simulated peripherals based on nRF5-series hard-
+                                                                          pairs of interacting and target apps, as summarized in Table 2.
+ware models, including wireless protocols such as Bluetooth
+                                                                          Two key points are worth noting. First, the selected BLE
+Low Energy and IEEE 802.15.4.
+                                                                          protocol stacks were developed by three independent teams,
+   We integrate our packet interceptor with the radio stack of
+                                                                          demonstrating the portability of BLuEMan. The correspond-
+the BabbleSim simulator. It is done by invoking the packet
+                                                                          ing source code can be found in the samples/bluetooth
+interceptor function from within the start_Rx routine before
+                                                                          directory of the Zephyr project, the babblesim/targets di-
+the start_Rx routine returns a packet. The implementation
+                                                                          rectory of the NimBLE project, and the example directory
+of the packet interceptor contains 168 lines of C codes, and
+                                                                          of the BTstack project. Second, some BLE apps may require
+the patch contains only a single line function call to the Bab-
+bleSim routine.                                                               1 SoC:     System on Chip
+
+
+
+
+6266              34th USENIX Security Symposium                                                                             USENIX Association
+          Table 2: BLE app pairs used for experiments.                Table 3: Summary of Bluetooth fuzzing research works.
+ Stack       Name                                                    Name                                                  Radio Type          Protocols          Exploration Strategy
+             (App #1)              (App #2)                                                                                Approach            Description
+                                                                     BLuEMan (Ours)                                        LE                  Host/Controller Code coverage (edge)
+ BTstack     Battery Query                                                                                                 Simulation-based    Compile firmware into an ELF executable.
+             (gatt_battery_query) (gatt_counter)                     SweynTooth [16]                                       LE                  Host/Controller Customized state machine
+             SM Pairing                                                                                                    Platform-based      Use a dongle to interact with BLE devices.
+             (sm_pairing_central) (sm_pairing_peripheral)            BTFuzz [23]                                           LE                  Host               Customized state machine
+                                                                                                                           Simulation-based    Attach customized HCI interface to BLE host.
+             LE Credit
+                                                                     BrakTooth [15]                                        BR/EDR              Host/Controller Customized state machine
+             (le_credit_based_flow_control_mode_client)                                                                    Platform-based      Use a dongle to interact with BR/EDR devices.
+             (le_credit_based_flow_control_mode_server)              L2FUZZ [28]                                           BR/EDR              L2CAP              Customized state machine
+ NimBLE      GATT                                                                                                          Platform-based      Use a dongle to interact with BR/EDR devices.
+             (blecent)             (bleprph)                         Frankenstein [31]                                     BR/EDR/LE           Controller         Code coverage (basic block)
+                                                                                                                           Emulation-based     Emulate firmware using QEMU user-mode.
+ Zephyr      GATT Write                                              VirtFuzz [20]                                         BR/EDR/LE           Host               Code coverage (edge)
+             (central_gatt_write) (peripheral_gatt_write)                                                                  Emulation-based     Full system emulation using QEMU/VirtIO.
+             OTS
+             (central_otc)†        (peripheral_ots)
+             Heart Rate
+             (central_hr)          (peripheral)
+
+
+
+
+                                                                              Packet Transmission Rate (packets/s)
+                                                                                                                                                          Battery Query (to Central)
+
+
+
+
+                                                                                                                     300
+             ISO Broadcast                                                                                                                                Battery Query (to Peripheral)
+                                                                                                                                                          GATT (To Central)
+             (iso_broadcast)       (iso_receive)§                                                                                                         GATT (To Peripheral)
+                                                                                                                                                          GATT Write (to Central)
+
+
+
+
+                                                                                                                     250
+             BLE Mesh                                                                                                                                     GATT Write (to Peripheral)
+                                                                                                                                                          Heart Rate (to Central)
+             (mesh)†               (mesh_provisioner)†§                                                                                                   Heart Rate (to Peripheral)
+                                                                                                                                                          LE Credit (to Central)
+
+
+
+
+                                                                                                                     200
+                                                                                                                                                          LE Credit (to Peripheral)
+†:   Replace hardware-dependent functions with mock ones.                                                                                                 OTS (to Central)
+                                                                                                                                                          OTS (to Peripheral)
+                                                                                                                                                          SM Pairing (to Central)
+§:   Only application #2 in this pair is fuzzed.                                                                                                          SM Pairing (to Peripheral)
+
+
+
+
+                                                                                                                     150
+                                                                                                                                                          BLE Mesh (to Provisioner)
+                                                                                                                                                          ISO Broadcast (to Receiver}
+
+
+
+
+                                                                                                                     100
+physical hardware (e.g., a button) to activate specific features;
+
+                                                                                                                     50
+for such cases, we patch the apps to enable those features
+programmatically using mock functions, removing the need                                                                   0.0      0.1         0.2      0.3              0.4
+
+for physical components.                                                                                                                      Timeout Ratio
+
+Comparison with Existing Bluetooth Fuzzers. We sum-                 Figure 10: Scatter plot for the packet transmission rate and
+marize key distinctions by comparing BLuEMan with prior             the corresponding timeout ratio for each app pair.
+notable Bluetooth fuzzers in Table 3. An experimental com-
+parison with BrakTooth is presented in Section 6.5. Direct
+comparisons with other solutions are not feasible due to differ-    as a simulation-based approach, utilizes a state machine to
+ences in target protocols or the unavailability of the required     monitor the fuzzing state of the target protocol stack. How-
+platform or hardware, as presented below.                           ever, its HCI-based interface limits the fuzzing scope to host
+   Platform-based approaches, including SweynTooth [16],            protocols.
+BrakTooth [15], and L2FUZZ [28], typically use a dongle                Note that, regarding initial seeds, Frankenstein starts with
+to interact with target devices. To estimate fuzzing progress,      a null byte; BLuEMan, BrakTooth, and VirtFuzz use captured
+they develop custom state machines that track the hardware          Bluetooth packets; while SweynTooth, BTFuzz, and L2FUZZ
+state by mapping received messages from the target device to        generate seeds from self-simulated protocol state machines.
+corresponding protocol states. For experimental evaluation,
+SweynTooth is not publicly available–only proof-of-concept          6.1     RQ1: Fuzzing Speed
+attacks have been released–and L2FUZZ is incompatible with
+the BLE devices we target. However, BrakTooth can be ex-            We discuss the fuzzing speed of our proposed approach due
+ecuted using the ESP32-WROVER-KIT platform, so it is                to the use of the packet-driven design. With this design, the
+chosen for the experimental comparison.                             fuzzer can only perform mutations when a packet passes
+   Emulation-based fuzzers include Frankenstein [31] and            through the packet interceptor and the mutator. As a result,
+VirtFuzz [20], whereas BTFuzz [23] is a simulation-based            the fuzzing speed is primarily determined by the packet trans-
+fuzzer like BLuEMan. Frankenstein uses QEMU user-mode               mission rate between the client and the server. We set a default
+as its primary emulation engine, targeting Broadcom and Cy-         timeout threshold of 2 seconds to detect whether a fuzzing
+press Bluetooth firmware; however, the source code required         process initiated by an interacting app is stalled. If a stall is
+by BLuEMan is unavailable. VirtFuzz employs VirtIO to fuzz          detected, the involved apps are restarted. We run the selected
+Bluetooth protocols above the HCI layer, which differs from         BLE app pairs to perform the measurement. Each app pair is
+BLuEMan’s protocol entry point. Moreover, VirtIO requires           run for 24 hours.
+a guest OS to implement specialized drivers for their interac-         Figure 10 presents the scatter plot of the packet transmis-
+tion, which are typically unavailable on most RTOSs. BTFuzz,        sion rate and the corresponding timeout ratio for each app pair.
+
+
+
+USENIX Association                                                                                                               34th USENIX Security Symposium                           6267
+       Table 4: Packet transmission rates for BLE works.               Host Computer                                       Remote Device
+
+  Name                   Approach           Rate (packets/min)            Central            Host BLE
+                                                                                                                          nRF52840
+                                                                                                                                             Peripheral
+                                                                       (Native - x86)        Controller                                    (Native - arm)
+  SweynTooth [16]        Platform-based     119
+  BTFuzz [23]            Simulation-based   1,073
+  BLuEMan (Ours)         Simulation-based   19,315                     (a) Platform-based measurement over the air (nRF52840).
+
+                                                                       Host Computer
+
+
+
+
+                                                                                        UART over
+
+
+
+
+                                                                                                                               UART over
+Each app is represented by a different symbol in the figure.
+
+
+
+
+                                                                                         Socket
+
+
+
+
+                                                                                                                                Socket
+                                                                          Central                                                            Peripheral
+                                                                                                            RootCanal
+                                                                       (Native - x86)                                                         (QEMU)
+The y-axis shows the average packet transmission rate mea-
+sured during the experiments. At the same time, the x-axis
+represents the timeout ratio, defined as the number of stalls         (b) Emulation-based measurement using the QEMU-based
+detected divided by the total number of invocations collected         emulator (RootCanal).
+in the same experiments. The Pearson correlation coefficient
+                                                                       Host Computer
+for the measured average packet transmission rate and the
+
+
+
+
+                                                                                        UART over
+
+
+
+
+                                                                                                                               UART over
+                                                                                         Socket
+
+
+
+
+                                                                                                                                Socket
+timeout ratio is -0.74, indicating that the number of timeouts            Central                                                            Peripheral
+                                                                                                            RootCanal
+                                                                       (Native - x86)                                                      (Native - x86)
+has a strong negative impact on the packet transmission rate.
+   App stalls do not always occur when invoking an app pair.
+                                                                      (c) Simulation-based media using the Controller emulator
+We attempt to examine the root cause of app stalls. One pri-          (RootCanal).
+mary reason is unhandled simulated hardware interrupts ob-
+served in a few apps. For example, we observed an unex-                Host Computer
+pectedly lower transmission rate for the “GATT Write" app                                                 PHY simulator
+                                                                          Central                                                            Peripheral
+
+
+
+
+                                                                                         FIFO
+
+
+
+
+                                                                                                                                FIFO
+pair. Our in-depth investigation revealed that the behavior                                                BabbleSim
+                                                                       (Native - x86)                                                      (Native - x86)
+                                                                                                           nrf52_bsim
+of building and running the app on a native host machine
+(e.g., an x86-based server) differs significantly from that on       (d) Simulation-based media using the PHY simulator (Bab-
+actual hardware. The stalls observed in the “GATT Write"             bleSim).
+app pair were caused by the packet interceptor not being trig-      Figure 11: Architectural overview of the evaluated media.
+gered as expected by simulated hardware interrupts. The root
+cause of this issue is that the apps implement infinite loops to
+process BLE protocol messages, which prevents them from            emulation-based media, and our proposed simulation-based
+handling simulated hardware interrupts raised by the Bab-          media. The summary of the three setups is as follows.
+bleSim simulator. Following the official guidelines from the
+                                                                   • Platform-based media. We deploy our selected RTOS
+Zephyr project, we resolved this issue by inserting an addi-
+                                                                     firmware and the target BLE stack to an nRF52840 dongle
+tional k_cpu_idle function call within the infinite loops to
+                                                                     and perform the performance measurement over the air.
+yield the CPU. The recommended fix mitigates the issues
+and enables the PHY simulator bridging interface to handle         • Emulation-based media. An RTOS firmware and the tar-
+hardware interrupts.                                                 get BLE stacks are run using QEMU user-mode emula-
+   We compare the packet transmission rate of the BLE                tion. The measurement inputs are sent to the target via the
+fuzzing research works reported from SweynTooth [16] and             RootCanal framework. It is worth noting that only protocol
+BTFuzz [23], as shown in Table 4. The numbers show that              layers above the HCI interface can be controlled due to the
+our proposed approach efficiently fuzzes the targeted BLE            RootCanal design.
+implementations. Note that BTFuzz does not explicitly de-          • Simulation-based media. Our proposed approach lever-
+scribe its runtime setup; however, its PTY2 -based interface         ages an RTOS and a PHY simulator to perform performance
+design implies the need for an OS kernel running on physical         measurements. The targets are compiled as ELF binary ex-
+or virtual hardware. While BTFuzz is not publicly available,         ecutables running on a server machine.
+we use it as the reference for emulation-based performance
+                                                                   We use customized GATT Write central and peripheral apps
+benchmarks.
+                                                                   originated from the Zephyr project to perform the benchmark.
+                                                                   The architectural overview of the evaluated scenarios is shown
+6.2     RQ2: Performance of the Radio Media                        in Figure 11. The host computer is a laptop with an AMD
+                                                                   Ryzen HX 370 CPU and a MediaTek MT7922 Bluetooth
+To have a fair comparison of the radio media performance for
+                                                                   chip running a Debian 12 Linux operating system. We mea-
+fuzzing, we evaluate the performance of selected BLE stack
+                                                                   sure the elapsed setup and transmission round-trip time on
+implementation by measuring the transmission performance
+                                                                   the central app. Each measurement iteration begins with the
+over different radio media, including platform-based media,
+                                                                   pairing of the two involved apps and ends with the first re-
+  2 pseudo   terminal.                                             ceipt of the response message for a GATT write request. We
+
+
+
+6268     34th USENIX Security Symposium                                                                                        USENIX Association
+                                                                                                                                         GATT Write (to Central)                                                                GATT Write (to Peripheral)
+
+
+
+
+                                                                                                                              5000
+
+
+
+
+                                                                                                                                                                                                                     5000
+                                                                                             Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                    Coverage (Approx. Edge Count)
+                    4000
+        Time (ms)
+
+
+
+
+                                                                                                                              3000
+
+
+
+
+                                                                                                                                                                                                                     3000
+                    3000
+
+                    2000
+
+
+
+
+                                                                                                                              1000
+
+
+
+
+                                                                                                                                                                                                                     1000
+                                                                                                                                                     Field−Aware Mutation                                                                     Field−Aware Mutation
+                                                                                                                                                     Random Mutation                                                                          Random Mutation
+                                                                                                                                                     AFL−only                                                                                 AFL−only
+
+
+
+
+                                                                                                                              0
+
+
+
+
+                                                                                                                                                                                                                     0
+                    1000
+                                                                                                                                     0      5    10       15       20                                                       0       5    10        15       20
+
+                                                                                                                                                Time (hr)                                                                                Time (hr)
+                       0
+                           Platform (Air)      Simulator (RootCanal)
+                                     Emulator (QEMU)       Simulator (BabbleSim)                                                         Heart Rate (to Central)                                                                Heart Rate (to Peripheral)
+
+
+
+
+                                                                                                                              5000
+
+
+
+
+                                                                                                                                                                                                                     5000
+                                                                                             Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                    Coverage (Approx. Edge Count)
+Figure 12: Measured performance for different radio media.
+
+
+
+
+                                                                                                                              3000
+
+
+
+
+                                                                                                                                                                                                                     3000
+perform 1,000 iterations and summarize the results in Fig-
+
+
+
+
+                                                                                                                              1000
+
+
+
+
+                                                                                                                                                                                                                     1000
+                                                                                                                                                     Field−Aware Mutation                                                                     Field−Aware Mutation
+ure 12. The figure shows that the BabbleSim PHY simulator                                                                                            Random Mutation
+                                                                                                                                                     AFL−only
+                                                                                                                                                                                                                                              Random Mutation
+                                                                                                                                                                                                                                              AFL−only
+
+
+
+
+                                                                                                                              0
+
+
+
+
+                                                                                                                                                                                                                     0
+provides the most stable and efficient medium for transmitting
+                                                                                                                                     0      5    10       15       20                                                       0       5    10        15       20
+Bluetooth packets, being approximately 100 times faster than                                                                                    Time (hr)                                                                                Time (hr)
+other media. Surprisingly, the RootCanal controller simulator
+performs similarly whether using native code or an emulator.                                                                                OTS (to Central)                                                                       OTS (to Peripheral)
+The elapsed time for pairing and packet transmission round-
+
+                                                                                                                             5000
+
+
+
+
+                                                                                                                                                                                                                    5000
+                                                                                     Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                            Coverage (Approx. Edge Count)
+trip over the air is similar to that of the emulator. However,
+the signal strength fluctuates over time, leading to less stable                                                             3000
+
+
+
+
+                                                                                                                                                                                                                    3000
+performance.
+                                                                                                                             1000
+
+
+
+
+                                                                                                                                                                                                                    1000
+                                                                                                                                                  Field−Aware Mutation                                                                     Field−Aware Mutation
+                                                                                                                                                  Random Mutation                                                                          Random Mutation
+                                                                                                                                                  AFL−only                                                                                 AFL−only
+                                                                                                                             0
+
+
+
+
+                                                                                                                                                                                                                    0
+6.3    RQ3: Fuzzing Coverage                                                                                                         0     5    10        15      20                                                        0       5    10        15      20
+
+                                                                                                                                                Time (hr)                                                                               Time (hr)
+
+We measure the fuzzing coverage for the evaluated apps to
+demonstrate the effectiveness of our proposed approach. Each                                                                 Figure 13: Coverage for the selected evaluated apps.
+selected app pair is fuzzed three times, with each experiment
+lasting 24 hours. We evaluate three different mutation strate-
+gies: field-aware mutation, AFL-only mutation and random
+mutation. For the field-aware mutation, the packet header is
+mutated within the bounds defined by the corresponding pro-
+                                                                                   to Figure 17 in Appendix A for the rest of the plots. Among
+tocol specification, with selected fields set to either valid or
+                                                                                   the 16 test cases, those using field-aware mutations demon-
+invalid values. The payload, on the other hand, is mutated
+                                                                                   strated significant improvements in edge coverage compared
+using random byte-level changes. For AFL-only mutation, we
+                                                                                   to both random and the AFL-only mutators, with gains of
+directly apply havoc mutators from AFL. To avoid immediate
+                                                                                   4.48%-40.05% and 6.14%–256.49%, respectively, excluding
+rejection, any packet exceeding the current connection’s max-
+                                                                                   the BLE Mesh case.
+imum allowed LL payload size is truncated. In the random
+mutation strategy, random byte mutations are applied to both
+the header and payload of the entire LL packet.                                       Notably, in the BLE Mesh case, the three methods achieved
+   In the experiments, all app pairs swap the roles of the in-                     comparable edge coverage, with differences of less than
+teracting and target apps, except for the BLE Mesh and ISO                         5.64%. This is because, unlike the standard BLE stack, BLE
+Broadcast apps. For the BLE Mesh app, we evaluate only the                         Mesh is based on a separate specification developed on top of
+provisioner because it is more complex and is responsible for                      BLE and is not part of the core BLE specification. The adver-
+initializing and configuring the entire mesh network, while the                    tising bearer used in our tests is built on the LL layer of the
+provisionee only plays a passive role. For the ISO Broadcast                       BLE stack, with additional layers specific to BLE Mesh’s Net-
+app, we only test the receiver because the ISO receiver is a                       work, Transport, and Access layers, but without the L2CAP,
+BLE observer that cannot send packets. Its sole function is to                     SM, and ATT layers found in the standard BLE stack. Since
+receive packets, making it unsuitable as an interacting app.                       the field-aware mutator handles only the standard LL, L2CAP,
+   Figure 13 shows the coverage measured over time for all the                     SM, and ATT layers of the BLE stack, it does not offer any
+evaluated apps. Due to space limitations, only a limited num-                      advantages for the BLE Mesh protocol layers above the LL
+ber of test cases are presented in the figure. Readers may refer                   layer.
+
+
+
+USENIX Association                                                                                                                                      34th USENIX Security Symposium                                                                               6269
+                                         GATT Write (to Peripheral)                                                   Heart Rate (to Peripheral)
+Coverage (Approx. Edge Count)
+
+
+
+
+                                                                             Coverage (Approx. Edge Count)
+                                4400
+
+
+
+
+                                                                                                             4400
+                                                                                                                                     Fixed (0.1)
+                                                                                                                                     Fixed (0.25)
+                                4000
+
+
+
+
+                                                                                                             4000
+                                                                                                                                     Fixed (0.5)
+                                                                                                                                     Fixed (0.75)
+                                                                                                                                     Fixed (1.0)
+                                                                                                                                     Selective (0.75/0.25)
+                                                                                                                                     Selective (0.25/0.75)
+                                3600
+
+
+
+
+                                                                                                             3600
+                                                                                                                                     Random
+                                                                                                                                     Mixed
+
+
+
+                                       0.0     0.5     1.0       1.5   2.0                                          0.0   0.5     1.0       1.5         2.0
+                                                                                                                                                              Figure 15: Experimental setup for running the BrakTooth
+                                                     Time (hr)                                                                  Time (hr)
+                                                                                                                                                              tool. (Left) ESP-WROVER-KIT running BrakTooth firmware.
+                                              OTS (to Peripheral)                                                     SM Pairing (to Peripheral)
+                                                                                                                                                              (Right) nRF52840 kit running the Zephyr BLE stack and apps.
+Coverage (Approx. Edge Count)
+
+
+
+
+                                                                             Coverage (Approx. Edge Count)
+                                4400
+
+
+
+
+                                                                                                             4400
+
+
+
+
+                                                                                                                                                                Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                   Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                                                                                     Coverage (Approx. Edge Count)
+                                4000
+
+
+
+
+                                                                                                             4000
+
+
+
+
+                                                                                                                                                                                                 4000
+
+
+
+
+                                                                                                                                                                                                                                                                   4000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                     4000
+                                                                                                                                                                                                                 Full                                                              Full                                                              Full
+                                                                                                                                                                                                                 Host−only                                                         Host−only                                                         Host−only
+
+
+
+
+                                                                                                                                                                                                 2000
+
+
+
+
+                                                                                                                                                                                                                                                                   2000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                     2000
+                                                                                                                                                                                                                 BrakTooth                                                         BrakTooth                                                         BrakTooth
+                                3600
+
+
+
+
+                                                                                                             3600
+
+
+
+
+                                                                                                                                                                                                 0
+
+
+
+
+                                                                                                                                                                                                                                                                   0
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                     0
+                                       0.0     0.5     1.0       1.5   2.0                                          0.0   0.5     1.0       1.5         2.0                                             0   40     80        120                                          0   40     80        120                                          0   40     80        120
+
+                                                     Time (hr)                                                                  Time (hr)                                                                   Time (sec)                                                        Time (sec)                                                        Time (sec)
+
+
+Figure 14: Coverage for different packet selection strategies.
+                                                                                                                                                                                                (a) GATT Write.                                                    (b) Heart Rate.                                                          (c) OTS.
+                                                                                                                                                              Figure 16: Coverage and speed comparison between BLuE-
+6.4                                      RQ4: Packet Selection Strategy                                                                                       Man and BrakTooth. Legend: (Full) BLuEMan with full
+We experimentally evaluate the impact of different packet                                                                                                     (host+controller) coverage collection; (Host-only) BLuEMan
+selection strategies on coverage. For each selected packet                                                                                                    with BLE host-only coverage collection; (BrakTooth) Brak-
+sequence, packets are chosen for mutation using one of the                                                                                                    Tooth coverage, which evaluates only BLE host protocols.
+following four strategies:
+• Fixed Probability: A fixed mutation probability is uni-
+  formly applied to all packets in a sequence. We test several                                                                                                6.5                                       RQ5: Comparison with BrakTooth
+  values, including 0.1, 0.25, 0.5, 0.75, and 1.0. A probability
+  of 1.0 indicates all packets in the sequence are mutated.                                                                                                   We use the ESP32-WROVER-KIT and the nRF52840 devel-
+• Selective Probability: A transition point within the packet                                                                                                 opment kit to run the BrakTooth firmware and the Zephyr
+  sequence is identified to switch mutation probabilities. We                                                                                                 BLE stack (supported by BLuEMan), respectively, as shown
+  use coverage information from initial corpus collection to                                                                                                  in Figure 15. Both devices are connected to the same PC for
+  locate the point with the most significant change in cover-                                                                                                 experiment execution. To minimize potential signal interfer-
+  age. Two probability pairs are evaluated: (0.25, 0.75) and                                                                                                  ence, the devices are enclosed in a shielding box.
+  (0.75, 0.25), where the first value is applied before the tran-
+  sition point and the second value after.                                                                                                                       For BrakTooth, we use the bthost_fuzzer tool from its
+• Random Probability: For each mutation, a probability is                                                                                                     repository, which supports fuzzing BLE peripheral devices.
+  randomly chosen from the range [0.1, 1.0].                                                                                                                  It automatically scans nearby devices and sends GATT com-
+                                                                                                                                                              mands to those it recognizes. It is limited to peripheral devices,
+• Mixed Strategy: This strategy iteratively applies one of
+                                                                                                                                                              as central devices do not respond to Bluetooth scanning.
+  the above three methods. Each selected method is used for
+  N packet sequences before switching to the next; in our                                                                                                        We select three Zephyr peripheral apps–gatt_write,
+  implementation, N = 2000.                                                                                                                                   heart_rate, and ots–as targets for fuzzing by BrakTooth
+                                                                                                                                                              and BLuEMan. Each app is fuzzed for 5 hours due to hard-
+  We evaluate these strategies across four peripheral apps–
+                                                                                                                                                              ware stability. During fuzzing, we collect runtime coverage
+GATT Write, Heart Rate, OTS, and SM Pairing–with results
+                                                                                                                                                              from apps instrumented using a patched version of AFL-gcc.
+shown in Figure 14. The Fixed Probability strategy with a
+value of 1.0 generally performs poorly in most cases, as ex-                                                                                                     It is observed that coverage reported by BrakTooth stops in-
+cessive mutation often prevents packets from passing basic                                                                                                    creasing after around 40 seconds, although each app is fuzzed
+protocol state validation, limiting deeper exploration of pro-                                                                                                for several hours. Thus, we plot only the first 120 seconds of
+tocol states. In contrast, the other strategies show strengths                                                                                                coverage progression, as shown in Figure 16. It shows that our
+depending on the app. Based on these observations, we rec-                                                                                                    simulation-based method, combined with the MITM architec-
+ommend the Mixed strategy to achieve balanced and effective                                                                                                   ture, explores significantly more states in the target BLE host
+fuzzing performance.                                                                                                                                          compared to the platform-based approach, BrakTooth.
+
+
+
+6270                                         34th USENIX Security Symposium                                                                                                                                                                                                                          USENIX Association
+6.6    RQ6: Real-World Vulnerability                               LL implementation. Under normal conditions, once a cen-
+                                                                   tral and peripheral device establishes a link-layer connec-
+This subsection discusses new vulnerabilities our proposed         tion, they can negotiate connection parameters using the
+approach recognizes, as illustrated in Table 1. The recognized     LL_CONNECTION_PARAM_REQ packet, which can be initiated by
+vulnerabilities span across different layers, i.e., LL, ATT, and   either device. In contrast, the LL_CONNECTION_UPDATE_IND
+SM. It demonstrates that our framework can effectively un-         packet can only be sent from the central to the peripheral. This
+cover vulnerabilities across various layers through its state-     vulnerability arises because no validation is performed before
+ful exploration design. All the reported CVEs can remotely         using parameters in the LL_CONNECTION_UPDATE_IND packet,
+cause DoS in the affected BLE protocol stacks, with three          leading to a potential divide-by-zero error. To exploit this flaw,
+being exploitable without requiring pairing (CVE-2023-4424,        an attacker can send a malicious LL_CONNECTION_UPDATE_IND
+CVE-2024-3077, and CVE-2024-4785). Note that all the vul-          packet to the victim after establishing their connection. The
+nerabilities discussed in this study have been reported to the     patch addresses this issue by checking whether received pa-
+corresponding developers and are fixed.                            rameters, such as the connection interval, meet the minimum
+   Below, we provide a brief introduction to each CVE, with        required threshold.
+full details presented in Appendix B due to space constraints.
+CVE-2023-4424. This vulnerability can be triggered in              7   Limitation and Extension
+Zephyr’s LL implementation when processing BLE advertis-
+ing packets. The flawed implementation incorrectly assumes
+                                                                   Need for Source Code. The BLuEMan framework is cou-
+that an advertising packet contains at least 6 bytes for the
+                                                                   pled with a supported RTOS and a PHY simulator, and re-
+broadcast address, followed by advertising data. If the actual
+                                                                   quires access to the source code of the BLE implementation.
+data length is less than 6 bytes, this assumption leads to an
+                                                                   It can support various open-source BLE implementations, in-
+integer underflow. As a result, an attacker can broadcast mal-
+                                                                   cluding BTstack [7], NimBLE [3], and Zephyr-native [37],
+formed packets, enabling DoS attacks against any vulnerable
+                                                                   by porting them to compatible RTOSs such as Zephyr and
+BLE device that receives them. Affected devices must be re-
+                                                                   Mynewt.
+booted to restore the BLE stack. The CVE was assigned a
+CVSS score of 8.8 (high) by the NVD, as it can be exploited        Inaccuracy of Hardware Simulations. Using a PHY sim-
+remotely with low complexity, no privileges required, and no       ulator to simulate the hardware may introduce inaccuracies
+user interaction.                                                  in behavior compared to physical hardware. One such inac-
+                                                                   curacy involves the handling of hardware interrupts. In the
+CVE-2024-3077. This vulnerability can be triggered in
+                                                                   simulated environment, the kernel thread may delay hardware
+Zephyr’s ATT layer implementation, causing a BLE device to
+                                                                   interrupts until it returns from certain waiting states, such as
+crash due to an integer underflow issue. Specifically, this is-
+                                                                   an API call or a CPU yield operation, e.g., k_cpu_idle.
+sue arises when handling an unexpected response to the ATT
+                                                                      Additionally, the sequential execution of software and hard-
+Find Information Request. An attacker can spoof or control a
+                                                                   ware tasks in the simulated environment can result in false
+GATT server and respond with a valid protocol message of
+                                                                   negatives and missing vulnerabilities that depend on specific
+zero length, leading to out-of-bounds memory access. This
+                                                                   timing or interactions between software and hardware. Physi-
+type of vulnerability was found in multiple locations, affect-
+                                                                   cal hardware, with its more randomized execution sequences,
+ing a total of five functions related to ATT response handling.
+                                                                   is less prone to such omissions. Therefore, while PHY simu-
+The fix involves adding checks to ensure that the length of the
+                                                                   lation provides a valuable testing tool, it has limitations that
+ATT response meets the minimum size required for a valid
+                                                                   can impact the accuracy of results, particularly in timing and
+Find Information Response.
+                                                                   interaction-dependent scenarios.
+CVE-2024-3332. This vulnerability occurs in Zephyr’s SM            BLuEMan Scalability. While this work mainly uses the
+layer and is rooted in improper synchronization within the         Zephyr RTOS for executing BLuEMan, the framework is
+HCI driver. Specifically, the Host HCI driver processes a con-     also compatible with other popular RTOSs, such as FreeR-
+nection termination HCI command before completing prior            TOS [14] and ThreadX [12]. Firmware for these systems
+SM-related HCI commands. As a result, an SM command                can be compiled into a single ELF executable, enabling it to
+may attempt to access a shared resource that has already been      run efficiently as native code on a host system running the
+cleared. Since this issue stems from synchronization errors,       fuzzer. Some manual effort is required to port BabbleSim to
+it is not confined to the SM layer; other code segments that       this native runtime. It is important to note that our approach
+rely on shared resources may also be affected. Exploitation        focuses on evaluating the BLE stack rather than the RTOS
+requires a specific execution order, making the vulnerability      itself. While FreeRTOS and ThreadX do not provide built-in
+more difficult to trigger. An attacker would need to repeatedly    Bluetooth stacks like Zephyr, they are compatible with some
+attempt the exploit to increase the likelihood of success.         open-source Bluetooth stacks such as BTstack and NimBLE,
+CVE-2024-4785. This vulnerability occurs in Zephyr’s               both of which have been evaluated in the work.
+
+
+
+USENIX Association                                                                    34th USENIX Security Symposium           6271
+8   Related Work                                                   by physical environments, restricting the speed of fuzz testing.
+                                                                   BLE GATT Service Fuzzers. GATT is an essential com-
+We study related work in Bluetooth vulnerability, BLE-related      ponent of many IoT devices, defining how devices exchange
+fuzzer, and general protocol fuzzer directions.                    data through services and characteristics, so its security and
+Bluetooth vulnerability. Numerous security vulnerabilities         stability are important [33, 38]. In the BLE security testing
+have been discovered in existing Bluetooth implementations.        framework [30], the fuzzer is built using Go and interacts
+Specifically, BlueBorne [5] reveals vulnerabilities in several     with Bluetooth devices through GATT packets. The fuzzer
+Bluetooth protocols, including L2CAP, BNEP (Bluetooth Net-         adjusts the parameter size based on the protocol specification,
+work Encapsulation Protocol), and SDP (Service Discovery           while adopting a random approach to generate parameters.
+Protocol), whereas the others identify vulnerabilities from the    However, the triggered failures are not deterministic, making
+L2CAP implementation of the Android Bluetooth stack [21],          it challenging to identify root causes.
+BlueZ in the Linux kernel [1], and the Texas Instrument’s
+                                                                   Protocol Fuzzers. Protocol fuzzing has evolved through var-
+BLE implementation [4]. BLUFFS [2] presents six novel at-
+                                                                   ious implementations. Grammar-based fuzzing [10, 25, 34]
+tacks to break the future and forward secrecy of Bluetooth
+                                                                   relies on hard-coded or user-defined grammar specifications to
+sessions, whereas BLESA [35] discovers a vulnerability in
+                                                                   generate test cases, which define the structure and field types
+the device reconnection procedure at the LL layer. In this
+                                                                   of packets. With advancements, stateful protocol fuzzing tech-
+paper, we focus on a full-stack fuzzing framework against
+                                                                   niques [11, 13, 22, 29] have emerged, aiming to learn state
+BLE vulnerabilities.
+                                                                   models of network protocols. Some tools have further en-
+BLE Emulation-based fuzzers. BLE emulation-based                   hanced these methods, such as TCP-Fuzz [39], which intro-
+fuzzers can be classified into BLE host fuzzers and full-          duces a dependency-based strategy to handle dependencies
+stack fuzzers. BLE host fuzzers: BTFuzz [23] adopts black-         between system calls and packets and uses a transition-guided
+box fuzzing and communicates with the BlueZ BLE host               fuzzing approach to improve state transition coverage. Addi-
+on QEMU via an emulated serial device, while guiding fuzz          tionally, TCP-Fuzz employs a differential checker to compare
+testing using a customized state machine. VirtFuzz [20] col-       the outputs of multiple TCP stacks to detect semantic bugs.
+lects edge coverage to guide the fuzz testing and commu-           BLEEM [24] is a packet-sequence-oriented black-box fuzzer
+nicates with the Linux Bluetooth host on QEMU through a            at the sequence level and uses a non-invasive feedback mech-
+customized VirtIO [27, 32] device. Although it is a power-         anism to track system states dynamically. FuzzUSB [22] is
+ful framework for fuzzing wireless implementations, most           a fuzzer specifically for the USB gadget stack, addressing
+RTOS platforms do not support VirtIO Bluetooth, and apply-         the limitations of prior USB host stack fuzzing tools. This
+ing it to RTOS can introduce significant overhead. BLE full-       framework adopts a multi-channel input mutation strategy,
+stack fuzzers: Frankenstein [31] operates by dumping memory        which considers the multi-phase nature of USB communica-
+contents and registering values at runtime, through patching       tion, allowing mutation testing across different states.
+the memory of physical Bluetooth controllers. The dumped
+firmware is then linked into an ELF file to execute in QEMU
+user mode. This approach provides faster execution speeds
+and flexibility for firmware modification. However, it requires    9   Conclusion
+extensive reverse engineering and is prone to hardware dis-
+crepancies across platforms, further increasing complexity         In this work, we introduced BLuEMan, a simulation-based
+and cost.                                                          fuzzing framework for evaluating the security of BLE proto-
+BLE Platform-based Fuzzers. Platform-based fuzzers can             col stack implementations. By combining an RTOS with a
+also be classified into BLE host fuzzers and full-stack fuzzers.   software-based PHY simulator, BLuEMan provides an effi-
+BLE host fuzzers: L2Fuzz [28] uses black-box fuzzing based         cient and scalable platform for protocol fuzzing. It features a
+on Bluetooth v5.2, creating an L2CAP state machine where           novel MITM architecture for automated seed collection and a
+each state has predefined legitimate packets to support state      packet-driven workflow that streamlines state management.
+transitions. ToothPicker [18] targets the iOS Bluetooth stack      The framework supports comprehensive fuzzing across the
+using FRIDA for dynamic instrumentation and radamsa for            BLE stack. Experimental results show that BLuEMan is effec-
+mutation on iOS devices. Full-stack fuzzers: BrakTooth [15]        tive in identifying a wide range of vulnerabilities–including
+and SweynTooth [16] employ black-box fuzz approaches to            buffer overflows, integer overflows, memory errors, and race
+perform platform-based BLE full-stack fuzzing. BrakTooth           conditions. Notably, it contributed to the discovery of four
+focuses on testing Bluetooth BR/EDR, while SweynTooth              critical CVEs, all of which were responsibly disclosed and
+specializes in testing Bluetooth LE. Both studies design a         patched. These results highlight the practicality and effective-
+state machine targeting the entire stack rather than specific      ness of BLuEMan in advancing secure development practices
+layers. However, these platform-based solutions are all limited    for BLE protocol stacks.
+
+
+
+6272    34th USENIX Security Symposium                                                                      USENIX Association
+Acknowledgment                                                    [3] Apache Mynewt. NimBLE, 2024. https://github.c
+                                                                      om/apache/mynewt-nimble.
+We thank the anonymous reviewers and the shepherd for
+their valuable and insightful comments for improving this         [4] Armis. Bleedingbit: Exposes Enterprise Access Points
+paper. The works presented in this study are supported, in            and Unmanaged Devices to Undetectable Chip Level
+part, by the National Science and Technology Council and Tai-         Attack. https://www.armis.com/research/bleed
+wan Academic Cybersecurity Center (TACC) at NYCU under                ingbit/.
+the grants NSTC-113-2221-E-A49-186-MY3, 113-2634-F-               [5] Armis. BlueBorne: The dangers of Bluetooth imple-
+A49-001-MBK, 112-2628-E-A49-016-MY3, and 114-2218-                    mentations: Unveiling zero day vulnerabilities and se-
+E-A49-017. One of the authors, Wei-Che Kao, has been affil-           curity flaws in modern Bluetooth stacks. https:
+iated with DEVCORE since graduation. We thank the com-                //www.armis.com/research/blueborne/.
+pany for supporting their employee’s ongoing academic re-
+search involvement and sponsoring his travel expenses.            [6] BabbleSim. BabbleSim, 2024. https://babblesim.
+                                                                      github.io/.
+Ethics Considerations                                             [7] bluekitchen. BTstack, 2024. https://github.com/b
+                                                                      luekitchen/btstack.
+In our vulnerability discovery efforts, we prioritized ethical
+practices to benefit stakeholders and minimize harm. A key        [8] Bluetooth SIG. Bluetooth® Core Specification 5.4,
+stakeholder was the Zephyr Project of the Linux Foundation,           2023. https://www.bluetooth.com/specific
+a community-driven open-source initiative. Upon identifying           ations/specs/core-specification-5-4/.
+vulnerabilities, we promptly notified the Zephyr team, col-       [9] Bluetooth SIG. 2023 Bluetooth® Market Update, 2024.
+laborated on solutions, and allowed sufficient time for fixes.        https://www.bluetooth.com/2023-market-upd
+All issues were reported as CVEs and resolved before public           ate/.
+disclosure, minimizing disruption while maintaining trans-
+parency.                                                         [10] boofuzz. boofuzz: Network protocol fuzzing for humans.
+   Our decisions balanced risks to Zephyr’s developers and            https://github.com/jtpereyda/boofuzz.
+users with the need for swift action. We ensured sensitive
+information remained protected and prioritized solutions that    [11] Joeri de Ruiter and Erik Poll. Protocol state fuzzing of
+upheld security and privacy. Recognizing that perspectives on         TLS implementations. In 24th USENIX Security Sympo-
+ethics can vary, we engaged openly with the Zephyr team to            sium (USENIX Security 15), pages 193–206. USENIX
+address concerns and strengthen the project’s security frame-         Association, August 2015.
+work. This collaborative approach ensured effective resolu-      [12] Eclipse ThreadX. ThreadX Repository, 2025. https:
+tions and long-term improvements for the community.                   //github.com/eclipse-threadx/threadx.
+                                                                 [13] Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget,
+Open Science                                                          Joeri de Ruiter, Konstantinos Sagonas, and Juraj So-
+                                                                      morovsky. Analysis of DTLS implementations using
+This research complies with the open science policy required          protocol state fuzzing. In 29th USENIX Security Sympo-
+by the USENIX Security conference. Our codes, scripts, and            sium (USENIX Security 20), pages 2523–2540. USENIX
+sample applications are available at https://doi.org/10.5             Association, August 2020.
+281/zenodo.15601101 and https://github.com/zoolab-org
+/blueman.artifact.                                               [14] FreeRTOS. FreeRTOS Repository, 2025. https://gi
+                                                                      thub.com/FreeRTOS/FreeRTOS.
+References                                                       [15] Matheus E. Garbelini, Vaibhav Bedi, Sudipta Chattopad-
+                                                                      hyay, Sumei Sun, and Ernest Kurniawan. BrakTooth:
+ [1] Andy Nguyen. BleedingTooth: Linux Bluetooth Zero-                Causing havoc on bluetooth link manager via directed
+     Click Remote Code Execution. https://google.git                  fuzzing. In 31st USENIX Security Symposium (USENIX
+     hub.io/security-research/pocs/linux/bleed                        Security 22), pages 1025–1042, Boston, MA, August
+     ingtooth/writeup.html.                                           2022. USENIX Association.
+ [2] Daniele Antonioli. BLUFFS: Bluetooth Forward and            [16] Matheus E. Garbelini, Chundong Wang, Sudipta Chat-
+     Future Secrecy Attacks and Defenses. In ACM confer-              topadhyay, Sun Sumei, and Ernest Kurniawan. Sweyn-
+     ence on Computer and Communications Security (CCS),              Tooth: Unleashing mayhem over bluetooth low en-
+     November 2023.                                                   ergy. In 2020 USENIX Annual Technical Conference
+
+
+
+USENIX Association                                                                 34th USENIX Security Symposium       6273
+       (USENIX ATC 20), pages 911–925. USENIX Associa-               of the 17th Annual International Conference on Mo-
+       tion, July 2020.                                              bile Systems, Applications, and Services, pages 79–90.
+                                                                     Association for Computing Machinery, 2019.
+[17] Google Inc. RootCanal Repository, 2024. https://gi
+     thub.com/google/rootcanal.                                 [27] Tsirkin Michael S. and Huck Cornelia, 2023. https:
+                                                                     //docs.oasis-open.org/virtio/virtio/v1.2/c
+[18] Dennis Heinze, Jiska Classen, and Matthias Hollick.             s01/virtio-v1.2-cs01.html.
+     ToothPicker: Apple picking in the iOS bluetooth stack.
+     In 14th USENIX Workshop on Offensive Technologies          [28] Haram Park, Carlos Kayembe Nkuba, Seunghoon Woo,
+     (WOOT 20). USENIX Association, August 2020.                     and Heejo Lee. L2Fuzz: Discovering bluetooth l2cap
+                                                                     vulnerabilities using stateful fuzz testing. In 2022 52nd
+[19] Adrian Herrera, Hendra Gunadi, Shane Magrath,                   Annual IEEE/IFIP International Conference on De-
+     Michael Norrish, Mathias Payer, and Antony L. Hosking.          pendable Systems and Networks (DSN), pages 343–354,
+     Seed selection for successful fuzzing. In Proceedings           2022.
+     of the 30th ACM SIGSOFT International Symposium
+     on Software Testing and Analysis, pages 230–243, New       [29] Van-Thuan Pham, Marcel Böhme, and Abhik Roychoud-
+     York, NY, USA, 2021. Association for Computing Ma-              hury. Aflnet: A greybox fuzzer for network protocols.
+     chinery.                                                        In 2020 IEEE 13th International Conference on Soft-
+                                                                     ware Testing, Validation and Verification (ICST), pages
+[20] Sönke Huster, Matthias Hollick, and Jiska Classen. To           460–465, 2020.
+     boldly go where no fuzzer has gone before: Finding
+     bugs in Linux’ wireless stacks through VirtIO devices.     [30] Apala Ray, Vipin Raj, Manuel Oriol, Aurelien Monot,
+     In 2024 IEEE Symposium on Security and Privacy (SP),            and Sebastian Obermeier. Bluetooth low energy devices
+     pages 4629–4645. IEEE, 2024.                                    security testing framework. In 2018 IEEE 11th Interna-
+                                                                     tional Conference on Software Testing, Verification and
+[21] Jan Ruge. BlueFrag: CVE-2020-0022 an Android 8.0-               Validation (ICST). IEEE, 2018.
+     9.0 Bluetooth Zero-Click RCE. https://insinuator
+     .net/2020/04/cve-2020-0022-an-android-8-0                  [31] Jan Ruge, Jiska Classen, Francesco Gringoli, and
+    -9-0-bluetooth-zero-click-rce-bluefrag/.                         Matthias Hollick. Frankenstein: Advanced wireless
+                                                                     fuzzing to exploit new bluetooth escalation targets. In
+[22] Kyungtae Kim, Taegyu Kim, Ertza Warraich, Byoungy-              29th USENIX Security Symposium (USENIX Security
+     oung Lee, Kevin R. B. Butler, Antonio Bianchi, and              20), pages 19–36. USENIX Association, August 2020.
+     Dave Jing Tian. FuzzUSB: Hybrid stateful fuzzing of
+     USB gadget stacks. In 2022 IEEE Symposium on Secu-         [32] Rusty Russell. virtio: towards a de-facto standard for
+     rity and Privacy (SP), July 2022.                               virtual i/o devices. SIGOPS Oper. Syst. Rev., 42(5):95–
+                                                                     103, July 2008.
+[23] Jin Lei, Yongjun Wang, Xu Zhou, and Ke Yan. BTFuzz:
+                                                                [33] SecuRing Sławomir Jasek. GATTacking bluetooth smart
+     Accurately fuzzing bluetooth host with a simulated non-
+                                                                     devices, 2016. Black Hat USA.
+     compliant controller. In 2022 IEEE 4th International
+     Conference on Civil Aviation Safety and Information        [34] Andreas Walz and Axel Sikora. Exploiting dissent: To-
+     Technology (ICCASIT), pages 1195–1201, 2022.                    wards fuzzing-based differential black-box testing of
+                                                                     TLS implementations. IEEE Transactions on Depend-
+[24] Zhengxiong Luo, Junze Yu, Feilong Zuo, Jianzhong
+                                                                     able and Secure Computing, 17(2):278–291, 2020.
+     Liu, Yu Jiang, Ting Chen, Abhik Roychoudhury, and
+     Jiaguang Sun. Bleem: Packet sequence oriented fuzzing      [35] Jianliang Wu, Yuhong Nan, Vireshwar Kumar,
+     for protocol implementations. In 32nd USENIX Security           Dave (Jing) Tian, Antonio Bianchi, Mathias Payer,
+     Symposium (USENIX Security 23), pages 4481–4498,                and Dongyan Xu. BLESA: Spoofing attacks against
+     Anaheim, CA, August 2023. USENIX Association.                   reconnections in bluetooth low energy. In 14th USENIX
+                                                                     Workshop on Offensive Technologies (WOOT 20).
+[25] Zhengxiong Luo, Feilong Zuo, Yu Jiang, Jian Gao, Xun            USENIX Association, August 2020.
+     Jiao, and Jiaguang Sun. Polar: Function code aware fuzz
+     testing of ICS protocol. ACM Trans. Embed. Comput.         [36] Zephyr Project. Zephyr - The POSIX architecture, 2024.
+     Syst., 18(5s), October 2019.                                    https://docs.zephyrproject.org/latest/boar
+                                                                     ds/native/doc/arch_soc.html.
+[26] Dennis Mantz, Jiska Classen, Matthias Schulz, and
+     Matthias Hollick. InternalBlue - bluetooth binary patch-   [37] Zephyr Project. Zephyr RTOS Repository, 2024. https:
+     ing and experimentation framework. In Proceedings               //github.com/zephyrproject-rtos/zephyr.
+
+
+
+6274    34th USENIX Security Symposium                                                                  USENIX Association
+[38] Yue Zhang, Jian Weng, Zhen Ling, Bryan Pearson, and            B.2 CVE-2024-3077
+     Xinwen Fu. BLESS: A ble application security scan-
+     ning framework. In IEEE INFOCOM 2020 - IEEE                    This vulnerability can be triggered in Zephyr’s Attribute Pro-
+     Conference on Computer Communications. IEEE, July              tocol (ATT) layer implementation when an unexpected ATT
+     2020.                                                          response packet is received from a malicious BLE device. It
+                                                                    crashes a BLE victim device due to an integer underflow issue.
+[39] Yong-Hao Zou, Jia-Ju Bai, Jielong Zhou, Jianfeng Tan,          Specifically, this vulnerability happens when an unexpected
+     Chenggang Qin, and Shi-Min Hu. TCP-Fuzz: Detect-               response to the ATT Find Information Request is handled. An
+     ing memory and semantic bugs in TCP stacks with                attacker can spoof or control a GATT server, respond to an
+     fuzzing. In 2021 USENIX Annual Technical Conference            ATT Find Information Request using a valid protocol mes-
+     (USENIX ATC 21). USENIX Association, July 2021.                sage of length zero, and cause out-of-bound memory access
+                                                                    to crash the interacting device.
+                                                                       Figure 19 compares the typical packet flow with the ex-
+A Coverage Measurement Result                                       ploitation packet flow of CVE-2024-3077. The typical flow,
+                                                                    shown in Figure 19a, starts with discovering the device and
+Due to space limitations, the plots of the measured coverage        requesting GATT service information from the GATT server.
+for the selected applications not presented in Figure 13 are        Once the setup is complete, the client sends an ATT Find Infor-
+shown in Figure 17.                                                 mation Request to the server and waits for the corresponding
+                                                                    ATT Find Information Response. Zephyr implements this fea-
+B Details of Recognized CVEs                                        ture by registering a callback function, gatt_find_info_rsp,
+                                                                    to handle any packets returned from the server after sending
+This section discusses new vulnerabilities our proposed ap-         an ATT Find Information Request.
+proach recognizes, as illustrated in Table 1. The recognized           Although the lower layer implementation in Zephyr ensures
+vulnerabilities span across different layers, i.e., LL, ATT, and    that only valid ATT messages are handled by the callback
+SM. It demonstrates that our framework can effectively un-          function, some valid ATT messages, such as the ATT Exe-
+cover vulnerabilities across various layers through its stateful    cute Write Response having a zero-length payload, can still
+exploration design. As mentioned in Section 3, all the reported     bypass the check. As a result, the length-1 operation in the
+CVEs can remotely cause DoS in the affected BLE protocol            gatt_find_info_rsp function inadvertently sets the length
+stacks, with three being exploitable without requiring pairing      variable to a large value (216 − 1) when the payload length
+(CVE-2023-4424, CVE-2024-3077, and CVE-2024-4785).                  of the response is zero. It then causes a crash due to out-of-
+Notably, a single packet cannot trigger the vulnerabilities         bounds access to inaccessible memory regions, as shown in
+discovered by BLuEMan in the SM layers. It requires a se-           Figure 19b.
+quence of packets to guide the program into a vulnerable state,        We have reported these issues to the developers, and all of
+which is further discussed in Section B.3. Note that all the        them have been patched. Figure 23 in Appendix C.1 shows
+vulnerabilities discussed in this study have been reported to       the patch for this vulnerability. The fix involves adding a
+the corresponding developers and are fixed. The recognized          check to ensure that the length of the ATT response meets
+CVEs are summarized in the following subsections.                   the minimum size required for a Find Information Response.
+                                                                    This type of vulnerability was found in multiple locations,
+                                                                    with a total of five functions related to ATT response handling
+B.1 CVE-2023-4424                                                   being affected.
+   This vulnerability can be triggered in Zephyr’s Link Layer
+(LL) implementation when processing BLE advertising pack-           B.3 CVE-2024-3332
+ets. The vulnerable implementation incorrectly assumes that
+a BLE advertising packet is at least 6 bytes in length (the         This vulnerability occurs in Zephyr at the Security Manager
+broadcasting address), followed by the advertising data. As a       (SM) layer, with the root cause being improper synchroniza-
+result, it calculates the advertising data length using the logic   tion in the HCI driver. Specifically, the Host HCI driver pro-
+shown in Figure 18, which causes an integer underflow if the        cesses the connection termination HCI command before com-
+actual data length is less than 6 bytes. This flaw allows an at-    pleting the HCI commands related to the SM layer. This
+tacker to broadcast malformed packets, enabling DoS attacks         causes the previous SM-related command to access a shared
+against all vulnerable BLE devices that receive advertising         resource that has already been cleared. Since this issue stems
+packets. A victim device has to be rebooted to recover the          from improper synchronization, it is not limited to the SM
+state of the BLE stack. The CVE received a CVSS score of 8.8        layer; other code segments that use shared resources may also
+(high) from the NVD, as it can be exploited remotely with low       be affected. The vulnerability requires a specific execution
+complexity, no privileges required, and no user interaction.        order to trigger, making exploitation more difficult. Attackers
+
+
+
+USENIX Association                                                                    34th USENIX Security Symposium         6275
+                                           ISO Broadcast (to Receiver}                                                          GATT (To Central)                                                        Battery Query (to Central)                                                            LE Credit (to Central)                                                           SM Pairing (to Central)
+                                    5000
+
+
+
+
+                                                                                                                    5000
+
+
+
+
+                                                                                                                                                                                              5000
+
+
+
+
+                                                                                                                                                                                                                                                                                   5000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  5000
+    Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                    Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                              Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                                   Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                 Coverage (Approx. Edge Count)
+                                    3000
+
+
+
+
+                                                                                                                    3000
+
+
+
+
+                                                                                                                                                                                              3000
+
+
+
+
+                                                                                                                                                                                                                                                                                   3000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  3000
+                                    1000
+
+
+
+
+                                                                                                                    1000
+
+
+
+
+                                                                                                                                                                                              1000
+
+
+
+
+                                                                                                                                                                                                                                                                                   1000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  1000
+                                                          Field−Aware Mutation                                                         Field−Aware Mutation                                                         Field−Aware Mutation                                                                  Field−Aware Mutation                                                            Field−Aware Mutation
+                                                          Random Mutation                                                              Random Mutation                                                              Random Mutation                                                                       Random Mutation                                                                 Random Mutation
+                                                          AFL−only                                                                     AFL−only                                                                     AFL−only                                                                              AFL−only                                                                        AFL−only
+                                    0
+
+
+
+
+                                                                                                                    0
+
+
+
+
+                                                                                                                                                                                              0
+
+
+
+
+                                                                                                                                                                                                                                                                                   0
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  0
+                                           0       5    10     15       20                                                 0    5    10     15       20                                              0       5    10     15       20                                                      0      5      10     15       20                                                 0       5    10     15       20
+
+                                                        Time (hr)                                                                    Time (hr)                                                                    Time (hr)                                                                             Time (hr)                                                                       Time (hr)
+
+
+
+                                               BLE Mesh (to Provisioner)                                                       GATT (To Peripheral)                                                  Battery Query (to Peripheral)                                                            LE Credit (to Peripheral)                                                        SM Pairing (to Peripheral)
+                                    5000
+
+
+
+
+                                                                                                                    5000
+
+
+
+
+                                                                                                                                                                                              5000
+
+
+
+
+                                                                                                                                                                                                                                                                                   5000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  5000
+    Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                    Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                              Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                                   Coverage (Approx. Edge Count)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                 Coverage (Approx. Edge Count)
+                                    3000
+
+
+
+
+                                                                                                                    3000
+
+
+
+
+                                                                                                                                                                                              3000
+
+
+
+
+                                                                                                                                                                                                                                                                                   3000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  3000
+                                    1000
+
+
+
+
+                                                                                                                    1000
+
+
+
+
+                                                                                                                                                                                              1000
+
+
+
+
+                                                                                                                                                                                                                                                                                   1000
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  1000
+                                                          Field−Aware Mutation                                                         Field−Aware Mutation                                                         Field−Aware Mutation                                                                  Field−Aware Mutation                                                            Field−Aware Mutation
+                                                          Random Mutation                                                              Random Mutation                                                              Random Mutation                                                                       Random Mutation                                                                 Random Mutation
+                                                          AFL−only                                                                     AFL−only                                                                     AFL−only                                                                              AFL−only                                                                        AFL−only
+                                    0
+
+
+
+
+                                                                                                                    0
+
+
+
+
+                                                                                                                                                                                              0
+
+
+
+
+                                                                                                                                                                                                                                                                                   0
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                  0
+                                           0       5    10     15       20                                                 0    5    10     15       20                                              0       5    10     15       20                                                      0      5      10     15       20                                                 0       5    10     15       20
+
+                                                        Time (hr)                                                                    Time (hr)                                                                    Time (hr)                                                                             Time (hr)                                                                       Time (hr)
+
+
+
+
+                                                                                 Figure 17: Measured coverage for the selected evaluated applications (the rest).
+
+1                    ...
+2                    if (adv->type != PDU_ADV_TYPE_DIRECT_IND) {
+3                        data_len = (adv->len - BDADDR_SIZE);
+                                                                                                                                                                                                                              GATT Client                                                         GATT Server                    GATT Client                                                           GATT Server
+4                    }                                                                                                                                                                                                         (Central)                                                          (Peripheral)                    (Central)                                                            (Peripheral)
+5                    ...
+6                    memcpy(&adv_info->data[0], &adv->adv_ind.data[0], data_len);
+                                                                                                                                                                                                                                             Device Discovery Procedure                                                                                                    Device Discovery Procedure
+7                    ...
+
+                                                                                                                                                                                                                                               Connection Procedure                                                                                                             Connection Procedure
+
+
+                                           Figure 18: The root cause of CVE-2023-4424.                                                                                                                                                     Link Layer Information Exchange                                                                                               Link Layer Information Exchange
+
+
+
+                                                                                                                                                                                                                                    (Optional) Pairing & Bounding Procedure                                                                                      (Optional) Pairing & Bounding Procedure
+
+                                                                                                                                                                                                                                             ATT_FIND_INFORMATIO                                                                                                           ATT_FIND_INFORMATIO
+                                                                                                                                                                                                                                                                                               N_REQ                                                                                                N_REQ
+
+need to repeatedly attempt to exploit the issue for a chance to                                                                                                                                                                               ATT_FIND_INFORMATIO
+                                                                                                                                                                                                                                                                                                N_RSP
+                                                                                                                                                                                                                                                                                                                                                                               ATT_EXECUTE_WRITE_
+                                                                                                                                                                                                                                                                                                                                                                                                     RSP
+
+trigger it.
+   One example to illustrate this vulnerability is shown in                                                                                                                                                                        (a) Typical packet flow.                                                                      (b) Exploitation packet flow.
+Figure 20. During a pairing process, a victim BLE device
+creates an asynchronous task to generate the Diffie-Hellman                                                                                                                                                                         Figure 19: CVE-2024-3077: Packet flow comparison.
+(DH) key upon receipt of a pairing public key. Before the
+asynchronous task completes, an attacker can send a pairing
+DH-key check with an incorrect Ea value and then issue an                                                                                                                                                                 B.4 CVE-2024-4785
+LL_TERMINATE_IND to terminate the SM connection. When the
+                                                                                                                                                                                                                          This vulnerability occurs in the link layer (LL) of Zephyr.
+asynchronous task is complete, the DH key check verification                                                                                                                                                              Figure 21 shows a typical packet flow of link layer con-
+fails due to the incorrect Ea received from the attacker. The                                                                                                                                                             nection establishment. Under normal circumstances, once
+victim then attempts to return a pairing failed message to the                                                                                                                                                            a central and peripheral device establishes a link layer con-
+central. However, since the SM connection state has been                                                                                                                                                                  nection, they can negotiate connection parameters via the
+cleared due to previous termination, subsequent access to the                                                                                                                                                             LL_CONNECTION_PARAM_REQ packet. This packet can be initi-
+SM connection state leads to access to a released memory                                                                                                                                                                  ated by either the central or the peripheral device, while the
+pointer, causing a memory access error.                                                                                                                                                                                   LL_CONNECTION_UPDATE_IND can only be sent from the central
+   We have reported these issues to the developers, and all of                                                                                                                                                            to the peripheral.
+them have been patched. Figure 24 in Appendix C.2 shows                                                                                                                                                                      This vulnerability is triggered because no checks
+the patch to this vulnerability. Because the race condition is                                                                                                                                                            are performed before using the parameters in the
+caused by the simultaneous handling of HCI commands, a                                                                                                                                                                    LL_CONNECTION_UPDATE_IND packet, leading to divide-by-zero
+function call to the original bt_recv function implemented                                                                                                                                                                errors. Specifically, the interval value received from an at-
+in the HCI layer is protected with a lock to prevent current                                                                                                                                                              tacker is used directly in division operations, as shown in
+threads from accessing the function and leading to the race                                                                                                                                                               Figure 22. It only affects BLE peripheral devices, as only
+condition.                                                                                                                                                                                                                a central device can return an LL_CONNECTION_UPDATE_IND
+
+
+
+6276                                       34th USENIX Security Symposium                                                                                                                                                                                                                                                                                                  USENIX Association
+                                                                                                                                                          PDU ( ≤ 257 )
+
+
+
+
+                                                                                         Preamble
+                                                                                                    Access                                      LL payload ( ≤ 251 )
+              SM                                      SM                       Crypto                                                                                                                    CRC
+                                                                                                    address          LL
+            (Central)                             (Peripheral)                 Module                                                                                                             MIC     (3)
+                                                                                                      (4)          header                             LL Control Data
+                                                                                                                     (2)
+                                                                                                                              LL                                                                   (4)
+                                                                                             (1)
+                                                                                                                            opcode
+                                                                                                                              (1)  Win    WinOffset   Interval   Latency   Timeout   Instant
+                                                                                                                                   Size
+                             Connected                                                                                              (1)      (2)       (2) = 0     (2)       (2)       (2)
+
+
+
+                           Pairing Public Key
+                                                           Async. Key Generation
+                                                                                                LLID     NESN SN        MD                 RFU                                       Length
+                                                                                               (2bits)   (1bit) (1bit) (1bit)             (3bits)                                    (8bits)
+                           Pairing Public Key
+
+
+
+                   Pairing DHKey Chec
+
+                         LL_TERMINATE_IND
+                                         k (Invalid Ea)
+                                                                                        Figure 22: CVE-2024-4785: Attacking the LL control mes-
+                                                                 DHKey Ready
+                                                                                        sage.
+
+                   Pairing Failed (DHK
+                                      ey Check Failed)                                  1 diff --git a/subsys/bluetooth/host/gatt.c
+                                                                                               ,→ b/subsys/bluetooth/host/gatt.c
+                                                                                        2      index 69d43de569..6744d77210 100644
+Figure 20: Attack scenario for demonstrating CVE-2024-                                  3      --- a/subsys/bluetooth/host/gatt.c
+                                                                                        4      +++ b/subsys/bluetooth/host/gatt.c
+3332.                                                                                   5      @@ -4365,7 +4422,7 @@ static void
+                                                                                               ,→ gatt_find_info_rsp(struct bt_conn                                                        *conn, int err,
+                                                                                         6              const void *pdu, uint16_t length,
+                                                                                         7              void *user_data)
+                                                                                         8      {
+                           LL                                     LL                     9     - const struct bt_att_find_info_rsp *rsp =                                                  pdu;
+                        (Central)                            (Peripheral)               10     + const struct bt_att_find_info_rsp *rsp;
+                                                                                        11        struct bt_gatt_discover_params *params =                                                 user_data;
+                                 Initiated by the Central device                        12        uint16_t handle = 0U;
+                                    LL_CONNECTION_PARAM_REQ                             13        uint16_t len;
+                                    LL_CONNECTION_PARAM_RSP
+                                                                                        14     @@ -4387,6 +4444,13 @@ static void
+                                                                                               ,→ gatt_find_info_rsp(struct bt_conn                                                        *conn, int err,
+                                    LL_CONNECTION_UPDATE_IND
+                                                                                        15          goto done;
+                                                                                        16        }
+                               Initiated by the Peripheral device                       17
+                                    LL_CONNECTION_PARAM_REQ
+                                                                                        18     +    if (length < sizeof(*rsp)) {
+                                    LL_CONNECTION_UPDATE_IND
+                                                                                        19     +      LOG_WRN("Parse err");
+                                                                                        20     +      goto done;
+                                                                                        21     +    }
+                                                                                        22     +
+Figure 21: Attack scenario for demonstrating CVE-2024-                                  23     +    rsp = pdu;
+                                                                                        24     +
+4785.                                                                                   25          /* Data can be either in UUID16 or UUID128 */
+                                                                                        26          switch (rsp->format) {
+                                                                                        27          case BT_ATT_INFO_16:
+
+packet to a peripheral device. To exploit the vulnerability,
+an attacker (central) first establishes a link layer connection                                                Figure 23: Patch for CVE-2024-3077.
+with the victim (peripheral). After establishing the connection,
+the attacker can send a malicious LL_CONNECTION_UPDATE_IND
+packet to trigger a divide-by-zero error and crash the victim.                          involves adding a check to ensure that the length of the ATT
+   This vulnerability affects multiple locations in the link                            response meets the minimum size required for a Find Infor-
+layer source codes. One patch is to create a new sanitizer                              mation Response. This type of vulnerability was found in
+function called cu_check_conn_ind_parameters to check the                               multiple locations, with a total of five functions related to
+validness of fields (interval, latency, timeout) in a received                          ATT response handling being affected.
+packet, as shown in Figure 25. Another patch snippet for
+this vulnerability is shown in Figure 26. In general, the                               C.2 CVE-2024-3332
+patches check whether a received parameter, such as the
+interval parameter in the packet, exceeds a minimal value                               Figure 24 in Appendix C.2 shows the patch to CVE-2024-
+(BT_HCI_LE_INTERVAL_MIN, which is 6). If the parameter does                             3332. Because the race condition is caused by the simultane-
+not meet this threshold, the patch adds one to the received                             ous handling of HCI commands, a function call to the original
+interval to prevent possible subsequent divide-by-zero errors.                          bt_recv function implemented in the HCI layer is protected
+                                                                                        with a lock to prevent current threads from accessing the
+                                                                                        function and leading to the race condition.
+C Patch to Recognized CVEs
+                                                                                        C.3 CVE-2024-4785
+C.1 CVE-2024-3077
+                                                                                           CVE-2024-4785 can be used to attack the parser of link
+  Figure 23 shows the patch for CVE-2024-3077. The fix                                  layer messages. One patch is to create a new sanitizer function
+
+
+
+USENIX Association                                                                                                              34th USENIX Security Symposium                                            6277
+ 1 diff --git a/subsys/bluetooth/host/hci_core.c
+   ,→ b/subsys/bluetooth/host/hci_core.c
+ 2 index 35ba75701b4..5b515bd929c 100644
+ 3 --- a/subsys/bluetooth/host/hci_core.c                            1 diff --git a/subsys/..../ll_sw/ull_llcp_conn_upd.c
+                                                                       ,→ b/subsys/..../ll_sw/ull_llcp_conn_upd.c
+ 4 +++ b/subsys/bluetooth/host/hci_core.c
+ 5 @@ -3900,7 +3900,7 @@ static void rx_queue_put(struct             2 index eb1f692e55f..db0d2711748 100644
+   ,→ net_buf *buf)
+                                                                     3 --- a/subsys/..../ll_sw/ull_llcp_conn_upd.c
+ 6         }                                                         4 +++ b/subsys/..../ll_sw/ull_llcp_conn_upd.c
+ 7 }                                                                 5 @@ -196,6 +196,22 @@ static bool
+                                                                       ,→ cu_check_conn_parameters(struct ll_conn *conn,
+ 8
+                                                                       ,→ struct proc_ctx *ctx)
+ 9 -int bt_recv(struct net_buf *buf)
+10 +static int bt_recv_unsafe(struct net_buf *buf)                   6 }
+11 {                                                                 7 #endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
+12         bt_monitor_send(bt_monitor_opcode(buf), buf->data,         8
+             ,→   buf->len);                                          9   +static bool cu_check_conn_ind_parameters(
+13                                                                   10   +            struct ll_conn *conn, struct proc_ctx *ctx)
+14 @@ -3939,6 +3939,17 @@ int bt_recv(struct net_buf                 11   +{
+                                                                     12   + const uint16_t interval_max =
+     ,→   *buf)
+15            }                                                      13   +            ctx->data.cu.interval_max; /* unit 1.25ms */
+16    }                                                              14   + const uint16_t timeout = ctx->data.cu.timeout;
+17                                                                   15   +                                         /* unit 10ms */
+18   +int bt_recv(struct net_buf *buf)                               16   + const uint16_t latency = ctx->data.cu.latency;
+19   +{                                                              17   +
+20   +        int err;                                               18   + /* Valid conn_update_ind parameters */
+21   +                                                               19   + return (interval_max >= CONN_INTERVAL_MIN(conn)) &&
+22   +        k_sched_lock();                                        20   +     (interval_max <= CONN_UPDATE_CONN_INTV_4SEC) &&
+23   +        err = bt_recv_unsafe(buf);                             21   +     (latency <= CONN_UPDATE_LATENCY_MAX) &&
+24   +        k_sched_unlock();                                      22   +     (timeout >= CONN_UPDATE_TIMEOUT_100MS) &&
+25   +                                                               23   +     (timeout <= CONN_UPDATE_TIMEOUT_32SEC) &&
+26   +        return err;                                            24   +     ((timeout * 4U) > /* *4U ... */
+27   +}                                                              25   +      ((latency + 1U) * interval_max));
+28   +                                                               26   +}
+29     int bt_hci_driver_register(const struct bt_hci_driver *drv)   27   ...
+30     {
+31            if (bt_dev.drv) {
+                                                                          Figure 25: The sanitizer function for CVE-2024-4785.
+              Figure 24: Patch for CVE-2024-3332.
+
+
+called cu_check_conn_ind_parameters to check the valid-
+                                                                     1 diff --git
+ness of fields (interval, latency, timeout) in a received                 ,→  a/subsys/bluetooth/controller/ll_sw/ull_conn.c
+packet, as shown in Figure 25. Another patch snippet for                  ,→  b/subsys/bluetooth/controller/ll_sw/ull_conn.c
+                                                                     2    index c9ebeb9c274..93a610fa705 100644
+this vulnerability is shown in Figure 26. In general, the            3    --- a/subsys/bluetooth/controller/ll_sw/ull_conn.c
+patches check whether a received parameter, such as the              4    +++ b/subsys/bluetooth/controller/ll_sw/ull_conn.c
+                                                                     5    ...
+interval parameter in the packet, exceeds a minimal value            6    @@ -2186,17 +2217,22 @@ void
+                                                                          ,→ ull_conn_update_parameters(struct ll_conn *conn,
+(BT_HCI_LE_INTERVAL_MIN, which is 6). If the parameter does
+                                                                          ,→ uint8_t is_cu_proc, uint8_t win_size,
+not meet this threshold, the patch adds one to the received           7       uint32_t win_offset_us, uint16_t interval,
+interval to prevent possible subsequent divide-by-zero errors.        8       uint16_t latency, uint16_t timeout, uint16_t instant)
+                                                                      9   ...
+                                                                     10   +   if (interval >= BT_HCI_LE_INTERVAL_MIN) {
+                                                                     11   +      uint16_t max_tx_time;
+                                                                     12   +      uint16_t max_rx_time;
+                                                                     13   +      uint32_t slot_us;
+                                                                     14   ...
+                                                                     15   +   } else {
+                                                                     16   +      conn_interval_new = interval + 1U;
+                                                                     17   +      conn_interval_unit_new = CONN_LOW_LAT_INT_UNIT_US;
+                                                                     18   ...
+                                                                     19   +   }
+                                                                     20   +
+                                                                     21   +   conn_interval_us = conn_interval_new
+                                                                     22   +                      * conn_interval_unit_new;
+                                                                     23   +   periodic_us = conn_interval_us;
+                                                                     24   +
+                                                                     25   +   conn_interval_old_us = conn_interval_old
+                                                                     26   +                          * conn_interval_unit_old;
+                                                                     27   +   latency_upd = conn_interval_old_us / conn_interval_us;
+                                                                     28   ...
+
+
+
+                                                                               Figure 26: Patch snippet for CVE-2024-4785.
+
+
+
+
+6278       34th USENIX Security Symposium                                                                          USENIX Association
+

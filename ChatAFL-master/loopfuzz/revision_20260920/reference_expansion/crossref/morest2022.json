@@ -1,0 +1,610 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=Morest+Model-based+RESTful+API+Testing+with+Execution+Feedback&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 9205566,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                7,
+                17
+              ]
+            ],
+            "date-time": "2026-07-17T15:07:55Z",
+            "timestamp": 1784300875727,
+            "version": "3.55.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 9,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2022,
+                    10,
+                    10
+                  ]
+                ],
+                "date-time": "2022-10-10T00:00:00Z",
+                "timestamp": 1665360000000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "name": "the Ministry of Education, Singapore",
+              "award": [
+                "MOET32020-0004"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "MOET32020-0004"
+                  ]
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022,
+                10,
+                10
+              ]
+            ]
+          },
+          "DOI": "10.1145/3551349.3559498",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                1,
+                5
+              ]
+            ],
+            "date-time": "2023-01-05T20:43:54Z",
+            "timestamp": 1672951434000
+          },
+          "page": "1-5",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 5,
+          "title": [
+            "Morest: Industry Practice of Automatic RESTful API Testing"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Yi",
+              "family": "Liu",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Nanyang Technological University, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Yuekang",
+              "family": "Li",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Nanyang Technological University, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Yang",
+              "family": "Liu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Nanyang Technological University, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Ruiyuan",
+              "family": "Wan",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huawei Cloud Computing Technologies Co., Ltd, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Runchao",
+              "family": "Wu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huawei Cloud Computing Technologies Co., Ltd, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Qingkun",
+              "family": "Liu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Huawei Cloud Computing Technologies Co., Ltd, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2023,
+                1,
+                5
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "volume-title": "EvoMaster: Evolutionary Multi-context Automated System Test Generation. In 11th IEEE International Conference on Software Testing, Verification and Validation, ICST 2018",
+              "author": "Arcuri Andrea",
+              "year": "2018",
+              "unstructured": "Andrea Arcuri. 2018. EvoMaster: Evolutionary Multi-context Automated System Test Generation. In 11th IEEE International Conference on Software Testing, Verification and Validation, ICST 2018, Västerås, Sweden, April 9-13, 2018. IEEE Computer Society, 394–397."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00083"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium, USENIX Security 2020",
+              "author": "Blazytko Tim",
+              "year": "2020",
+              "unstructured": "Tim Blazytko, Moritz Schlögel, Cornelius Aschermann, Ali Abbasi, Joel Frank, Simon Wörner, and Thorsten Holz. 2020. AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium, USENIX Security 2020, August 12-14, 2020. USENIX Association, 235–252."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "Roy Thomas Fielding and Richard N. Taylor. 2000. Architectural Styles and the Design of Network-Based Software Architectures. Ph. D. Dissertation. AAI9980887."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "unstructured": "Myeongsoo Kim Qi Xin Saurabh Sinha and Alessandro Orso. 2022. Automated Test Generation for REST APIs: No Time to Rest Yet. CoRR abs/2204.08348(2022). arXiv:2204.08348"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "Morest: Model-based RESTful API Testing with Execution Feedback. CoRR abs/2204.12148(2022). arXiv:2204.12148",
+              "author": "Liu Yi",
+              "year": "2022",
+              "unstructured": "Yi Liu, Yuekang Li, Gelei Deng, Yang Liu, Ruiyuan Wan, Runchao Wu, Dandan Ji, Shiheng Xu, and Minli Bao. 2022. Morest: Model-based RESTful API Testing with Execution Feedback. CoRR abs/2204.12148(2022). arXiv:2204.12148"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "OpenAPI. 2022. OpenAPI Extensions. https://swagger.io/docs/specification/openapi-extensions/."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "REST: From Research to Practice",
+              "author": "Rauf Irum",
+              "unstructured": "Irum Rauf and Ivan Porres. 2011. Beyond CRUD. In REST: From Research to Practice. Springer, 117–135."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "RESTTESTGEN: Automated Black-Box Testing of RESTful APIs. In ICST",
+              "author": "E. V, M.",
+              "year": "2020",
+              "unstructured": "E. V, M. D, and M.2020. RESTTESTGEN: Automated Black-Box Testing of RESTful APIs. In ICST 2020."
+            }
+          ],
+          "event": {
+            "name": "ASE '22: 37th IEEE/ACM International Conference on Automated Software Engineering",
+            "location": "Rochester MI USA",
+            "acronym": "ASE '22"
+          },
+          "container-title": [
+            "Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3551349.3559498",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3551349.3559498",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                8,
+                22
+              ]
+            ],
+            "date-time": "2025-08-22T07:58:24Z",
+            "timestamp": 1755849504000
+          },
+          "score": 48.033016,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3551349.3559498"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2022,
+                10,
+                10
+              ]
+            ]
+          },
+          "references-count": 9,
+          "alternative-id": [
+            "10.1145/3551349.3559498",
+            "10.1145/3551349"
+          ],
+          "URL": "https://doi.org/10.1145/3551349.3559498",
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                10,
+                10
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2023-01-05",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                30
+              ]
+            ],
+            "date-time": "2026-01-30T00:50:38Z",
+            "timestamp": 1769734238968,
+            "version": "3.49.0"
+          },
+          "reference-count": 0,
+          "publisher": "Combinatorial Press",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "short-container-title": [
+            "J. Comb. Math. Comb. Comput."
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                30
+              ]
+            ]
+          },
+          "DOI": "10.61091/jcmcc127b-386",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                25
+              ]
+            ],
+            "date-time": "2025-04-25T19:10:31Z",
+            "timestamp": 1745608231000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 1,
+          "title": [
+            "RESTful API-based software interface testing techniques and common problems analysis"
+          ],
+          "prefix": "10.61091",
+          "volume": "127b",
+          "member": "39747",
+          "published-online": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                16
+              ]
+            ]
+          },
+          "container-title": [
+            "Journal of Combinatorial Mathematics and Combinatorial Computing"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                25
+              ]
+            ],
+            "date-time": "2025-04-25T19:10:35Z",
+            "timestamp": 1745608235000
+          },
+          "score": 30.62854,
+          "resource": {
+            "primary": {
+              "URL": "https://combinatorialpress.com/jcmcc-articles/volume-127b/restful-api-based-software-interface-testing-techniques-and-common-problems-analysis/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                16
+              ]
+            ]
+          },
+          "references-count": 0,
+          "URL": "https://doi.org/10.61091/jcmcc127b-386",
+          "ISSN": [
+            "0835-3026",
+            "2817-576X"
+          ],
+          "issn-type": [
+            {
+              "value": "0835-3026",
+              "type": "print"
+            },
+            {
+              "value": "2817-576X",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                16
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2022,
+                4,
+                4
+              ]
+            ],
+            "date-time": "2022-04-04T19:16:58Z",
+            "timestamp": 1649099818536
+          },
+          "reference-count": 0,
+          "publisher": "Foundation of Computer Science",
+          "issue": "11",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "short-container-title": [
+            "IJCA"
+          ],
+          "DOI": "10.5120/ijca2018917685",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2018,
+                8,
+                25
+              ]
+            ],
+            "date-time": "2018-08-25T01:49:56Z",
+            "timestamp": 1535161796000
+          },
+          "page": "18-20",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "RESTful API based Online Compiler (TINKER)"
+          ],
+          "prefix": "10.5120",
+          "volume": "181",
+          "author": [
+            {
+              "given": "Aryan",
+              "family": "Anmol",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Abhishek",
+              "family": "Singhal",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Abhishek",
+              "family": "Kumar",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "3103",
+          "published-online": {
+            "date-parts": [
+              [
+                2018,
+                8,
+                14
+              ]
+            ]
+          },
+          "container-title": [
+            "International Journal of Computer Applications"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2018,
+                8,
+                25
+              ]
+            ],
+            "date-time": "2018-08-25T01:50:36Z",
+            "timestamp": 1535161836000
+          },
+          "score": 30.019451,
+          "resource": {
+            "primary": {
+              "URL": "http://www.ijcaonline.org/archives/volume181/number11/anmol-2018-ijca-917685.pdf"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2018,
+                8,
+                14
+              ]
+            ]
+          },
+          "references-count": 0,
+          "journal-issue": {
+            "issue": "11",
+            "published-online": {
+              "date-parts": [
+                [
+                  2018,
+                  8,
+                  14
+                ]
+              ]
+            }
+          },
+          "URL": "https://doi.org/10.5120/ijca2018917685",
+          "ISSN": [
+            "0975-8887"
+          ],
+          "issn-type": [
+            {
+              "value": "0975-8887",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2018,
+                8,
+                14
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

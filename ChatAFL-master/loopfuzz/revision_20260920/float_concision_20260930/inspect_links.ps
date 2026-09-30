@@ -1,0 +1,26 @@
+
+/resolve { dup type dup /arraytype eq exch /packedarraytype eq or { dup xcheck {exec} if } if } bind def
+(main.revised.pdf) (r) file runpdfbegin
+1 1 pdfpagecount {
+ /p exch def
+ p pdfgetpage /Annots known {
+  p pdfgetpage /Annots get resolve {
+   resolve /an exch def
+   an /Subtype known {
+    an /Subtype get /Link eq {
+     an /A known {
+      an /A get resolve /action exch def
+      action /S get /GoTo eq {
+       (INTERNAL\t) print p =only (\t) print action /D get resolve =only (\t) print an /Rect get resolve ==
+      } { (EXTERNAL\t) print p =only (\t) print action /S get == } ifelse
+     } {
+      an /Dest known {
+       (INTERNAL\t) print p =only (\t) print an /Dest get resolve =only (\t) print an /Rect get resolve ==
+      } { (UNHANDLED_LINK\n) print } ifelse
+     } ifelse
+    } if
+   } if
+  } forall
+ } if
+} for
+quit

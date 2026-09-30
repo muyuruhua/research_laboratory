@@ -1,0 +1,920 @@
+                         Gramatron: Effective Grammar-Aware Fuzzing
+                              Prashast Srivastava                                                                 Mathias Payer
+                                Purdue University                                                                       EPFL
+                             United States of America                                                                Switzerland
+ABSTRACT                                                                                    1   INTRODUCTION
+Fuzzers aware of the input grammar can explore deeper program                               Language interpreters like PHP, JavaScript (JS), or Ruby accept in-
+states using grammar-aware mutations. Existing grammar-aware                                put whose structure is defined as per a grammar. These interpreters
+fuzzers are ineffective at synthesizing complex bug triggers due to:                        form the building blocks for complex application frameworks but
+(i) grammars introducing a sampling bias during input generation                            are themselves highly vulnerable to exploitation with 98 reported
+due to their structure, and (ii) the current mutation operators for                         bugs between January 2018 and January 2021 [16, 29, 30]. Hence,
+parse trees performing localized small-scale changes.                                       they are lucrative targets for adversaries. Testing these building
+    Gramatron uses grammar automatons in conjunction with ag-                               blocks, i.e., the interpreters, is essential to ensure the safety of
+gressive mutation operators to synthesize complex bug triggers                              software running on top of them such as web applications.
+faster. We build grammar automatons to address the sampling bias.                              Fuzzing is an effective software security testing methodology.
+It restructures the grammar to allow for unbiased sampling from the                         However, current fuzzing approaches are ineffective at performing
+input state space. We redesign grammar-aware mutation operators                             deep testing of interpreters. A majority of the test inputs generated
+to be more aggressive, i.e., perform large-scale changes.                                   by grammar-unaware fuzzers [41, 50] are rejected by the inter-
+    Gramatron can consistently generate complex bug triggers in                             preter during parsing. Interpreters reject all inputs that violate the
+an efficient manner as compared to using conventional grammars                              grammar, and when fuzzers are unaware of the accepted grammar,
+with parse trees. Inputs generated from scratch by Gramatron have                           they will mostly create syntactically incorrect input. For example, a
+higher diversity as they achieve up to 24.2% more coverage relative                         common mutation operator is flipping random input bits. A fuzzer
+to existing fuzzers. Gramatron makes input generation 98% faster                            unaware of the grammar may flip bits in input keywords, creating
+and the input representations are 24% smaller. Our redesigned muta-                         invalid mutants that are rejected by the parser. The interpreter com-
+tion operators are 6.4× more aggressive while still being 68% faster                        ponents past the parsing stage corresponding to semantic analysis
+at performing these mutations. We evaluate Gramatron across three                           remain untested if fuzzers are grammar-unaware.
+interpreters with 10 known bugs consisting of three complex bug                                Fuzzing the semantic analysis components requires generating
+triggers and seven simple bug triggers against two Nautilus variants.                       syntactically valid inputs. Existing grammar-aware fuzzers [15, 19,
+Gramatron finds all the complex bug triggers reliably and faster. For                       43, 46] use: (i) a context-free grammar (CFG) to generate test inputs,
+the simple bug triggers, Gramatron outperforms Nautilus four out                            and (ii) parse trees to represent the syntactic structure of the input.
+of seven times. To demonstrate Gramatron’s effectiveness in the                             The fuzzer mutates the parse trees using the grammar to generate
+wild, we deployed Gramatron on three popular interpreters for a                             syntactically valid inputs for testing—grammar-aware mutations.
+10-day fuzzing campaign where it discovered 10 new vulnerabilities.                         We observe a twofold problem with the current methodology for
+                                                                                            grammar-aware fuzzing:
+CCS CONCEPTS                                                                                    • Biased sampling: Fuzzers when using existing grammars
+• Software and its engineering → Software testing and de-                                         perform biased sampling from the input state space. This bias
+bugging; • Security and privacy → Software and application                                        occurs due to how the production rules in the CFG are laid
+security.                                                                                         out for generating inputs. This bias can make it harder for
+                                                                                                  the fuzzer to generate complex bug triggers which require
+KEYWORDS                                                                                          chaining multiple parts of the input state space.
+Fuzzing, grammar-aware, dynamic software analysis                                               • Small-scale mutations: Grammar-aware fuzzers employ
+                                                                                                  parse trees for input generation and mutation. Existing mu-
+ACM Reference Format:                                                                             tation operators for parse trees perform localized small-scale
+Prashast Srivastava and Mathias Payer. 2021. Gramatron: Effective Grammar-                        changes. This slows down the fuzzer while trying to discover
+Aware Fuzzing. In Proceedings of the 30th ACM SIGSOFT International Sympo-                        bugs with complex bug triggers if it wastes its time fuzzing
+sium on Software Testing and Analysis (ISSTA ’21), July 11–17, 2021, Virtual,
+                                                                                                  grammar parts not relevant towards triggering the bug.
+Denmark. ACM, New York, NY, USA, 13 pages. https://doi.org/10.1145/
+3460319.3464814                                                                                We propose a two-fold solution to the above problem: (i) Re-
+                                                                                            structuring the production rules in the grammar to eliminate the
+Permission to make digital or hard copies of part or all of this work for personal or       sampling bias, and (ii) Redesigning mutation operators to perform
+classroom use is granted without fee provided that copies are not made or distributed       larger-scale changes. However, implementing these solutions on
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for third-party components of this work must be honored.      top of inputs represented as parse trees imposes a performance
+For all other uses, contact the owner/author(s).                                            overhead. This overhead arises from a fuzzer having to maintain
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                               metadata in the form of the input derivation structure for each
+© 2021 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-8459-9/21/07.                                                           input as its being generated or mutated. To remove this overhead
+https://doi.org/10.1145/3460319.3464814                                                     and implement our solution in a performance-optimal way, we
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                                                 Prashast Srivastava and Mathias Payer
+
+
+convert the input grammar to a finite state automaton (FSA), which                     2     BACKGROUND
+we refer to as grammar automatons.                                                     Gramatron transforms grammars to an automaton to resolve the
+    Grammar automatons restructure the grammar to eliminate the                        sampling bias and enable performing aggressive mutations effi-
+sampling bias. Furthermore, grammar automatons allow perform-                          ciently. This section introduces the necessary background for au-
+ing aggressive mutations (more terminals may be changed) effi-                         tomaton generation. We also introduced the mutation operators
+ciently. Aggressive mutations ensure that the fuzzer does not get                      which are customized for this new representation.
+stuck performing localized search of grammar parts that are not
+relevant towards triggering bugs.                                                      2.1    Context-Free Grammars
+    We present Gramatron, a proof-of-concept for our claim that
+                                                                                       Language interpreters define the input format accepted by them
+grammar automatons are an effective solution for performing grammar-
+                                                                                       using a Context-Free Grammar (CFG). Formally, a Context-free
+aware fuzzing. It represents inputs as automaton walks and uses
+                                                                                       Grammar (CFG) [48] is defined as: CFG = (T , N , R, S). T is a finite
+grammar-aware mutation operators that have been redesigned for
+                                                                                       set of terminals (characters in the generated string). N is a finite set
+fast and aggressive mutations.
+                                                                                       of nonterminal symbols (placeholders for patterns of T that can be
+    We evaluated using performance microbenchmarks if: (i) Gra-
+                                                                                       generated by N ). R is a finite set of rules for substituting N with T .
+matron resolves the sampling bias in a performant manner, and
+                                                                                       The rules are of the form A → a where A is always a nonterminal
+(ii) redesigned mutation operators perform aggressive changes effi-
+                                                                                       symbol. However, a can be a permutation of symbols from both N
+ciently. Gramatron generates higher diversity inputs as they achieve
+                                                                                       and T . S is the starting nonterminal symbol from which all strings
+up to 24.2% more coverage. This indicates that our generated inputs
+                                                                                       belonging to the grammar are derived.
+cover richer semantics of the input grammar. Additionally, on aver-
+                                                                                          In order to eliminate sampling bias, Gramatron restructures the
+age, inputs represented as automaton walks are 24% smaller and
+                                                                                       grammar using the normal form by enforcing certain rules. We
+input generation is 98% faster. Our redesigned mutation operators
+                                                                                       focus on two normal forms, used together by Gramatron to create
+are on an average 68% faster and 6.4× more aggressive in their
+                                                                                       grammar automatons from a CFG: Chomsky Normal Form (CNF) [6]
+mutations.
+                                                                                       and Greibach Normal Form (GNF) [14].
+    To showcase that using conventional grammars coupled with
+                                                                                          Both CNF and GNF are similar to CFG except they have con-
+small-scale mutations can be a problem while trying to discover
+                                                                                       straints placed on their rules (R). For CNF, each nonterminal can
+complex bug triggers, we compared Gramatron against two variants
+                                                                                       either generate a single terminal or two nonterminals. For GNF,
+(detailed in § 6) of the current state-of-the-art grammar-aware
+                                                                                       each nonterminal can either generate a terminal or a terminal fol-
+fuzzer Nautilus [2]. We evaluate all systems against a set of three
+                                                                                       lowed by any number of nonterminals.
+interpreters with 10 known bugs consisting of three complex bug
+triggers and seven simple bug triggers. For the three complex bug
+triggers, Gramatron outperforms one variant on all of them and
+                                                                                       2.2    Automaton Classes
+the other variant on two of them. Gramatron finds four out of the                      We give formal definitions of different automaton classes that Gra-
+seven simple bug trigger faster than one variant and three out of the                  matron employs to create grammar automatons. Additionally, we
+seven than the other variant. Furthermore, to prove its effectiveness                  detail the necessary background for the theoretical challenges in-
+in the wild, we deployed Gramatron on three popular interpreters                       volved in creating grammar automatons.
+for a 10-day fuzzing campaign. It discovered 10 new vulnerabilities.                       Finite State Automatons. Gramatron creates grammar automa-
+Additionally, we discuss a bug found as a case-study to show how                       tons for performing fuzzing using finite state automatons (FSA).
+Gramatron is effective at generating complex bug triggers.                             This allows Gramatron to create lightweight input representations
+    The main contributions of Gramatron are:                                           that enable fast and aggressive mutations. Formally, a FSA is de-
+                                                                                       fined as M = (Q, Σ, ¶, q 0 , F ) [40]. Here, Q is a finite set of states. Σ
+     • We leverage grammar automatons which restructures gram-                         is the finite set of terminals. ¶ defines the set of all transitions over
+       mars to allow generating highly diverse inputs reliably as an                   the automaton states. q 0 is the start state in the automaton corre-
+       effective methodology to synthesize complex bug triggers                        sponding to the start symbol of the grammar. F is the accepting
+     • We redesign and optimize mutation operators for grammar                         state in the automaton. A set of transitions from the start state to
+       automatons to enable them to do aggressive mutations for                        the final state describe an input string that belongs to the grammar.
+       faster discovery of bugs with complex triggers.
+     • As a proof-of-concept, we build and evaluate Gramatron1 ,                           Pushdown Automatons. Gramatron leverages pushdown automa-
+       an efficient grammar-aware fuzzer.                                              tons (PDA) to create grammar automatons. A PDA is a language
+     • Gramatron discovered 10 new vulnerabilities over a 10-day                       recognizer for a CFG. In the context of Gramatron, we will consider
+       fuzzing campaign, so far one CVE has been assigned.                             the 1-state PDA that accepts inputs by an empty stack. Formally, a
+                                                                                       PDA is defined as M = (Q, Σ, Γ, ¶, q 0 , Z , F ) [20]. Here, Q is a finite
+                                                                                       set of states. Σ is the finite set of terminals. Γ is a set of symbols
+                                                                                       that can be pushed and popped from the stack (referred to as stack
+                                                                                       symbols). Z is the start symbol pushed to the stack. q 0 is the start
+                                                                                       state and F is the accepting automaton state. ¶ is the transition
+                                                                                       function that governs the automaton behavior. It takes as argument
+1 Source code of our framework is available at https://github.com/HexHive/Gramatron.   ¶ (q, a, X ) where, q ∈ Q, a ∈ Σ, and X ∈ Γ. The output of ¶ is a
+Gramatron: Effective Grammar-Aware Fuzzing                                                                          ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+
+finite set of pairs (p, µ ) where p is a new state and µ is the string of           4     GRAMMAR AUTOMATONS
+symbols that replace X at the top of the stack by being pushed in                   A fuzzer must generate syntactically valid inputs to fuzz beyond
+reverse. If µ is empty then only X is popped from the stack.                        the application parser. Previous fuzzers employ parse trees with
+                                                                                    CFG for input generation and mutation. A parse tree encodes the
+2.3    Grammar-Aware Mutation Operators                                             replacement rules applied to generate the input from the grammar.
+                                                                                    The fuzzer uses this information to perform mutations. Existing
+Grammar-aware mutation operators mutate inputs while maintain-
+                                                                                    grammar-aware fuzzers are ineffective at synthesizing complex bug
+ing syntactic validity. They take in as input a grammar along with
+                                                                                    triggers due to biased sampling and localized small-scale mutations.
+a syntactically valid test case to create mutants. There are three
+                                                                                        Conventional grammar structure introduces bias during input
+mutation operators which have proven successful in finding deep
+                                                                                    generation when a fuzzer is choosing replacement rules at random
+bugs [2]: random mutation (pick a random non-leaf nonterminal
+                                                                                    to expand. Grammar rules are laid out in a way that makes it proba-
+node and create a new subtree), random recursive (find recursive
+                                                                                    bilistically harder to generate certain parts of the input state space.
+production rules and unroll up to n times), and splice (combine two
+                                                                                    This bias in turn causes the fuzzer to generate certain patterns less
+inputs while preserving syntax). We implemented them in Grama-
+                                                                                    effectively, slowing down bug discovery. Existing fuzzers use mu-
+tron and tailored them for fast and aggressive mutant generation.
+                                                                                    tation operators designed for parse trees which perform localized
+                                                                                    small-scale changes. These small-scale mutations are detrimental
+3     GRAMATRON OVERVIEW                                                            if the fuzzer gets stuck fuzzing parts of the grammar that are not
+Gramatron is a coverage-guided, grammar-aware generational fuzzer.                  relevant towards triggering a bug.
+As input, Gramatron takes a CFG accepted by the target. Gramatron                       Gramatron performs an automatic two-step transformation on
+outputs crashing test cases . Figure 1 highlights Gramatron’s two                   the CFG to create a grammar automaton. First, it transforms the CFG
+distinct phases: 1 preprocessing phase, followed by a 2 fuzzing                     into its GNF which performs the grammar restructuring. Second, it
+phase. In the preprocessing phase, Gramatron transforms a gram-                     converts the GNF of the grammar into an automaton. Gramatron
+mar into its corresponding grammar automaton. It first converts                     can encode any input that abides by the grammar as an automaton
+the grammar into a form for unbiased input sampling from which                      walk. Grammar automatons restructure the grammar enabling the
+it creates the grammar automaton. It is an FSA that encodes the                     fuzzer to perform unbiased sampling from the input state space.
+input space represented by the grammar.                                             This enable the fuzzer to generate inputs with higher diversity more
+    In the fuzzing phase, Gramatron uses the automaton and muta-                    frequently. We also redesign the mutation operators to operate on
+tion operators redesigned for fast and aggressive mutations. This                   grammar automatons and perform aggressive changes efficiently
+enables Gramatron to rapidly find bugs with complex triggers. Fur-                  to discover bugs with complex triggers.
+thermore, to guide the fuzzing towards interesting parts of the
+grammar, it uses coverage feedback to guide its mutation.                           4.1    Motivating Example
+                                                                                    The following concise example gives an intuition as to how gram-
+                                                                                    mar automatons perform unbiased sampling from the input distribu-
+                                                                                    tion and allow for aggressive mutations to be performed efficiently.
+                                                                       Grammar
+             1                                                       Preprocessor
+                                                                                    Listing 1 presents a subset of the PHP grammar [37].
+
+                                                                                       Biased sampling. The CFG in Listing 1 shows how a conventional
+                 Normalization
+                                            GNF
+                                                           Transformation           structure forces the fuzzer to perform biased sampling from the
+                                          Grammar                                   input distribution. A fuzzer generating an input from this CFG will
+                                                                                    start from the symbol (program) and iteratively keep applying the
+                                                                                    rules until the resulting string has no nonterminals. callStmt that
+                                                                                    can generate twice as many distinct subtrees as the retStmt has
+              Context-Free                                    Grammar               the same 50% probability of being picked for generation. Therefore,
+               Grammar                                        Automaton             the fuzzer undersamples the subtrees corresponding to callStmt.
+                 2                                                                  This leads to low diversity in the inputs generated which in turn
+                                                                                    leads to lesser test coverage during fuzzing.
+                                 Oracle                                                The grammar automaton as shown in Figure 3 describes the GNF
+                                              Test Input
+                 Fuzz                                            Mutation           of the CFG (Listing 2). GNF allows Gramatron to perform unbiased
+                 Target                                          Module
+                                                                                    sampling from the input state space. It restructures the grammar
+                                                                                    to explicitly enumerate all distinct subtrees that can be generated
+                                                                                    by each nonterminal. Thus, we see that subtrees corresponding
+                                          Coverage Feedback                         to the function invocation become twice as likely to be picked for
+                                                                                    generation because they can generate twice as many subtrees.
+                  Bugs
+
+
+                                                                                       Aggressive mutations. Gramatron uses aggressive mutation op-
+                     Figure 1: Gramatron overview.                                  erators. Specifically, given an input string and a point of mutation,
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                                                  Prashast Srivastava and Mathias Payer
+
+
+
+
+program         → ' < ? php ' p h p B l o c k ' ? > '                                                                                                        0
+
+phpBlock        → stmt                                  |
+                                                                                                                                                            0_1
+                  stmt phpBlock
+                                                                                     Program                                                               <?php
+stmt            → callStmt                              |
+                                                                                                                                                                     1_6
+                  retStmt
+                                                                                                                                                                           return;
+callStmt        → func ' ( ) ; '                                  <?php              phpBlock              ?>
+                                                                                                                              1_3
+                                                                                                                                                             1
+retStmt         → ' return ; '                                                                                      return;
+
+func            → ' rand '                              |                                                                                   1_1
+                                                                           stmt                 phpBlock
+                                                                                                                                    rand
+                  ' mt_rand '                                                                                                                        1_2
+                                                                                                                                                                       1_4           1_5
+
+                                                                                                                                                                      rand           mt_rand
+          Listing 1: Subset of PHP grammar.                                                                           2                    mt_rand
+                                                                          callStmt                stmt
+                                                                                                                                                              ( );
+
+program         → ' < ? php ' p h p B l o c k C                                                                      2_1
+                                                                                                                                                              4_1
+                                                                                                                     ( );
+phpBlock        → ' rand ' A                            |
+                                                                   func                ( );          retStmt
+                  ' mt_rand ' A                         |
+                                                                                                                      3                                                               4
+                  ' rand ' A p h p B l o c k            |
+                                                                   rand                                  return;
+                  ' mt_rand ' A p h p B l o c k         |
+                                                                                                                     3_1
+                  ' r e t u r n ; ' phpBlock            |
+                                                                                                                      ?>
+                                                                                                                                                      Legend
+                  ' return ; '                              Figure 2: Parse tree for the input
+                                                                                                                                                       State transition ID
+A               → '(); '                                        <?php rand (); return; ? >.                           5
+                                                                                                                                                           Terminal emitted
+C               → '? > '
+      Listing 2: The same PHP grammar in GNF.
+                                                                                                                   Figure 3: FSA for the grammar in
+                                                                                                                               Listing 2.
+
+
+Gramatron mutates until the end of the string relative to the muta-               over its CNF to convert it into its GNF. Gramatron performs its
+tion point. Automatons have a design that is more conducive for                   grammar construction by first specifying the transition function of
+performing such changes as compared to parse trees.                               the PDA for each CFG production rule. For a grammar in GNF, the
+   To understand why automatons are more optimal, lets assume                     transition function is: ¶ (q, t, A) = {(q,W )|A → tW ∈ R}. Here, t is
+we have a sample program <?php rand(); return; ?>. Figure 2                       a terminal, A is a nonterminal and W corresponds to a nonterminal
+shows the parse tree for this program. From Figure 3, Gramatron                   set. Gramatron uses this transition function to build the grammar
+would represent this input as a sequence of automaton transitions.                automaton. It does so by enumerating (if possible) all valid PDA
+This would be [0_1, 1_4, 4_1, 1_3, 3_1]. Lets assume we chose the                 stack states belonging to the CFG. The final state in the grammar
+return; statement as the mutation point.                                          automaton corresponds to an empty stack. For each stack state,
+   If we wanted to make an aggressive change relative to the non-                 there exists a state in the grammar automaton.
+terminal node stmt, we would need to maintain a parse stack while                     Gramatron uses a worklist-based algorithm to build the automa-
+performing the mutation. The parse stack keeps track of the un-                   ton. It initializes the worklist with a tuple consisting of the initial
+expanded nonterminal nodes as the input is being generated. The                   automaton state and its parse stack with the start symbol of G.
+overhead of maintaining this stack has a worst case complexity of                 It iterates over the worklist until it is empty. For each iteration,
+O(n) where n is the number of parse tree nodes.                                   it: (i) pops an element from the worklist, (ii) from the parse stack
+   This overhead of maintaining a parse stack can be completely                   (P) of the element, pops the topmost stack symbol (S) to create a
+avoided by performing this mutation on an automaton-based rep-                    new P ′ . For the stack symbol, finds all possible transitions as per
+resentation. This is because the parse stacks are implicitly encoded              the transition function, (iii) for each transition, computes the new
+in the automaton states. Therefore, just by diverging the walk from               stack P ′′ from P ′ by pushing the stack symbols (if any) in reverse,
+a state, we can perform an aggressive mutation.                                   (iv-a) if P ′′ is equivalent to a parse stack for a previously generated
+                                                                                  automaton state, then creates a transition from current state using
+4.2     Automaton Construction                                                    the terminal t to that state, and (iv-b) if P ′′ is a new stack state, then
+We first describe the automaton construction algorithm used by                    creates a transition from current state using terminal t to a new
+Gramatron. Then we will go over the challenge faced while applying                automaton state with stack P ′′ and add the new automaton state
+this algorithm and the insight we used to solve that challenge.                   along with its parse stack to the worklist. Performing an automaton
+                                                                                  walk on the FSA creates a new seed input.
+    Construction Algorithm. Gramatron performs a two-step proce-
+dure to transform a grammar into its corresponding automaton is:                     Construction Challenge/Insight. It is theoretically impossible to
+(i) transforming the grammar to its GNF and (ii) converting the                   create an algorithm that converts any arbitrary CFG into a FSA.
+transformed grammar into an automaton. First, Gramatron converts                  The impossibility arises out of a specific grammar type called self-
+a grammar G to its CNF [6] and then performs fixed point iterations               embedding grammars with infinite automaton states. A CFG is
+Gramatron: Effective Grammar-Aware Fuzzing                                                                ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+                                                                     ∗
+self-embedding if it contains a production rule of the form: É ⇒    =        Random Mutation. Gramatron undertakes a three-step procedure
+uÉv [42]. Here {u, v} ∈ T + and É ∈ N , as specified in § 2.1.            to perform this mutation. First, it chooses a random transition in the
+   However, a key insight we had is that grammar-aware fuzzers im-        walk W , TC to diverge the walk. Second, it generates the unmutated
+pose an upper-bound on the generated input size. This ensures that        part of the input verbatim using the C − 1 transitions. Third, from
+they do not generate arbitrarily large inputs. Hence, they instan-        the divergent state, Gramatron performs a random walk over the
+tiate a subset (under-approximation) of the language specified by         automaton until it reaches the final state to generate the mutant.
+the CFG. Here, language refers to the (possibly) infinite state space     This operator becomes faster at generating inputs represented as
+of inputs that can be generated from a CFG. Gramatron leverages           automaton walks. This is because it requires generating a new sub-
+this insight to address the theoretical impossibility while creating      string for the mutant from the provided grammar. Since grammar
+grammar automatons. It approximates the CFG with a regular lan-           automatons make input generation faster, substring generation for
+guage [8, 25, 33]. This regular approximation is then transformed         the new mutant is also faster.
+into grammar automata.
+   In order to perform this regular approximation, Gramatron limits          Random Recursion. Without preprocessing, finding recursions
+the size of the parse stack (denoted by P in the algorithm ) to an        in a parse tree has the runtime complexity of O(n log n) where n
+upper bound while generating the automaton [4, 22]. Hence, the            is the number of tree nodes. This is because for each node you
+construction algorithm terminates and an automaton is constructed.        have to traverse its parents recursively to find all recursive features.
+The trade-off incurred is that the generated automaton can express        Gramatron limits the runtime complexity for finding recursive
+only a subset of the language specified by the self-embedding gram-       features to O(m) where m is the number of terminals in the input
+mar. In the context of programming language grammars, it implies          and m << n. Grammar automatons enable Gramatron to traverseW
+that constructs from self-embedding rules can only be nested up           only once to log all recursive features. It then replicates the subwalk
+to a static depth. This depth is directly proportional to the allowed     corresponding to a randomly picked recursive feature upto n times.
+stack size as specified by the user and can be tuned accordingly.         In the current implementation n = 5.
+   However, this tradeoff is not detrimental in the context of fuzzing.
+Grammar-aware fuzzers already limit the input size to prevent             5     IMPLEMENTATION
+generating arbitrarily large inputs. Hence, grammar automatons            Gramatron is implemented in C and Python: the (ahead of time)
+allow Gramatron to be as expressive as existing grammar-aware             grammar preprocessor is implemented in Python and the (perfor-
+fuzzers while being more performant.                                      mance critical) input generator and mutator are implemented in C.
+   An exception to the above discussion of generating an under-           It takes as input a grammar accepted by the fuzz target. Gramatron
+approximation of the language are non-self-embedding grammars.            modifies AFL++ [9] to leverage grammar automatons to perform
+They do not contain any self-embedding rules. Such grammars have          input generation and mutation while fuzzing. Furthermore, it uses
+a finite number of possible states and transitions [1]. Therefore         code coverage feedback from the fuzz target to guide its mutation.
+Gramatron can generate a grammar automaton that can generate
+the exact language as specified by the non-self-embedding CFG.
+                                                                          5.1    Fuzzing Workflow
+                                                                          Gramatron is a coverage-guided grammar-aware fuzzer. There are
+4.3    Automata-Based Mutation                                            three main stages to performing coverage-guided fuzzing [23, 47]:
+In Gramatron, the mutation operators (splicing, random mutation,          (i) seed scheduling, picking a seed from a set of seeds for generat-
+and random recursive) operate on grammar automaton walks. To              ing mutants, (ii) seed mutation, generating mutants from the seed,
+address the risk of getting stuck in a local subtree, we enable the       and (iii) seed selection, selecting seeds as interesting candidates for
+splice and random mutation operator to perform more aggressive            further fuzzing based on feedback. Gramatron extends the seed
+changes. Given an input string and a target mutation point in it,         mutation of AFL++ making it grammar-aware to generate syntac-
+Gramatron mutates it until the end of the string. For each mutation       tically valid inputs. To prevent mutants from growing arbitrarily
+operator, let an input I be mutated. Its corresponding representation     large, Gramatron deprioritizes (but does not prohibit) inputs that
+in the form of a walk is W = [T1 , ..TN ], consisting of N transitions    have reached a size greater than 2048 bytes.
+to go from the start state of the FSA to its final accepting state. Let       Gramatron proceeds in two stages: corpus generation and the
+the visited automaton states be S = [S 1 , ..S N +1 ].                    fuzzing stage. During corpus generation, Gramatron generates a
+                                                                          predefined number of syntactically valid seed inputs by perform-
+   Splice. Let there be two inputs represented as automaton walks,        ing random walks over the grammar automatons. In the current
+W1 and W2 . A random transition from W1 is chosen as the point to         implementation, Gramatron generates 100 seed inputs. Using this
+splice it with W2 — TC where 1 f C f N . The subwalk originating          seed corpus, Gramatron transitions to the fuzzing stage.
+from this point is replaced with a fitting subwalk from W2 , one              A fuzz iteration consists of four steps: (i) choose a seed from the
+that originates from the same state as TC , which is SC . Automatons      queue, (ii) pass the seed through each of the mutation operators, and
+outperform parse trees for splicing, as parse trees require heavy-        (iii) test generated mutants on the fuzz target, (iv) select candidates
+weight restructuring of parse tree nodes. The operator is not only        for further testing based on the coverage feedback. Furthermore,
+changing the subtree rooted under the chosen splice point but also        to prohibit the fuzzer from getting stuck in a local coverage mini-
+everything to the right of the subtree as well. For automatons, the       mum, it also generates a candidate through random walk over the
+same mutation simply requires concatenating two lists.                    grammar automaton for each fuzz iteration.
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                               Prashast Srivastava and Mathias Payer
+
+
+6     EVALUATION                                                           RQ1: Unbiased Sampling. In this experiment, we validated whether
+Our evaluation answers the following research questions:                generating inputs using grammar automatons enable unbiased sam-
+                                                                        pling from the input state space. Unbiased sampling creates inputs
+      • RQ1: Do grammar automatons perform unbiased sampling
+                                                                        with higher diversity. Hence, we use input diversity as a proxy to
+        from the input state space?
+                                                                        validate if Gramatron performs unbiased sampling. We quantify
+      • RQ2: Does Gramatron perform aggressive mutations effi-
+                                                                        input diversity using branch coverage. The intuition is that input
+        ciently?
+                                                                        diversity is directly proportional to the branch coverage obtained.
+      • RQ3: Can Gramatron discover complex bug triggers faster?
+                                                                        To account for the inherent randomness incorporated by fuzzers
+      • RQ4: Can grammar automatons find new vulnerabilities?
+                                                                        during input generation, we generated a large (105 ) number of
+   We compared Gramatron against two Nautilus variants, the state-      inputs each over five different trials.
+of-the-art grammar aware fuzzer that uses parse trees: NautilusP :         We performed the input diversity comparison against NautilusGH
+the prototype presented in the paper [2] with AFL-style mutation        and a baseline input generator. Both the baseline and NautilusGH
+operators that may generate syntactically invalid inputs [27], and      employ parse trees along with conventional grammars. However,
+NautilusGH : the performance-optimized version released recently        a key difference between them is the strategy employed while
+that removed AFL-style mutation operators [28].                         picking which grammar rules to exercise during input generation.
+   For RQ1–RQ2, we performed the following experiments by               The baseline generator picks rules at random while NautilusGH tries
+comparing Gramatron against NautilusGH , since it is performance-       to bias its generation towards larger inputs through probabilistic
+optimized: (i) measure complexity and diversity of inputs gener-        weighting of the grammar production rules. Additionally, since
+ated from scratch using grammar automatons against conventional         Gramatron restructures the grammar by leveraging its GNF to
+grammars (RQ1), (ii) performance evaluation of input generation,        perform unbiased sampling from the input state space, we wanted
+mutation, and mutation aggressiveness (RQ2). To answer RQ3, we          to see if NautilusGH could become as performant as Gramatron if
+evaluated the elapsed time to discover known bugs of varying com-       we just supplied the GNF of the grammar to it (NautilusGH -G).
+plexity in three fuzz targets against both NautilusP and NautilusGH .      As evident from the branch coverage results in Table 1, Gra-
+Finally, for RQ4, we deployed Gramatron for 10 days on three            matron outperformed all other approaches across all grammars
+popular and well-fuzzed interpreters to find new vulnerabilities.       with respect to generating higher diversity inputs. It obtained up
+   We performed the evaluation on an Intel Xeon Bronze 3106             to 24.2% more coverage compared to the other approaches. This is
+1.7GHz processor with 45GB RAM running Debian 9.3. For a fair           because grammar automatons enable unbiased sampling from the
+comparison, we ran all tools in single-threaded mode on a single        input state space, increasing test coverage.
+core. Gramatron was compiled with Clang-8.0 at Ofast optimiza-             The baseline coverage and observed improvement are low for
+tion. NautilusP and NautilusGH are implemented in Rust and use          two reasons. First, Nautilus authors manually designed the gram-
+its nightly branch. We used the optimized build (i.e., the release      mars to focus on specific target functionality which is common
+build [39]) for our evaluation.                                         while performing grammar-aware fuzzing. Second, we generated in-
+                                                                        puts from scratch using the grammar without leveraging coverage
+6.1     Performance Microbenchmarks                                     feedback or mutation operators. We did this to perform an evalu-
+We compare inputs generated using grammar automatons against            ation of the performance improvement solely from the grammar
+conventional grammars using parse trees along three axes: (i) com-      restructuring as performed by Gramatron.
+plexity and diversity of the inputs generated (RQ1), (ii) length of        Another interesting observation is that NautilusGH -G variant
+mutated substrings (RQ2), and (iii) time taken to generate and          outperforms NautilusGH (which uses conventional grammars) but
+mutate these representations (RQ2).                                     does not perform on par with Gramatron. This happens because
+   However, fuzzing consists of auxiliary stages apart from input       when NautilusGH biases its generation it ends up biasing towards
+generation and mutation. While testing NautilusGH , we observed         specific kind of syntactical constructs (e.g., single function invoca-
+these stages intertwined with each other. This introduced noise         tions with a large number of arguments). These inputs, while still
+in the performance measurements. To avoid this noise during per-        interesting are not helpful towards expanding the test coverage of
+formance measurement, we created seven microbenchmarks each             the fuzzer. Hence, this experiment showed that Gramatron, through
+taking in as input a CFG to answer RQ1–RQ2. For a fair compari-         grammar automatons, removes sampling bias most optimally.
+son, we crafted our evaluation grammars from the same grammars
+used by the Nautilus authors in their evaluation. Table 1 lists the        RQ2: Aggressive mutations. In this experiment, we validated if
+number of rules in each grammar. The average time taken to build        the mutation operators adopted by Gramatron are indeed aggres-
+grammar automatons per grammar was 2.09s, i.e., the automaton           sive (i.e., perform large-scale changes). We did so by comparing
+construction itself is lightweight.                                     the mutation operators of Gramatron against those of NautilusGH
+   We also performed statistical tests for each run to: (i) quantify    (that perform small-scale changes). We generated inputs over 8
+the performance gain and (ii) check whether the improvement is          length buckets at intervals of size 10. Here, length corresponds
+statistically significant. For magnitude quantification, we performed   to the number of terminals in the input. Each microbenchmark
+Cohen’s-D Effect Size [38] and for significance testing we used the     generated 1000 inputs for each bucket creating a sum total of 8000
+Mann-Whitney U-Test [23]. As per the Mann-Whitney U-test , a            inputs. We used this length threshold because, for the evaluation
+result is significant if p-value < 0.05. All results reported for the   grammars, NautilusGH did not generate inputs with more than 80
+microbenchmarks are statistically significant.                          terminals frequently with random walks. This occurred because
+Gramatron: Effective Grammar-Aware Fuzzing                                                                                                                                                                                                      ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+
+
+                                                            (a) Mutation Scale
+                               50                                                                                                                                 (b) Representation Size
+                                         Gramatron                                                                                                                                                                                                                 (c) Input Generation
+                                                                                                                                  1750          Gramatron                                                                           4000000
+                                         NautilusGH
+                                                                                                                                                NautilusGH                                                                                        Gramatron
+                                                                                                                                                                                                                                                  NautilusGH
+                               40                                                                                                 1500                                                                                              3500000
+ Mutation length (terminals)
+
+
+
+
+                                                                                                                                                                                                                                    3000000
+                                                                                                                                  1250
+
+
+
+
+                                                                                                            Space taken (bytes)
+                               30
+                                                                                                                                                                                                                                    2500000
+
+
+
+
+                                                                                                                                                                                                                  Time taken (ns)
+                                                                                                                                  1000
+
+                                                                                                                                                                                                                                    2000000
+                               20                                                                                                  750
+                                                                                                                                                                                                                                    1500000
+
+                                                                                                                                   500
+                               10                                                                                                                                                                                                   1000000
+
+                                                                                                                                   250
+                                                                                                                                                                                                                                    500000
+
+                               0                                                                                                     0                                                                                                      0
+
+                                        1-9     10-19    20-29 30-39 40-49 50-59           60-69    70-79                                      1-9      10-19      20-29 30-39 40-49 50-59        60-69   70-79                                  1-9    10-19     20-29 30-39 40-49 50-59       60-69   70-79
+                                                        Terminal frequency intervals                                                                              Terminal frequency intervals                                                                   Terminal frequency intervals
+
+
+                                                                                                                                                                                                                                                          (f) Random Recursive Mutation
+                                                              (d) Splice Mutation                                                                                    (e) Random Mutation
+                                                                                                                                                                                                                                    40000        Gramatron
+                                               Gramatron                                                                          3500000            Gramatron
+                                                                                                                                                                                                                                                 NautilusGH
+                           1000000             NautilusGH                                                                                            NautilusGH
+                                                                                                                                                                                                                                    35000
+                                                                                                                                  3000000
+                                                                                                                                                                                                                                    30000
+                               800000
+                                                                                                                                  2500000
+                                                                                                                                                                                                                                    25000
+
+
+
+
+                                                                                                                                                                                                                  Time taken (ns)
+Time taken (ns)
+
+
+
+
+                                                                                                            Time taken (ns)
+
+
+
+
+                               600000                                                                                             2000000
+                                                                                                                                                                                                                                    20000
+
+                                                                                                                                  1500000
+                               400000                                                                                                                                                                                               15000
+
+                                                                                                                                  1000000                                                                                           10000
+                               200000
+                                                                                                                                  500000                                                                                             5000
+
+
+                                    0                                                                                                    0                                                                                              0
+
+                                              1-9   10-19    20-29 30-39 40-49 50-59       60-69    70-79                                        1-9      10-19     20-29 30-39 40-49 50-59       60-69   70-79                                 1-9    10-19     20-29 30-39 40-49 50-59        60-69   70-79
+                                                            Terminal frequency intervals                                                                           Terminal frequency intervals                                                                 Terminal frequency intervals
+
+
+
+
+                                    Figure 4: Visualization of a representative run of microbenchmark comparison of Gramatron against NautilusGH .
+
+             Table 1: Input diversity comparison using branch cov                                                                                                              generating large inputs requires triggering recursive grammar fea-
+              showing absolute cov% and cov increase% relative to                                                                                                              tures consecutively which became probabilistically harder with
+            baseline of Gramatron (G), NautilusGH (NGH ), and NGH -G:                                                                                                          each trigger.
+                         NautilusGH with GNF grammar.                                                                                                                             To validate that Gramatron performs aggressive mutations, we
+                                                                                                                                                                               compared the number of terminals in the substring generated by the
+       Target                                 Rules         Branch Coverage % (Absolute/Relative Increase)                                                                     mutation operator from both tools. This metric accurately quantifies
+                                                                                                                                                                               the mutation scale. We compared the random mutation operator for
+                                                            Baseline           NGH                  NGH -G                                       G
+                                                                                                                                                                               this microbenchmark. The results are representative of the splice
+       mruby                                  1185            17/0          17.3/+1.8              17.4/+2.4                                 18.5/+8.8
+       PHP                                    8685           2.9/0           3.0/+3.4              3.2/+10.3                                 3.7/+27.6
+                                                                                                                                                                               mutation operator as well since both are functionally equivalent.
+       JS                                     171            8.4/0           8.5/+1.2               8.6/+2.4                                 8.8/+4.8                          The only difference between them is how the substring is generated:
+                                                                                                                                                                               for random mutation, its generated from the grammar and for the
+                                                                                                                                                                               splice operator its generated from another input.
+    Table 2: % improvement in terms of space, time, and                                                                                                                           Figure 4a shows a representative microbenchmark run for the
+  mutation scale of Gramatron against NautilusGH . Effect                                                                                                                      PHP grammar. It is evident that Gramatron performs more aggres-
+size quantifies the improvement magnitude ( > 0.8 = large, >                                                                                                                   sive mutations than NautilusGH since the mutation scale is much
+                       0.5 = medium).                                                                                                                                          larger. This is expected because for random mutation and splice,
+                                                                                                                                                                               given an input string and a mutation point, Gramatron mutates till
+       Microbenchmark                                                         % Improvement (Effect Size)                                                                      the end of the string while NautilusGH mutates a substring relative
+                                                                                                                                                                               to the mutation point. These aggressive mutations allow Gramatron
+                                                                      mruby                       PHP                                         JS                               to synthesize complex bug triggers faster by performing a broader,
+       Representation Size                                          23.66 (0.44)               15.26 (0.29)                              32.27 (0.66)                          more global search through the input state space without being
+       Input Generation                                             98.48 (1.88)               99.78 (1.87)                              96.66 (2.15)                          tunnel-visioned on specific parts of the input state space.
+       Splice Mutation                                              99.84 (3.03)               97.94 (2.45)                              98.26 (1.91)                             We also calculated the percentage improvement of Gramatron
+       Random Mutation                                              26.82 (0.40)               77.75 (0.80)                              73.16 (0.87)                          by calculating the median time taken across input buckets and then
+       Random Recursive                                             46.77 (1.19)               38.94 (0.78)                              52.25 (1.11)                          comparing the mean of those medians. As evident from the “Mu-
+       Mutation Scale                                              134.17 (-0.09)               930 (1.08)                                877 (1.12)                           tation Scale” row of Table 2, Gramatron performed significantly
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                                Prashast Srivastava and Mathias Payer
+
+
+more aggressive mutations. The average effect size across the dif-       recursive features. Hence, for this bucket the random recursive mu-
+ferent grammars is reported in Table 2. We see a large effect size       tation operator performed no operations and we marked the time
+for mutator aggressiveness in Gramatron.                                 as zero for both tools. From Figure 4f, we observe a performance
+   However, for the mruby grammar, the observed effect size is           gain when this mutation is done on grammar automaton walks. The
+minimal. This occurred due to the effect size not being robust to        primary reason Gramatron is faster because finding all recursive
+outliers. For this grammar, we observed the anomalous behavior           features in an input ends up being more expensive when done on
+that NautilusGH generated larger-scale mutations than Gramatron          parse trees as opposed to grammar automaton walks.
+only for the smallest inputs with < 10 terminals. This occurred             The splice mutation operator requires two inputs. Hence, for
+because for the smallest inputs built from this mruby grammar,           each iteration we first generate two random inputs: base input and
+the probability of NautilusGH extending the input further was sig-       the candidate. For the base input, we generate the metadata struc-
+nificantly higher due to lack of nonterminal nodes for mutation.         ture corresponding to each tool. Then, we perform splicing with the
+However, for inputs of all other sizes in the mruby grammar, Gra-        candidate. Gramatron drastically outperforms NautilusGH as shown
+matron outperformed NautilusGH . This is evident from the fact that      in Figure 4d. The overhead of NautilusGH comes primarily from
+Gramatron still generated on average 134.17% larger mutations as         creating metadata for the base input for performing the splice oper-
+compared to NautilusGH . Hence, we can conclude that the negligi-        ation. Their metadata creation is more heavyweight because their
+ble effect size for mruby grammar is due to the outlier behavior of      mutation operator is designed to splice the candidate by searching
+NautilusGH for small inputs.                                             through a corpus of base inputs rather than a single base input.
+
+
+    RQ2: Generation/Mutation Efficiency. Finally, we validated whether   6.2    Faster Bug Discovery
+our adopted methodology to remove the sampling bias from in-             Gramatron can find bugs with complex triggers faster in fuzz targets
+put distribution and perform aggressive mutations was efficient          by using grammar automatons with aggressive mutation operators.
+in terms of space and time. To do so, we evaluated two aspects of        In order to validate this claim, we created a corpus of three fuzz
+Gramatron: (i) space and time efficiency of automaton-based input        targets with 10 known bugs in them acting as ground truth. We
+representations, and (ii) time efficiency of the mutation operators.     created this corpus using the bugs discovered by Nautilus [2], Gram-
+The evaluation methodology for these set of microbenchmarks was          marinator [18] and from bug trackers of the fuzz targets [36]. We
+the same as that for evaluating aggressive mutations. From Table 2,      evaluated NautilusP , NautilusGH , and Gramatron on this corpus and
+we observe that Gramatron improved over all measured aspects.            compared the time taken to find each bug across ten fuzzing trials
+We see a large effect size along all evaluated components except         with ASan enabled and a time budget of 24 hours each.
+space for which we see a close to medium effect.                            The bug corpus used is detailed in Table 3; we will be referring
+    To evaluate space efficiency, we compared the disk space size of     to the bugs by their listed Bug-ID. For PHP, we used two different
+their JSON-serialized representation size across inputs belonging to     versions 7.2.6 [34] and 7.4.0 [35]. We sourced each of the bugs
+different length intervals, showing that our representation is more      in mruby and JerryScript from six different git commits. All these
+lightweight. Then, Figure 4c visualizes the time taken to perform        bugs have syntactically valid proof-of-concept (PoC). Therefore,
+input generation using grammar automatons and parse trees. Gram-         they all lied beyond the parser of the fuzz target.
+mar automatons provide a significant runtime improvement. This              The input state space covered by the grammar highly influences
+is due to the fact that when a fuzzer is performing an automaton         the time taken to discover a bug. Therefore, for this experiment,
+walk to generate an input, it does not need to keep track of the         the grammar should challenge the fuzzer while also ensuring that
+parse stack since its implicitly encoded in the automaton itself.        the input state space is not so large that it makes it infeasible for
+    For performance evaluation of mutation operators, we designed        the fuzzer to find the bug in a reasonable amount of time.
+the microbenchmarks to perform a three-step task: (i) create any            We built the input grammars using the subset of the grammars
+metadata necessary for mutation, (ii) mutate the input and (iii) un-     from the Nautilus repository [28]. For each bug in the corpus, we use
+parse the mutated input, i.e., from the input representation create a    a separate grammar. A single grammar for each target is not enough
+concrete test input. These three tasks together correspond to creat-     as some of our targets contain multiple bugs. A generic grammar
+ing a mutant. The total time taken for these tasks was recorded and      that covers all bugs may cause the fuzzer to get stuck at finding
+then bucketed based on the number of terminals in the generated          alternate paths to a single bug hindering progress. Having different
+mutant. We will now go over each of the mutation operators.              grammars for each bug allows a fair evaluation that enables the
+    For random mutation, our intuition is that if the input generation   fuzzers to search for a particular bug without being distracted by
+is fast, this mutation will be fast too since it requires generating a   other potential bugs. The only exception to this rule were PHP-3
+new input part. Figure 4e validates our intuition empirically where      and PHP-4. These can be triggered from the same grammar. We
+we can see the time taken to generate mutants using Gramatron is         encountered difficulties in decoupling the bug triggers for both so
+much lesser than NautilusGH .                                            we post-processed results to infer when each bug triggered.
+    When evaluating the random recursive operator, we removed               Based on the bug PoC, each grammar consists of required built-
+randomness introduced from the number of times chosen by both            in language features to trigger the bug along with non-required
+tools to multiply a recursive feature. To do so, we fixed the recur-     features to expand the input state space. Non-required features are
+sive feature multiplication, to be performed 5 times by both tools.      primitives that are not in the PoC. Each grammar had the ability
+Furthermore, inputs with less than 10 terminals did not have any         to build different statement types such as assignments, or function
+Gramatron: Effective Grammar-Aware Fuzzing                                                                ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+
+invocations. Hence, we argue that these subsetted grammars are               Complex Bugs. From our ground truth corpus, mruby-1, JS-1 and
+representative of the core functionality exercised by the fuzz targets.   JS-2 can be categorized as complicated bugs. Gramatron outper-
+    Note, that our tailoring primarily reduced the set of keywords        forms NautilusP in finding them and NautilusGH in finding mruby-1
+to keep bugs discoverable. If we forced the fuzzers to explore thou-      and JS-2. NautilusP fails to find these complex bugs consistently
+sands of different keywords with all the statement constructs, the        within the given time budget. This is due to the use of both AFL
+time budget for each fuzzing campaign would exceed 24 hours by            mutators and grammar-aware mutation operators. For the failed
+orders of magnitude. Restricting the grammars enables us to per-          fuzzing campaigns where NautilusP did not discover the bug, we
+form exhaustive testing on our bug corpus. We believe this is a fair      observed that the paths discovered by the AFL-mutators were dis-
+comparison since for each bug, all fuzzers are provided exactly the       proportionately higher than other mutation operators. We attribute
+same input space to explore, hence allowing us to evaluate how            this to the cascading effect caused by AFL mutators generating
+efficiently they search the input space to find the bug.                  syntactically invalid mutants. These mutants give shallow coverage
+    To evaluate bug discovery performance, we calculate the median        in the parser but are still added to the corpus which biases NautilusP
+time to discover the bug across ten fuzzing trials. We allowed all        towards performing shallow fuzzing.
+tools to generate their own seed corpus for each trial because of            NautilusGH tries to remediate the above problem by removing the
+two reasons. First, at the start of each campaign, both NautilusP         AFL-mutation operators. However, we observe that NautilusGH still
+and NautilusGH build a corpus of seed inputs from scratch from the        has difficulty in discovering complex bug triggers. This difficulty
+grammar. Hence, we did not change their default design by giving          arises because its mutation operators perform spot mutations (as
+it a pre-existing seed corpus to prevent introducing unintended           discussed in § 4.3). Thus, on finding an interesting input, NautilusGH
+side-effects. Second, the seed corpus plays a pivotal role in deciding    performs localized search around the grammar parts corresponding
+the time taken to find a bug [23]. Hence, by using a randomly gen-        to the input. This can be detrimental when grammar parts being
+erated seed corpus for each trial, we ensure an unbiased evaluation.      explored are not relevant to the bug. Hence, this mutation policy
+However, a side-effect of this evaluation choice is that we could not     slows down its advance towards complex bug triggers.
+establish statistical significance for this experiment.                      Gramatron outperforms NautilusP by performing purely grammar-
+    Table 3 shows the experimental results. The PoC complexity            aware mutations. It also outperforms NautilusGH due to its aggres-
+column specifies the number of branching rules to trigger in the          sive mutation policy. As per this policy, on finding an interesting
+original CFG to generate the PoC. The original CFG here refers            input, Gramatron does not fixate on performing localized search
+to the grammar used by Nautilus variants as-is and from which             around the grammar parts corresponding to the input. Instead, it
+Gramatron generates automatons. We classify a rule as branching if        biases towards performing a more global search with its aggres-
+its RHS contains more than one possible rewrite rule. We use this as      sive mutations. Hence, it rapidly progresses towards discovering
+a metric to quantify bug trigger complexity. The Effect Size column       complex bug triggers.
+showcases the magnitude difference between results of Gramatron              JS-1 is the only complex bug in which NautilusGH outperforms
+and Nautilus variants. The higher the number, the better is Gra-          Gramatron. On closer inspection of the bug trigger, we noticed that
+matron and vice-versa. Nautilus did not find several bugs within          even though it requires triggering 26 branching rules, all of them
+the 24-hour time budget. Hence, we had incomplete data for those.         were localized within a specific part of the grammar. This made it
+We calculated effect size in such instances by only considering the       ideal for the spot mutators used by Nautilus variants to discover
+trials for which we had data for both Nautilus and Gramatron. We          this bug faster.
+did this to ensure we did not incorrectly estimate time-to-discovery
+for the Nautilus variants, potentially over-estimating Nautilus per-         Simple Bugs. From our ground truth corpus, all other bugs apart
+formance.                                                                 from mruby-1, JS-1, and JS-2 can be classified as simple bugs. From
+    Gramatron finds all bugs consistently across all fuzzing cam-         the results, its evident that Gramatron outperforms NautilusP in
+paigns. However, NautilusP and NautilusGH can only find seven             finding simple bugs except mruby-2, PHP-3, and PHP-4. The mruby-
+and eight bugs out of the 10 respectively. Notably, NautilusP is un-      2 effect size is 0.02 hence the magnitude of performance difference is
+able to discover mruby-1, JS-1, and JS-2 while NautilusGH fails to        close to negligible. In the case of NautilusGH , its able to outperform
+find mruby-1 and JS-2 within the 24-hour time budget for certain          Gramatron in finding the simple bugs except PHP-1, PHP-2, and
+fuzzing campaigns.                                                        JS-3.
+    We divide the discussion based on the bug trigger complexity: (i)        The root cause as to why NautilusP fails at finding simple bugs
+complex bugs: triggers with > 20 branching rules, and (ii) simple         faster than Gramatron can be attributed to its use of AFL-style mu-
+bugs: triggers with f 20 branching rules. Branching rules are ap-         tation operators. An exception to this trend were mruby-2, PHP-3,
+propriate to quantify the complexity for generating a bug trigger.        and PHP-4 where both the Nautilus variants outperformed Grama-
+For each branching rule, the fuzzer must make a set of choices (e.g.,     tron. Upon inspection, we observe that their generation was highly
+function invocations, or utilized variable names). Increasing the         localized to a specific part of the grammar and hence Nautilus
+number of required branching rules to generate a trigger increases        variants were able to find it faster than Gramatron.
+the risk that a fuzzer makes mistakes (e.g., by adding incorrect             NautilusGH outperforms Gramatron in finding simple bugs. This
+function invocations, or using undefined variables).                      performance gain can be attributed to the spot mutators utilized
+                                                                          by NautilusGH . They are better at finding simple bugs for the same
+                                                                          reason they were worse at finding complex bugs. The localized
+                                                                          mutations allow NautilusGH to find simple bugs faster.
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                                          Prashast Srivastava and Mathias Payer
+
+
+ Table 3: Performance breakdown of time to bug discovery across 10 fuzzing campaigns. G: Gramatron, (NP , NGH ): NautilusP
+                                                    and NautilusGH .
+
+        Bug-ID        Bug Type                     PoC Complexity      Successful Campaigns       Median Time (s)              Effect Size
+                                                  (Branching rules)     NP     NGH      G        NP    NGH      G         G v/s NP G v/s NGH
+        PHP-1         Segmentation Fault               Simple (15)     10/10   10/10   10/10     1217    894     472         0.93           0.71
+        PHP-2         Division by Zero                 Simple (15)     10/10   10/10   10/10      505    164      61         1.64           1.58
+        PHP-3         Segmentation fault               Simple (12)     10/10   10/10   10/10     1616    659    2288        -0.97          -2.06
+        PHP-4         Null-pointer-deref               Simple (17)     10/10   10/10   10/10     2509   1065    6074        -2.79          -4.30
+        mruby-1       Use-after-free                  Complex (27)     3/10    8/10    10/10     2269   17341   4346        0.53           1.15
+        mruby-2       Segmentation Fault               Simple (8)      10/10   10/10   10/10      725    268     889        -0.02          -0.46
+        JS-1          Heap buffer overflow            Complex (26)     5/10    10/10   10/10     3866    335    1450         0.85          -0.67
+        JS-2          Failed assertion                Complex (23)     4/10    9/10    10/10     2527   1620    1199        0.60           0.71
+        JS-3          Failed assertion                 Simple (12)     10/10   10/10   10/10      118     47      19        1.40           0.19
+        JS-4          Floating point error             Simple (12)     10/10   10/10   10/10      481     33      78         0.67          -0.60
+
+
+  Table 4: Fuzz targets with types of bugs discovered. Key:                         Table 5: Median standard deviation of the time taken to
+ OOB: Out-of-bounds read, (H)BO: (Heap) Buffer Overflow,                                          find different bug triggers.
+ AV: Assertion Violation, and UAS: Stack use-after-scope.
+                                                                                        Bug Trigger          Std Deviation Median (h)
+ Target           Version                Rules   Bugs       Bug Type                                    NautilusP   NautilusGH        Gramatron
+ mruby            9840d6, 96bae1         1177     3      2 OOB, 1 (H)BO                 Simple            0.14         0.07              0.18
+ PHP              7.4.8, 7.4.9           8712     4       1 UAS, 3 OOB                  Hard              2.72         5.75              1.15
+ Jerryscript      04f0a7                 589      3           3 AV
+
+
+                                                                                triggered if a hash made empty was rehashed and manipulated.
+6.3     Bug Discovery Performance in the Wild                                   The reason is that the internal metadata structure for the newly
+To demonstrate that grammar automatons preserve bug-finding                     generated hash would point to stale metadata. This in turn caused
+capabilities of grammar-aware fuzzers, we deployed several fuzzing              any operations on the new hash to cause an OOB read. This vul-
+campaigns against three interpreters: mruby, PHP, and Jerryscript.              nerability is only triggered if the original hash structure had been
+We chose these targets for two reasons: (i) they are widely used,               emptied, not if it was empty from the beginning.
+which makes security bugs in them relevant, (ii) they are well-tested              To synthesize the bug trigger, Gramatron overcame two chal-
+and have been fuzzed previously by grammar-aware fuzzers like                   lenges: (i) emptied a populated hash and (ii) performed the correct
+Nautilus and Grammarinator [18], this ensures that bugs found by                sequence of operations on the emptied hash. The supplied grammar
+Gramatron are not low-hanging fruits due to lack of testing.                    did not express how to add to an existing hash . So, Gramatron
+   For each of these targets, we created grammar automatons for                 solved the first challenge by using another API to get a populated
+Nautilus grammars which are self-embedding. Hence, the grammar                  hash. After that, it learned how to empty it by performing the cor-
+automatons expressed a subset of the language specified by the                  rect number of eviction operations. From there, it synthesized the
+CFG as discussed in § 4.2. To quantify their size, the number of rules          API to perform the operations needed for the second challenge,
+in each of these grammars is present in Table 4. The same table lists           which in turn triggered the vulnerability.
+the commit ID and versions fuzzed for each of these targets.
+   Gramatron fuzzed these targets for 10 days. During this cam-                 7      DISCUSSION AND FUTURE WORK
+paign, it found 10 new vulnerabilities, so far one CVE (CVE-2020-
+15866) was assigned. Four of these have been responsibly disclosed                 Trade-off between Aggressive and Spot mutators. Aggressive mu-
+to the affected vendors who have acknowledged and rolled out                    tators (as used by Gramatron) primarily generate mutants that are
+patches for the same. For the remaining six we are in the process               significantly different from the source input owing to the large-scale
+of reporting them to the affected vendors. The vulnerability type               changes. Spot mutators (as used by Nautilus) primarily generate
+breakdown and the affected applications are presented in Table 4.               mutants with smaller changes compared to the source input. Con-
+For Jerryscript, the assertion violations causes it to crash.                   sequently, aggressive mutators sample from a more diverse set of
+                                                                                mutants while spot mutators sample from a more localized set of
+   Bug Case Study. Here we showcase the effectiveness of Gra-                   mutants corresponding to the source input.
+matron at synthesizing complex bug triggers. The bug is an out-                    Since spot mutators perform local search, they have a higher
+of-bounds (OOB) read in the mruby interpreter (which has now                    chance of getting stuck in local coverage minima while trying to
+been patched). Its root cause existed in rehash, an API provided                synthesize complex bug triggers. To validate this, we calculated the
+by mruby for rebuilding a hash data structure. An OOB read was                  median standard deviation for different types of bug triggers used
+Gramatron: Effective Grammar-Aware Fuzzing                                                                  ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+
+in § 6.2. As evident in Table 5 spot mutators have a higher standard        targeted one, causing the fuzzer to tunnel-vision on that specific
+deviation when trying to synthesize complex bug triggers.                   bug and input space around it. To eliminate this noise, we crafted
+    We showed in § 6.2 that both mutator types have their own mer-          grammars that discover the bugs of interest mixed with benign
+its. The spot mutators used by Nautilus are better at uncovering            functionality to make it non-trivial for the fuzzers to find these bugs.
+bug triggers which require exercising a specific part of the gram-          Furthermore, for all our experiments against Nautilus we followed
+mar. However, aggressive mutators excel at synthesizing complex             the guidelines as laid down by Klees et.al. [23] to eliminate effects
+bug triggers that require triggering multiple different grammar             of randomness while evaluating fuzzers.
+parts. A promising avenue to explore would be how a fuzzer can
+                                                                                Construct Validity. There is only a single threat to construct
+schedule these different mutators efficiently by crafting this as an
+                                                                            validity (i.e., we are measuring what we claim to be measuring [12])
+optimization problem [24].
+                                                                            in our experiments. This manifests when evaluating the unbiased
+   Augmentations to Regular Approximation. In Gramatron, we used            sampling of Gramatron. In this case, a potential threat to construct
+grammar automatons to generate an under-approximation of the                validity arises out of using code coverage as a proxy metric for
+language specified by the CFG. An interesting avenue to explore             input diversity. However, we claim that in the context of fuzzing,
+would be generating grammar automatons that accept an over-                 we are primarily interested in higher input diversity corresponding
+approximation of the language specified by the CFG [22, 33]. Here,          to richer semantics. Hence, for evaluating this goal, branch coverage
+over-approximation refers to a superset of the language. This allows        is the most appropriate metric as higher branch coverage directly
+the fuzzer to generate inputs that can test both the syntactic and          corresponds to inputs with richer semantics.
+semantic stages of the parser simultaneously.
+   In the presence of self-embedding rules in the grammar, the ex-          9   RELATED WORK
+pressiveness of the grammar automaton directly depends on the               Fuzzing approaches can be broadly divided into two categories:
+user-provided stack depth. The larger the stack depth the more ex-          mutational and generational. Gramatron is a generational fuzzer
+pressive Gramatron can be during input generation. As a trade-off,          that use code coverage feedback to guide its fuzzing. We will discuss
+larger stack depth increases the final automaton which is generated         mutational fuzzing and the challenges it faces while fuzzing soft-
+in terms of number of states and transitions. Consequently, the             ware that accepts structured input. Then, we will discuss existing
+one-time cost of generating the automaton itself is larger. However,        generational fuzzers in detail and how they differ from Gramatron.
+the size of the automaton will not affect the time taken to generate           Off-the-shelf mutational fuzzers such as AFL [41, 50] use opera-
+or mutate inputs since those operations depend on the size of the           tors such as bitflips to drive the input generation from a seed input
+inputs themselves. As future work, we plan to explore alternative           corpus. However, such mutational operators may often create syn-
+strategies for regular approximation to make more concise automa-           tactically invalid mutants. This leads to such fuzzers being unable
+tons. One alternative could be to convert grammars into GNF form            to fuzz past the parser of applications that accept structured input.
+in a more efficient manner [5].                                             Gramatron uses the input grammar to overcome this limitation.
+                                                                               Generational fuzzers use an input model for input generation
+8    THREATS TO VALIDITY                                                    during fuzzing. This model can either be user-provided as a CFG [2,
+Here we discuss potential threats to validity of our evaluation and         11, 19, 43, 44, 49] or inferred from the application [3, 21]. Genera-
+the steps we take to mitigate them.                                         tional fuzzers that leverage a user-provided model can be broadly
+                                                                            divided into two categories: (i) language-specific: Designed for fuzz
+   External Validity. The external validity (i.e, the generalizability of
+                                                                            targets that accept a specific language, (ii) language-agnostic: De-
+our results) primarily depends on how representative our evaluation
+                                                                            signed to fuzz any type of fuzz target regardless of the type of
+targets are of a real-world testing scenario. To address this threat,
+                                                                            language that it accepts. We will discuss each of these below.
+we chose widely-used, large, and well-tested software accepting
+different languages as our fuzz targets. Furthermore, our in-the-              Language-specific Fuzzers. These fuzzers are designed and opti-
+wild testing experiment (described in § 6.3) showcases the ability          mized to fuzz targets that accept a specific language (e.g., for C [26,
+of Gramatron to find previously undiscovered bugs. We do note               49], or JS [15, 17, 32]). Language-specific fuzzers are customized to
+that while our evaluation focuses on language interpreters (since           address language idiosyncrasies for deeper testing. C-smith [49]
+related work evaluates those), Gramatron can be applied to any              generates programs that avoid exercising undefined behavior as
+software that accepts inputs as defined by a context-free grammar.          specified in the C standard. CodeAlchemist [17] employs JS-specific
+                                                                            analysis techniques to generate semantically valid programs. DIE
+   Internal Validity. Fuzzers are composed of multiple modules that
+                                                                            performs structure and type-preserving mutations to inputs by
+intertwine with each other during a fuzzing campaign. Therefore,
+                                                                            using custom-annotated Abstract Syntax Trees [32]. All such cus-
+a potential threat to our internal validity is the measurement noise
+                                                                            tomizations come at the cost of generalizability to other languages.
+that is introduced from auxiliary stages (i.e., stages that do not
+                                                                            In contrast to these tools, Gramatron is designed as a grammar-
+correspond to input generation or mutation). To minimize this
+                                                                            aware but language-agnostic, generational fuzzer.
+noise, we built microbenchmarks that isolate the stages that we
+are interested in for our measurements. Another potential threat               Language-agnostic Fuzzers. Language-agnostic fuzzers [2, 19, 32,
+specifically pertaining to our ground-truth bug experiment was the          43] use techniques that do not assume anything about the target
+presence of multiple bugs in our fuzz targets. This can introduce           language. This enables wider applicability while still allowing for
+noise in the evaluation if a fuzzer finds alternate bugs before the         deep testing. LangFuzz [19] creates a set of code fragments from a
+ISSTA ’21, July 11–17, 2021, Virtual, Denmark                                                                            Prashast Srivastava and Mathias Payer
+
+
+pre-existing input corpus sourced from a test suite using the gram-        ACKNOWLEDGEMENTS
+mar. It then recombines different fragments together to create more        We thank the anonymous reviewers for precise and detailed feed-
+failing inputs. IFuzzer [43] has a similar design but instead it adopts    back. This project has received funding from the European Research
+a genetic algorithm to perform the input recombination. Gramatron          Council (ERC) under the European Union’s Horizon 2020 research
+instead uses coverage feedback to guide its input generation and           and innovation program (grant agreement No. 850868), NSF under
+aggressive mutations using the restructured grammar.                       CNS-1801601, ONR under award N00014-18-1-2674, and generous
+    Recent work has explored incorporating coverage feedback into          gifts from Huawei and Oracle. Any opinions, findings, and conclu-
+grammar-aware fuzzing. Nautilus used coverage feedback in con-             sions or recommendations expressed in this material are those of
+junction with grammar-aware and AFL-like mutation operators.               the authors and do not necessarily reflect the views of our sponsors.
+After a year, the authors released another performance-optimized
+version, removing the AFL-style mutation operators [28]. Grama-
+tron differs from both variants in two ways: (i) it restructures the       REFERENCES
+                                                                            [1] Marcella Anselmo, Dora Giammarresi, and Stefano Varricchio. 2002. Finite
+grammar to perform unbiased sampling from the input state space,                Automata and Non-Self-Embedding Grammars. In Proceedings of the 7th Inter-
+and (ii) it introduces novel grammar-aware mutation operators                   national Conference on Implementation and Application of Automata. https:
+to synthesize complex bug triggers faster and more reliably. Su-                //doi.org/10.1007/3-540-44977-9_4
+                                                                            [2] Cornelius Aschermann, Patrick Jauernig, Tommaso Frassetto, Ahmad-Reza
+perion [46] (released simultaneously with Nautilus) implements                  Sadeghi, Thorsten Holz, and Daniel Teuchert. 2019. NAUTILUS: Fishing for
+the same functionality as Nautilus; specifically, coverage-guided               Deep Bugs with Grammars. In 26th Annual Network and Distributed System
+feedback in conjunction with grammar-aware fuzzing. Therefore,                  Security Symposium (NDSS 19). https://doi.org/10.14722/ndss.2019.23412
+                                                                            [3] Osbert Bastani, Rahul Sharma, Alex Aiken, and Percy Liang. 2017. Synthesizing
+Gramatron differs from it in the same way as Nautilus. Zest [31]                Program Input Grammars. In Proceedings of the 38th ACM SIGPLAN Conference
+performs coverage-guided fuzzing using user-specified Quickcheck-               on Programming Language Design and Implementation. https://doi.org/10.1145/
+                                                                                3140587.3062349
+like [7] input generators. Our approach is orthogonal to that em-           [4] Alan W Black. 1989. Finite state machines from feature grammars. (1989).
+ployed by Zest in two ways: (i) we use context-free grammars mod-           [5] Norbert Blum and Robert Koch. 1999. Greibach normal form transformation re-
+eled as grammar automatons instead of generators to perform input               visited. Information and Computation (1999). https://doi.org/10.1007/bfb0023447
+                                                                            [6] Noam Chomsky. 1959. On certain formal properties of grammars. Information
+generation, and (ii) Gramatron performs large-scale changes using               and control (1959).
+aggressive mutators while the structural mutations performed by             [7] Koen Claessen and John Hughes. 2000. QuickCheck: a lightweight tool for random
+Zest are analogous to the spot mutators used in existing grammar-               testing of Haskell programs. In Proceedings of the fifth ACM SIGPLAN international
+                                                                                conference on Functional programming. https://doi.org/10.1145/351240.351266
+aware fuzzers. While the Zest algorithm itself is language-agnostic,        [8] Ömer Egecioglu. 2009. Strongly Regular Grammars and Regular Approximation
+its current implementation is designed to test Java-based programs              of Context-Free Languages. https://doi.org/10.1007/978-3-642-02737-6_16
+                                                                            [9] Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++:
+specifically. This constraint does not apply to Gramatron since its             Combining incremental steps of fuzzing research. In 14th USENIX Workshop on
+implementation is language-agnostic.                                            Offensive Technologies (WOOT 20).
+    There have also been research efforts directed towards exploring       [10] Firefox. 2021. Repository for Mozilla input generator. https://github.com/
+                                                                                MozillaSecurity/dharma
+how to make input generation from the grammar effective. Sky-              [11] Peach Fuzzer. 2021. Peach Generational fuzzer. https://www.peach.tech/.
+fire [45] is a data-driven input seed generator for fuzzers. It learns a   [12] Rahul Gopinath, Alexander Kampmann, Nikolas Havrikov, Ezekiel O Soremekun,
+probabilistic model for the grammar that specifies the likelihood of a          and Andreas Zeller. 2020. Abstracting failure-inducing inputs. In Proceedings of
+                                                                                the 29th ACM SIGSOFT International Symposium on Software Testing and Analysis.
+production rules being triggered. This enables it to perform smarter            https://doi.org/10.1145/3395363.3397349
+input seed generation. Other approaches such as Dharma [10], and           [13] Rahul Gopinath and Andreas Zeller. 2019. Building Fast Fuzzers. arXiv preprint
+                                                                                arXiv:1911.07707 (2019).
+F1 [13] have focused on optimizing the process of input generation         [14] Sheila A. Greibach. 1965. A New Normal-Form Theorem for Context-Free Phrase
+from the grammar itself. Gramatron adopts an approach that is                   Structure Grammars. J. ACM (1965). https://doi.org/10.1145/321250.321254
+orthogonal to these tools. It uses coverage feedback to guide its          [15] Samuel GroB. 2018. FuzzIL: Coverage Guided Fuzzing for Javascript Engines.
+                                                                                Master’s thesis. Karlsruhe Institute of Technology.
+fuzzer that uses the grammar in conjunction with grammar-aware             [16] Choongwoo Han. 2021. Javascript Engine CVE database. https://github.com/
+mutation operators to generate new inputs.                                      tunz/js-vuln-db.
+                                                                           [17] HyungSeok Han, DongHyeon Oh, and Sang Kil Cha. 2019. CodeAlchemist:
+                                                                                Semantics-Aware Code Generation to Find Vulnerabilities in JavaScript Engines..
+                                                                                In NDSS. https://doi.org/10.14722/ndss.2019.23263
+                                                                           [18] Renáta Hodován, Ákos Kiss, and Tibor Gyimóthy. 2018. Grammarinator: A
+10     CONCLUSION                                                               Grammar-based Open Source Fuzzer. In Proceedings of the 9th ACM SIGSOFT
+                                                                                International Workshop on Automating TEST Case Design, Selection, and Evaluation.
+Fuzzing interpreters past the parsing stage is notoriously challeng-            https://doi.org/10.1145/3278186.3278193
+ing, since it requires generating syntactically valid inputs. We made      [19] Christian Holler, Kim Herzig, and Andreas Zeller. 2012. Fuzzing with Code
+                                                                                Fragments. In Presented as part of the 21st USENIX Security Symposium (USENIX
+the observation that grammar automatons coupled with aggressive                 Security 12).
+mutations enable a fuzzer to reach and trigger complex bugs in             [20] John E Hopcroft and Jeffrey D Ullman. 1979. Introduction to Automata theory,
+interpreters effectively. Our prototype implementation, Gramatron,              Languages, and Computation.
+                                                                           [21] Matthias Höschele and Andreas Zeller. 2016. Mining input grammars from
+uses grammar automatons which restructure the grammar to per-                   dynamic taints. In Proceedings of the 31st IEEE/ACM International Conference on
+form unbiased sampling from the input state space. The unbiased                 Automated Software Engineering. https://doi.org/10.1145/2970276.2970321
+                                                                           [22] Mark Johnson. 1998. Finite-state approximation of constraint-based grammars
+sampling coupled with aggressive mutations allows Gramatron                     using left-corner grammar transforms. In 36th Annual Meeting of the Association
+to find deep bugs with complex triggers. In addition to discov-                 for Computational Linguistics and 17th International Conference on Computational
+ering all 10 bugs in our benchmark, Gramatron also discovered                   Linguistics, Volume 1. https://doi.org/10.3115/980845.980948
+                                                                           [23] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+10 new bugs in popular interpreters. Gramatron is available at                  Evaluating fuzz testing. In Proceedings of the 2018 ACM SIGSAC Conference on
+https://github.com/HexHive/Gramatron.                                           Computer and Communications Security. https://doi.org/10.1145/3243734.3243804
+Gramatron: Effective Grammar-Aware Fuzzing                                                                                        ISSTA ’21, July 11–17, 2021, Virtual, Denmark
+
+
+[24] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and                 Research Consumers. https://doi.org/10.1037/1082-989x.1.4.331
+     Raheem Beyah. 2019. MOPT: Optimized mutation scheduling for fuzzers. In 28th          [39] Rust. 2021. Rust Build Profiles. https://doc.rust-lang.org/book/ch14-01-release-
+     USENIX Security Symposium (USENIX Security 19).                                            profiles.html.
+[25] Mehryar Mohri and Mark jan Nederhof. 2000. Regular Approximation Of Context-          [40] Michael Sipser. 1996. Introduction to the Theory of Computation. ACM Sigact
+     Free Grammars Through Transformation. https://doi.org/10.1007/978-94-015-                  News 27, 1 (1996), 27–29.
+     9719-7_6                                                                              [41] Robert Swiecki. 2021. Honggfuzz — Coverage-guided mutational fuzzer. https:
+[26] Mozilla. 2021. JSFunFuzz - Javascript-specific generational fuzzer. https://github.        //github.com/google/honggfuzz.
+     com/MozillaSecurity/funfuzz                                                           [42] Masako Takahashi. 1969. An improved proof for a theorem of N. Chomsky. Proc.
+[27] Nautilus. 2019. GitHub Repository for original research prototype. https:                  Japan Acad. (1969). https://doi.org/10.3792/pja/1195520719
+     //github.com/RUB-SysSec/nautilus                                                      [43] Spandan Veggalam, Sanjay Rawat, Istvan Haller, and Herbert Bos. 2016. IFuzzer:
+[28] Nautilus. 2021. GitHub Repository for new version of Nautilus. https://github.             An Evolutionary Interpreter Fuzzer Using Genetic Programming. In European
+     com/nautilus-fuzz/nautilus                                                                 Symposium on Research in Computer Security. https://doi.org/10.1007/978-3-319-
+[29] NVD. 2021. Vulnerabilities in PHP interpreter. https://nvd.nist.gov/vuln/search/           45744-4_29
+     results?form_type=Basic&results_type=overview&query=php+interpreter&                  [44] Joachim Viide, Aki Helin, Marko Laakso, Pekka Pietikäinen, Mika Seppänen,
+     search_type=all.                                                                           Kimmo Halunen, Rauli Puuperä, and Juha Röning. 2008. Experiences with Model
+[30] NVD. 2021. Vulnerabilities in Ruby interpreter. https://nvd.nist.gov/vuln/search/          Inference Assisted Fuzzing. WOOT (2008).
+     results?form_type=Basic&results_type=overview&query=ruby+interpreter&                 [45] Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. 2017. Skyfire: Data-driven
+     search_type=all.                                                                           seed generation for fuzzing. In 2017 IEEE Symposium on Security and Privacy (SP).
+[31] Rohan Padhye, Caroline Lemieux, Koushik Sen, Mike Papadakis, and Yves                      https://doi.org/10.1109/sp.2017.23
+     Le Traon. 2019. Semantic fuzzing with zest. In Proceedings of the 28th ACM            [46] Junjie Wang, Bihuan Chen, Lei Wei, and Yang Liu. 2019. Superion: Grammar-
+     SIGSOFT International Symposium on Software Testing and Analysis. https:                   Aware Greybox Fuzzing. In Proceedings of the 41st International Conference on
+     //doi.org/10.1145/3293882.3330576                                                          Software Engineering. https://doi.org/10.1109/icse.2019.00081
+[32] Soyeon Park, Wen Xu, Insu Yun, Daehee Jang, and Taesoo Kim. 2020. Fuzzing             [47] Jinghan Wang, Yue Duan, Wei Song, Heng Yin, and Chengyu Song. 2019. Be
+     JavaScript Engines with Aspect-preserving Mutation. In 2020 IEEE Symposium                 Sensitive and Collaborative: Analyzing Impact of Coverage Metrics in Greybox
+     on Security and Privacy (SP). https://doi.org/10.1109/sp40000.2020.00067                   Fuzzing. In 22nd International Symposium on Research in Attacks, Intrusions and
+[33] Fernando C. N. Pereira and Rebecca N. Wright. 1991. Finite-State Approximation             Defenses RAID 2019).
+     of Phrase Structure Grammars. In Proceedings of the 29th Annual Meeting on            [48] Wikipedia. 2021. Context-Free Grammar. https://en.wikipedia.org/wiki/Context-
+     Association for Computational Linguistics. https://doi.org/10.3115/981344.981376           free_grammar.
+[34] PHP. 2021. PHP-7.2.6. https://www.php.net/distributions/php-7.2.6.tar.gz.             [49] Xuejun Yang, Yang Chen, Eric Eide, and John Regehr. 2011. Finding and under-
+[35] PHP. 2021. PHP-7.4.0. https://downloads.php.net/~derick/php-7.4.0RC1.tar.gz.               standing bugs in C compilers. In ACM SIGPLAN Notices. https://doi.org/10.1145/
+[36] PHP. 2021. PHP Bug tracker. https://bugs.php.net/.                                         2345156.1993532
+[37] PHP. 2021. PHP grammar for ANTLR. https://github.com/antlr/grammars-                  [50] Michal Zalewski. 2021. AFL — Coverage-guided mutational fuzzer. https://github.
+     v4/tree/master/php                                                                         com/google/AFL.git.
+[38] Ralph L. Rosnow and Robert Rosenthal. 1996. Computing Contrasts, Effect Sizes,
+     and Counternulls on Other People’s Published Data: General Procedures for
+

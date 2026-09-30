@@ -1,0 +1,37 @@
+Source inventory and all empirical table values pass.
+Trajectory points, cost markers, native endpoints, and event figures pass.
+Reliability/bootstrap pass: lightftp
+Reliability/bootstrap pass: bftpd
+Reliability/bootstrap pass: proftpd
+Reliability/bootstrap pass: pure-ftpd
+Reliability/bootstrap pass: exim
+Reliability/bootstrap pass: live555
+Reliability/bootstrap pass: kamailio
+Reliability/bootstrap pass: forked-daapd
+Reliability/bootstrap pass: lighttpd1
+{
+  "status": "PASS",
+  "verified_at": "2026-09-30T01:48:16.139715+08:00",
+  "data_snapshot": "2026-09-29",
+  "archives": 628,
+  "archive_groups": 61,
+  "core_figure_archives": 465,
+  "main_table_cells": 45,
+  "appendix_rows": 61,
+  "vector_figures": 7,
+  "raster_images": 0,
+  "bibliography_entries": 25,
+  "cost_observations": 371,
+  "reliability_logged": 31826,
+  "reliability_zero_mutation_excluded": 6070,
+  "reliability_included": 25756,
+  "independent_bootstrap_replicates_per_target": 2000,
+  "pages": 20,
+  "source_integrity": "Fresh inventory, all 43 summary SHA-256 values, and 628 archive size/mtime checks; archive SHA-256 recorded at extraction.",
+  "limitations": [
+    "No new experiment execution or vulnerability replay",
+    "No imputation for missing runs",
+    "Archive observations do not establish matched-horizon causal effects"
+  ]
+}
+Checks: 299219

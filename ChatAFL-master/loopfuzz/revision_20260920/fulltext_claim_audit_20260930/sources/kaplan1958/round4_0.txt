@@ -1,0 +1,1479 @@
+Nonparametric Estimation from Incomplete Observations
+Author(s): E. L. Kaplan and Paul Meier
+Source: Journal of the American Statistical Association, Vol. 53, No. 282 (Jun., 1958), pp. 457-
+481
+Published by: American Statistical Association
+Stable URL: http://www.jstor.org/stable/2281868 .
+Accessed: 26/03/2013 03:21
+
+Your use of the JSTOR archive indicates your acceptance of the Terms & Conditions of Use, available at .
+http://www.jstor.org/page/info/about/policies/terms.jsp
+
+.
+JSTOR is a not-for-profit service that helps scholars, researchers, and students discover, use, and build upon a wide range of
+content in a trusted digital archive. We use information technology and tools to increase productivity and facilitate new forms
+of scholarship. For more information about JSTOR, please contact support@jstor.org.
+
+.
+
+
+
+
+                American Statistical Association is collaborating with JSTOR to digitize, preserve and extend access to Journal
+                of the American Statistical Association.
+
+
+
+
+http://www.jstor.org
+
+
+
+
+                            This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                            All use subject to JSTOR Terms and Conditions
+                      NONPARAMETRIC ESTIMATION FROM
+                         INCOMPLETE OBSERVATIONS*
+                                          E. L. KAPLAN
+                                      of CaliforniaRadiationLaboratory
+                             University
+                                                           AND
+                                                    PAUL MEIER
+                                               University
+                                                        of Chicago
+                          In lifetesting, medicalfollow-up,and otherfieldsthe observationof
+                       the time of occurrenceof the event of interest(called a death)may be
+                       preventedforsome of the items of the sample by the previousoccur-
+                       renceofsomeotherevent(called a loss). Losses maybe eitheraccidental
+                       or controlled,the latterresultingfroma decisionto terminatecertain
+                       observations.In eithercase it is usuallyassumedin thispaper that the
+                       lifetime(age at death) is independentof the potentialloss time; in
+                       practicethisassumptiondeservescarefulscrutiny.Despite theresulting
+                       incompleteness   of the data, it is desiredto estimatethe proportionP(t)
+                       ofitemsin thepopulationwhoselifetimes       wouldexceedt (in theabsence
+                       of such losses), withoutmakingany assumptionabout the formof the
+                       functionP(t). The observationforeach itemof a suitableinitialevent,
+                       markingthe beginningof its lifetime,is presupposed.
+                          For randomsamples of size N the product-limit(PL) estimatecan
+                       be definedas follows:List and label the N observedlifetimes(whether
+                       to death or loss) in order of increasingmagnitude,so that one has
+                       o <tjI <t.2' < . .<tN'.
+                                           ?    Then P(t) =11r [(N-r)/(N-r+1)],         where r
+                       assumes those values for which tr'<t and forwhich tr/measuresthe
+                       timeto death. This estimateis the distribution,   unrestrictedas to form,
+                       whichmaximizesthelikelihoodofthe observations.
+                          Otherestimatesthat are discussedare the actuarialestimates(which
+                       are also products,but with the numberof factorsusually reduced by
+                       grouping); and reduced-sample(RS) estimates,which require that
+                       lossesnotbe accidental,so that the limitsofobservation(potentialloss
+                       times)are knownevenforthoseitemswhosedeathsare observed.When
+                       no losses occur at ages less than t, the estimateof P(t) in all cases re-
+                       duces to the usual binomialestimate,namely,the observedproportion
+                       of survivors.
+
+                                                     CONTENTS
+
+1. Introduction                    .................................                                   458
+   1.1 Formulation  .       .......................................................                    458
+   1.2 Nonparametricestimation           ...........................................                   459
+   1.3 Examples of the RS and PL estimates................................                             459
+   1.4 Notation.........................................................                               461
+2. The Product-LimitEstimate.............................................                              462
+   2.1 Definitionand calculation...........................................                            462
+   2.2 Mean and varianceof P(t) ..........................................                             465
+   2.3 Mean lifetime  .....................................................                            467
+3. The Reduced-SampleEstimatevs. the PL .................................                              469
+   3.1 Alternativesto the PL estimate......................................                            469
+   3.2 Dependence of deaths and losses.....................................                            470
+    * Preparedwhilethe authorswereat Bell TelephoneLaboratoriesand JohnsHopkinsUniversityrespectively.
+The workwas aided by a grantfromthe Officeof Naval Research.
+
+                                                          457
+
+
+
+
+                         This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                         All use subject to JSTOR Terms and Conditions
+458                             AMERICAN           STATISTICAL           ASSOCIATION            JOURNAL,           JTJNE 1958
+
+4. ActuarialEstimates           ..............................                                                           471
+   4.1 Estimatesusingonlyn, B, X....................................                                                     471
+   4.2 Estimatesusingaverage ages....................................                                                    473
+5. Maximum Likelihood Derivation of the PL                                .             ...................              475
+6. Means and Variances. ..........I.I            ...I. ..IIII.IIIIIIII                                ...                476
+   6.1 The PL estimateP(t)................................                                                  ....         476
+   6.2 Covariancesand mean lifetimes      ....................................                                           478
+7. Consistency;TestingwithReplacement...................................                                                 479
+
+                                              1. INTRODUCTION
+
+    I. Formulation.   In manyestimationproblemsit is inconvenient         or im-
+possibleto makecompletemeasurements        on all members   ofa randomsample.
+For example,in medicalfollow-up    studiesto determine   thedistribution  ofsur-
+vivaltimesafteran operation,   contactwithsomeindividuals      willbe lostbefore
+theirdeath,and otherswilldie fromcausesit is desiredto excludefromcon-
+sideration.
+          Similarly,  observation ofthelifeofa vacuumtubemaybe endedby
+breakageofthetube,or a needto use thetestfacilities       forotherpurposes.In
+bothexamples, incomplete   observations  mayalso resultfroma needto getout
+a reportwithina reasonabletime.
+  The typeofestimatestudiedherecan be briefly       indicatedas follows.When
+a randomsampleofN values,T1,T2, *        * *, TN ofa randomvariableis given,
+thesampledistribution   function Ft(t)is naturally defined as thatwhichassigns
+            ofI/N to eachofthegivenvalues,so thatP(t) equals 1/Ntimes
+a probability
+thenumberofsamplevaluesless thantheargument            t. Besidesdescribing  the
+sample,thisF(t) is alsoa nonparametric   estimate ofthepopulation   distribution,
+in thesenseindicatedin 1.2 below.Whentheobservations         are incomplete, the
+correspondingestimateis stilla step-function   withdiscontinuities   at the ages
+ofobserveddeaths,but it can no longerbe obtainedas a meredescription          of
+thesample.
+  The samplesconsidered    in thispaperare incomplete     in the sensethat one
+has given,not a randomsample T1, * * *, TN of values of the randomvariable
+T itself(calledthe lifetime),
+                           but the observed
+                                          lifetime8
+                         ti =min (Ti, Li),                     i-=1,          2, * * N.                                (la)
+HeretheLi, calledlimitsofobservation,areconstants orvaluesofotherrandom
+variables,whichare assumedto be independent      of the TXunlessotherwise
+stated(in Sections3.2 and 7). For eachitemit is knownwhether onehas
+                                  Ti < Li,               t-= Ti (a death)                                              (lb)
+or
+                                  Li < T,,              ti = Li (a loss).
+         theTi and Li areso defined
+Ordinarily                         as to be necessarily
+                                                      nonnegative.
+  The itemsinthesamplearethusdividedintotwomutually     exclusiveclasses,
+namelydeathsand losses.A loss by definition  alwaysprecludesthe desired
+knowledgeof T,. On the otherhand,a deathdoes not alwaysprecludethe
+knowledge ofthecorresponding Li, in case thelimitsof observation
+                                                               are non-
+randomandforeseeable.Suchknowledge   oftheLi mayhavevalue;forexample,
+
+
+
+
+                       This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                       All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC    ESTIMATION                                                                    459
+it makesavailablethe reduced-sample      estimate(Section3), if one choosesto
+use it.
+   The typeofsampledescribed      is a generalization ofthe censoredsamplede-
+finedby Hald [17],and a specialization    ofthesituationconsidered   by Harris,
+Meier,and Tukey [18].
+   The termdeathhas beenadoptedas beingat leastmetaphorically         appropri-
+ate in manyapplications,   butit can represent anyeventsusceptible   ofrandom
+sampling.In particular,   the rolesof deathand (random)loss may be inter-
+changeable.By redefining    theclassificationofeventsintodeathsand losses,it
+maybe possibleto approachthesamedatafromvariouspointsofviewandthus
+to estimatethesurvivorship    functions P(t) thatwouldbe appropriate    to vari-
+ous categories ofeventsin the absenceofthe others.This is familiarenough;
+see forexample[6], [13], [16].
+   1.2 Nonparametric    estimation. Mostgeneralmethodsofestimation,     suchas
+maximum    likelihood orminimum     chi-square,
+                                              maybe interpreted   as procedures
+forselecting froman admissibleclassofdistributions      onewhich,in a specified
+sense,best fitsthe observations.    To estimatea characteristic (or parameter)
+ofthetruedistribution    one uses thevalue thatthe characteristic   has forthis
+bestfitting distribution function. It seemsreasonableto callan estimation  pro-
+cedurenonparametric    whentheclassofadmissible                 fromwhichthe
+                                                    distributions
+best-fittingoneis to be chosenis theclassofall distributions.  (Wolfowitz  [28]
+has usedthetermn  similarly in connection withthelikelihood  ratioinhypothesis
+testing).Witha completesample,it is easyto see thatthesampledistribution
+referred to in 1.1 is the nonparametric   estimateon the maximumlikelihood
+criterion.The sameresultis trueoftheproduct-limit       estimateforincomplete
+samples,as willbe demonstrated     in Section5.
+  The mostfrequently    usedmethodsofparametric      estimationfordistributions
+oflifetimes areperhapsthefitting    ofa normaldistribution  to theobservations
+or theirlogarithms   by calculatingthe meanand variance,and fitting      an ex-
+ponentialdistribution            by estimating
+                        e-tlAdt/ll              the meanlife,ualone.Such as-
+sumptions  abouttheformofthedistribution     arenaturally  advantageous insofar
+as theyare correct;the'estimatesare simpleand relativelyefficient,       and a
+completedistribution   is obtainedeven thoughthe observations      may be re-
+strictedin range.However,nonparametric      estimates  havetheimportant   func-
+tionsofsuggesting   or confirming  suchassumptions,   and ofsupplying  theesti-
+mateitselfin case suitableparametric    assumptions   are notknown.An impor-
+tantproperty  ofthesenonparametric     estimates is thatiftheage scaleis trans-
+formed  fromt to t*=f(t),wheref is a strictly increasing          thenthecor-
+                                                          function,
+respondingestimateddistribution      functionsare simplyrelatedby F*(f(t))
+  F()
+  1.3 ExamplesoftheRS and PL estimates.  We willconsiderthe following
+         A randomsampleof100itemsis puton testat thebeginning
+situation.                                                    of1955;
+duringtheyear70 itemsdie and 30 survive.At the end oftheyear,a larger
+sampleis availableand 1000additionalitemsare put on test.During1956,
+15itemsfromthefirstsampleand 750fromtheseconddie,leaving15 and 250
+survivors           Asoftheendof1956,itis desiredtoestimatethepropor-
+         respectively.
+tionP(2) ofitemsin thepopulationsurviving
+                                        fortwoyearsor more.
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+460                        AMERICAN           STATISTICAL          ASSOCIATION            JOURNAL,    JUNE 1958
+
+   The survivalprobabilitiesare supposed to depend on the age (the duration
+of the test) ratherthan on the calendar year, and hence the data are arranged
+as in Table 460.
+                                             TABLE 460
+
+                Samples                                               I                          II
+
+      Initial numbers                                               100                         1000
+      Deaths in firstyear of age                                     70                          750
+      One-year survivors                                             30                          250
+      Deaths in second year of age                                   15
+      Two-year survivors                                             15
+
+
+
+   This particularexample is such that it is easy to forman estimate P*(2)
+   15/100= 0.15 fromthe firstsample alone. This is called the reduced-sample
+(RS) estimatebecause it ignoresthe 1000 itemstested onlyduring1956. It is a
+legitimateestimate only when the reduced sample is itselfa random sample;
+this will be the case only when (as assumed here) the observationlimits (two
+years forthe firstsample,and one year forthe second) are knownforall items,
+deaths as well as losses. In the absence of this information,
+                                                            one would have no
+basis fordiscriminating   among the 835 deaths observedbeforethe age of two
+years. One cannot simplyignorethe 250 losses at age one year; since only 15
+items have survived for two years, P(2) would then be estimatedas 15/850
+ -.018, an absurd result.The point is discussedfurtherin 3.1 below.
+   We now inquirewhetherthe second sample,undertestforonlyone year,can
+throwany lighton the estimateof P(2). Clearlyit will be necessaryto assume
+that both samples have been drawnfromthe same population,an assumption
+that the RS estimateP*(2) avoided. At any rate, the estimatesof P(1) from
+the two samples,namely0.30 and 0.25, are not sufficiently  different
+                                                                   to contra-
+dict the assumption.By combiningthe two samples,the estimate
+              P(l) = P*(1) = (30 + 250)/(100 + 1000) = .255
+
+is obtainedforP(1). (In this case the RS has the same value as the otheresti-
+mate to be discussed,the product-limitor PL.) This resultexhauststhe useful-
+ness of the second sample for the presentpurposes; how does it help to esti-
+mate P(2)?
+   The answer is that there are advantages to using the first(the smaller)
+sample for estimatingP(2)/P(1), the conditionalprobabilityof survival for
+two years given survivalforone year, ratherthan P(2) itself.This estimateis
+                       P(2)/P(1) = 15/30 = 0.50, whence
+                       P(2)     =    0.255 X 0.50 = 0.127,
+
+a very simple example of the product-limit   (PL) estimate. The outstanding
+advantage of this strategyis that it worksjust as well if we are not privileged
+to knowthat the 750 deaths in the second sample had observationlimitsof one
+year, because these items are irrelevantto the estimationof P(2)/P(1) in any
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC    ESTIMATION                                                                    461
+case. Other considerationsfordecidingbetween the two estimateswill be set
+forthin Section 3.
+   The discussionof the PL estimatewill be continuedshortly,in Sections 2
+and 3. Section 3 is equally concernedwith the RS estimate,while Section 4 is
+devoted to the actuarial estimates.The remainingthreesectionsconsistprinci-
+pally ofmathematicalderivations.Though much older,the actuarial estimates
+are essentiallyapproximationsto the PL; theyare productsalso, but typically
+theyaim to reduce the numberof factorsby grouping.(Groupingmay or may
+not be possibleforthe PL itself.)The distinguishing designationproduct-limit
+was adopted because this estimateis a limitingcase of the actuarial estimates.
+It was proposedas earlyas 1912 by Bohmer [6] (referredto by Seal [26]), but
+seems to have been lost sightof by later writersand not furtherinvestigated.
+   1.4 Notation.The survivalfunction
+                                      P(t) = Pr (T > t),                                       (ic)
+givingthe population probabilityof survivingbeyond t, will be used in place
+of the distributionfunctionF(t) = 1 -P(t) because ofits conveniencewherethe
+product-limitestimate and its actuarial approximationsare concerned. In
+addition the followingfunctionsare defined:
+   P;(t)=product-limit(PL) estimateof P(t).
+  P*(t) = reduced-sample(RS) estimateof P(t).
+   n (t) =the numberof items observed and survivingat age t, when deaths
+           (but not losses) at t itselfare subtractedoff.
+   N(t) =the expectationof n(t), forfixedobservationlimits.
+  N?(t) =the numberof items having observationlimitsL such that L> t. In
+           practicethis functionis not necessarilyknown.
+   For the firstreading of the paper it may be desirable to suppose that the
+death of one item and the loss of the same or any otheritemneveroccurat the
+same age, and nevercoincidewithan age t at whichany ofthe above functions
+are to be evaluated. This conditioncan always be met by fudgingthe ages a
+littlewhen necessary.On the otherhand, a regularuser of the techniqueswill
+probably come to regardovertfudgingas naive; he will preferto formalizehis
+notation and record-keepingby adopting the conventionsalready insinuated
+into the definitionsof death and loss, P(t), and n(t) above. These conventions
+may be paraphrasedby sayingthat deaths recordedas ofan age t are treatedas
+if they occurredslightlybeforet, and losses recordedas of an age t are treated
+as occurringslightlyaftert. In this way the fudgingis kept conceptual,sys-
+tematic,and automatic.
+   The conventionthat deaths precedelosses in case of ambiguityis based on
+the followingsequence of operations,which is clearlymore efficient    than the
+reversesequence: Examine a groupof items of age to,observethe numbera of
+deaths since the last examination,and then remove (or lose contact with) a
+numberX of the survivors.It may then be convenientsimplyto recordtoas
+the age of death or loss of the 5+X items,especiallyif tois always an integral
+multipleof a fundamentaltimeinterval;in fact,however,the deaths will have
+precededthe losses.
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+462                       AMERICAN          STATISTICAL           ASSOCIATION            JOURNAL,   JUNE 1958
+
+  The chiefexception      to theimmediate    applicability ofthisconventioln  occurs
+whenthe lossesare randombut cannotaffectitemsthathave alreadydied.
+Thenthepossiblesequencesofoccurrence           ofdeathsand lossesbetweenexami-
+nationtimes(assumedto be closetogether)          are approximately    equallylikely,
+and a reasonablecompromise        is to assumethathalfthelossesin theinterval
+precedeand halffollowthedeaths,as in (4b) below.If theloss ofan itemis
+compatiblewiththe possibility        of its havingdied (unknownto the experi-
+menter)betweenthetimewhenit was last examinedand the timeofloss,an
+itemlostin thiswayis effectively      lostjustafterit was last examined,    and the
+convention   is entirelyappropriate.    The disappearanceof individualssubject
+to medicalfollow-up      is a case in point.
+  The remainder      oftheconventions    concern thetreatment   ofdiscontinuities in
+thefunctions    listedabove.Shouldthevalueassignedto n(t),say,foran argu-
+menttforwhichitis discontinuous        be theright-hand   limitn(t+0) =lim n(t+h)
+as h-*0 withh>0, the left-hand        limitn(t-0) (the same but withh<0), or
+something   else? The superiorexpressiveness      of the notationadoptedis illus-
+tratedby therelations
+                   n(t- 0) - n(t)       the numberof deaths at t,               (Id)
+                   n(t) -n(t + 0) = the numberof losses at t,
+or equivalently   by theformula(3a): P*(t) n(t)/N?(t),whichotherwise          would
+notbe valid at discontinuities.     Analogousconventions     are adoptedforall the
+above-mentioned      functions  of t, so that P(t) and P(t) are right-continuous,
+N?(t)is left-continuous,    andn(t)and P*(t) areneither.    Otheradvantagesofthe
+convention   forP(t) and its estimatesare thefollowing:        (a) According  to the
+sequenceof operations      assumedabove,one mayrecorddeathsas of age t al-
+thoughtheyactuallyoccurred        slightly earlier.(b) It makesP(0) = 1 ifand only
+ifno itemdiesat birth(age zero).Thisis convenient           and natural.
+  One otherpossibilitymay be mentionedbriefly.The assumptionthat
+P( oo) = 0, so thatthelifetimes   arefinite withprobability   one,is necessary  only
+forpartsofSection7 andforthecalculation         of  a finitemean  lifetime.However,
+in practicethereis no apparentneed to contradict          the assumption   either.If
+halfofa samplediesin oneday and theotherhalfis stillaliveafter1000days,
+one shouldstillreportP(1000)(notP(oo)) =0.50, sincetheargument               1000is
+notan arbitrary     largenumber,    but the actual  duration of the  test.
+                           2. THE PRODUCT-LIMIT                  ESTIMATE
+
+  2.1 Definition                Boththe PL and theactuarialestimatesof
+                 and calculation.
+Section4 are basedon thefollowing  generalprocedure:
+  (a) The  age scaleis dividedintosuitablychosenintervals,(0, Qi), (us, U2),
+          *, as describedbelow.(In the exampleof 1.3,therewereonlytwo
+      suchintervals, namely(0, 1) and (1, 2).)
+  (b) For each interval(uj;i, uj), one estimatespj = Pj/Pj_, the proportionof
+      itemsalivejustafteruj-i thatsurvivebeyonduj.
+  (c) If t is a divisionpoint(it maybe introduced   speciallyifnecessary),
+                                                                         the
+      proportion  P(t) in thepopulationsurviving beyondt is estimated by the
+      productoftheestimated                       priorto t.
+                                pi forall intervals
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC     ESTIMATION                                                                                463
+   If step (a) is leftrelativelyarbitraryand approximations    or parametric
+assumptions   are acceptedin step (b), one arrivesat the actuarialestimates.
+The PL is obtainedbyselecting  theintervals                           in (b)
+                                            in (a) so thattheestimation
+is a simplebinomial,withoutanyrecourseto assumptions                  form.
+                                                           offunctional
+The condition  forthisis thatwithineachinterval,deathsand lossesbe segre-
+gatedin a knownfashion.As a beginning,   it maybe assumedthatno interval
+containsbothdeathsand losses.Then if the numberunderobservation         just
+afteruj-l is denotedby ni, and 3j deaths are observedin the interval(uj-., uj),
+theestimateis clearly
+                                pj- =(nj       -      aj)/nj    =      nj'/nj,                              (2a)
+wherenj' is thenumberunderobservation    justafterthebjdeaths.However,if
+theintervalcontainsonlylosses(butat leastoneitemsurvivesthroughout      the
+interval),the estimateis fj= 1.
+  In the productof conditional              formedin step (c), unitfactors
+                                 probabilities
+mayas wellbe suppressed;   and we neednotbe concerned   withthemannerin
+whichthelossesare distributed   amongtheintervals, so longas nj and nj' are
+correctlyevaluatedin (2a), and no lossesoccurat ages intermediate to the t5
+deaths.The situationis illustratedby thefollowingscheme:
+                                              TABLE 463
+
+
+No. of items                    N               nli              ni'               n2            n2'
+
+No. of deaths or losses                So                ai               xi                B2         X2
+Division points             u=0                                           Ul                           U2
+
+
+
+
+HereN is theinitialnumberofitems,and thebracesjoin thenumberswhose
+ratiosare the conditionalprobabilities(2a). The numbersin the secondline
+arethedifferencesofthoseinthefirst, theX'scounting   lossesandthe6'sdeaths;
+some of these      be
+             could zero.The     divisionpoints  uj are placedin thethirdline
+to show thatthe Sj deaths  occurbetween uj-l and   u;, whileu; is locatedany-
+whereamong Xjthe         The
+                   losses.    relationn/ ?n(u;)  ?nj+1  holds.
+  The PL estimateis nowgivenby
+
+                P5(t)= H1[(nj'/nj), with                       Uk-t,       nil = n1 - Si.                   (2b)
+                          j=1
+
+
+If the greatestobservedlifetime    t* corresponds to a loss, (2b) shouldnot be
+used witht> t*;in thiscase P(t) can be regarded   as lyingbetween0 and P(t*),
+butis notmorecloselydefined.
+  If it is desiredto permittheentranceofitemsintothesampleafterthecom-
+mencement     oftheirlifetimes,thiscan be doneby treatingsuchentrancesas
+"losses"thatare countednegatively     in Xi.The sameitemscan ofcoursedisap-
+pearagainat a laterage and so yieldordinary    lossesas well.It is assumedthat
+nothing   is knownoftheexistence   ofanysuchitemthatdiesbeforeit becomes
+availableforobservation;    thatis, theobservation is censoredon therightbut
+truncated    on theleft,in theterminology  ofHald [17].
+
+
+
+
+                   This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                   All use subject to JSTOR Terms and Conditions
+464                          AMERICAN          STATISTICAL           ASSOCIATION            JOURNAL,    JUNE 1958
+
+   The form(2b) was selectedforthe PL estimateto give the minimumnumber
+of elementaryfactorsand the maximumgroupingof the observations.Never-
+theless,the numberof deaths bj in an intervalcan easily be as small as unity.
+The resultingestimate Pi, though of limitedvalue by itself,is none the less
+acceptable as a componentof P(t). In fact,one is at libertyto take the intervals
+as shortand as numerousas one pleases, and to regardeach death as occupying
+an intervalby itself.To specifythe resultingexpression,one relabelsthe N ages
+ti of death or loss in order of increasingmagnitude,and denotes them by
+tl_< t2'       <t2N. Then
+
+                        P(t)      =   1     [(N     -   r)/(N - r+1)],                                         (2c)
+                                        r
+
+
+wherer runs throughthose positiveintegersfor whichtr'<t and tr' is ttleage
+of death (not loss). The cancellationof like integersin numeratorand denomi-
+nator wherethey occur reduces (2c) to (2b). If thereare no losses, everything
+cancels except the firstdenominatorN and the last numeratorn(t), say, and
+the PL reducesto the usual binomialestimaten(t)/N. (2c) showsthat P(t) is a
+step-function  whichchangesits value onlyat the observedages ofdeath, where
+it is discontinuous.
+   In analyzingdata on lifetimesby the multiplicationof conditionalprobabili-
+ties, one of the followingthreeprocedureswill usually suffice:
+   (1) If the numberofdeathsis relativelysmall,thesedeaths may be arranged
+in orderof age withoutgrouping,and the numbersof losses in the intervening
+age intervalscounted. The PL estimateis calculated by (2c).
+   (2) If (1) is too time-consuming  but the numberof distinctages of loss is
+relativelysmall,theseages may be arrangedin order,additionaldivisionpoints
+insertedas desired,and the numbersof deaths in the resultingage intervals
+counted.If some of theseintervalsare shorterthan necessaryand are foundto
+containno deaths,theycan be combinedwithadjacent intervals.The PL esti-
+mate is calculated by (2b).
+   (3) If neither(1) nor (2) is compact enough,then divisionpointsare chosen
+withoutclose considerationof the sample, deaths and losses are counted in
+each interval,and an actuarial approximationto the PL, such as (4b), is used.
+   As a miniatureexample of case (1), suppose that out of a sample of 8 items
+the followingare observed:
+Deaths at 0.8, 3.1, 5.4, 9.2 months.
+Losses at 1.0, 2.7, 7.0, 12.1 months.
+The constructionofthe functionP(t) thenproceedsas follows:
+                                               TABLE 464
+
+        Uj                   ni                         "n/'                       XjP                  (u1)
+
+       0.8                    8                          7                          2                  7/8
+       3.1                    5                          4                         0                   7/10
+        5.4                   4                          3                         1                   21/40
+        9.2                   2                          1                         0                   21/80
+      (12.1)                  1                          1                         1                   21/80
+
+
+
+
+                    This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                    All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC   ESTIMATION                                                                                   465
+Each value of P(uj) is obtained by multiplyingn/'/njby the precedingvalue
+P(uj-i). The age 12.1 is recordedin the last line to show the point at which
+P(t) becomesundefined;sinceit is a loss time,the 12.1 is enclosedin parenthe-
+ses. It is to be inferredfromthe table that P(5.3) - 7/10, for example. The
+thirdand fourthcolumnscould be omittedsince nj'= nji-1 (exceptin the last
+line, which correspondsto a loss) and Xj= n-nj+/ .
+   A rudimentaryillustrationof case (2) has already been givenin 1.3. A little
+more elaborate example of a similarsort with N = 100 is givenin Table 465.
+Here 1.7, 3.6, and 5.0 are assumed to be the only ages at which losses occur;
+theyare prescribedas divisionpoints. The otherdivisionpoints (1, 2, 3, 4) are
+selected at pleasure,with the object of interpolatingadditional points on the
+curve of P(t) vs. t. NEj is the effectivesample size definedin (2j) below. In
+practice four columns headed uj, nj, nj', P" will suffice.From the table one
+infersthat .74 < P(2.5) <.87, forexample.
+                                            TABLE 465
+
+    Interval                                                  Factor
+
+    u    Uj         j              nj              Si             i              i             P(u;)   NE;
+
+    0 -1            1             100              3             0          97/100               .97    100
+    1 -1.7          2              97              5            20          92/97                .92    100
+    1.7-2           3              72              4             0          68/72                .87     88
+    2 -3            4              68             10             0          58/68                .74     83
+    3 -3.6          5              58              9            12          49/58                .63     80
+    3.6-4           6              37              6             0          31/37                .52     73
+    4 -5.0          7              31             15            16          16/31                .27     51
+
+
+   2.2 Mean and varianceofP(t). The importantfactshere,derivedin Section
+6.1, are that P(t) is consistentand ofnegligiblebias (unless excessiveaveraging
+is done; see Section 3.1), and that an asymptoticexpressionforits variance can
+be obtained. Like the estimateitself,the sample approximationto its variance
+provesto be independentof the limitsof observationofitemsnot actually lost.
+However, the variance derivedfrompopulation values does depend on all the
+limitsof observation,which are assumed to be fixedduringthe sampling.
+   It has been noted that if the greatestobservedlifetimet* correspondsto a
+loss, then for t> t*, P(t) is undefinedthoughbounded by 0 and P(t*). Unless
+the probabilityof this ambiguous situation is quite small, however,a non-
+parametric estimate of P(t) will not be very informativein any case. The
+ambiguitycannot occur unless the NO(t) items observable to t all die at ages
+less than t. The probabilityof this event is
+                        [1   - P(t) ]N0(t)        <     e-N0(t)P(t) = e-N t)                                 (2d)
+This is already less than 0.01 when N(t) is only five.
+  It is shownin Section 6.1 that if one can supplementthe ambiguouscase by
+ascertainingthe age of death of the item lost at t*, or of one or more other
+randomlyselecteditemsalive at t*,and definesP(t) fort> t* as P(t*) timesthe
+survival functionfor the supplementarysample, then the expected value of
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+466                       AMERICAN           STATISTICAL          ASSOCIATION            JOURNAL,   JUNE 1988
+
+P(t) is preciselythe populationvalue P(t). In practicethissupplementation
+wouldoftenbe neitherfeasiblenorworthwhile,     but withotherwiseadequate
+data the resultingbias in one or a fewsampleswillbe too smallto have any
+practicalimportance.
+  It willbe shownin Section6.1 thatthe varianceof P(t) is givenapproxi-
+matelyby
+
+                          Vffi(t)]            p2   (t) E1, (qjlNjpj))                                   (2e)
+
+wherethedistinct   limitsofobservation   Lj' arenowusedas thedivisionpoin-ts;
+L'k-1  is thegreatestpreceding  t; and pj= 1-qj = P(Lj')/P(L'j-1), withLot= 0,
+Lk'= t.After  dividing(2e) by P2(t), one seesthatthesquareofthecoefficient  of
+variation(CV) ofP(t) is  set equal  to the sum  ofthe squares  oftheCV's ofthe
+estimatesofthepj, theusualapproximation        forthevarianceofa product.
+   If thesample  estimates are inserted in (2e) one obtains
+
+       'V[Pf(t)]-p P(t) E [bilnj(ni - 6i)] =pP(t) E                                                     (2f)
+                              1                                               1      f         ni
+
+                   was derivedby Greenwood[15] andlaterbyIrwin[19]
+A verysimilarformula
+            withactuarialestimates.It is easilyverified
+in connection                                          that (2f) remains
+valid whenthe numberof intervalsis reducedto thoseused in (2b), or ex-
+pandedto one intervalforeach deathas in (2c). In thelattercase it maybe
+written
+                 V[Pfi(t)]P2(t)                     [(N - r)(N            - r -F 1)kl,                  (2g)
+
+wherer runsthroughthepositiveintegers  forwhicht4'<t and t4'corresponds
+to a death.
+  In termsofintegrals(2e) can be written
+
+                          I/[P(t)]           P2(t)        t dP(u) I
+                                                          O N0(u)P2(u)                                  (2h)
+                                                          ('       dP (u)
+                                           -P2(t)                |dPu|
+                                              -                N(u)P(u)
+In case ofambiguity  thefirst formshouldbe referred   to and interpreted in ac-
+cordancewith1.4.IfP(u) aloneis discontinuous    withintherange    ofintegration,
+it should be regardedas a (continuous)independentvariable, so that
+fP(U)-21 dP(u) I= 1/P(u).
+   Since NO(t)<?N?(u)<?N, it is clearthat (2h) is greaterthan the complete
+samplevarianceP(t) [1-P(t)]/lN but less than thereduced-sample         variance
+P(t) [1-P(t)]/N?(t) of(3b). If losses arerandom and  the instantaneous  ratesof
+deathand lossamongsurvivors      are in theratio1 to p at all ages,then one has
+E[NO(u)-'] [NPP(u)]-' forlargesamples,      and  (2h) reduces  to
+                    T[P(t)]        _ [pI-p(t) - P2(t)]/(l                   + p)N                        (2i)
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC   ESTIMATION                                                                     467
+                                                                                          `*
+                                           samplesize (t),whichin the
+                      to estimatean effective
+  It is ofteninstructive
+absenceoflosseswouldgivethe same variance f [P(t)]. Evidently
+                         NE(W = P(t) [1 -                P(t)]/V[P(t)]                         (2j)
+It can be shownthat N2v(t)is nonincreasingas t increases,and that
+                   n(t)/P(t) < N'1(t) < D(t)/[i                       -   P(t)],               (2k)
+whereD(t) is the numberof deathsobservedat ages not exceedingt. The
+upperboundwas proposedas an approximation    to N2E(t)byCornfield[8]. The
+lowerboundcorresponds   to thereduced-sample  variance.
+   In Table464 of2.1 we had P(6) - 21/40= 0.525.By (2f)thevarianceofP(6)
+is estimatedas
+
+                 [P (6)] -(0.525)2(8
+                                   2                         +5           3) = 0.042.
+
+By (2g) thesameresultappearsin theform
+
+                               (
+                       o0.s525)2          1      +       l~ + ~
+                                      7X8 48             X 5 3 X;4
+           samplesizeis estimatedas
+The effective
+                     NE(6) = (0.525) (0.475)/0.042 = 6.0.
+The boundsforN]E(6)in (2k) are5.7 and 6.3. Valuesof i9, arealsoindicatedin
+Table 465.
+  2.3 Mean lifetime.  The PL estimatelb ofthemeanlifetime    ji is definedas
+themeanofthePL estimateofthedistribution.      It is well-known   (and easily
+provedbyintegrating   by parts)thatthemeanofa nonnegative    randomvaria-
+ble is equal to thearea underthecorresponding survivorship function.  Hence
+
+                                            = fJ
+                                           st             (t)dt.
+
+Ofcourse,ifP(t) is noteverywhere determined,                In caseswhere
+                                              , is undefined.
+theprobabilityofan indeterminate        is           is
+                                 result small,P(t) practically   unbiased
+and thesameis true  of,i.
+  If we "complete"P(t) in theexampleofTable 464 by following   thelongest
+observed individual(witht' = 12.1) to deathat t= 14.3 we have
+        A = (l.000)(0.8) + (0.875)(3.1 - 0.8) + (0.700)(5.4 - 3.1)
+            + (0.525) (9.2 - 5.4) + (0.2625) (14.3 - 9.2)
+          = 0.800 + 2.012 + 1.610+ 1.995+ 1.339= 7.76.
+If P(t) were"completed"by settingP(t) =0 fortheindeterminate   range,the
+last termin the above sumwouldbe replacedby (0.2625) (12.1-9.2)=0.761,
+and ,uwouldbe estimatedas 7.18.
+                             ofan indeterminate
+  Of course,if the probability                  resultis high,thereis no
+satisfactory
+           way  to estimate
+                          ,u.In suchcases Irwin [19] has suggestedthatin
+
+
+
+
+                This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                All use subject to JSTOR Terms and Conditions
+468                            AMERICAN          STATISTICAL           ASSOCIATION            JOURNAL,        JUNE 1958
+
+place of estimatingthe mean itself,one should estimatethe "mean lifelimited
+to a time L," say /[L]. This is the mean of min (Ti, L), withL chosenat the in-
+vestigator'sconvenience.Naturally,one wouldchooseL to make theprobability
+of an indeterminateresultquite small. If one chooses to use this procedurehe
+should give an estimate of P(L) along with ,           If we take L =10 in our
+example,
+      AI[1o]= 0.800 + 2.012 + 1.610 + 1.995 + (0.2625)(10                                     -       9.2) = 6.63,
+and P(10) =0.2625.
+  In Section 6.2 an approximateformulais givenforthe variance of -u:
+
+                    V%-)
+                            I I -0A2(t) I dP(t) |                     C
+                                                                      I
+                                                                             A2(t)     I   dP(t)      I              (21)
+                               o     N(t)P(t)                                   No
+                                                                                N(t)P2(t)
+
+whereA(t) = ft P(u)du. Upon makingthe obvious substitutionswe find,after
+some reduction,the followingestimateof V(,u):
+                                                                  Ar2
+                                      =E
+                                     VW                           A72(2m)
+                                              r (N-r)(N-r                      + 1)
+where r runs over those integersfor which tr correspondsto a death, and
+Ar=f,rPf(u)du. If there are no losses,
+                                                     N
+                                         Ar =          (ti -tr)N
+                                                   i=r+l
+and it can be shown that V(,u) reduces to , (t,-b2/N2. This fact, plus the
+impossibilityof estimatingthe variance on the basis of only one observed
+death, suggeststhat (2m) mightbe improvedby multiplicationby D/(D -1),
+whereD is the numberof deaths observed.
+  For our firstestimateof j above we have
+                     A1 = 2.012 + 1.610 + 1.995 + 1.339 = 6.956,
+                     A4 =         1.610 + 1.995 + 1.339 = 4.944,
+                     A5 =                                   1.995 + 1.339 = 3.334,
+                     A7 =                                                   1.339 = 1.339.
+(Obviouslythe Arand , are best calculated in reverseorder.)We thenhave for
+the estimatedvariance,
+                        (6.956)2            (4.944)2            (3.334)2             (1.339)      2
+                v     =+
+                    (-/0                                   ?                   ?                      =3.91
+                           7X8                4X5                3X4                  1X2
+The estimatedstandarddeviationof ,uis a/3.91= 1.98. If the factorD/(D -1)
+=4/3 is included,these resultsbecome 5.21 and 2.28 respectively.
+  If one is limited to grouped data as in Table 465 it is necessary to use
+actuarial-typeassumptions (e.g., the trapezoidal rule) to estimate , and its
+variance.Thus, we may estimatethemean lifelimitedto 5 timeunitsas follows:
+            =   (1/2) [(1.00 + 0.97)(1.0 - 0.0) + (0.97 + 0.92)(1.7 - 1.0)
+                + * * * + (0.52 + 0.27)(5.0                     - 4.0)] = 3.76.
+
+
+
+
+                      This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                      All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC   ESTIMATION                                                                     469
+We observe in conjunctionwith this estimate that the estimated proportion
+survivingthe limitis P(5) = 0.27.
+                3. THE REDUCED-SAMPLE                   ESTIMATE         VS. THE        PL
+                 tothePL estimate.The acceptable nonparametricestimation
+  3.1 Alternatives
+proceduresknownto the writersin the situationconsideredare variants of the
+PL and of the reduced-sample(RS) estimate definedby
+                 P*(t) = n(t)/N?(t) = n(t)/[n(t) + D?(t)                                       (3a)
+Here N?(t) = n(t)+D0(t) is the numberof itemswith observationlimits > t; of
+these,DO(t) die at ages <t and n(t) survivebeyond t. A simpleexample of the
+RS estimatehas been given in 1.3. Berkson and Gage [3] have called it the
+"ad-hoc" method.
+  If the lifetimesare independentofthe observationlimits,the reducedsample
+of N?(t) items will be a randomsample and P*(t) a simple binomialestimate,
+unbiased, and withthe variance
+                            V [P*(t)]       =     P(t) [1    -   P(t) ]/IN?O(t)                (3b)
+It has alreadybeen noted that thisis equal to or largerthan the approximation
+(2h) to the PL variance.As withthe PL, the estimate
+                                                      .00
+                                             -*   =     P*(t)dt                                (3c)
+
+of the mean lifemay have to be truncatedat the greatestof the observation
+limits.In Section 6.2 it is shownthat the variance of ,* is given exactlyby
+
+                    V(,*)      = 2                1-P(t) -fP(u)dudt.
+
+In practiceone substitutesP* (t) forP(t) in this formulaand perhaps approxi-
+mates the integrals.
+   Whereas the PL estimatehas discontinuitiesonlyat observedages of death,
+it is apparent from(3a) that the RS generallyhas discontinuitiesat losses and
+observation limits also. Furthermore,suppose that one of the observation
+                                        numberof) the corresponding
+limitsL is such that all (or a sufficient                           itemsare
+observedto die priorto L, whileotheritemssurviveand are observedbeyondL.
+Then the decrease in NO(t) (withoutan equivalent decrease in n(t)) will cause
+P*(t) to increaseas t increasesthroughL. Thus P*(t), unlike P(t) and the true
+P(t), is not necessarilymonotonicdecreasing.However, this appears to be a
+disadvantage onlyin a psychologicalsense. It does not seem advisable to avoid
+it, as one could, by a furtherreductionof the sample, basing the estimated
+P(t) for all t<a suitable L on the fixedsample of items having observation
+limits> L.
+   The expressionD?(t) =N?(t) -n(t) in (3a) is not the total number D(t) of
+deaths observedpriorto or at age t, but the (usually smaller) numberof such
+deaths having observationlimits> t. Since P*(t) is unbiased, the estimateob-
+obtained by replacingD?(t) by D(t) is too small on the average (except in
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+470                      AMERICAN          STATISTICAL           ASSOCIATION            JOURNAL,   JUNE 1958
+
+specialcaseswhereD(t) -=DO(t)withprobability    one),as has beenpointedout
+manytimes(e.g., [3] and [23]). Examplessuchas thatof 1.3 showthatthe
+resultingbias can be verygreat,beingin factlimitedonlyby the necessity
+that the expectation be positive.Since DO(t)is oftenunknownwhileD(t) is
+known,an investigator  whois unacquainted  withthePL or oneofitsapproxi-
+mationsis all too likelyto fallintothetrap.
+  Anotherinsidiousbut instructive   characteristicoftheillegitimate  estimate
+basedon D(t) is thefactthatit is simplytheaverageofthePL estimatesP(t)
+(thosethatare defined  at t) obtainedbyregarding  eachitemas a samplein its
+ownright.For a sampleofoneitemwithobservedlifetime        ti,P(t) is unityfor
+t<t<, and fort?t is zeroor undefined  accordingas theobservation    endswith
+deathorloss.Thisis also theRS estimateunlessoneinsiststhatP*(t) is unde-
+finedfort> LI (the observation   limitof the item),eventhoughit may have
+beenestimatedas zeroforsmallervaluesoft.
+  The moralofthisdiscussionis thatarithmetic     averagesofindependent    PL
+estimatesfromverysmallsampleswilltendto be biased.On the otherhand,
+the averagingofindependent     RS estimatesis quite satisfactory,especiallyif
+thevaluesofN0(t)are usedas weights.To avoidbias onemustat leastassign
+zeroweightwhenN?(t)= 0, thussupplying      each estimatewitha limitof ob-
+servation(the maximumof thoseattachedto its items)beyondwhichit is
+regardedas undefined,  eventhougha value ofzeromaybe indicatedat some
+earlierage.
+  To sumnmarize, theadvantagesofthePL overtheRS arethefollowing:
+  (a) The observation  limitsneednotbe knownforitemsobservedto die.
+  (b) The samplingvarianceofthe PL is usuallya littlesmaller.
+  (c) The PL has fewerdiscontinuities, and itsmonotonicity  maybe comfort-
+      ing.
+  On the otherhand,the RS has thefollowing
+                                         advantagesoverthePL:
+  (a) It is perfectlyunbiased,and henceestimatesfrommanysmallsamples
+      can be combinedby (weighted)averaging.
+  (b) It facilitates
+                   theestimation  ofan isolatedvalue ofP(t).
+  (c) It maybe preferred somecases ofdependence
+                          in                                         and
+                                                      betweenlifetimes
+      observation limits(see 3.2 below).
+  3.2 Dependence    ofdeathsand losses.The assumption thatthefulllifetimes
+Ti are independent  of the           limits
+                           observation      Li is sometimesviolated,as a re-
+sult of a changein the populationsampled,or the conditions   leadingto the
+eventcalleddeath,or themethodofsamplingthepopulation.For example,in
+a studyofsurvivalafteran operation,  a changein surgicaltechniquefiveyears
+beforethe data are analyzedwillaffectthe survivaltimesonlyofthosewith
+observation  limitless thanfiveyears.Whenlossis due to unforeseen  circum-
+stances,suchas patientsmovingout ofthestate,thepossibilities    fordepend-
+enceare obvious.Merrell[23] and Sartwell[24] have emphasizedthispoint.
+  The estimateofP(t) fromthesampleas a whole,whether     PL orRS, involves
+arbitrary assumptions  whosedangeris peculiartothedependent  caseandhence
+easilyoverlooked.  The PL estimatein effectassumesthatforitemshavingan
+
+
+
+
+                This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC   ESTIMATION                                                                     471
+observationlimitL less than t, the conditionalsurvival probabilityP(t)/P(L)
+is the same as that foritems whose observationlimitsexceed t, while the RS
+estimate makes the same assumptionconcerningthe absolute survival prob-
+ability P(t) itself. In many applications, the PL assumption may seem as
+plausible as any; on the other hand, the fact that the results are expressed
+ in termsof absolute probabilitiesmay lead one to preferthe RS assumption
+(whenthereis no feelingto the contrary),if onlybecause its operationis more
+easily visualized. For example, the RS estimate P*(t) (apart fromsampling
+fluctuations)can neverfall outsidethe range of the true values forthe popula-
+tions sampled, because it is a weightedaverage, whereasin unfavorablecases
+the PL estimateP(t) may fall outsidethis range.
+   If prior observationlimits are given for all the items and the sample is
+largeenough,dependencemay be inquiredintoby groupingthe itemsaccording
+to theselimits,makingseparateestimatesofP(t) foreach group,and comparing
+the results.If some unanticipatedlosses occurin advance of the a priorilimits,
+the PL method can be used withineach group. The group estimatescan then
+be averaged with the initial numbersof items as weightsto give something
+similarto the RS estimate,if that is desired.
+   On the otherhand, no dependencecan be demonstratedif one's information
+is limitedto the values of the ti= min (Li, Ti) and theirclassificationas deaths
+or losses; in this case the observedrates of death and loss can always be repre-
+sented by a model in which deaths and losses occur independently,as well as
+by manymodelsin whichthisis not so. However,one usuallyhas or can obtain
+otherinformationthat is more or less useful.
+   What one would like is to obtain for each item the value of an auxiliary
+variable V (whichmay be eitherquantitativeor qualitative), such that the Ti
+and Li are more nearlyindependentwithinsubsamplesdefinedin termsof V,
+than they are in the sample or population as a whole. This will generallybe
+trueif V is stronglyrelatedto the cause ofloss, and independentofthe cause of
+death, or vice versa. In this case the subsamplesare formedso as to reducethe
+variabilityofthe Li (or the Ti) withinthem.Even ifthe auxiliaryvariable does
+not have the desired properties,it may be worthwhileto get an estimate of
+P(t) by a different  routeforthe sake of comparison.Also, the auxiliaryvariable
+may be of interestforits own sake, forexample,classificationof the items by
+startingdate would be aimed at detectinga temporalchangein the population.
+As pointedout in 3.1, the procedurein the generalcase is not satisfactoryifthe
+estimatesdepend on veryfewitems.
+   The innocuous formof dependence that resultsfromtestingwith replace-
+ment is consideredbrieflyin Section 7.
+                                  4. ACTUARIAL           ESTIMATES
+
+  4.1 Estimatesutsingonlyn, 6, X. It has already been indicated (in 2.1) that
+actuarial estimates,like the PL, are formedby multiplyingtogethera sequence
+of estimates of conditionalprobabilitiesof survival throughintervals (0, uW),
+(us, U2), * - - . Unlike the PL, the actuarial estimateswill generallybe some-
+what dependenton the selectionoftheseintervals.It remainsto considerhow a
+typicalfactorp ofthissortcan be estimatedwhenthe numberofitemsn at the
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+472                            AMERICAN             STATISTICAL         ASSOCIATION           JOURNAL,    JUNE 1958
+
+beginningof the interval is known to be depleted by 6 deaths and X losses
+withinthe interval,but the orderin which these occur is not known or used.
+The PL estimateis denoted by P.
+  As in 2.1, the estimates
+
+                                   P    ~n y               P=-
+                                                           -
+                                                                        n
+                                                                        n-X
+                                                                                                              (4a)
+
+would be used if all the deaths were knownto precede all the losses, and if all
+losses precededall deaths, respectively.Evidentlyp < p < p. If p is not known,
+another intermediatevalue is clearly supplied by the well-known"adjusted-
+observed" estimate (cf. [3], [12], [18], [22])
+                                                      n - X/2 -                                               (4b)
+                                                           n   -   X/2
+
+This can be recommendedforits simplicityeven though
+                      n -X/2 -                  n - /2 -X                   n-a5-         X
+                                                                    -                                         (4c)
+                        n - X/2                       n-a/2                           n
+HTerethe secondfractionis the corresponding    estimateofthe probabilityofnot
+being lost (if losses are also random events), and the thirdfractionis the ob-
+servedprobabilityof escaping both death and loss. The only otherestimatein
+this sectionthat fails to give equality here is p(4) below.
+  The "joint risk" estimate (cf. [6] and [12]) is
+                                                    ~n -       - x- 6/a+x)
+                                    p(2)    =   [                                                             (4d)
+                                                           n
+It is the maximumlikelihoodestimatewhen the losses are random,the instan-
+taneous event-rateforlosses is a constanttimes that fordeaths, and the only
+data given are the values of n, 3, and X. The above estimatessatisfythe rela-
+tionp<p(2)<p(l)<<p.
+  One can obtain the PL estimatep fromany of the foregoingby dividingthe
+givenintervalinto smallerintervalsno one of which containsboth deaths and
+losses. Since there are reasons (full use of information,absence of arbitrary
+assumptions,essentialuniquenessofthe estimate)forpreferring     small intervals
+to large, it seems reasonable to regard p as the standard to whichthe large-
+interval actuarial methods are approximations.
+  The errorincurredin an actuarial estimate of p can be attributedto two
+sources,namely,the samplingerrorof f, reflecting    the fact that a is a random
+variable, and the discrepancybetween p(l) and P, reflectingthe unknownar-
+rangementof deaths and losses withinthe interval.These sources of errorwill
+be comparedby calculatingthevarianceoflog p in each case, on the assumption
+that n is large comparedwith a and X, and that factorsof the form1+0(n-2)
+can be neglected.On thisbasis the effectofvariationin 3is indicatedsufficiently
+by the square of the coefficient of variation of p(%),namely
+                      /(n- X/2)(n -                  -     X/2)         45(2n     -       _
+                                                                                          -         )-2       (4e)
+
+
+
+
+                      This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                      All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC     ESTIMATION                                                                        473
+  To evaluate the second source of errorwe note firstthat the total range of
+possible variationin log P (given 3 and X) is by (4a)
+                         log       -log       p_ 45X(2n -               a      -                    (4f)
+
+However, if the arrangementis random,the extremevalues may be unlikely.
+Thereforeit will now be assumed that all permutationsof the 3 deaths and X
+losses are equally likely(whichhappens to be a consequenceofthe proportional
+event-ratesleading to (4d)). In this case log p is minus the sum of a random
+sample of 3 of the 3+X numbers
+
+
+       log (1 +     -)~,         log (1 +            -)                     log (1 +            -
+Sampling theoryand the Euler-Maclaurin theoremlead to the approximate
+variance
+                             45X(6 + X + 1)/3(2n - 5 -                        X)4.                  (4g)
+  Dividing the samplingvariance (4e) into the square of halfthe range (4f) of
+the groupingerrorgives
+                                        BX2(2n- 5            -)-2                                   (4h)
+whichmay be either > 1 or < 1. Dividing (4e) into the groupingvariance (4g)
+gives
+                             X(5 + X + 1)/3(2n                  -   a _- X)2,                       (4i)
+whichis always < 1 (when n >0).
+  The above resultssuggestthat ratherlarge intervalscould be used if enough
+was known about the mechanismsof death and loss, and that the principal
+sourceoferroris the probablefailureofthe variouspermutationsofdeaths and
+losses withinthe intervalto be equally likely,or to fitany otherschemethat
+may be assumed. Evidence on this point could be obtained by examiningthe
+permutationsthat actually occur. For example, this is what is done in using
+(2a). Otherwiseone should probablyrequireat the least that (4h) be suitably
+small. This stillassumesthat groupingerrors,like the samplingerrors,are inde-
+pendentfromintervalto interval.If not, one is thrownback on the ultimatein
+conservatism,whichis to assert onlythat f1pj < P < fljPj.
+  4.2 Estimatesusing averageages. Several estimateswill now be considered
+that make use of the individualages of death and loss, althougharbitraryage
+intervalscontinueto be used. The individualages entervia the average age A of
+the a deaths,and the average age A ofthe Xlosses,both measured fromthe be-
+ginningof the age intervalunder consideration,whichis of lengthh.
+  The firstestimate assumes nothingabout the losses, but assumes that the
+instantaneous death-rateis constant throughoutthe interval. The total ex-
+posure to the riskof death in the intervalis then (n-3S-X)h+
+                                                           3A+XA, the maxi-
+mum-likelihoodestimate of the death-rateis 3/[(n-3-X)h+3A++XA],and the
+correspondingestimateof the survivalprobabilityp is
+                  p(3)   =    exp (-3/[n           -      3 - X + (SA + XA)/h])                     (4j)
+
+
+
+
+                  This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                  All use subject to JSTOR Terms and Conditions
+474                        AMERICAN          STATISTICAL            ASSOCIATION           JOURNAL,   JUNE 1958
+
+By usingp(8),Harris,Meier,and Tukey [181havebeenable to givean estima-
+tionprocedure forthemoregeneraland moredifficult case in whichtheage of
+deathis neverknownexactly,but onlyknown    to fallin someinterval,semi-
+       or
+infinite finite,bounded by one or two observationpoints whichvaryfrom
+itemto item.
+  The PL estimateP can be derivedfromp(3) as wellas fromp(l) or p(2). Al-
+thoughthe limitof the productof the estimatesp(3) forthe subintervalsis not
+quiteunique,theaveragevalueoflogp(3) corresponding    to 8 deathsoccurring
+at thesameage is
+                                       du                               n-
+                              .Jon-6(l-u)                           log            Y                     (4k)
+                                JOn-6(t-u)                                  n
+in agreementwith p-(n    - 6)/n. Here A( = uh) has been regardedas uniformly
+distributedbetween0 and h. However,in otherrespectsthe behaviorofp(3)
+doesnotparallelthatofP. If thepositionofoneormoreofthedeathsis shifted
+towardtheendoftheinterval,                     whileP is decreased(orelsenot
+                              p(') is increased,
+changed).Again,p(3) doesnotnecessarily    agreewithP in thesimplecase ofno
+losses.Finally,theextreme   valuesofp(3), obtainedby puttingA=A =0 or h,
+falloutsidethe intervalp, p withinwhichP is confined;    in factone can have
+               =
+p(3) <p while P p, or p(3)>7p while p =p.
+   The following estimateshave beenconstructed    withthe objectofusingthe
+meanages A and A to simulatethebehaviorofp:
+                    p(4) = (n - cX- 6)/(n - cX),                         (41)
+                                        n - 'X _ c_ n -6                  1-c
+                       p(6)   =    [l           X                                                        (4m)
+where
+               c=1/2+(A-A)/h                           for iA-Al                <h/2,                    (4n)
+                 =0                                    for A-A                  < -h/2,
+                =1                                     for          A-A         > h/2.
+The value ofc is immaterialwhen6=0 or X=0.
+  Theseestimatesare twodifferent   averagesoftheboundingestimatesp and
+p, takenwithweights c and 1 - c respectively.                        that
+                                           The quantityc is so defined
+theappropriate one oftheboundingestimatesis assignedas soon as IA--AI
+                        reasonable,and is justifiedanalytically
+> h/2.This is intuitively                                      by thefact
+that log p(4)and log p(5) have essentiallythe variance (4g) oflog P, ifeach death
+                         and independently
+and each loss is uniformly                        in the interval.To
+                                        distributed
+estimatethisvariance,one can multiply
+                  var c           var [(A       -   A)/h]       =    ( + X)/126X
+
+by thesquareoftherange(4f),since(4f) givesthechangein log p(4) and log
+p(5)corresponding to a unitchangein c.
+  Experiencemay indicatewhichestimateis preferable   in a giventype of
+situation.If relevantexperienceis lacking,it wouldseem advisableto rely
+
+
+
+
+                  This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                  All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC    ESTIMATION                                                                                   475
+primarily on adequatelysmall intervals,and to minimizethe computation
+timebyusingsimpleestimates.  Thissuggeststhatp(i) be usedwhenthedeaths
+and lossesare thoughtto be arrangedat randomwithintheinterval,p when
+theintervalis chosenso thatmostofthedeathsprecedemostofthelosses,and
+p whenlossesprecededeaths.
+  This completesthe materialthat seemsto be mostimportant    forapplica-
+tions.The remaining  threesectionsare devotedprimarily   to mathematical
+derivations.
+                5. MAXIMUM          LIKELIHOOD              DERIVATION             OF THE        PL
+  In accordancewith1.2 the methodof maximumlikelihoodis viewedas a
+meansforselecting  thebestfitting
+                                distribution
+                                           froma classofadmissibledis-
+          It willnowbe shownthatifall possibledistributions
+tributions.                                               are admitted,
+theproduct-limit is the oneforwhichthesamplelikelihoodis a maximum.
+  Let T1<T2<     *        ,    <Tk denote the distinctages of death, with 3, deaths
+observedat Tj. Let Xjdenotethenumberoflossesin theinterval[T,, Tj+i),
+includingany losses at Tj but none at Tj+,. (Here j = 0, 1, * , Ik; To = 0;
+Tk+I = oo.) The ages of the Xjlosses are denotedby LiW, i = 1, 2, * *,Xj. Only
+in thissection,P(t) willrepresent    not the "true"survivorship   but ratheran
+arbitrary one thatis to be determined     so as to maximizethelikelihood.The
+likelihood maynowbe written
+
+                                                                  LII   i=O
+                                                                               P(Li(O))
+
+                                                                              1x\1
+                         [P(T1 -0)-P(Ti)]61I                                   P(LL(1))
+                                                                                                              (5a)
+                     .     .   ..     .       ..       ..   ..      .    ..            ***********
+
+
+
+                     * [P(Tk - 0)                  -   P(Tk) ]iLk       PLLP           (k))J.
+
+
+Here P(Tj-O) includes,whereasP(Tj) excludes,the probabilityof deathat
+age Tj exactly.
+  Clearly(5a) willbe maximized by makingtheP(Li(O))and theP(Tj -0) as
+large,and the P(Tj) as small,as is consistent
+                                            withthe monotonicity of the
+functionand theassumption    <      <
+                          Tj Liti Tj+,.   This meansthat       =
+                                                        P(L?(0)) 1 and
+                               P(Tj) = P(L(i))                   = P(Tjl-               0)                    (5b)
+forall i andj. If thecommonvalueis denotedby Pj, (5a) reducesto
+                          k
+
+                         II
+                         j=l
+                               (Pjl       -        Pj)OiPji with Po = 1.                                      (5c)
+
+Nowwriting  pj = 1- j = Pj/Pj-i givesP =PlP2                                   * .*,   pj   and Pj,l -   = PI ...
+pjilqj. Withthesesubstitutions  (5c) becomes
+                                                       J
+                                                       II pjXs-asq8J
+                                                                                                             ~~~~(5d)
+
+
+
+
+                  This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                  All use subject to JSTOR Terms and Conditions
+476                                AMERICAN           STATISTICAL          ASSOCIATION          JOURNAL,   JUNE 1958
+
+where
+                                   i=-         =i-1            i=k
+               = N -=
+            nj-EXE                                                   (Xi +ba),            or n(Tj-O)
+                             i=O                               i=j
+
+inthenotationof1.4.In thisformeachfactorwitha fixedindexj is maximized
+individuallyby the binomial estimatep = pj= (ni- 51)/n;, in agreementwith
+                                                         t*corresponds
+                   > 0, so thatthegreatestobservedlifetime
+thePL in (2a). If Xi,                                                 to
+a loss,thenP(t*)>0 and the likelihoodof the sampleis independent  of the
+values of P(t) fort>t*. Thus P(t) and the maximumlikelihoodestimateare
+indeterminate underthesamecircumstances,   and theidentitybetweenthemis
+complete.
+                                           6. MEANS      AND VARIANCES
+
+  In thissectionthemeanof P(t) and thevariancesofP(t) and ofthemean-
+            ,uand * are derived.The observation
+lifeestimates                                  limitsareregardedas fixed
+fromsampleto sample.In principle,                resultsforrandomloss
+                                     unconditional
+timescouldbe obtainedby integration.
+   6.1 ThePL estimate P(t). Let L1< L2< ... < Lk- be thedistinct
+                                                               observa-
+tionlimitsthatarelessthantheage t= Lkat whichP(t) is beingestimated.Let
+nj+,=n(Lj+O) be thenumberof survivors'observedbeyondLi; Nj+'=Enj+l
+-N0(L1+O)P(Lj);              pj=1-qj=P(Lj)/P(Lj_1);                          and 5j the number of deaths
+observedin the interval(Lj-,, Lj], excludingnonzerovalues of the leftend-
+point},withLo=O. Then
+
+                           P(t) P= I pj with Pj                       =    (nj   -   Sj)/nj.                    (6a)
+                                  j-=l
+  Let Ej denotea conditionalexpectationforni,      , nj (and hencealso
+811* *,I Aj-)      Then
+              fixed.   E1jf= pi,       that
+                                provided   n,> 0. If             n,>O
+                                                     the condition
+couldbe ignored,one couldwrite
+                      EP(t) = E[tl
+                                [  ...                 Pk-lEkpk]
+                                                                          = E[pli            Pk-lpk]
+
+                                = pkE [pl *              fPk-2Ekfik-1]                                          (6b)
+                                         ...
+                                =              =   Pkpk-_ *           pI -       P (t),
+
+so thatfi(t)wouldbe an unbiasedestimate.The flawin thisdemonstration  is
+theindeterminacy  resultingwhen(forsomej) nj+l= 0 but P(Lj) >0, an event
+whoseprobability is boundedby (2d),andwhichcouldbe obviatedin principle
+by obtainingone or moresupplementary   observations.                  of
+                                                     In the derivations
+approximate formulas  thatfollow,anybias thatP(t) mayhaveis neglected.
+  BothGreenwood[15] and Irwin[19] whengivingformulas      forthevariance
+of an actuarialestimateofP(t) actuallytreata specialcase in whichthe ac-
+tuarialestimatorand P(t) coincide.Translatedinto our notationtheircom-
+monargument   is thefollowing.
+  Supposewe considerconditional  variancesfornj heldfixedat thevaluesNj.
+      I The expression +0 means that losses at
+                     Li                        Li itselfhave been subtractedoff.
+
+
+
+
+                         This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                         All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC       ESTIMATION                                                                                    477
+Then the Pi may be treatedas independent
+                                       quantitiesand
+
+        E[P2(t)]        =    J(j2            +   _           =    p2    . . . p2 ]      1+               )
+                                                         N~~~i
+                                                                                                  N,p~~~~~~i (
+                    =       P2(t)       (i       +       q                                                        ()
+
+
+If we ignoretermsoforderNj-2 we haveas an approximation
+                                                      forthevariance
+
+                                    v[P(t)] I P2(t)                   Np                                          (6d)
+                                                                   J=l__
+                                                                      Njpj
+                  wewillreferto as "Greenwood's
+Thislast expression                            formula." The calculation
+ofthevariancewithnli,* * *, nA fixedcan apparently
+                                                 be justifiedonlyon the
+groundthatit doesn'tmattera greatdeal; thefixednyare unrealistic,
+                                                                and in-
+consistentwiththe previousassumptionof a sampleof fixedsize and fixed
+limitsofobservation.
+  The authorshavetherefore rederived (6d) bymeansofsuccessiveconditional
+            The procedure
+expectations.             is to verify          theapproximate
+                                      byinduction               relation
+
+        E1                                           2       +                                    ..pk            (Ge)
+             [P2(t) ] _2(l                                                            pj+12
+                                                                  i=j+l pEJ +ni
+
+whichreducesto (6d) whenj 0. Applying
+                                    Ej to (6e) has theeffect
+                                                           ofreplacing
+j byj-1 providedthatone sets
+
+                                                             jp
+                                    E)Ej+ini                           EjEZj+lni                                   (6f)
+                                                         pj2/Ejn,.
+whereinPj/Ej+lnihas beenreplacedby theratiooftheexpectations   ofnumer-
+atorand denominator.  The factthatpj and Ej+lniarepositively
+                                                           correlated im-
+provestheapproximation.
+  In thespecialcase in whichk= 2 (all observation
+                                                limitslessthant are equal
+to L1) and any indeterminacy is resolvedby one supplementary observation,
+the exactvarianceof }P(t)can be calculatedto be
+
+      V[P(t)]   =       P2(t)          -+
+                                    zqq2                                (N'2           N'pi - [N',           P]
+                                Np`              N' PuL                                     N,P]                  (6g)
+                        +           1                2([i'         ]     N2')]),
+
+
+whereN is the totalsamplesize; N'-N?(t), thenumberofitemsobservable
+to t or beyond;and
+                                             [N', P]         =    1/E(X-1)                                        (6h)
+withX=max (Y, 1) and Y distributed binomially(N', pi). The methodsused
+by Stephan[27] showthat [N', pl] =N'pu+0(1) forN' large.Thus theterm
+
+
+
+
+                    This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                    All use subject to JSTOR Terms and Conditions
+478                        AMERICAN              STATISTICAL       ASSOCIATION           JOURNAL,   JUNE 1968
+
+in squarebracketsis of order1+0(1/N'), and (6g) approachesGreenwood's
+formula(6d) forlargeN'.
+  6.2 Covariances and meanlifetimes.
+                                  The methodofIrwin[19] can be used
+to derivethevarianceof -=f0 P(t)dtby writing
+
+                            2)=       Ef               P(u)P(v)dvdu
+
+                                  =   2   ff           E[fi(u)P(v)]dvdu.
+                                                                                                         (6i)
+
+
+
+If u <v and Lh and Lk denoteu and v respectively,
+                                               thenapartfrombias due to
+indeterminate cases onehas
+       E [fi(u)P(v)] = B      [P2(u)Eh+            i(ph+lph+2           Pk)
+                                                                         k
+                                           ...
+                      -   Ph+lph+2                 pkE [P2(U)j                                          (6j)
+                      -    [P(v)/P(u) ]E [P2(u)]                    P(u)P(v)          [1 + U(u)]
+whereby (2h) and (2g)
+
+
+                          toN(t)P(t)[(-)Nr+1];
+the summationis over deaths at ages not exceedingu, and gives the sample
+estimate.Thus one has approximately
+
+             V()-2         ff(             P
+                                           P(v)           U(u)dvdu
+                              ou                                  0                                     (6k)
+                     =    2f A(u)P(u)U(u)du =                               A2(u)dU(u),
+
+whereA(u) =fu??P(v)dv.The resultis discussedin 2.3.
+   To obtain analogous (but in this case exact) resultsfor the RS estimates
+P*(t) and ,*, let u <v as before,and split offtwo independentsubsamplescon-
+sistingof the N'=N?(v) items observableto v or beyond,and the N"=N?(u)
+-N?(v) additionalitems observableto u or beyond,but not to v. Let the first
+subsample yield 6' deaths in (0, u) and e' in (u, v), while the second yields 8"
+deaths in (0, u). Also let Pi = P(u) and P2= P(v). Then
+          E [P*(u)P*(v)]              (withu < v)
+       = E [(N' + N" -            6' - ") (N'
+                                         - 6') ]/N'(N' + N")
+                                                  '
+
+
+       = E [(N' + N" - 6' - s") (N' -6') ]P2/P1N'(zV' + N")
+                                                                                                         61
+       = [E(N' - a')2 + E(N" - 6") .E(N' - ') ]P2/P1N'(N' + N")
+       = [N 2P12 + N'Pi(l - P1) + N'N"P12]P2/P1N'(N'+ N")
+       = P(u)P(v) + P(v) [1 - P(u) ]/N?(u).
+           thisresultintheanalogueof(6i) and subtracting
+Substituting                                           /A2givesV(A*)as
+in (3d).
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC ESTIMATION                                                                            479
+                7. CONSISTENCY; TESTING WITH REPLACEMENT
+   The RS estimateP*(t), beingbinomial,is of courseconsistent.In view ofthe
+approximatenatureof the formulaforthe variance of P(t), however,a proofof
+its consistencyis in order.In fact, by givingcloser attentionto the errorsof
+the approximationsin the variance derivation,it can be shownthat P(t) does
+have the limitP(t) in probabilityprovidedonly that NO(t)-- c . However, the
+proofis too lengthyto be given here. Of course,the consistencyis obvious
+enoughin the special case in whichthe numberk of conditionalprobabilitiesto
+be estimatedremainsbounded as NO(t)-> c.
+   Thus far the independence of deaths and losses has been assumed. The
+question of consistencymay also be raised in the differing  contextof "testing
+with replacement."(Cf. [7], [10], [11], [14].) This is the commonlife-testing
+situationin which a fixednumberof items, say v of them, are always under
+test; when one dies it is replaced by another.The only preassignedconstants
+are the durationof the test,S, and the number,i, ofitemson test at all times.
+The numberoflosses is then fixedat v, one foreach item on test at the conclu-
+sion of the experiment,while the numberof deaths observed,and hence the
+total numberof items,is a random variable. The firstv items on test have S
+as theirlimitof observation;ifone ofthesedies at age t,witht< S, its successor
+has S-t as its limit of observation,and so on. Consistencywill mean an ap-
+proach to P(t) as vS-> co, whichimpliesthat eitherv-*>co or        co (or both).
+                                                                  cc>
+   The RS estimatewill be consideredfirst.Let T1, T2, - - *, be an infinitese-
+quence of independentlifetimeswith survivorshipP(t) and let Pk(t) be the
+proportionof T1, * * * , Tk that exceed t. By the stronglaw of large numbers,
+lim Pi,(t)= P(t) with probabilityone as k-? cc, forany specifiedt. Now the RS
+estimate P*(t) (which exists only for values of t in the interval 0, S) can be
+representedas a value of Pk(t), with k a randomvariable. This can be done by
+assigningthe lifetimesT1 * , T, to the v items initiallytested. If some of
+                                    .
+
+
+theseitemshave replacementswhQselimitsofobservationS - Ti (i =1 * * *, v)
+are not less than t, then succeedinglifetimesT,?1, T,+2, * *, are assigned to
+thesereplacements.The processis repeateduntilno moreobservationintervals
+of at least the durationt are left.To prove P*(t) consistent,it only remainsto
+prove that forany M, Pr (k > M)-*1 as vS-*>X. If v->oo the resultis evident.
+If S-? c, then even forv=1,
+
+          Pr(k >M)          = Pr(Ti+              * ?          TM ?S-t)
+
+                            2 Pr[T7 < (S-t)/M                       fori          1,.*'        MJ   (7a)
+                          =    {1 - P[(S           - t)/M]}M.
+
+As S-+ co the last expressionhas the limitunityand consistencyis proved,pro-
+vided that P( oo) 0 (eventual death is certain).
+  When S-? cc, v is fixed,and P(oc) = 0, the consistencyof the PL estimate
+P(t) followsfromthe relation(cf. (4a))
+                 n(t)           <                        n(t) + v                   n(t) + v
+              NO(t)+ D'                           NO(t)+ D' + v                           N
+
+
+
+
+                 This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                 All use subject to JSTOR Terms and Conditions
+480                         AMERICAN           STATISTICAL          ASSOCIATION            JOURNAL,   JUNE 1958
+
+sincethenumberoflossesis v,P*(t)=n(t)/IN(t)is consistent, NO(t)--oo, and
+the numberof deathsD' havingobservation    limitsless than t is a random
+variablethatdoesnotdependsignificantly onS. P(t) is undoubtedly consistent
+also whenS is fixedand v-+oo,but a rigorous
+                                          proofofthishas not beencon-
+structed.
+                                        ACKNOWLEDGMENT
+
+  The viewpointadoptedin thispaperowesmuchto discussionswithJohn
+W. Tukey.It also incorporatesa numberofsuggestions
+                                                 kindlyforwarded
+                                                               by
+readersofa preliminarydraft.
+                                              REFERENCES
+  [11 Bailey, W. G., and Haycocks,H. W., "A synthesisof methodsof derivingmeasures
+      of decrementfromobserveddata," Journalof theInstituteof Actuaries,73 (1947),
+      179-212.
+ [2] Bartlett,M. S., "On the statisticalestimationof meanlifetime,"PhilosophicalMaga-
+     zine (Series 7), 44 (1953), 249-62.
+ [31 Berkson,J., and Gage, R. P., "Calculationof survivalratesforcancer,"Proceedings
+      oftheStaffMeetingsoftheMayo Clinic,25 (1950), 270-86.
+ [4] Berkson,J., and Gage, R. P., "Survival curve for cancer patientsfollowingtreat-
+      ment,"JournaloftheAmericanStatisticalAssociation,47 (1952), 501-15.
+ [5] Berkson,J., "Estimationof the intervalrate in actuarial calculations:a critiqueof
+      the person-years concept,"(Summary)JournaloftheAmericanStatisticalAssociation
+      49 (1954), 363.
+ [6] B6hmer, P. E., "Theorie der unabhangigen Wahrscheinlichkeiten,"           Rapports,
+      M6moireset Proces-verbauxde Septi6meCongr6sInternationald'Actuaires,Amster-
+      dam, 2 (1912), 327-43.
+ [7] Brown,G. W. and Flood, M. M., "Tumblermortality,"JournaloftheAmericanSta-
+     tisticalAssociation,42 (1947), 562-74.
+ [8] Cornfield,J., "Cancer illnessamong residentsin Atlanta, Georgia," Public Health
+      Service PublicationNo. 13, Cancer MorbiditySeries No. 1, 1950.
+ [9] Davis, D. J., "An analysisof some failuredata," JournaloftheAmericanStatistical
+      Association47 (1952), 113-150.
+[10] Epstein,Benjamin,and Sobel, Milton,"Lifetesting,"  JournaloftheAmericanStatisti-
+     cal Association,48 (1953), 486-502.
+[11] Epstein, Benjamin,and Sobel, Milton, "Some theoremsrelevantto lifetesting     from
+     an exponentialdistribution,"   Annals ofMathematicalStatistics,25 (1954), 373-81.
+[12] Fix, Evelyn, "Practicalimplicationsofcertainstochasticmodelson different   methods
+     offollow-upstudies,"paper presentedat 1951 annual meetingofthe WesternBranch,
+     AmericanPublic Health Association,November1, 1951.
+[13] Fix, Evelyn,and Neyman,J., "A simplestochasticmodelofrecovery,relapse,death
+     and loss of patients,"Human Biology,23 (1951), 205-41.
+[14] Goodman,L. A., "Methods of measuringusefullifeof equipmentunderoperational
+     conditions,"JournaloftheAmericanStatisticalAssociation,48 (1953) 503-30.
+[15] Greenwood,Major, "The naturaldurationof cancer,"Reportson Public Health and
+     Medical Subjects, No. 33 (1926), His Majesty's StationeryOffice.
+[16] Greville,T. N. E., "Mortalitytables analyzed by cause of death," The Record,
+     AmericanInstituteof Actuaries,37 (1948), 283-94.
+[17] Hald, A., "Maximumlikelihoodestimationofthe parametersofa normaldistribution
+     whichis truncatedat a knownpoint,"SkandinaviskAktuarietidskrift,    32 (1949) 119-
+     34.
+[18] Harris,T. E., Meier,P., and Tukey,J. W., "Timingofthe distribution    of eventsbe-
+     tweenobservations,"Human Biology,22 (1950), 249-70.
+[19] Irwin,J. O., "The standard errorof an estimateof expectationallife," Journalof
+     Hygiene,47 (1949), 188-9.
+
+
+
+
+                   This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                   All use subject to JSTOR Terms and Conditions
+NONPARAMETRIC     ESTIMATION                                                                    481
+[20] Jablon,Seymour,"Testingof survivalrates as computedfromlifetables," unpub-
+     lished memorandum,    June14, 1951.
+[21] Kahn, H. A., and Mantel, Nathan, "Varianceof estimatedproportionswithdrawing
+     in singledecrementfollow-upstudieswhencases are lost fromobservation,"unpub-
+     lished manuscript.
+[22] Littell,A. S., "Estimationof the T-yearsurvivalrate fromfollow-upstudiesover a
+     limitedperiodof time,"Human Biology,24 (1952), 87-116.
+[23] Merrell,Margaret,"Time-specific  lifetables contrastedwithobservedsurvivorship,"
+     Biometrics, 3 (1947), 129-36.
+[24] Sartwell,P. E., and Merrell,M., 'Influenceof the dynamiccharacterof chronicdis-
+     ease on the interpretationof morbidityrates,"AmericanJournalofPublic Health,42
+     (1952), 579-84.
+[25] Savage, I. R., "Bibliographyofnonparametric   statisticsand relatedtopics,"Journal
+     oftheAmericanStatisticalAssociation,48 (1953), 844-906.
+[26] Seal, H. L., "The estimationof mortalityand other decrementalprobabilities,"
+     Skandinavissk                 37 (1954), 137-62.
+                    Aktuarietidskrift,
+[27] Stephan,F. F., "The expectedvalue and varianceofthereciprocaland othernegative
+     powers of a positive Bernoullianvariate," Annals of MathematicalStatistics,16
+      (1945), 50-61.
+[28] Wolfowitz,J., "Additivepartitionfunctionsand a class of statisticalhypotheses,"
+     Annals of MathematicalStatistics,13 (1942), 247-79.
+
+
+
+
+                  This content downloaded from 195.134.81.190 on Tue, 26 Mar 2013 03:21:34 AM
+                                  All use subject to JSTOR Terms and Conditions
+

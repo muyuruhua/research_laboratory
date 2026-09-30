@@ -1,0 +1,44 @@
+{
+  "before_sha256": "2401aaa5803d38d866443458409dfb503b17ea211d395249df6a6f7739eb629d",
+  "requirements_sha256": "ca3d8b7ce23bcf2462fc9c85e40352b671eafa8986e0053edbc1e21deab4063b",
+  "protected_files": {
+    "references.expanded.bib": "8446a8a0c87c8ac7c022daea856089492cbaba0d6a84ae88dcafa9538ef8aa86",
+    "observed_tables.updated_20260930.tex": "9ab174cd84b84ef6ee0591e0fc31658d4ee9846f6a41deaf27dedeb99e08de17",
+    "observed_costs.updated_20260930.tex": "02ae07d0e0a630e6ad2013c49a29cc37cd23bf9dc99d6f1af7daa75124149d2c",
+    "figures_updated_20260930/logged_calibration_table.tex": "c6e43400b2e1baefde0d3dccaa77de941b71a02e1699963dfe46cb9f00dbb14d",
+    "archive_arm_results.updated_20260930.tex": "179309c3c1d0ad688c18697a78db9c2f76a31a1c624f90adad5b4f3c3f9e7939",
+    "figures_updated_20260930/token_cost_coverage.pdf": "9c2a99b966197adcf3009860c496e8f3fb9344fa36ec34c50a357e09b63c0c1e",
+    "figures_updated_20260930/coverage_trajectories.pdf": "010c5e2f07edcf8b909130b9f9dc57f0e22157791447c2636c5fd337da0c2c59",
+    "figures_updated_20260930/call_cost_coverage.pdf": "9767f5834aaecd0c1b50cc0ea51d3846c169b50e630138425bdcd06cddfe76d4",
+    "figures_updated_20260930/posterior_cases.pdf": "770a3de40019112ab508216a4207935401502a3de9aa92de53a9a11e1a5377a5",
+    "figures_updated_20260930/native_endpoints.pdf": "38892c34b57592f204c2887e2d5a7b66ef9f9a5d8f605abd9c1d9079a60dcced",
+    "figures_updated_20260930/logged_reward_reliability.pdf": "c9836075b30e38d62496fec5b9fc5aa36c266826d2c601b2aa97a95cf9b59e48",
+    "figures_updated_20260930/candidate_dispositions.pdf": "04baf2866d42be898a467c264ecdad728c9343f7af6f93446a082f30519564db"
+  },
+  "removed_rows": [
+    "Promotion latency & \\missing & \\missing & \\missing & Verified promotion timestamps. \\\\",
+    "Downstream productivity@64 & \\missing & \\missing & \\missing & Descendant code gain only. \\\\",
+    "Queue size / nonproductive retention & \\missing & \\missing & \\missing & Queue state; C--D counterfactual. \\\\",
+    "Shadow-validation false-negative rate & \\missing & \\missing & \\missing & Random rejected-candidate sample. \\\\",
+    "Code gain per candidate / 1,000 tokens & \\missing & \\missing & \\missing & Linked code gain and usage. \\\\"
+  ],
+  "removed_float": "tab:repair",
+  "removed_repair_table": "\\begin{table}[!tbp]\n\\centering\\small\n\\caption{Optional repair diagnostics; unavailable values remain blank.}\n\\label{tab:repair}\n\\begin{tabularx}{\\columnwidth}{Y c c}\n\\toprule\nMetric & E, repair off & E, repair on \\\\\n\\midrule\nRepair opportunities / attempts & 0 recorded & \\missing \\\\\nPre/post validation success & \\missing & \\missing \\\\\nPost-repair descendant gain & \\missing & \\missing \\\\\nChanged fields / locality & \\missing & \\missing \\\\\nToken / latency cost & \\missing & \\missing \\\\\nEffect / uncertainty interval & \\missing & \\missing \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table}",
+  "abstract_words": 176,
+  "paragraph_edits": 35,
+  "narrative_count_correction": {
+    "source": "filled_mechanism_data_20260930.json",
+    "E_candidates": [
+      735,
+      746
+    ],
+    "E_trials": [
+      734,
+      745
+    ],
+    "E_rejects": [
+      725,
+      736
+    ]
+  }
+}

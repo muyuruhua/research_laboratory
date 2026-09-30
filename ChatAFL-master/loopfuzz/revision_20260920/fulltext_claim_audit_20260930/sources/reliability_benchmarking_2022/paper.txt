@@ -1,0 +1,1117 @@
+      On the Reliability of Coverage-Based Fuzzer Benchmarking
+                   Marcel Böhme                                                László Szekeres                                                                                                  Jonathan Metzman
+              MPI-SP, Germany                                                      Google, USA                                                                                                       Google, USA
+          Monash University, Australia
+
+ABSTRACT                                                                                                                              10                                                                                                      10
+
+
+
+
+                                                                                              Fuzzer Ranks by avg. #bugs discovered
+
+
+
+
+                                                                                                                                                                                                      Fuzzer Ranks by avg. #bugs discovered
+                                                                                                                                      9                                                                                                       9
+
+Given a program where none of our fuzzers finds any bugs, how do                                                                      8                                                                                                       8
+
+we know which fuzzer is better? In practice, we often look to code                                                                    7                                                                                                       7
+
+
+coverage as a proxy measure of fuzzer effectiveness and consider                                                                      6                                                                                                       6
+
+
+the fuzzer which achieves more coverage as the better one.                                                                            5                                                                                                       5
+
+
+
+   Indeed, evaluating 10 fuzzers for 23 hours on 24 programs, we                                                                      4                                                                                                       4
+
+
+
+find that a fuzzer that covers more code also finds more bugs. There
+                                                                                                                                      3                                                                                                       3
+
+                                                                                                                                      2                                                                                                       2
+
+is a very strong correlation between the coverage achieved and the                                                                    1                                                                                                       1
+
+number of bugs found by a fuzzer. Hence, it might seem reasonable                                                                          1   2     3    4    5       6       7   8
+                                                                                                                                               Fuzzer Ranks by avg. #branches covered
+                                                                                                                                                                                            9   10                                                 1   2     3    4    5       6       7   8
+                                                                                                                                                                                                                                                       Fuzzer Ranks by avg. #branches covered
+                                                                                                                                                                                                                                                                                                    9   10
+
+
+to compare fuzzers in terms of coverage achieved, and from that
+derive empirical claims about a fuzzer’s superiority at finding bugs.
+                                                                                                                                                   #benchmarks                                                                                             #benchmarks
+                                                                                                                                                                   0   2   4   6   8   10                                                                                  0   2   4   6   8   10
+
+
+
+   Curiously enough, however, we find no strong agreement on                                (a) 1 hour fuzzing campaigns (𝜌 = 0.38).                                                                 (b) 1 day fuzzing campaigns (𝜌 = 0.49).
+which fuzzer is superior if we compared multiple fuzzers in terms                           Figure 1: Scatterplot of the ranks of 10 fuzzers applied to 24
+of coverage achieved instead of the number of bugs found. The                               programs for (a) 1 hour and (b) 23 hours, when ranking each
+fuzzer best at achieving coverage, may not be best at finding bugs.                         fuzzer in terms of the avg. number of branches covered (x-
+ACM Reference Format:                                                                       axis) and in terms of the avg. number of bugs found (y-axis).
+Marcel Böhme, László Szekeres, and Jonathan Metzman. 2022. On the Relia-
+bility of Coverage-Based Fuzzer Benchmarking. In 44th International Confer-                    Hence, it might seem reasonable to conjecture that the fuzzer
+ence on Software Engineering (ICSE ’22), May 21–29, 2022, Pittsburgh, PA, USA.
+                                                                                            which is better in terms of code coverage is also better in terms
+ACM, New York, NY, USA, 13 pages. https://doi.org/10.1145/3510003.3510230
+                                                                                            of bug finding—but is this really true? In Figure 1, we show the
+1     INTRODUCTION                                                                          ranking of these fuzzers across all programs in terms of the average
+                                                                                            coverage achieved and the average number of bugs found in each
+In the recent decade, fuzzing has found widespread interest. In                             benchmark. The ranks are visibly different. To be sure, we also
+industry, we have large continuous fuzzing platforms employing                              conducted a pair-wise comparison between any two fuzzers where
+100k+ machines for automatic bug finding [23, 24, 46]. In academia,                         the difference in coverage and the difference in bug finding are
+in 2020 alone, almost 50 fuzzing papers were published in the top                           statistically significant. The results are similar.
+conferences for Security and Software Engineering [62].                                        We identify no strong agreement on the superiority or ranking
+    Imagine, we have several fuzzers available to test our program.                         of a fuzzer when compared in terms of mean coverage versus mean
+Hopefully, none of them finds any bugs. If indeed they don’t, we                            bug finding. Inter-rater agreement assesses the degree to which
+might have some confidence in the correctness of the program.                               two raters, here both types of benchmarking, agree on the superi-
+Then again, even a perfectly non-functional fuzzer would find no                            ority or ranking of a fuzzer when evaluated on multiple programs.
+bugs in our program. So, how do we know which fuzzer has the                                Indeed, two measures of the same construct are likely to exhibit a
+highest “potential” of finding bugs? A widely used proxy measure                            high degree of correlation but can at the same time disagree sub-
+of fuzzer effectiveness is the code coverage that is achieved. After                        stantially [41, 55]. We evaluate the agreement on fuzzer superiority
+all, a fuzzer cannot find bugs in code that it does not cover.                              when comparing any two fuzzers where the differences in terms of
+    Indeed, in our experiments we identify a very strong positive                           coverage and bug finding are statistically significant. We evaluate
+correlation between the coverage achieved and the number of bugs                            the agreement on fuzzer ranking when comparing all the fuzzers.
+found by a fuzzer. Correlation assesses the strength of the associa-                           Concretely, our results suggest a moderate agreement. For fuzzer
+tion between two random variables or measures. We conduct our                               pairs, where the differences in terms of coverage and bug finding
+empirical investigation on 10 fuzzers × 24 C programs × 20 fuzzing                          is statistically significant, the results disagree for 10% to 15% of
+campaigns of 23 hours (≈ 13 CPU years). We use three measures of                            programs. Only when measuring the agreement between branch
+coverage and two measures of bug finding, and our results suggest:                          coverage and the number of bugs found and when we require the
+As the fuzzer covers more code, it also discovers more bugs.                                differences to be statistically significant at 𝑝 ≤ 0.0001 for coverage
+Permission to make digital or hard copies of part or all of this work for personal or       and bug finding, do we find a strong agreement. However, statistical
+classroom use is granted without fee provided that copies are not made or distributed       significance at 𝑝 ≤ 0.0001 only in terms of coverage is not sufficient;
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for third-party components of this work must be honored.      we again find only weak agreement. The increase in agreement
+For all other uses, contact the owner/author(s).                                            with statistical significance is not observed when we measure bug
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                              finding using the time-to-error. We also find that the variance of the
+© 2022 Copyright held by the owner/author(s).
+ACM ISBN 978-1-4503-9221-1/22/05.                                                           agreement reduces as more programs are used, and that results of
+https://doi.org/10.1145/3510003.3510230                                                     1h campaigns do not strongly agree with results of 23h campaigns.
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                     Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+
+In summary, this paper makes the following contributions:                       Using real bugs and auto-generated test suites (generated by one
+★ We introduce a novel methodology to evaluate proxy measures               fuzzer), Wei et al. [61] observe that the majority of bugs (>50%) are
+    of fuzzer (or test suite) effectiveness. Specifically, we suggest       found in the last two thirds of the campaign when branch cover-
+    evaluating agreement instead of correlation, and propose a bug-         age increases only slightly from 90% to 94%. Along this qualitative
+    based evaluation without pre-determined ground-truth.                   reasoning, they conclude that "there is weak correlation between
+★ We provide the first evidence on the reliability of coverage-based        number of faults found and coverage". Kochhar et al. [37] find a
+    benchmarking for the evaluation of fuzzer effectiveness. We             strong correlation between coverage and bug finding for one pro-
+    confirm a very strong correlation and a moderate agreement.             gram and a moderate correlation for another. However, Chen et al.
+                                                                            [9] raise concerns about the correlation measure that was used and
+★ We explore an interpretation of our results for reaching a fault
+                                                                            note that the association is likely stronger than indicated. More
+    versus exposing a bug (Section 6) and discuss our results in the
+                                                                            generally, Chen et al. expose several flaws in experimental method-
+    larger context of fuzzer benchmarking, where we make concrete
+                                                                            ologies of previous work and highlight common pitfalls in the
+    recommendations for future evaluations (Section 7).
+                                                                            statistical evaluation. Their own experiments indicate a very strong
+★ We publish all data, the analysis, and the virtual experimental           correlation between coverage and bug finding.
+    infrastructure. We provide precise instructions to reproduce and            In our study, we can confirm a very strong correlation. However,
+    extend our experiments: https://doi.org/10.5281/zenodo.6045830          in contrast to all previous work, we suggest the use of agreement
+                                                                            instead of correlation for empirical investigations of test suite ef-
+2    RELATED WORK                                                           fectiveness. The agreement between two measures quantifies the
+Code coverage has long been used as a proxy measure of the bug              degree to which both measures would agree on the relative perfor-
+finding ability of a test suite. Fortunately, in practice the most com-     mance of fuzzers. We define two types of agreement: agreement on
+mon situation is that the test suite detects no bugs. Now, if all test      superiority, which concerns two fuzzers; and agreement on ranking,
+cases pass, how do we assert whether the test suite is effective?           which concerns more than two fuzzers. We say that two measures
+Practitioners often rely on code coverage instead [33]. Underpin-           agree on superiority if both measures consider the same fuzzer bet-
+ning coverage as a proxy measure is the insight that a test suite           ter performing than the other, and the difference is statistically
+cannot find bugs in code that it does not cover. However, recent            significant. We say that two measures agree on ranking if both
+empirical studies on the correlation between code coverage and              measures order more than two fuzzers according to their average
+bug finding identify different degrees of correlation [9].                  performance the same way, not considering statistical significance.
+   The code coverage of a test suite or fuzzer can be measured, e.g.,       Counterintuitively to the strong correlation result, we find that the
+as the number of program branches that are exercised by the test            agreement, both on superiority and ranking, is moderate.
+suite or fuzzer, respectively. The bug finding ability of a test suite          Benchmarking bug finding tools is difficult. For static analysis
+(or fuzzer) can be measured, e.g., as the number of bugs found or           tools, Dwyer, Person, and Elbaum [14] show that even small varia-
+the time it took to find the first bug. The correlation between two         tions in the tool’s configuration can give rise to a very large varia-
+random variables measures the strength of their association and             tion in the tool’s bug finding effectiveness. For fuzzing, Gavrilov et
+the direction of their relationship.                                        al. [19] start from the observation that "bug-based metrics are im-
+   Using artificially injected bugs and developer-generated test            practical because (1) the definition of ‘bug’ is vague, and (2) mapping
+suites, Inozemtseva and Holmes [32] find a weak correlation between         bug-revealing inputs to bugs requires extensive domain knowledge".
+coverage and test suite effectiveness when the size of the test suite       In fact, we will elaborate on the challenges of bug-based evaluation
+is controlled for (and a moderate to strong correlation if test suite       in Section 7. Instead of counting the number of bugs, Gavrilov et
+size is ignored). However, Chen et al. [9] raise concerns about the         al. [19] propose to measure the number of changes in program
+experimental methodology (i.e., the stratification of test set size)        behavior over time that a fuzzer can detect.
+posing a significant threat to the validity of the results. Gopinath            To the best of our knowledge, our work is the first to evaluate
+et al. [26] identified a strong correlation between code coverage and       whether coverage-based fuzzer benchmarking is reliable: Does the
+test suite effectiveness for developer-provided test suites and found       ranking of two or more fuzzers in terms of coverage agree with
+the impact of test suite size neglible. For auto-generated test suites      their ranking in terms of bug finding? The current guideline on
+the correlation was moderate to strong; however, the majority of            sound fuzzer evaluation suggests that coverage-based benchmark-
+auto-generated test suites covered less than 20% of code while the          ing alone may be insufficient (referring to the contentious study
+coverage values for developer-generated test suites had a much              [9] by Inozemtseva and Holmes [32] which suggests a weak cor-
+wider spread, and they might have been written specifically for             relation). Our study provides the first empirical evidence on the
+detecting these bugs. Gligoric et al. [22] find a very strong correlation   reliability of coverage-based fuzzer benchmarking.
+between coverage and bug finding using different measures of
+correlation. In contrast to this line of work, we use real bugs instead
+of artificially injected bugs (i.e., mutants). Mutants may or may           3 EXPERIMENTAL SETUP
+not be representative of real bugs [9, 35, 50]. Instead of developer-
+provided test suites, our study is concerned with "test suites" that        3.1 Research Questions
+were auto-generated by various fuzzers. In our study, test suite size       Our objective is to evaluate the degree to which a coverage-based
+is not a concern, either, as we explicitly control for the method by        and a bug-based benchmarking agree on fuzzer performance. We
+which the test suite (i.e., seed corpus) is generated.                      aim to answer the following research questions.
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                                ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+                                                                                    Name                Size           Harness Name #Branches #Known Bugs
+RQ.1 Correlation. How strong is the association between the cov-                    libhevc      252.3k LoC           hevc_dec_fuzzer     54.7k        11
+     erage achieved by a fuzzer and its ability to find bugs?                       ndpi          58.0k LoC          fuzz_ndpi_reader     42.9k        15
+                                                                                    libhtp        19.3k LoC                     fuzz_htp  10.2k         1
+RQ.2 Agreement. How strong is the agreement on the ranks or                         aspell        28.1k LoC               aspell_fuzzer   28.4k         1
+     the superiority of the fuzzers in coverage-based versus a bug-                 grok          26.6k LoC grk_decompress_fuzzer         45.0k         4
+     based benchmarking?                                                            matio         35.0k LoC               matio_fuzzer    46.7k        49
+                                                                                    stb           70.2k LoC           stbi_read_fuzzer     6.7k        11
+RQ.3 Campaign Length. Does the agreement between coverage-                          njs           89.0k LoC njs_process_script_fuzzer     34.0k        10
+     based and bug-based benchmarking increase with the length                      zstd          93.2k LoC       stream_decompress       22.6k         1
+                                                                                    openh264     140.1k LoC             decoder_fuzzer    39.3k        22
+     of the fuzzing campaign? (Our default is 23 hours).                            libgit2      224.9k LoC              objects_fuzzer  114.2k         3
+RQ.4 Campain Trials. Does agreement between coverage- and                           poppler      225.6k LoC                   pdf_fuzzer 184.7k        17
+                                                                                    libxml2      505.1k LoC    xml_reader_file_fuzzer    101.8k         3
+     bug-based benchmarking increase with the number of cam-                        arrow        769.4k LoC       parquet-arrow-fuzz     473.9k        34
+     paigns per {fuzzer × program})? (Our default is 20 campaigns                   php           2.6M LoC                 fuzz-execute  324.5k         9
+     per combination).                                                              php           2.6M LoC     fuzz-parser-2020-07-25    436.8k         8
+                                                                                    wireshark     4.3M LoC                 fuzzshark_ip  526.3k        10
+RQ.5 Extrapolation Within one type of benchmarking, how strong                      proj4        168.2k LoC            standard_fuzzer    92.2k        36
+     is the agreement on the ranks or superiority of the fuzzers                    tpm2          48.6k LoC execute_command_fuzzer        20.8k        11
+                                                                                    file          16.7k LoC               magic_fuzzer     8.6k         1
+     running 23 hour campaigns versus shorter campaigns?                            muparser      34.2k LoC             set_eval_fuzzer    7.6k         0
+RQ.6 Mitigation of Threats to Validity. (a) How strong is the                       usrsctp       92.0k LoC             fuzzer_connect    53.6k         0
+                                                                                    libarchive   166.5k LoC          libarchive_fuzzer    38.7k        10
+     agreement between two randomized rounds of coverage-                           systemd      588.4k LoC                 fuzz-varlink  63.1k         1
+     based benchmarking? (b) How strong is the agreement be-                        Total        13.2M LoC                                  2.7M               268
+     tween different measures of bug finding or between different
+     measures of coverage? (c) How does agreement vary as the                       Figure 2: Details about benchmark programs. In our data
+     number of available programs increases?                                        analysis, we excluded programs below the line because no
+                                                                                    more than two (of ten) fuzzers found a least one bug in at
+3.2     Experimental Design                                                         least one campaign.
+We evaluate these research questions using a post hoc bug identifi-
+cation instead of a pre-determined ground truth. While it requires                          AFL [63]          AFL++ [15]     AFLSmart [53]        AFLFast [4]
+substantially more effort, the post hoc identification allows us to                     FairFuzz [38]        Eclipser [10]      MOPT [40]       Honggfuzz [58]
+avoid some of the pitfalls of ground-truth based benchmarking, as                      LibFuzzer [56]        Entropic [3]
+discussed in Section 7.1 In our design, after conducting the fuzzing
+campaigns, we employ a process of automatic and manual dedu-                        Figure 3: The fuzzers available in Fuzzbench, that we used in
+plication to identify the unique bugs that each fuzzer discovered.                  our experiments.
+Fuzzing campaigns may produce many bug reports, some of which
+actually pertain to the same unique bug. So, we sorted them out.
+   Our experiments generated 341,595 bug reports; too many for                      in-memory analytics. Out of these 24 benchmark programs, there
+us to manually deduplicate. We used a variant of the Clusterfuzz                    are seven (7) programs containing bugs that could not be found by
+deduplication approach to automatically group bug reports. After                    any fuzzer, four (4) programs where bugs were very hard to find,
+that, we manually deduplicated the 409 automatically deduplicated                   and three (3) programs where no more more than two fuzzers could
+bugs to get 235 unique bugs. Two professional software engineers                    find bugs in at least one campaign.
+labeled the bugs to find duplicates. We note that our experimental                     Benchmark selection. Our benchmark programs have been
+design is indeed not very economically. Our fuzzers did not find a                  randomly selected from programs in OSS-Fuzz that have histori-
+single bug in 30% (7/24) of the selected programs despite substantial               cally contained a relative high number of bugs. OSS-Fuzz [24] is a
+fuzzing effort (Fig. 2). However, it allows us to mitigate a number                 service that provides fuzzing for 500 open source projects. Integra-
+of threats to validity of a ground-truth based evaluation (Sec. 7).                 tions are usually performed by project maintainers and/or security
+                                                                                    researchers who write fuzz targets and compile seed corpora and
+3.3     Fuzzers and Programs                                                        dictionaries for the projects. This means that our benchmark pro-
+Benchmark Details. The 24 benchmark programs we used are                            grams have been prepared for fuzzing by the maintainers and not
+listed in Figure 2. Many of the programs are popular and well-                      by us, which reduces experimenter bias. OSS-Fuzz automatically
+maintained open-source software libraries that are widely used                      reports each bug it finds together with the first and last program
+to support critical services in the internet. For instance, libxml2                 version in which the bug exists. Most program versions do not
+is a popular parser library for XML-documents, php is the inter-                    contain any bugs, which is why a random selection of program
+preter for websites written in the PHP programming language,                        versions from OSS-Fuzz would be prohibitively expensive. Most
+and wireshark is a popular network protocol analyzer. The set of                    fuzzers would not find any bugs. Hence, we use the information
+benchmark programs ranges from parser libraries, protocol imple-                    from OSS-Fuzz to randomly chose our benchmark programs from
+mentations, and implementations of compression algorithms all                       program versions which are known to have an increased number of
+the way to OS service managers, interpreters, and platforms for                     bugs. Similarly to OSS-Fuzz, all programs are instrumented with Ad-
+                                                                                    dressSanitizer [57] as oracle to detect bugs. All fuzzing campaigns
+1 Examples   are survivorship bias, observer-expectancy bias, and selection bias.   are started from an initial seed corpus provided from OSS-Fuzz.
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                            Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+
+                                                                              Spearman’s 𝜌        Interpretation           Cohen’s 𝜅            Interpretation
+   Fuzzers. Figure 3 shows the list of fuzzers we used. We chose              0.00 - 0.09     Neglible correlation         0.00 - 0.20            No agreement
+these fuzzers based on their importance and ease-of-use. Entropic,            0.10 - 0.39        Weak correlation          0.21 - 0.39      Minimal agreement
+libFuzzer, Honggfuzz, AFL, and AFL++ are widely-used in industry              0.40 - 0.69    Moderate correlation          0.40 - 0.59         Weak agreement
+                                                                              0.70 - 0.89       Strong correlation         0.60 - 0.79     Moderate agreement
+while AFLSmart, AFLFast, FairFuzz, Eclipser, and MOpt-AFL are                 0.90 - 1.00  Very strong correlation         0.80 - 0.90        Strong agreement
+important academic works and extensions of AFL.                                                                            0.91 - 1.00 Almost perfect agreement
+
+                                                                              (a) Taken from Schober et al. [55]             (b) Taken from McHugh [42].
+3.4        Variables and Measures
+Our objective is to evaluate the degree to which a coverage- and a              Figure 4: Interpretation of Spearman’s 𝜌 and Cohen’s 𝜅.
+bug-based benchmarking agree on fuzzer performance. We have
+one main and two supplementary measures of coverage plus two
+                                                                              3.5     Statistical Analysis
+main and one supplementary measure of bug finding.
+   Measures of Coverage. Our main measure of coverage is branch               In order to investigate the relationship between coverage-based and
+coverage, i.e., the number of branches in the program that the fuzzer         bug-finding based measures of fuzzer performance, we compute
+has exercised until this point in the campaign. Branch coverage               correlation and agreement.
+captures the control-flow in a program, subsumes statement cover-                 Correlation [55] assesses the strength of the association and
+age [22], is considered to be the most effective proxy measure of             the direction of the relationship between two random variables.
+bug finding [20, 22], and is the conventional measure of coverage             We assess the correlation between a measure of coverage and a
+to evaluate coverage-guided greybox fuzzing [36]. Fuzzbench mea-              measure of bug finding using Spearman’s rank correlation. We use
+sures "region coverage" [12] in 15-minute intervals on a dedicated            Spearman’s instead of the more common Pearson’s correlation
+measurer instance2 using clang compiler flags -fprofile-instr-                as Pearson’s assumes a linear relationship while our scatter plots
+generate and -fcoverage-mapping and the llvm-cov tool [12].                   in Figure 6 indicate an exponential one. Since both variables are
+   As supplementary measures of coverage, we also analyze the                 continuous, represent paired observations, and their relationship is
+number of unique paths and the number of unique edges as mea-                 monotonic, the assumptions for Spearman’s correlation are met.
+sured by the AFL-fuzzer. The number of unique paths (#paths) con-             The interpretation of Spearman’s 𝜌 is shown in Figure 4.a.
+tinues to be a common performance measure for greybox fuzzers                     Inter-rater Agreement [59] assesses the degree of agreement
+[17, 18, 68] despite its obvious flaws [36, 38]. The number of unique         between two raters of the same phenomenon. In our case, we mea-
+edges (#edges), reported as map size by AFL-based fuzzers, is often           sure the agreement between a coverage-based measure of fuzzer
+used as a proxy for branch coverage. AFL maintains a fixed-size               performance and a bug-finding-based measure of fuzzer perfor-
+hashmap containing an entry for every tuple of conditional jumps              mance on the ranking or superiority of a fuzzer. Since coverage and
+that are sequentially exercised in the program. For all measures of           bug finding measure the same construct, i.e., fuzzer performance,
+coverage, we directly evaluate coverage on the buggy program to               the assumption for assessing agreement is met. Schober et al. [55]
+avoid the clean program assumption [8].                                       note that "two variables can exhibit a high degree of correlation
+   Measures of Bug Finding. Our main measures of bug finding                  but can at the same time disagree substantially". Bland and Altman
+are bug coverage, i.e., the number of bugs that the fuzzer has found          [41] suggest that any two measures of the same construct should
+until a given point in the trial, and the time-to-error, i.e., the length     necessarily be strongly correlated, but may not strongly agree.
+of the fuzzing campaign when the first bug was found. In order                    Agreement on Rank. In order to benchmark multiple fuzzers
+to count the number of bugs (#bugs) at a particular point in time,            simultaneously, it might seem reasonable to establish a ranking,
+we execute all bug-revealing inputs and remove all duplicates. Our            where the best fuzzer according to some measure is ranked highest
+method of deduplicating bugs is similar to ClusterFuzz’s. For each            (cf. Fig. 1). A fuzzer’s ranking for a program and time stamp is based
+crash reported in a trial, we take the crash type (e.g., “Heap-buffer-        on the corresponding average for that measure across all (twenty)
+overflow”) and the top three symbolized stack frames reported                 trials. We measure the agreement on the coverage-based and bug-
+by AddressSanitizer or UndefinedBehaviorSanitizer. Crashes with               finding-based ranks of a fuzzer using Spearman’s correlation [55].
+the same type and stack frames are considered duplicates, and                     Agreement on Superiority. Unlike a pair-wise comparison, a
+only one of them is counted. To further improve the quality of the            ranking does not consider the statistical significance of the differ-
+deduplication, we manually removed the remaining duplicates. In               ence between any two fuzzers. Hence, we also measure the agree-
+order to measure the time-to-error (TTE), we report the length of             ment on the superiority of a fuzzer over another when superiority
+the fuzzing campaign when the first crashing input was generated.             is established according to a measure of coverage versus a measure
+   As supplementary measure of bug finding, we also count the                 of bug finding. Using Cohen’s kappa 𝜅 and disagreement propor-
+number of unique crashes (#crashes), i.e., the number of "unique              tion 𝑑, we measure agreement on superiority for pairs of fuzzers
+paths" that are exercised by crashing inputs. The number of unique            only where the difference in terms of both measures is statistically
+crashes, similar to the number of unique paths, is a standard but             significant (𝑝 ≤ {0.05, 0.001, 0.0001}) for at least 10% of the pro-
+contentious measure of bug finding. Crashes are flagged as such               grams (>= 3). We believe there is insufficient evidence for fuzzer
+by standard code sanitizers, such as ASAN [57]. For both mea-                 pairs where differences are statistically significant for the less than
+sures of bug finding, we directly evaluate bug finding on programs            10% of programs. Given a fuzzer pair, the coverage- and bug-based
+containing real bugs to mitigate threats to construct validity.               evaluation each "rates" which fuzzer is superior. We measure the
+                                                                              agreement on these ratings across (at least three) benchmark pro-
+2 Each   fuzzing campaign runs on separate compute instance, called runner.   grams. We also consider a third method using Spearman’s 𝜌.
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                     ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+                                                                         Experiment              FuzzBench
+   Disagreement proportion 𝑑 is easy to interpret. Given a pair of       Identifier              Commit         Description
+fuzzers where the differences in terms of coverage and bug finding       2021-02-17-bug-paper    38e344fe       20 runs of 23 hours, all fuzzers, all subjects
+are statistically significant for at least 10% of the programs, the      2021-08-19-crash-s      db192b60       30 runs of 23 hours, all fuzzers, 11 subjects
+                                                                         2021-08-19-crash-s2     db192b60       30 runs of 23 hours, all fuzzers, 11 subjects
+disagreement proportion 𝑑 gives the proportion of programs where
+both fuzzers are considered superior according to coverage or bug
+                                                                         Figure 5: Reproducibility. Our experiments can be repro-
+finding, respectively: 𝑑 = (1 − 𝑝𝑜 ).
+                                                                         duced using the exact same settings and version of our ex-
+   Cohen’s kappa 𝜅 a standard, more robust measure of inter-
+                                                                         periment infrastructure.
+rater agreement which also takes into account the possibility of
+the agreement occurring by chance [42, 59]. Given the same pair
+of fuzzers, Cohen’s kappa 𝜅 is computed as the difference between           Data Availability. The data used for our evaluation can be
+the relative observed agreement on the superiority of a fuzzer 𝑝𝑜        downloaded at from the corresponding FuzzBench reports at
+and the hypothetical probability of chance agreement 𝑝𝑒 divided              • https://www.fuzzbench.com/reports/<experiment-id>
+by the complement of the probability of chance agreement: 𝜅 =
+                                                                         where the experiment identifier is given in Figure 5.
+(𝑝𝑜 − 𝑝𝑒 )/(1 − 𝑝𝑒 ). Cohen’s interpretation is shown in Figure 4.b.
+                                                                            Data Analysis. We make our data analysis script available as
+   Spearman’s rho 𝜌 allows us to use all data points using an ordi-
+                                                                         Jupyter notebook together with all generated tables and images at:
+nal rather than a binary variable for superiority: 1 for the superior
+fuzzer, -1 for the inferior fuzzer, and 0 where the difference is not        • https://github.com/icse22data
+statistically significant according to the given 𝑝-value.                   Archival. For long-term archival, we also publish the data and
+   Statistical Significance. The evaluate the statistical significance   analysis script at the Zenodo research artifact archival platform.
+of the difference between two fuzzers, we report Mann–Whitney                • https://doi.org/10.5281/zenodo.6045830
+𝑈 test—following the recommendations by Arcuri et al. [1] on the
+evaluation of randomized algorithms and Klees et al. [36] on the         4 EXPERIMENTAL RESULTS
+evaluation of fuzzers. Mann-Whitney 𝑈 is a nonparametric test of
+the null hypothesis that, for randomly selected values 𝑋 and 𝑌 from
+                                                                         RQ1. Correlation
+two populations, the probability of 𝑋 being greater than 𝑌 is equal      We investigate whether a fuzzer that covers more code is also better
+to the probability of 𝑌 being greater than 𝑋 .                           at bug finding. We ask whether the coverage that a fuzzer achieves
+                                                                         is also a good predictor of the number of bugs found.
+3.6     Experiment Infrastructure                                           Methodology.3 To assess the correlation between coverage and
+We used the FuzzBench fuzzer evaluation platform [45] to conduct         bug finding, we prepare a scatter plot of the mean branch coverage
+our experiments. The system consists of a dispatcher (the “brain”        over the mean number of bugs found across all fuzzing campaigns
+of an experiment) and workers. The dispatcher dispatches jobs            for each program at any point in time (Fig. 6). For all three measures
+(a) to build fuzzers and benchmarks, (b) to start separate worker        of coverage, we also compute Spearman’s rank correlation between
+machines, each of which runs one fuzzing campaign for one {fuzzer        the mean coverage achieved and the mean number of bugs found
+× program} combination, (c) to measure the results of the fuzzing        during the average fuzzing campaign for each {program x fuzzer}
+campaigns and save results to a central SQL database, and (d) to         combination at any point in time (Fig. 7).
+generate reports based on the measurement results.                          Results. Figure 6 visually depicts the relationship between both
+   A measurement consists of measuring code coverage and crashes.        coverage and bug finding. The scatter plots often show an al-
+Many crashing inputs may reveal essentially the same bug. For this       most straight line, suggesting a very strong correlation. In fact, the
+reason, we employ a simple deduplication strategy to assign crash-       strength of the association between coverage and bug finding is
+ing inputs to bugs they reveal (cf. Section 3.4). For more details on    confirmed in Figure 7. For all three measures, we see an average
+FuzzBench, we refer the interested reader to the article by Metzman      Spearman’s rank correlation above 0.90, which we interpret as a
+et al. [45] which introduces the FuzzBench infrastructure.               very strong correlation (cf. Figure 4).
+   Each fuzzing campaign is run inside an Ubuntu 16.04 docker
+container on an n1-standard-1 virtual machine instance running             There is a strong correlation between the coverage a fuzzer
+on Google Cloud. Each instance has 1 virtual CPU core, 3.75 GB of          achieves and the number of bugs it finds in a program. As a
+RAM, and 30 GB of disk space available to use. By default, we run          fuzzer covers more code, it also finds more bugs.
+20 campaigns of 23 hours for each {fuzzer × program}-combination.
+                                                                            The scatter plot in Figure 6 also provides hints as to the functional
+3.7     Reproducibility                                                  relationship. The linear increase with the log-scale y-axis seems
+The FuzzBench fuzzer evaluation platform was designed to facili-         to suggests an exponential relationship: A linear increase in branch
+tate open science, rigorous evaluation, and reproducibility. Figure 5    coverage yields an exponential increase in the number of bugs
+shows the identifiers of the FuzzBench experiments for this paper.       found. While counterintuitive at first, it is not actually surprising if
+We also link the exact commit hash (i.e., version) of FuzzBench          we consider that most of the code has already been covered even at
+which fixes the exact versions of all fuzzers, all benchmark pro-        the start of the campaign. Each fuzzing campaign starts with a seed
+grams, and the entire experimental platform that was used for our        corpus that already covers much of the program, and we measure
+experiments. Each FuzzBench report (available at the link below)         3 The exact procedure can be found in our data analysis script which we have made
+describes precisely how our empirical analysis can be reproduced.        publically available.
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                                                                                                                                                 Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+
+                                             arrow                                        aspell                                    grok                                libgit2                                                     #Branches    #Paths     #Edges
+                         30                                           1.0                                          1.0                                1.5
+                                                                                                                                                      1.4
+                                                                                                                                                                                                                           arrow    0.999269     0.999276   0.999277
+                         25
+                                                                      0.5
+                                                                                                                                                      1.3
+                                                                                                                                                      1.2
+                                                                                                                                                                                                                           matio    0.990898     0.990896   0.990892
+                                                                                                                   0.3
+                                                                                                                                                                                                                             ndpi   0.888853     0.888625   0.888602
+                         20
+                                                                      0.3                                                                             1.1
+                         15
+                                                                                                                   0.1
+                                                                                                                                                      1.0
+                                                                                                                                                                                                                              njs   0.918627     0.918636   0.918627
+                                                                                                                                                      0.9
+                               4.0k 4.2k 4.4k 4.6k 4.8k                 5.2k       5.3k     5.4k     5.5k                8.0k 8.2k 8.4k 8.6k 8.8k           2.4k      2.4k    2.4k       2.4k                         openh264      0.969526     0.969552   0.969522
+                                             libhevc                                       libhtp                                  libxml2                              matio                                           poppler     0.949209     0.949217   0.949210
+                                                                                                                   1.0                                3.0                                                             wireshark     0.888212     0.888212   0.888212
+                                                                      1.0
+                        0.10                                                                                                                          2.5
+                                                                                                                                                                                                                           aspell   0.988724     0.988689   0.988703
+                                                                                                                                                                                                                             grok   0.880887     0.880876   0.880710
+                        0.05                                                                                       0.5
+                                                                                                                                                      2.0
+                        0.03                                          0.5
+
+                                                                      0.3
+                                                                                                                   0.3
+                                                                                                                                                      1.5                                                                 libgit2   0.605309     0.600231   0.602031
+                               4.0k     6.0k           8.0k             6.4k        6.5k          6.5k      6.5k            14.0k 16.0k 18.0k                 2.0k     2.2k       2.4k   2.6k                           libhevc     0.959148     0.959149   0.959147
+Avg. #Bugs Discovered
+
+
+
+
+                                              ndpi                                          njs
+                                                                                                                   3.0
+                                                                                                                                 openh264                            php−execute                                           libhtp   0.974873     0.965578   0.975135
+                         1.0                                         0.10                                                                             0.5
+                                                                                                                                                                                                                        libxml2     0.932176     0.932191   0.932172
+                                                                                                                                                      0.3
+                                                                     0.03                                          1.0                                                                                              php-execute     0.834285     0.834286   0.834285
+                         0.7
+                                                                     0.01                                                                             0.1                                                            php-parser     0.989402     0.989377   0.989400
+                         0.5                                                                                       0.3                                                                                                        stb   0.951317     0.951294   0.951250
+                                      2.0k       3.0k         4.0k          6.6k     6.8k         7.0k   7.2k            13.2k13.4k13.6k13.8k14.0k      130.0k
+                                                                                                                                                             140.0k
+                                                                                                                                                                  150.0k
+                                                                                                                                                                       160.0k
+                                                                                                                                                                            170.0k
+                                                                                                                                                                                                                             zstd   0.830236     0.830244   0.830233
+                                       php−parser                                         poppler                                    stb                              wireshark
+                         1.0
+                                                                                                                   3.5
+                                                                                                                                                      1.0                                                                Average    0.914762     0.913902   0.914553
+                                                                      1.4
+                         0.5
+                         0.3                                          1.2
+                                                                                                                   3.0                                0.3
+                                                                                                                                                                                                Figure 7: Average correlation (𝜌) between coverage and #bugs
+                                                         1.0
+                                                                                                                   2.5                                0.1
+                                                                                                                                                                                                found for all programs where at least one bug was found.
+                                  43.6k 44.0k 44.4k 44.8k 34.0k 35.0k 36.0k 37.0k                                          2.1k 2.2k 2.3k 2.4k 2.5k          360.0k
+                                                                                                                                                                  380.0k
+                                                                                                                                                                       400.0k
+                                                                                                                                                                            420.0k
+                                                                                                                                                                                 440.0k
+
+                                              zstd
+                                                                                                                                                                                                   Methodology (Superiority). From ten fuzzers, we can construct
+                        0.10
+                                                                                                                                                                                                45 unique pairs of fuzzers. For each fuzzer pair, each program, and
+                        0.03
+                                                                                                                                                                                                every measure, we determine effect size and statistical significance
+                        0.01
+                               8.5k 8.8k 9.0k 9.2k 9.5k                                                                                                                                         between both fuzzers in terms of mean and median of that measure
+                                                                                              Avg. #Branches Covered
+                                                                                                                                                                                                across 20 trials of 23h. For each fuzzer pair, if the difference in
+                                                                                                                                                                                                terms of the coverage and in terms of bug finding is statistically
+Figure 6: Scatter plot of the mean number of bugs found                                                                                                                                         significant at 𝑝 < {0.05, 0.001, 0.0001}, for at least 10% of programs,
+(on the log-scale) as the mean number of covered branches                                                                                                                                       we compute the agreement on superiority for this pair.
+increases in the average fuzzing campaign for a benchmark.                                                                                                                                         Results. Figure 8.a shows the agreement on ranking and supe-
+                                                                                                                                                                                                riority of a fuzzer in 23 hours campaigns. In terms of ranking, we
+                                                                                                                                                                                                observe a moderate agreement between coverage and bug finding.4
+the first data point after the first 15-minute interval, when most
+                                                                                                                                                                                                In Figure 1 the moderate agreement is illustrated by the large spread.
+of the "shallow" branches have already been covered. This can be
+                                                                                                                                                                                                In terms of superiority, for Cohen’s 𝜅 we observe a weak to moder-
+verified by looking at the start of the x-axis for each benchmark. We
+                                                                                                                                                                                                ate agreement for the average pair of fuzzers where the superiority
+can see that the majority of branches which are covered in 23 hours
+                                                                                                                                                                                                along both measures is statistically significant. Across all measures,
+have already been covered in the first 15 minutes. Covering a new
+                                                                                                                                                                                                if we benchmark the average fuzzer pair using a coverage- versus
+branch gets harder over time. Even if coverage is fully saturated
+                                                                                                                                                                                                bug-based approach, results disagree for 10% to 20% of programs.
+and not a single new branch can be covered, a fuzzer might still
+                                                                                                                                                                                                Figure 15 in the appendix shows a much lower agreement if we use
+find new bugs. This interpretation agrees with the observation by
+                                                                                                                                                                                                the difference in median instead of the mean to establish superiority.
+Wei et al. [61] who found, for random testing, that the majority of
+                                                                                                                                                                                                   Only if the difference in terms of branch coverage and the differ-
+bugs (>50%) were discovered in the last two thirds of the campaign,
+                                                                                                                                                                                                ence in terms of the number of bugs found is statistically significant
+when branch coverage increased only slightly from 90% to 94%.
+                                                                                                                                                                                                at 𝑝 ≤ 0.0001 (i.e., for 11 of 45 fuzzer pairs [24%]), we observe a
+                                                                                                                                                                                                strong agreement on the superiority of a fuzzer (𝜅 = 0.872). In this
+                   In our study, there appears to be an exponential relationship
+                                                                                                                                                                                                case, a coverage-based and a bug-based evaluation of those eleven
+                   between branch coverage and the number of bugs found.
+                                                                                                                                                                                                fuzzer pairs disagrees only for one benchmark (4.3%), on average.
+                                                                                                                                                                                                However, statistical significance at 𝑝 ≤ 0.0001 only of the difference
+                                                                                                                                                                                                in coverage is insufficient, we again only observe a weak agreement
+RQ2. Agreement: Coverage versus Bug Finding                                                                                                                                                     (see Figure 14 and Figure 9.d). The increase in agreement with sta-
+A strong correlation between two variables does not necessarily                                                                                                                                 tistical significance is not observed when we measure bug finding
+imply that they strongly agree [41, 55]. We investigate the degree                                                                                                                              using the time-to-error (TTE).
+to which the results of coverage-based benchmarking agree with
+the results of bug-based benchmarking.                                                                                                                                                            We observe a moderate agreement between a coverage-based and
+   Methodology (Ranking). For every {program × fuzzer × time                                                                                                                                      a bug-based benchmarking of fuzzer performance. For fuzzer
+stamp}-combination, we have twenty data points / trials. For every                                                                                                                                pairs, where the differences in terms of coverage and bug find-
+measure and for every {program × time stamp}-combination, we                                                                                                                                      ing is statistically significant, the results usually disagree for
+compute the fuzzer ranks by ordering all ten fuzzers according                                                                                                                                    10% to 20% of programs. Only for #branches versus #bugs, the
+to the average measured value across all twenty trials. For every                                                                                                                                 agreement on superiority increases as the statistical significance
+measure of coverage and every measure of bug finding, respectively,                                                                                                                               for both differences increases.
+we compute the agreement between the coverage-based and bug-
+based ranking (in terms of Spearman’s 𝜌).                                                                                                                                                       4 The   interpretation of these values can be found in Figure 4.
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                                                                 ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+                                                            #Bugs                                     Time-to-Error
+                                                                                                                                                                                            1.00
+                                         #Branches          #Edges            #Paths          #Branches #Edges      #Paths
+
+
+
+
+                                                                                                                                                             Agreement on Rank (Spearman)
+Ranking                              𝜌   = 0.498            0.376             0.376           0.373              0.313             0.329
+                                                                                                                                                                                            0.75
+Superiority (𝑝        ≤   0.05)      𝜅   = 0.533 (33%)      0.323 (27%)       0.535 (38%)     0.488 (31%)        0.322 (36%)       0.154 (33%)
+Superiority (𝑝        ≤   0.001)     𝜅   = 0.327 (24%)      0.450 (24%)       0.235 (24%)     0.612 (24%)        0.542 (22%)       0.485 (24%)
+Superiority (𝑝        ≤   0.0001)    𝜅   = 0.872 (24%)      0.428 (20%)       0.239 (24%)     0.553 (20%)        0.630 (22%)       0.496 (22%)                                              0.50
+
+Superiority (𝑝        ≤   0.05)      𝑑   = 0.113 (33%)      0.213 (27%)       0.162 (38%)     0.211 (31%)        0.201 (36%)       0.360 (33%)
+Superiority (𝑝        ≤   0.001)     𝑑   = 0.141 (24%)      0.144 (24%)       0.246 (24%)     0.177 (24%)        0.146 (22%)       0.166 (24%)                                              0.25
+Superiority (𝑝        ≤   0.0001)    𝑑   = 0.043 (24%)      0.150 (20%)       0.262 (24%)     0.204 (20%)        0.082 (22%)       0.183 (22%)
+Superiority (𝑝        ≤   0.05)      𝜌   = 0.524            0.374             0.424           0.367              0.421             0.274                                                                         bugs     tte
+
+Superiority (𝑝        ≤   0.001)     𝜌   = 0.437            0.397             0.319           0.375              0.376             0.379                                                    0.00
+                                                                                                                                                                                                   0      6         12          18   24
+Superiority (𝑝        ≤   0.0001)    𝜌   = 0.448            0.384             0.253           0.366              0.412             0.314                                                               Campaign lengths (in hours)
+
+(a) Agreement on the rank (first row) and superiority of a fuzzer in 23hr campaigns in terms of Cohen’s kappa (following three rows), disagreement
+proportion (middle three rows), and Spearman’s correlation (last three rows). Each cell shows the measure of agreement and some cells, in parenthesis,       (b) Agreement on ranks between measures of bug
+the proportion of fuzzer pairs where the differences are statistically significant at the corresponding p-value (𝑝 ≤ {0.05, 0.001, 0.0001}).                finding and #branches after a campaign of 𝑥 hours.
+
+
+                                         Figure 8: Agreement on ranking and superiority: Coverage versus Bug Finding
+
+   We also observe that the agreement on superiority is smallest                                               of 60 campaigns of twenty three hours for each {fuzzer × program}-
+for path coverage versus the number of bugs found, particularly                                                combination. From this set of 60 trials, we randomly sample 𝑛 trials
+for high significance thresholds. Path coverage has been a common                                              without replacement for each combination, where 𝑛 ∈ (1, 59), and
+performance measure for greybox fuzzers [17, 18, 68] despite its                                               compute agreement for those trials using the methodology specified
+obvious flaws [36, 38]. The minimal agreement suggests abandoning                                              in RQ2. To account for the randomness in the sampling, we repeat
+path coverage as performance measure.                                                                          this experiment 50 times.
+                                                                                                                  Results. Figure 10 shows the agreement on fuzzer ranking as the
+RQ3. Agreement Over Campaign Length                                                                            number of trials increases. For the first 20 trials in Figure 10.a, we
+We investigate whether there is a suitable campaign length where                                               can clearly see an increasing trend. As the number of trials increases,
+a coverage-based and a bug-based evaluation maximally agree.                                                   the agreement increases as well. However, from Figure 10.b, it seems
+   Methodology. To compute the agreement on ranking and supe-                                                  that there is not much benefit in running more than 20 trials as the
+riority of a fuzzer over time, we followed the same methodology                                                agreement increases only ever so slightly.
+specified in the discussion for RQ2 for every of the 92 time stamps.
+   Results. Figures 8.b and 9 show the agreement on ranks and                                                     The agreement between coverage-based and bug-based bench-
+superiority over time, respectively. In terms of ranking, the agree-                                              marking increases as the number of campaigns increases. How-
+ment remains moderate over the entire duration. In the first nine                                                 ever, there does not seem to be much benefit in running more
+hours, we observe an increase in agreement between an evaluation                                                  than 20 campaigns per {fuzzer × program}-combination.
+based on branch coverage versus one based on the number of bugs.
+However, the agreement on ranks decreases again, remaining mod-
+erate overall. In terms of superiority, we do not observe an increase
+                                                                                                               RQ5. Agreement with Shorter Trials
+in agreement (or a decrease in disagreement) over time for all three                                           We investigate the degree to which the results of (coverage-based
+levels of statistical significance. The agreement between coverage-                                            or bug-based) benchmarking using shorter campaigns (say 1 hour)
+and bug-based benchmarking appears to decrease slightly. The                                                   agree with the results of benchmarking using 23 hour campaigns.
+differences are statistically significant for 20-30% of fuzzer pairs.                                             Methodology. We measure the agreement on the ranking of a
+                                                                                                               fuzzer when ranked at the end of the campaign versus earlier in
+  In our study, we do not observe an increase in agreement (nor                                                the campaign, following the methodology we specified for RQ3.
+  a decrease in disagreement) over time.                                                                          Results. As we can see in Figure 11, there is a substantial dif-
+                                                                                                               ference in ranking when we rank fuzzers in a 1 hour campaign
+                                                                                                               versus a 23 hour campaign. In fact, there is only moderate agree-
+RQ4. Agreement Over Campaign Trials                                                                            ment between the results of a bug-based benchmarking at 1 hour
+We investigate whether there is a suitable number of campaigns                                                 versus those of a bug-based benchmarking at 23 hours. However,
+per {fuzzer × program}-combination where the a coverage-based                                                  as we expect, the agreement increases with campaign length. In
+and a bug-based evaluation maximally agree.                                                                    the bottom left of Figure 11.b, we can see that 15 minutes before
+   Methodology. All results reported above are derived from our                                                the end of the 23 hour campaign, the ranks very strongly agree.
+default setup where we run 20 campaigns of twenty three hours for
+each {fuzzer × program}-combination. In order to investigate, the                                                 The benchmarking results for rather short fuzzing campaigns
+agreement as the number of trials increases, we run an additional                                                 may not strongly agree with results of sufficiently long cam-
+40 campaigns for a subset5 of the benchmark programs for a total                                                  paigns. However, in our study, the benchmarking results for 12
+                                                                                                                  hour campaigns do already very strongly agree with benchmark-
+5 Benchmark programs with 60 trials for each of the 10 fuzzers: arrow, libarchive, matio,
+                                                                                                                  ing results of 23 hour campaigns.
+ndpi, njs, openh264, poppler, proj4, tpm2, and wireshark.
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                                                                                                                                                                                                                                                                                               Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+      (a) Agreement on superiority between measures                                                                                                   (b) Agreement on superiority between measures                                                             (c) Agreement on superiority between measures (d) Agreement on superiority when we only require
+       of bug finding and #branches after a campaign                                                                                                   of bug finding and #branches after a campaign                                                             of bug finding and #branches after a campaign the difference in coverage (but not bug finding) to
+       of 𝑥 hours. Difference significant at 𝑝 < 0.05.                                                                                                 of 𝑥 hours. Difference significant at 𝑝 < 0.001.                                                         of 𝑥 hours. Difference significant at 𝑝 < 0.0001.   be statistically significant at 𝑝 < 0.0001.
+                                           1.0                                                                                                                                              1.0                                                                                                    1.0                                                                                                                                           1.0
+      Agreement on Superiority (Cohen)
+
+
+
+
+                                                                                                                                                       Agreement on Superiority (Cohen)
+
+
+
+
+                                                                                                                                                                                                                                                              Agreement on Superiority (Cohen)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                            Agreement on Superiority (Cohen)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    0%          20%      40%
+                                           0.8                                                                                                                                              0.8                                                                                                    0.8                                                                                                                                           0.8                                           bugs      tte
+
+
+
+                                           0.6                                                                                                                                              0.6                                                                                                    0.6                                                                                                                                           0.6
+
+
+
+                                           0.4                                                                                                                                              0.4                                                                                                    0.4                                                                                                                                           0.4
+
+
+
+                                           0.2                                                                                                                                              0.2                                                                                                    0.2                                                                                                                                           0.2
+                                                               0%              20%             40%                                                                                                             0%            20%    40%                                                                                                           0%           20%         40%
+                                                                              bugs             tte                                                                                                                          bugs    tte                                                                                                                       bugs         tte
+                                           0.0                                                                                                                                              0.0                                                                                                    0.0                                                                                                                                           0.0
+                                                 0             6                   12                18        24                                                                                 0           6               12          18        24                                                                          0                6              12               18               24                                                                  0             6            12            18      24
+                                                          Campaign lengths (in hours)                                                                                                                      Campaign lengths (in hours)                                                                                                        Campaign lengths (in hours)                                                                                                      Campaign lengths (in hours)
+ Disagreement on Superiority (%Programs)
+
+
+
+
+                                                                                                                                                  Disagreement on Superiority (%Programs)
+
+
+
+
+                                                                                                                                                                                                                                                         Disagreement on Superiority (%Programs)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                       Disagreement on Superiority (%Programs)
+                                           40.0%                                                                                                                                            40.0%                                                                                                  40.0%                                                                                                                                         40.0%
+
+                                                                   0%              20%          40%                                                                                                               0%          20%    40%                                                                                                             0%         20%         40%                                                                                                         0%       20%      40%
+                                                                               bugs             tte                                                                                                                          bugs    tte                                                                                                                       bugs         tte                                                                                                                 bugs      tte
+                                           30.0%                                                                                                                                            30.0%                                                                                                  30.0%                                                                                                                                         30.0%
+
+
+
+
+                                           20.0%                                                                                                                                            20.0%                                                                                                  20.0%                                                                                                                                         20.0%
+
+
+
+
+                                           10.0%                                                                                                                                            10.0%                                                                                                  10.0%                                                                                                                                         10.0%
+
+
+
+
+                                           0.0%                                                                                                                                             0.0%                                                                                                   0.0%                                                                                                                                           0.0%
+                                                     0             6               12                18        24                                                                                     0           6            12         18        24                                                                               0               6           12              18               24                                                                       0            6         12           18      24
+                                                           Campaign lengths (in hours)                                                                                                                     Campaign lengths (in hours)                                                                                                        Campaign lengths (in hours)                                                                                                        Campaign lengths (in hours)
+
+
+Figure 9: Agreement on superiority over campaign length. We show agreement when evaluating fuzzer performance based
+on branch coverage versus the number of bugs (solid line) and branch coveraged versus the time-to-error (dashed line). The
+color shows the percentage of fuzzer pairs for which the differences are statistically significant at the corresponding 𝑝-value
+(𝑝 ≤ {0.05, 0.001, 0.0001}).
+
+                                           1.0                                                                                                          1.0                                                                                                                                                                                                                                                                                                                        0.25                         1
+                                                                                                                                                                                                                                                                                                                                    1.0
+                                                                                                                Agreement on ranking (Spearman)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          Spearman's p = 0.4      Spearman's p = 0.7
+                                                                                                                                                                                                                                                                                                     Agreement on Rank (Spearman)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                     10
+            Agreement on Rank (Spearman)
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      9
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      8
+                                           0.8                                                                                                          0.8                                                                                                                                                                                                                                                                                                           7
+                                                                                                                                                                                                                                                                                                                                    0.8                                                                                                                               6
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      5
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      4
+                                                                                                                                                                                                                                                                                                                                                                                                                                                  Rank at 23 hours
+
+                                           0.6                                                                                                          0.6                                                                                                                                                                                                                                                                                                           3
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      2
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      1
+                                                                                                                                                                                                                                                                                                                                    0.6
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    6                          22.75
+                                           0.4                                                                                                          0.4
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          Spearman's p = 0.91     Spearman's p = 1
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                     10
+                                                                                                                                                                                                                                                                                                                                                                                 shape                                                                                9
+                                                                                                                                                                                                                                                                                                                                    0.4                                                                                                                               8
+                                           0.2                                                                                                          0.2                                                                                                                                                                                                                                                                                                           7
+                                                                                                                                                                                                                                                                                                                                                                                           Bugs                                                                       6
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      5
+                                                                            bugs         tte                                                                                                                                                                                                                                                                                               Edges                                                                      4
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      3
+                                           0.0                                                                                                          0.0                                                                                                                                                                         0.2                                                                                                                               2
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      1
+                                                 0         4            8           12          16        20                                                                                  0       10     20        30     40    50         60                                                                                         0               6           12              18           24                                                                     1 2 3 4 5 6 7 8 9 10 1 2 3 4 5 6 7 8 9 10
+                                                         Number of Campaigns (Trials)                                                                                                               Number of Campaigns (Trials)                                                                                                                 Campaign length (in hours)                                                                                                      Rank at {0.25, 1, 6, 22.75} hours
+
+             (a) Agreement over 20 trials for all programs.                                                                                       (b) Agreement over 60 trials for a subset.                                                                                                        (a) Agreement on ranks between a campaign of                                                                                                 (b) Scatter plot of fuzzer ranks by #branches be-
+                                                                                                                                                                                                                                                                                                    length 𝑥 hours and one of length 23 hours. For in-                                                                                           tween a campaign of length {0.25, 1, 6, 22.75}
+                                                                                                                                                                                                                                                                                                    stance, in terms of the number of bugs found, the                                                                                            hours (facets) and a campaign of length 23 hours.
+Figure 10: Agreement as the number of trials increases. The                                                                                                                                                                                                                                         rank of a fuzzer after 1 hour moderately agrees                                                                                              Here, 𝑥 are the ranks at the given campaign
+                                                                                                                                                                                                                                                                                                    with the rank of that fuzzer after 23 hours.                                                                                                 length and 𝑦 are the ranks at 23 hours.
+solid line shows the average agreement on the ranking of a
+fuzzer when ranked using branch coverage versus the num-                                                                                                                                                                                                                                            Figure 11: Agreement within coverage- or bug-based bench-
+ber of bugs found. The dashed line shows the average agree-                                                                                                                                                                                                                                         marking as campaign length increases.
+ment on the ranking of a fuzzer when ranked using branch
+coverage versus the time it takes to find the first bug (TTE).
+                                                                                                                                                                                                                                                                                                   the baseline agreement between two random rounds of coverage-
+                                                                                                                                                                                                                                                                                                   based benchmarking. From the 60 trials per {fuzzer × program}-
+                                                                                                                                                                                                                                                                                                   combination generated for RQ4, we randomly sample 2 × 20 trials
+RQ6. Mitigations of Threats to Validity                                                                                                                                                                                                                                                            without replacement and compute agreement on ranks as specified
+We investigate several possible concerns and threats to validity.                                                                                                                                                                                                                                  in RQ2. To account for randomness, we repeat this experiment
+   (a) Baseline Agreement. A valid concern is that the results of                                                                                                                                                                                                                                  50 times. To discharge the concern, we expect a high agreement.
+coverage- and those of bug-based benchmarking may not agree                                                                                                                                                                                                                                        As we can see in Figure 12.a, we observe a very strong agreement
+simply because of some randomness in the measurement or bro-                                                                                                                                                                                                                                       on the rank of a fuzzer between two rounds of coverage-based
+ken measures of agreement. To investigate this concern, we check                                                                                                                                                                                                                                   benchmarking for every campaign length.
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                                                                                                          ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+
+                                                                                                                                                                       (a) The effect of randomness on the ranking within coverage-
+                                1.0                                                                            1.0
+
+
+
+
+                                                                                Agreement on Rank (Spearman)
+ Agreement on Rank (Spearman)
+
+
+
+
+                                0.8                                                                            0.8
+                                                                                                                                                                       based benchmarking is neglible. (b) Even though measures of
+                                                                                                                                                                       coverage do not agree with measures of bug finding, the mea-
+                                0.6                                                                            0.6                                                     sures agree within coverage-based and within bug-based bench-
+                                                                                                                                                                       marking, respectively. (c) The number of benchmark programs
+                                                                                                               0.4
+                                                                                                                                                                       has a substantial impact on our result. However, the variance in
+                                0.4
+
+
+
+                                0.2                                                                            0.2                                                     agreement is reasonably small for our benchmark size to sup-
+                                                                                                                                                bugs        tte
+                                                                                                                                                                       port our conclusion, we would suggest. We do not recommend
+                                0.0                                                                            0.0                                                     using less than 10 benchmark programs for coverage-based
+                                      0      6          12        18
+                                          Campaign lengths (in hours)
+                                                                           24                                        0       3       6      9
+                                                                                                                             Number of Programs
+                                                                                                                                                       12     15
+                                                                                                                                                                       fuzzer evaluation.
+(a) Agreement between two randomized rounds                                                 (b) Agreement as the number of benchmark
+       of coverage-based benchmarking.                                                                 programs increases.
+                                                                                                                                                                   5     THREATS TO VALIDITY
+                                          Figure 12: Investigating threats to validity.                                                                            As for any empirical study, there are various threats to the validity
+                                                                                                                                                                   of our results and conclusions.
+                                                                                                                                                                      One concern is internal validity, i.e., the degree to which our
+                                                                            #Bugs                                                      #Branches
+                                                                 Time-to-Error                                 #Crashes               #Edges   #Paths              study minimizes systematic error. For our selection of fuzzers and
+                                Ranking                        𝜌 = 0.671                                       0.645         𝜌   = 0.735       0.647               benchmark programs there is a risk of experimenter bias, selec-
+                                Superiority (𝑝   ≤   0.05)     𝜅 = 0.868 (31%)                                 0.893 (38%)   𝜅   = 0.785 (44%) 0.647 (42%)
+                                Superiority (𝑝   ≤   0.001)    𝜅 = 0.875 (18%)                                 1.000 (20%)   𝜅   = 0.746 (40%) 0.786 (38%)         tion bias, survivorship bias, and confirmation bias. To minimize
+                                Superiority (𝑝   ≤   0.0001)   𝜅 = 0.833 (13%)                                 1.000 (20%)   𝜅   = 0.666 (33%) 0.721 (33%)         experimenter and confirmation bias, fuzzers and programs were pre-
+                                Superiority (𝑝   ≤   0.05)     𝑑 = 0.040 (31%)                                 0.030 (38%)   𝑑   = 0.094 (44%) 0.083 (42%)
+                                Superiority (𝑝   ≤   0.001)    𝑑 = 0.042 (18%)                                 0.000 (20%)   𝑑   = 0.096 (40%) 0.065 (38%)         pared by independent developers. We picked programs randomly
+                                Superiority (𝑝       0.0001)   𝑑 = 0.056 (13%)                                 0.000 (20%)       = 0.114 (33%) 0.067 (33%)
+                                Superiority (𝑝
+                                                 ≤
+                                                 ≤   0.05)     𝜌 = 0.663                                       0.757
+                                                                                                                             𝑑
+                                                                                                                             𝜌   = 0.666       0.670
+                                                                                                                                                                   from the largest publicly available collection of fuzzer harnesses
+                                Superiority (𝑝   ≤   0.001)    𝜌 = 0.634                                       0.658         𝜌   = 0.670       0.703               for 500 open source projects. Each harness was prepared by the
+                                Superiority (𝑝   ≤   0.0001)   𝜌 = 0.556                                       0.647             = 0.626       0.669
+                                                                                                                             𝜌
+                                                                                                                                                                   corresponding maintainer. Each fuzzer was developed and added to
+                                                                                                                                                                   FuzzBench either by the fuzzer developer or the FuzzBench team
+Figure 13: Agreement among measures of bug finding (Col-                                                                                                           long before our study started. However, a possible cause of survivor-
+umn #Bugs) and measures of coverage (Column #Branches).                                                                                                            ship and selection bias is that – to keep experiment cost reasonable –
+                                                                                                                                                                   the benchmark programs were selected from OSS-Fuzz such that a
+                                                                                                                                                                   large number of bugs can be found. Many of those bugs were found
+   (b) Agreement between Measures. As discussed in Section 3.4,                                                                                                    by a subset of the evaluated fuzzers (e.g., AFL, AFL++, libFuzzer,
+we have several measures of bug finding and several (supplemen-                                                                                                    Honggfuzz). However, our study is not concerned with establishing
+tary) measures of code coverage. For a sound empirical analysis,                                                                                                   the state-of-the-art (finding which fuzzer is the best). Instead, we
+we would expect that all measures of bug finding strongly agree                                                                                                    are investigating the reliability of coverage-based benchmarking,
+and also that all measures of code coverage strongly agree along                                                                                                   which mitigates most risk of selection and confirmaion bias.
+all our measures of agreement. As we can see in Figure 13, there                                                                                                      Another concern is external validity, i.e., the degree to which
+is a strong agreement on superiority and ranking of a fuzzer when                                                                                                  our study can be generalized to and across other programs, fuzzers,
+comparing fuzzers in terms of time-to-error versus counting the                                                                                                    bugs, and measures. To the best of our knowledge, ours is the
+number of bugs found. Between measures of coverage, we identify                                                                                                    largest study across all these dimensions. We chose a large variety
+a strong correlation in most cases, as well.                                                                                                                       of widely-used open-source C programs from different domains.
+   (c) Agreement Over Programs. Despite this being one of the                                                                                                      Given the resuls in RQ6, we are confident that our results generalize
+largest empirical studies on the relationship between coverage and                                                                                                 to many more open-source C programs. We conduct our evaluation
+bug finding, a valid concern might be that the number of bench-                                                                                                    on a large number of actual bugs that these program contained
+mark programs is relatively small. To investigate this concern, we                                                                                                 organically some time in the past. We chose various, very successful
+randomly chose 𝑛 programs without replacement out of the 17                                                                                                        greybox fuzzers which are used at Google [23, 24], Microsoft [46],
+programs where our fuzzers find bugs, and we compute agreement                                                                                                     other companies and many independent security researchers [15].
+according to the methodology specified in RQ3, for 𝑛 ∈ (1, 17). To                                                                                                 However, there is no guarantee that our results extend to (bugs in)
+account for randomness, we repeat this experiment 50 times. Fig-                                                                                                   programs written in other programming languages or fuzzers that
+ure 12.b shows the scatter plot for the agreement on the randomly                                                                                                  are fundamentally different from greybox fuzzers. Even though our
+chosen programs as the number 𝑛 of programs increases (grey dots                                                                                                   benchmark programs contain more known bugs than any other
+and triangles), and the average agreement on fuzzer rank (solid                                                                                                    bug-based benchmark to-date, the number of bugs however is still
+and dashed line). As expected the average agreement is approxi-                                                                                                    low compared to e.g., the millions of branches in our benchmark
+mately constant as the number of programs increases. However, the                                                                                                  programs (Figure 2). The sensitivity analysis in RQ6 on the impact
+variance is substantial, ranging between neglible and very strong                                                                                                  of the number of programs chosen for the evaluation provides some
+agreement when only 𝑛 = 5 benchmarks are chosen. However, at                                                                                                       confidence that our result extends to other, similar bugs. Therefore,
+𝑛 = 16 benchmarks, the agreement ranges only within the moderate                                                                                                   it will be useful to replicate this study with other set of subject
+agreement band. Repeating this experiment by chosing programs                                                                                                      programs with real-bugs in them, preferably with an even larger
+with replacement gives similar results.                                                                                                                            and more diverse set of bugs.
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                    Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+
+   A third concern is construct validity, i.e., the degree to which our    bug has been triggered. Like bugs that cannot be exposed upon
+study measures what it purports to be measuring. In this paper, we         covering a branch, the coverage of that branch itself may already
+are interested in “fuzzer effectiveness”, and one of the main ques-        require a certain program state.
+tions we would like to answer is whether code coverage is a good               One hypothesis [64] is that faults could be empirically distributed
+metric for assessing it. We do this by comparing coverage metrics to       in a non-uniform manner across the code base [47]. As future work,
+bug-finding metrics, i.e., two of them: “number of bugs found” and         it will be interesting to investigate this and other hypotheses. Maybe
+“time to first bug found”. Our assumption is that these bug based          we can find specific properties or differences between the typical
+metrics are the ones that really capture fuzzer effectiveness. Among       program location (or branch) and fault locations or error conditions
+these two we believe that number of bugs is the more robust metric,        more generally. It would be interesting whether achieving these
+as it is a more granular, give that it considers multiple bug data         error conditions (versus achieving code coverage) require different
+points, not just a single one. It is still possible, however, that due     capabilities from a fuzzer.
+to our limited benchmark program set, which contains a limited                 Yet, we still believe that code coverage is an excellent measurable
+set of bugs, the number of bugs that a fuzzer finds in this set is an      objective function for a fuzzer. Coverage guidance has been the key
+imperfect metric (as discussed for the threat of the number of bugs        to the recent success of greybox fuzzers [2]. Maximizing coverage
+on external validity). More specifically we measure “number of             is the key measurable objective in search-based software testing
+unique bugs found”, where “unique” does not have an operational            [43, 44]. Bugs are simply too rare to become an explicit objective
+or universal definition. We rely on the OSS-Fuzz crash deduplica-          or to provide a reasonable signal during fuzzing.
+tion algorithm for this, which has been successfully field tested              In our results, we see that the fuzzer that is better in achieving
+over many years. Our results for RQ6, where we assess baseline             coverage may still be worse in finding bugs. The goal of this paper
+agreement and the agreement between measures provide further               is to investigate how often we can observe this “asymmetry”. If this
+confidence in construct validity. We do not make the Clean Program         happens rarely, that means that fuzzers can be soundly evaluated
+Assumption [8] since coverage-based and bug-based benchmarking             solely based on code coverage. If this happens often on the other
+are conducted on the same program version.                                 hand, then it is recommended to use both code coverage and bugs
+   Finally, conclusion validity relates to the reliability of our mea-     to evaluate fuzzers.
+surements and the validity of our statistical tests. We have addressed
+these issues by using well established standard methods to compute         7     FUZZER BENCHMARKING: CHALLENGES
+correlation, agreement and statistical significance. To triangulate,             AND RECOMMENDATIONS
+we use multiple measures (Section 3.4). We also carried out various
+sanity checks regarding agreement in Section 4 under RQ6.                  In 2020 alone, almost 50 fuzzing papers were published in the top
+                                                                           conferences for Security and Software Engineering [62]. To ensure
+                                                                           a realistic assessment of progress in the field, we need sound mea-
+6    DISCUSSION: REACHING A LOCATION                                       sures of fuzzer effectiveness. Only if our measures reflect a fuzzer’s
+     VERSUS EXPOSING A BUG                                                 true bug finding ability, can we properly evaluate new tools against
+                                                                           the state-of-the-art. Indeed, while improvements might seem rea-
+The underpinning assumption of coverage-based benchmarking is
+                                                                           sonable, only a rigorous evaluation will tell for sure. For instance,
+that bugs that live in code that is not covered can also not be exposed.
+However, we find that the results of coverage-based benchmarking           ForAllSecure, the winning team at the DARPA Cyber Grand Chal-
+may not reliably indicate the results of bug-based benchmarking.           lenge, burned one CPU-year every night to assess the previous
+So, how is reaching a certain location related to exposing a bug?          day’s improvements [48]. Nighswander adds that "many times ‘ob-
+   In our experiments, we use code sanitizers [11, 57] to detect bugs.     vious’ changes made things worse and stupid things helped. Stats
+During compilation, a code sanitizer injects assertions into the pro-      are vital". Towards this end, large benchmarking platforms have
+gram binary that fail when, e.g., a memory safety issue occurs. So,        been built [28, 39, 45]; e.g., FuzzBench [45] has facilitated rapid and
+covering those locations should be enough, right? Indeed, as Zhang         dramatic advances among the most successful fuzzers [31]. How-
+and Mesbah [67] find that assertion coverage is strongly correlated        ever, according to a recent survey of researchers and practitioners,
+with test suite effectiveness. Österlund et al. [49] demonstrate that      sound fuzzer benchmarking remains a key open challenge [2].
+                                                                              In this paper, we provide the first empirical evidence that the
+a fuzzer that focusses on the coverage of sanitizer instrumenta-
+                                                                           results of a coverage-based evaluation are not strongly indicative
+tion outperforms existing fuzzers. Now, branch coverage subsumes
+"sanitizer coverage". Then, why do we not see a strong agreement           of the fuzzers’ relative bug finding ability. However, as we shall see
+between results of coverage-based and bug-based benchmarking?              next, a rigorous bug-based evaluation is not without perils, either.
+   If fuzzers were guaranteed to detect the bug when they reached
+the corresponding code location, then evaluating fuzzers based on          7.1    Challenges of Bug-Based Benchmarking
+code coverage would be equivalent to evaluating them based on              Economic considerations. The most effective fuzzer finds the
+bugs found. However, simply reaching a given branch or statement           largest number of bugs. To evaluate the effectiveness of a fuzzer,
+is often insufficient to trigger a bug. The root cause of a bug may        in the perfect world, we would select a random, representative
+not be localized in a single statement, but a certain sequence of          sample of programs (where we do not know whether any bugs can
+statements may need to be executed throughout the code before              be found). However, we would quickly find that bugs are sparse
+the bug is exposed [6]. On the other hand, triggering the bug may          in the typical program, and that the cost for experiments with a
+be as hard as covering that program branch which reports that the          reasonable statistical power would be prohibitive.
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                                     ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+   Synthetic bugs. To make bug-based benchmarking more eco-                                R3 Select as baseline the fuzzer that was extended to implement
+nomical, researchers have proposed to articially inflate the number                           the technical contributions and make sure that the configura-
+of bugs in these programs using synthetic bugs [7, 13, 51, 52, 54].                           tions (parameters, initial seeds, dictionaries, etc.) are equiva-
+However, it is no final consensus on whether the synthetic bugs are                           lent. For instance, to demonstrate the advantages of structure-
+realisitic [7, 21, 25]. In fact, as future work, we suggest to conduct                        aware fuzzing [53], we would implement structure-aware
+a similar analysis of agreement, as proposed in this work, between                            fuzzing into a structure-unaware fuzzer and compare the ex-
+benchmarking based on artificial bugs versus real bugs.                                       tended against the baseline fuzzer. This improves construct
+   Ground truth. Alternatively, researchers have been curating                                validity and allows to attribute precisely the observed perfor-
+real bugs that were historically found in programs [5, 6, 16, 27, 28,                         mance improvements to the proposed technical contributions.
+34, 60]. While this approach is both economical and provides a                                A comparison to other fuzzers may be conducted optionally if
+more representative, objective ground truth, it is subject to several                         the authors wish to establish the new fuzzer as the new state-
+threats to validity that might not be obvious to the uninformed                               of-the-art. However, note that the observed improvements
+experimenter. (a) Evaluating fuzzers based on previously discovered                           may be largely due to design and engineering differences (e.g.,
+bugs introduces a survivorship bias: Fuzzers that are better at finding                       Honggfuzz versus AFL).
+previously undiscovered bugs may appear worse than they are. On                            R4 Consider using a "training set" as benchmarks during the
+the other hand, fuzzers that contributed to the original discovery                            fuzzer development and a "validation set" possibly using an
+of some of the ground truth bugs may appear better than they are.                             independent benchmarking platform for the actual empiri-
+(b) To increase the number of bugs in a program (and to reduce the                            cal evaluation. This allows authors to reduce overfitting and
+benchmarking cost), curators may "front-port" several old bugs into                           confirmation bias.
+one version. This introduces artificial bug masking and interaction                        R5 Measure and report both, coverage- and bug-based metrics to
+effects, posing a threat to construct valdity. (c) To simplify bug                            provide a holistic assessment of fuzzer performance. Use clas-
+counting and to provide the same bug oracle to all fuzzers, curators                          sical measures of coverage to facilitate (future) comparisons
+may manually translate each bug into a localized if-statement. This                           across various fuzzers. Do not use fuzzer-specific measures
+introduces an observer-expectancy bias. For instance, in this work,                           (such as AFL’s number of paths). Use the same measurement
+the relationship between coverage and bug finding is precisely the                            tooling and procedure across all fuzzers and programs to
+subject of our study (Section 6)?                                                             increase internal validity. Consider using a post hoc bug iden-
+   Overfitting. Given a ground truth benchmark, researchers might                             tification (Section 3.2) rather than ground truth bugs to reduce
+be enticed to iteratively and unknowingly tune their fuzzer imple-                            threats to internal validity, such as survivorship bias.
+mentation to the bugs in the benchmark. Zeller et al. [65, 66] identify
+                                                                                           R6 Assess and report various, non-parametric measures of effect
+a particularly severe case of this confirmation bias which invalidates
+                                                                                              size and statistical significance, such as Vargha-Delaney’s 𝐴ˆ12
+some empirical evidence in a well-cited paper. They recommend
+                                                                                              and Mann–Whitney 𝑈 test, respectively [1]. This allows to
+to augment bug-based evaluation with a coverage-based evalua-
+                                                                                              quantify the magnitude of the differences and the degree to
+tion: "During testing, executing a location is a necessary condition
+                                                                                              which the differences can be explained due to randomness.
+for finding a bug in that very location. Since we are still far from
+reaching satisfying results in covering functionality, improvements                        R7 Discuss potential threats to validity and your strategies to miti-
+in code coverage are important achievements regardless of bugs                                gate the identified threats. For instance, discuss your strategies
+being found" [65].                                                                            to mitigate selection, survivorship, observer-expectancy, and
+                                                                                              confirmation bias. If indicated, conduct an empirical evalua-
+7.2     Recommendations                                                                       tion of potential threats to validity.
+                                                                                           R8 Report all specific parameters of the experimental setup (in-
+For future evaluations of fuzzer performance, based on these results
+                                                                                              cluding how the programs, bugs, and initial seed corpus were
+and our experience [45], we make the following recommendations.
+                                                                                              chosen [30]), publish the tools (fuzzer and baseline) and the
+In the order of their appearance in the benchmarking process:
+                                                                                              benchmark (programs and bugs) to faciliate the reproducibil-
+  R1 If possible, select at least 10 respresentative programs. For each                       ity of the results. Publish data, analysis, and figures to facilitate
+     fuzzer-program combination, conduct at least 10 (better 20)                              open access. Upload all artifacts to an open-access repository
+     campaigns of at least 12 (better 24) hours. Increasing these                             like Zenodo for long-term archival [29]. Reproducibility is the
+     values improves generality and statistical power of the results.                         foundation of sound scientific progress.
+  R2 Select "real-world programs" that represent programs that are
+     typically fuzzed in practice. Select "real-world bugs" that rep-                     ACKNOWLEDGMENTS
+     resent the set of bugs which are typically found in programs
+                                                                                          We gratefully acknowledge the contributions of the Fuzzbench
+     used in practice.6 Improving the representativeness of the
+                                                                                          team. We also thank Stephan Lipp (TU Munich), Adrian Herrera
+     benchmark increases the external validity of the results. If ex-
+                                                                                          (ANU), Mathias Payer (EPFL), and Rahul Gopinath (CISPA) for their
+     periment cost are a concern, authors can prioritize programs
+                                                                                          feedback on earlier versions of this paper.
+     that (are likely to) contain a large number of bugs.
+                                                                                          REFERENCES
+6 As future work, we suggest to evaluate the representativeness of synthetic bugs using
+                                                                                          [1] Andrea Arcuri and Lionel Briand. 2014. A Hitchhiker’s guide to statistical tests
+a similar experimental setup as presented in Section 3.                                       for assessing randomized algorithms in software engineering. Software Testing,
+ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA                                                                                      Marcel Böhme, László Szekeres, and Jonathan Metzman
+
+
+                                                                                        #Bugs                               Time-to-Error
+                                                                        #Branches       #Edges        #Paths        #Branches #Edges      #Paths
+                                     Superiority (𝑝   ≤   0.05)     𝜅   = 0.374 (44%)   0.329 (44%)   0.418 (44%)   0.371 (44%)   0.217 (44%)   0.234 (44%)
+                                     Superiority (𝑝   ≤   0.001)    𝜅   = 0.360 (40%)   0.240 (40%)   0.315 (42%)   0.305 (42%)   0.255 (38%)   0.177 (38%)
+                                     Superiority (𝑝   ≤   0.0001)   𝜅   = 0.388 (33%)   0.204 (33%)   0.320 (42%)   0.336 (42%)   0.247 (38%)   0.101 (38%)
+                                     Superiority (𝑝   ≤   0.05)     𝑑   = 0.227 (44%)   0.241 (44%)   0.248 (44%)   0.251 (44%)   0.330 (44%)   0.313 (44%)
+                                     Superiority (𝑝   ≤   0.001)    𝑑   = 0.208 (40%)   0.247 (40%)   0.261 (42%)   0.241 (42%)   0.271 (38%)   0.304 (38%)
+                                     Superiority (𝑝   ≤   0.0001)   𝑑   = 0.179 (33%)   0.235 (33%)   0.273 (42%)   0.241 (42%)   0.265 (38%)   0.321 (38%)
+
+
+        Figure 14: Agreement on superiority when only requiring the difference in coverage to be statistically significant.
+
+                                                                                        #Bugs                               Time-to-Error
+                                                                        #Branches       #Edges        #Paths        #Branches #Edges      #Paths
+                                     Ranking                        𝜌   = 0.492         0.378         0.361         0.376         0.315         0.324
+                                     Superiority (𝑝   ≤   0.05)     𝜅   = 0.312 (33%)   0.038 (27%)   0.378 (38%)   0.233 (31%)   0.245 (36%)   0.151 (33%)
+                                     Superiority (𝑝   ≤   0.001)    𝜅   = 0.260 (24%)   0.359 (24%)   0.102 (24%)   0.521 (24%)   0.331 (22%)   0.485 (24%)
+                                     Superiority (𝑝   ≤   0.0001)   𝜅   = 0.621 (24%)   0.428 (20%)   0.025 (24%)   0.553 (20%)   0.476 (22%)   0.496 (22%)
+                                     Superiority (𝑝   ≤   0.05)     𝑑   = 0.291 (33%)   0.328 (27%)   0.293 (38%)   0.301 (31%)   0.309 (36%)   0.404 (33%)
+                                     Superiority (𝑝   ≤   0.001)    𝑑   = 0.189 (24%)   0.166 (24%)   0.309 (24%)   0.200 (24%)   0.203 (22%)   0.184 (24%)
+                                     Superiority (𝑝   ≤   0.0001)   𝑑   = 0.097 (24%)   0.150 (20%)   0.316 (24%)   0.204 (20%)   0.150 (22%)   0.183 (22%)
+
+
+ Figure 15: Agreement on ranking and superiority when considering the difference in terms of Median instead of the Mean.
+
+
+     Verification and Reliability 24, 3 (2014), 219–250. https://doi.org/10.1002/stvr.1486                   Automated Vulnerability Addition. In Proceedings of the IEEE Security and Privacy
+ [2] Marcel Böhme, Cristian Cadar, and Abhik Roychoudhury. 2021. Fuzzing: Chal-                              (S&P’16). 1–10. https://doi.org/10.1109/SP.2016.15
+     lenges and Opportunities. IEEE Software (2021), 1–9. https://doi.org/10.1109/MS.                 [14]   Matthew B. Dwyer, Suzette Person, and Sebastian Elbaum. 2006. Controlling
+     2020.3016773                                                                                            Factors in Evaluating Path-Sensitive Error Detection Techniques. In Proceedings
+ [3] Marcel Böhme, Valentin Manès, and Sang Kil Cha. 2020. Boosting Fuzzer Effi-                             of the 14th ACM SIGSOFT International Symposium on Foundations of Software
+     ciency: An Information Theoretic Perspective. In Proceedings of the 14th Joint                          Engineering (FSE’06). Association for Computing Machinery, New York, NY, USA,
+     meeting of the European Software Engineering Conference and the ACM SIGSOFT                             92–104. https://doi.org/10.1145/1181775.1181787
+     Symposium on the Foundations of Software Engineering (ESEC/FSE). 970–981.                        [15]   Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++ :
+     https://doi.org/10.1145/3368089.3409748                                                                 Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on
+ [4] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. 2019. Coverage-                                   Offensive Technologies (WOOT 20). USENIX Association. https://www.usenix.
+     Based Greybox Fuzzing as Markov Chain. IEEE Transactions on Software Engi-                              org/conference/woot20/presentation/fioraldi
+     neering 45, 5 (2019), 489–506. https://doi.org/10.1109/TSE.2017.2785841                          [16]   Gordon Fraser and Andrea Arcuri. 2012. Sound Empirical Evidence in Software
+ [5] Marcel Böhme and Abhik Roychoudhury. 2014. CoREBench: Studying Complexity                               Testing. In Proceedings of the 34th International Conference on Software Engineering
+     of Regression Errors. In Proceedings of the 2014 International Symposium on                             (Zurich, Switzerland) (ICSE ’12). IEEE Press, 178–188.
+     Software Testing and Analysis (San Jose, CA, USA) (ISSTA 2014). Association for                  [17]   Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao, Xiaojun Qin, Dong Wu, and
+     Computing Machinery, New York, NY, USA, 105–115. https://doi.org/10.1145/                               Zuoning Chen. 2020. GREYONE: Data Flow Sensitive Fuzzing. In 29th USENIX
+     2610384.2628058                                                                                         Security Symposium (USENIX Security 20). USENIX Association, 2577–2594.
+ [6] Marcel Böhme, Ezekiel O. Soremekun, Sudipta Chattopadhyay, Emamurho                              [18]   Shuitao Gan, Chao Zhang, Xiaojun Qin, Xuwen Tu, Kang Li, Zhongyu Pei, and
+     Ugherughe, and Andreas Zeller. 2017. Where is the Bug and How is It Fixed?                              Zuoning Chen. 2018. CollAFL: Path Sensitive Fuzzing. In 2018 IEEE Symposium
+     An Experiment with Practitioners. In Proceedings of the 2017 11th Joint Meet-                           on Security and Privacy (SP). 679–696. https://doi.org/10.1109/SP.2018.00040
+     ing on Foundations of Software Engineering (Paderborn, Germany) (ESEC/FSE                        [19]   Miroslav Gavrilov, Kyle Dewey, Alex Groce, Davina Zamanzadeh, and Ben Hard-
+     2017). Association for Computing Machinery, New York, NY, USA, 117–128.                                 ekopf. 2020. A Practical, Principled Measure of Fuzzer Appeal: A Preliminary
+     https://doi.org/10.1145/3106237.3106255                                                                 Study. In 20th IEEE International Conference on Software Quality, Reliability
+ [7] Joshua Bundt, Andrew Fasano, Brendan Dolan-Gavitt, William Robertson, and                               and Security, QRS 2020, Macau, China, December 11-14, 2020. IEEE, 510–517.
+     Tim Leek. 2021. Evaluating Synthetic Bugs. In Proceedings of the 2021 ACM Asia                          https://doi.org/10.1109/QRS51102.2020.00071
+     Conference on Computer and Communications Security (ASIA CCS ’21). Association                   [20]   Gregory Gay. 2017. Generating effective test suites by combining coverage criteria.
+     for Computing Machinery, New York, NY, USA, 716–730. https://doi.org/10.                                In International Symposium on Search Based Software Engineering. Springer, 65–
+     1145/3433210.3453096                                                                                    82.
+ [8] Thierry Titcheu Chekam, Mike Papadakis, Yves Le Traon, and Mark Harman.                          [21]   Sijia Geng, Yuekang Li, Yunlan Du, Jun Xu, Yang Liu, and Bing Mao. 2020. An
+     2017. An Empirical Study on Mutation, Statement and Branch Coverage Fault                               Empirical Study on Benchmarks of Artificial Software Vulnerabilities. (March
+     Revelation That Avoids the Unreliable Clean Program Assumption. In 2017                                 2020). https://arxiv.org/abs/2003.09561v1
+     IEEE/ACM 39th International Conference on Software Engineering (ICSE). 597–                      [22]   Milos Gligoric, Alex Groce, Chaoqiang Zhang, Rohan Sharma, Mohammad Amin
+     608. https://doi.org/10.1109/ICSE.2017.61                                                               Alipour, and Darko Marinov. 2015. Guidelines for Coverage-Based Comparisons
+ [9] Yiqun T. Chen, Rahul Gopinath, Anita Tadakamalla, Michael D. Ernst, Reid                                of Non-Adequate Test Suites. ACM Transaction on Software Engineering and
+     Holmes, Gordon Fraser, Paul Ammann, and René Just. 2020. Revisiting the Rela-                           Methodology 24, 4, Article 22 (Sept. 2015), 33 pages. https://doi.org/10.1145/
+     tionship between Fault Detection, Test Adequacy Criteria, and Test Set Size. In                         2660767
+     Proceedings of the 35th IEEE/ACM International Conference on Automated Software                  [23]   Google. 2021. ClusterFuzz. https://google.github.io/clusterfuzz/. [Online; ac-
+     Engineering (Virtual Event, Australia) (ASE ’20). Association for Computing Ma-                         cessed 16.Aug.21].
+     chinery, New York, NY, USA, 237–249. https://doi.org/10.1145/3324884.3416667                     [24]   Google. 2021. OSS-Fuzz: Continuous Fuzzing for Open Source Software. https:
+[10] Jaeseung Choi, Joonun Jang, Choongwoo Han, and Sang Kil Cha. 2019. Grey-                                //github.com/google/oss-fuzz. [Online; accessed 16.Aug.21].
+     Box Concolic Testing on Binary Code. In Proceedings of the 41st International                    [25]   Rahul Gopinath, Philipp Görz, and Alex Groce. 2022. Mutation Analysis: An-
+     Conference on Software Engineering (Montreal, Quebec, Canada) (ICSE ’19). IEEE                          swering the Fuzzing Challenge. arXiv:2201.11303 [cs.SE]
+     Press, 736–747. https://doi.org/10.1109/ICSE.2019.00082                                          [26]   Rahul Gopinath, Carlos Jensen, and Alex Groce. 2014. Code Coverage for Suite
+[11] LLVM Developers. 2021. Clang 13 documentation - UndefinedBehaviorSanitizer                              Evaluation by Developers. In Proceedings of the 36th International Conference on
+     (UBSan). https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html. [Online;                          Software Engineering (Hyderabad, India) (ICSE 2014). Association for Computing
+     accessed 16.Aug.21].                                                                                    Machinery, New York, NY, USA, 72–82. https://doi.org/10.1145/2568225.2568278
+[12] LLVM Developers. 2022. Clang 15 documentation - Source-based Code Cover-                         [27]   Péter Gyimesi, Béla Vancsics, Andrea Stocco 0001, Davood Mazinanian, Árpád
+     age. https://clang.llvm.org/docs/SourceBasedCodeCoverage.html#interpreting-                             Beszédes, Rudolf Ferenc, and Ali Mesbah 0001. 2019. BugsJS: a Benchmark of
+     reports. [Online; accessed 10.Feb.22].                                                                  JavaScript Bugs. In Proceedings of the 12th International Conference on Software
+[13] Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti,                           Testing, Verification and Validation. IEEE, 90–101. https://doi.org/10.1109/ICST.
+     Wil Robertson, Frederick Ulrich, and Ryan Whelan. 2016. LAVA: Large-scale
+On the Reliability of Coverage-Based Fuzzer Benchmarking                                                                       ICSE ’22, May 21–29, 2022, Pittsburgh, PA, USA
+
+
+     2019.00019                                                                                New York, NY, USA, 1393–1403. https://doi.org/10.1145/3468264.3473932
+[28] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. 2020. Magma: A Ground-             [46] Microsoft. 2021. OneFuzz: A self-hosted Fuzzing-As-A-Service platform. https:
+     Truth Fuzzing Benchmark. In Proceedings of the joint international conference on          //github.com/microsoft/onefuzz. [Online; accessed 16.Aug.21].
+     Measurement and modeling of computer systems (SIGMETRICS’20). Association            [47] Stephan Neuhaus, Thomas Zimmermann, Christian Holler, and Andreas Zeller.
+     for Computing Machinery, New York, NY, USA, 29 pages. https://doi.org/10.                 2007. Predicting Vulnerable Software Components. In Proceedings of the 14th ACM
+     1145/3428334                                                                              Conference on Computer and Communications Security (Alexandria, Virginia, USA)
+[29] Ben Hermann, Stefan Winter, and Janet Siegmund. 2020. Community Expec-                    (CCS ’07). Association for Computing Machinery, New York, NY, USA, 529–540.
+     tations for Research Artifacts and Evaluation Processes. In Proceedings of the            https://doi.org/10.1145/1315245.1315311
+     28th ACM Joint Meeting on European Software Engineering Conference and Sympo-        [48] Tyler Nighswander. 2020.         Twitter.    https://twitter.com/tylerni7/status/
+     sium on the Foundations of Software Engineering (Virtual Event, USA) (ESEC/FSE            1374519171413766145. [Online; accessed 16.Aug.21].
+     2020). Association for Computing Machinery, New York, NY, USA, 469–480.              [49] Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. 2020.
+     https://doi.org/10.1145/3368089.3409767                                                   ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium
+[30] Adrian Herrera, Hendra Gunadi, Shane Magrath, Michael Norrish, Mathias Payer,             (USENIX Security 20). USENIX Association, 2289–2306.
+     and Antony L. Hosking. 2021. Seed Selection for Successful Fuzzing. In Proceed-      [50] Mike Papadakis, Donghwan Shin, Shin Yoo, and Doo-Hwan Bae. 2018. Are
+     ings of the 30th ACM SIGSOFT International Symposium on Software Testing and              Mutation Scores Correlated with Real Fault Detection? A Large Scale Empirical
+     Analysis (Virtual, Denmark) (ISSTA 2021). Association for Computing Machinery,            Study on the Relationship between Mutants and Real Faults. In Proceedings of
+     New York, NY, USA, 230–243. https://doi.org/10.1145/3460319.3464795                       the 40th International Conference on Software Engineering (Gothenburg, Sweden)
+[31] Marc Heuse. 2020.          Twitter.     https://twitter.com/hackerschoice/status/         (ICSE ’18). Association for Computing Machinery, New York, NY, USA, 537–548.
+     1302514351811842056. [Online; accessed 16.Aug.21].                                        https://doi.org/10.1145/3180155.3180183
+[32] Laura Inozemtseva and Reid Holmes. 2014. Coverage is Not Strongly Correlated         [51] Jibesh Patra and Michael Pradel. 2021. Semantic Bug Seeding: A Learning-
+     with Test Suite Effectiveness. In Proceedings of the 36th International Conference        Based Approach for Creating Realistic Bugs (ESEC/FSE 2021). Association for
+     on Software Engineering (Hyderabad, India) (ICSE 2014). Association for Comput-           Computing Machinery, New York, NY, USA, 906–918. https://doi.org/10.1145/
+     ing Machinery, New York, NY, USA, 435–445. https://doi.org/10.1145/2568225.               3468264.3468623
+     2568271                                                                              [52] Jannik Pewny and Thorsten Holz. 2016. EvilCoder: Automated Bug Insertion
+[33] Marko Ivankovic, Goran Petrovic, René Just, and Gordon Fraser. 2019. Code                 (ACSAC ’16). Association for Computing Machinery, New York, NY, USA, 214–225.
+     coverage at Google. In Proceedings of the 2019 27th ACM Joint Meeting on European         https://doi.org/10.1145/2991079.2991103
+     Software Engineering Conference and Symposium on the Foundations of Software         [53] Van-Thuan Pham, Marcel Böhme, Andrew E. Santosa, Alexandru R. Căciulescu,
+     Engineering (ESEC/FSE ’19). Association for Computing Machinery, New York,                and Abhik Roychoudhury. 2019. Smart Greybox Fuzzing. IEEE Transactions on
+     NY, USA, 955–963.                                                                         Software Engineering (2019), 1–17.
+[34] René Just, Darioush Jalali, and Michael D. Ernst. 2014. Defects4J: A Database        [54] Subhajit Roy, Awanish Pandey, Brendan Dolan-Gavitt, and Yu Hu. 2018. Bug
+     of Existing Faults to Enable Controlled Testing Studies for Java Programs. In             Synthesis: Challenging Bug-Finding Tools with Deep Faults. In Proceedings of
+     Proceedings of the 2014 International Symposium on Software Testing and Analysis          the 2018 26th ACM Joint Meeting on European Software Engineering Conference
+     (San Jose, CA, USA) (ISSTA 2014). Association for Computing Machinery, New                and Symposium on the Foundations of Software Engineering (ESEC/FSE 2018).
+     York, NY, USA, 437–440. https://doi.org/10.1145/2610384.2628055                           Association for Computing Machinery, New York, NY, USA, 224–234. https:
+[35] René Just, Darioush Jalali, Laura Inozemtseva, Michael D. Ernst, Reid Holmes, and         //doi.org/10.1145/3236024.3236084
+     Gordon Fraser. 2014. Are Mutants a Valid Substitute for Real Faults in Software      [55] Patrick Schober, Christa Boer, and Lothar A Schwarte. 2018. Correlation coeffi-
+     Testing?. In Proceedings of the 22nd ACM SIGSOFT International Symposium on               cients: appropriate use and interpretation. Anesthesia & Analgesia 126, 5 (2018),
+     Foundations of Software Engineering (Hong Kong, China) (FSE 2014). Association            1763–1768.
+     for Computing Machinery, New York, NY, USA, 654–665. https://doi.org/10.             [56] Kostya Serebryany. 2021. libFuzzer - a library for coverage-guided fuzz testing.
+     1145/2635868.2635929                                                                      https://llvm.org/docs/LibFuzzer.html. [Online; accessed 16.Aug.21].
+[36] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.         [57] Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitry
+     Evaluating Fuzz Testing. In Proceedings of the 2018 ACM SIGSAC Conference on              Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In Proceed-
+     Computer and Communications Security (CCS ’18). Association for Computing                 ings of the 2012 USENIX Conference on Annual Technical Conference (Boston, MA)
+     Machinery, 2123–2138. https://doi.org/10.1145/3243734.3243804                             (USENIX ATC’12). USENIX Association, USA, 28.
+[37] Pavneet Singh Kochhar, Ferdian Thung, and David Lo. 2015. Code coverage              [58] Robert Swiecki. 2021. Honggfuzz. https://github.com/google/honggfuzz. [Online;
+     and test suite effectiveness: Empirical study with real bugs in large systems.            accessed 16.Aug.21].
+     In 2015 IEEE 22nd International Conference on Software Analysis, Evolution, and      [59] Howard E.A. Tinsley and David J. Weiss. 2000. 4 - Interrater Reliability and
+     Reengineering (SANER). 560–564. https://doi.org/10.1109/SANER.2015.7081877                Agreement. In Handbook of Applied Multivariate Statistics and Mathematical
+[38] Caroline Lemieux and Koushik Sen. 2018. FairFuzz: A Targeted Mutation Strat-              Modeling, Howard E.A. Tinsley and Steven D. Brown (Eds.). Academic Press, San
+     egy for Increasing Greybox Fuzz Testing Coverage. In Proceedings of the 33rd              Diego, 95–124. https://doi.org/10.1016/B978-012691360-6/50005-7
+     ACM/IEEE International Conference on Automated Software Engineering (ASE             [60] David A. Tomassi, Naji Dmeiri, Yichen Wang, Antara Bhowmick, Yen-Chuan
+     2018). Association for Computing Machinery, New York, NY, USA, 475–485.                   Liu, Premkumar T. Devanbu, Bogdan Vasilescu, and Cindy Rubio-González. 2019.
+     https://doi.org/10.1145/3238147.3238176                                                   BugSwarm: mining and continuously growing a dataset of reproducible failures
+[39] Stephan Lipp, Daniel Elsner, Thomas Hutzelmann, Sebastian Banescu, Alexan-                and fixes. In ICSE. IEEE / ACM, 339–349.
+     der Pretschner, and Marcel Böhme. 2022. FuzzTastic: A Fine-grained, Fuzzer-          [61] Yi Wei, Bertrand Meyer, and Manuel Oriol. 2012. Is Branch Coverage a Good
+     agnostic Coverage Analyzer. In Proceedings of the 44th International Confer-              Measure of Testing Effectiveness? Springer Berlin Heidelberg, Berlin, Heidelberg,
+     ence on Software Engineering Companion (ICSE’22 Companion). 1–5. https:                   194–212. https://doi.org/10.1007/978-3-642-25231-0_5
+     //doi.org/10.1145/3510454.3516847                                                    [62] Cheng Wen. 2021. Recent Papers Related To Fuzzing. https://github.com/
+[40] Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and                wcventure/FuzzingPaper. [Online; accessed 16.Aug.21].
+     Raheem Beyah. 2019. MOPT: Optimized Mutation Scheduling for Fuzzers. In              [63] MichałZalewski. 2021. american fuzzy lop (2.52b). https://lcamtuf.coredump.cx/
+     Proceedings of the 28th USENIX Conference on Security Symposium (Santa Clara,             afl/. [Online; accessed 16.Aug.21].
+     CA, USA) (SEC’19). USENIX Association, USA, 1949–1966.                               [64] Andreas Zeller. 2022. A Tweet. https://twitter.com/AndreasZeller/status/
+[41] J. Martin Bland and DouglasG. Altman. 1986. Statistical methods for assessing             1468142858553200644. [Online; accessed 10.Feb.22].
+     agreement between two methods of clinical measurement. The Lancet 327,               [65] Andreas Zeller, Sascha Just, and Kai Greshake. 2019. When Results Are All
+     8476 (1986), 307–310. https://doi.org/10.1016/S0140-6736(86)90837-8 Originally            That Matters: Consequences. https://andreas-zeller.blogspot.com/2019/10/when-
+     published as Volume 1, Issue 8476.                                                        results-are-all-that-matters.html. [Online; accessed 16.Aug.21].
+[42] Mary L McHugh. 2012. Interrater reliability: the kappa statistic. Biochemia          [66] Andreas Zeller, Sascha Just, and Kai Greshake. 2019. When Results Are All
+     medica 22, 3 (2012), 276–282.                                                             That Matters: The Case of the Angora Fuzzer. https://andreas-zeller.blogspot.
+[43] P. McMinn. 2004. Search-based software test data generation: a survey: Research           com/2019/10/when-results-are-all-that-matters-case.html. [Online; accessed
+     Articles. Software Testing, Verification & Reliability 14 (2004), 105–156.                16.Aug.21].
+[44] Phil McMinn. 2011. Search-Based Software Testing: Past, Present and Future. In       [67] Yucheng Zhang and Ali Mesbah. 2015. Assertions Are Strongly Correlated
+     2011 IEEE Fourth International Conference on Software Testing, Verification and           with Test Suite Effectiveness. In Proceedings of the 2015 10th Joint Meeting on
+     Validation Workshops. 153–163. https://doi.org/10.1109/ICSTW.2011.100                     Foundations of Software Engineering (Bergamo, Italy) (ESEC/FSE 2015). Association
+[45] Jonathan Metzman, László Szekeres, Laurent Maurice Romain Simon, Read Trev-               for Computing Machinery, New York, NY, USA, 214–224. https://doi.org/10.
+     elin Sprabery, and Abhishek Arya. 2021. FuzzBench: An Open Fuzzer Bench-                  1145/2786805.2786858
+     marking Platform and Service. In Proceedings of the 29th ACM Joint Meeting on        [68] Xiaogang Zhu, Shigang Liu, Xian Li, Sheng Wen, Jun Zhang, Seyit Ahmet
+     European Software Engineering Conference and Symposium on the Foundations of              Çamtepe, and Yang Xiang. 2020. DeFuzz: Deep Learning Guided Directed Fuzzing.
+     Software Engineering (ESEC/FSE 2021). Association for Computing Machinery,                CoRR abs/2010.12149 (2020).
+

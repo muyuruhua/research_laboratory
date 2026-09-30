@@ -1,0 +1,1233 @@
+                             Large Language Model guided
+                                   Protocol Fuzzing
+
+                        Ruijie Meng∗ , Martin Mirchev∗ , Marcel Böhme† and Abhik Roychoudhury∗
+                                                   ∗ National
+                                                          University of Singapore
+                                                    † MPI-SP
+                                                          and Monash University
+                              {ruijie, mmirchev, abhik}@comp.nus.edu.sg, marcel.boehme@mpi-sp.org
+
+    Abstract—How to find security flaws in a protocol implemen-       that is directly or indirectly connected to the internet. Protocol
+tation without a machine-readable specification of the protocol?      implementations thus constitute a critical attack surface that
+Facing the internet, protocol implementations are particularly        must be automatically and continuously rid of security flaws.
+security-critical software systems where inputs must adhere to a      A simple arbitrary code execution vulnerability in a widely-
+specific structure and order that is often informally specified in    used protocol implementation renders even the most secure
+hundreds of pages in natural language (RFC). Without some
+machine-readable version of that protocol, it is difficult to
+                                                                      software systems vulnerable to malicious remote attacks.
+automatically generate valid test inputs for its implementation           From a research point of view, protocol implementations
+that follow the required structure and order. It is possible to       constitute stateful systems that are difficult to test. The same
+partially alleviate this challenge using mutational fuzzing on a      input executed twice might give different outputs every time.
+set of recorded message sequences as seed inputs. However, the
+set of available seeds is often quite limited and will hardly cover
+                                                                      Finding a vulnerability in a specific protocol state requires
+the great diversity of protocol states and input structures.          sending the right inputs in the right order. For instance, some
+                                                                      protocols require an initialization or handshake message before
+    In this paper, we explore the opportunities of systematic         other types of messages can be exchanged. For the receiver to
+interaction with pre-trained large language models (LLMs),            properly parse that message and progress to the next state, the
+which have ingested millions of pages of human-readable protocol
+                                                                      message must follow a specific format. However, by default,
+specifications, to draw out machine-readable information about
+the protocol that can be used during protocol fuzzing. We use         we can assume neither to know the correct structure nor the
+the knowledge of the LLMs about protocol message types for            correct order of those messages.
+well-known protocols. We also checked the LLM’s capability                Mutation-based protocol fuzzing reduces the dependence
+in detecting “states” for stateful protocol implementations by
+                                                                      on a machine-readable specification of that required message
+generating sequences of messages and predicting response codes.
+Based on these observations, we have developed an LLM-guided          structure or order by fuzzing recorded message sequences
+protocol implementation fuzzing engine. Our protocol fuzzer           [36], [38], [7], [32]. The simple mutations often preserve
+C HATAFL constructs grammars for each message type in a               the required protocol while still corrupting the message se-
+protocol, and then mutates messages or predicts the next messages     quences enough to expose errors. However, the effectiveness
+in a message sequence via interactions with LLMs. Experiments         of mutation-based protocol fuzzers is limited by the quality
+on a wide range of real-world protocols from P RO F UZZ B ENCH        and diversity of the recorded seed message sequences, and the
+show significant efficacy in state and code coverage. Our LLM-        available simple mutations do not help in the effective coverage
+guided stateful fuzzer was compared with state-of-the-art fuzzers     of the otherwise rich input or state space.
+AFLN ET and NSF UZZ. C HATAFL covers 47.60% and 42.69%
+more state transitions, 29.55% and 25.75% more states, and                To foster the adoption of a protocol among the participants
+5.81% and 6.74% more code, respectively. Apart from enhanced          of the internet, almost all popular, widely-used protocols are
+coverage, C HATAFL discovered nine distinct and previously            specified in publicly available documents, which are often
+unknown vulnerabilities in widely-used and extensively-tested         hundreds of pages long and written in natural language. What
+protocol implementations while AFLN ET and NSF UZZ only               if we could programmatically interrogate the natural language
+discovered three and four of them, respectively.
+                                                                      specification of the protocol whose implementation we are
+                                                                      testing? How could we use such an opportunity to resolve the
+                       I.   I NTRODUCTION                             challenges of existing approaches to protocol fuzzing?
+    The development of an automatic vulnerability discovery               In this paper, we explore the utility of large language
+tool for protocol implementations is particularly interesting         models (LLMs) to guide the protocol fuzzing process. Fed
+both, from a practical and from a research point of view.             with many terabytes of data from websites and documents on
+   From a practical point of view, protocol implementations           the internet, LLMs have recently been shown to accurately
+are the most exposed components of every software system              answer specific questions about any topic, at all. An LLM
+                                                                      like ChatGPT 4.0 has also consumed natural-language proto-
+                                                                      col specifications. The recent, tremendous success of LLMs
+Network and Distributed System Security (NDSS) Symposium 2024         provides us with the opportunity to develop a system that puts
+26 February - 1 March 2024, San Diego, CA, USA                        a protocol fuzzer into a systematic interaction with the LLM,
+ISBN 1-891562-93-2                                                    where the fuzzer can issue very specific tasks to the LLM.
+https://dx.doi.org/10.14722/ndss.2024.24556
+www.ndss-symposium.org                                                   We call this approach LLM-guided protocol fuzzing and
+present three concrete components. Firstly, the fuzzer uses the                      Method    S   URL   S Version  CRLF
+LLM to extract a machine-readable grammar for a protocol that                                  P         P
+is used for structure-aware mutation. Secondly, the fuzzer uses                     Header Filed Name : Value  CRLF
+the LLM to increase the diversity of messages in the recorded                                              …
+message sequences that are used as initial seeds. Lastly, the
+fuzzer uses the LLM to break out of a coverage plateau, where                       Header Filed Name :           Value        CRLF
+the LLM is prompted to generate messages to reach new states.                        CRLF
+    Our results for all text-based protocols in the P RO -                                 (a) Structure of RTSP client requests.
+F UZZ B ENCH protocol fuzzer benchmark [33] demonstrate the
+effectiveness of the LLM-guided approach: Compared to the                PLAY rtsp://127.0.0.1:8554/aacAudioTest/ RTSP/1.0\r\n
+baseline (AFLN ET [36]) into which our approach was im-                  CSeq: 4\r\n
+plemented, our tool C HATAFL covers almost 50% more state                User-Agent: ./testRTSPClient (LIVE555 Streaming Media v2018.08.28)\r\n
+                                                                         Session: 000022B8\r\n
+transitions, 30% more states, and 6% more code. C HATAFL                 Range: npt=0.000-\r\n
+shows similar improvements over the state-of-the-art (NSF UZZ            \r\n
+[38]). In our ablation study, starting from the baseline we                         (b) Example of RTSP PLAY client request from Live555.
+found that enabling (i) the grammar extraction, (ii) the seed
+enrichment, and (iii) the saturation handler one by one allows         Fig. 1. Structure of RTSP client requests in (a), and a PLAY client request
+C HATAFL to achieve the same code coverage 2.0, 4.6, and               from Live555 in (b).
+6.1 times faster, respectively, as the baseline achieves in 24
+hours. C HATAFL is highly effective at finding critical secu-          a common protocol. Many of the most widely-used protocols
+rity issues in protocol implementations. In our experiments,           have been designed by the Internet Engineering Task Force
+C HATAFL discovered nine distinct and previously unknown               (IETF) and published as Request for Comments (RFC). These
+vulnerabilities in widely-used and extensively-tested protocol         RFCs are mostly written in natural language and can be
+implementations.                                                       hundreds of pages long. For instance, the Real Time Streaming
+                                                                       Protocol (RTSP) 1.0 protocol is published as RFC 2326 and
+In summary, our paper makes the following contributions:               is 92 pages long.1 As internet-facing software components,
+   •    We build a large language model (LLM) guided                   protocol implementations are security-critical. Security flaws
+        fuzzing engine for protocol implementations to over-           in protocol implementations have often been exploited to
+        come the challenges of existing protocol fuzzers. For          achieve remote code execution (RCE).
+        deeper behavioral coverage of such protocols, on-the-              A protocol specifies the general structure and order of
+        fly state inference is needed - which is accomplished          the messages to be exchanged. An example of the structure
+        by interrogating an LLM, like ChatGPT, about the               of an RTSP message is shown in Figure 1: Apart from a
+        state machine and input structure of a given protocol.         header specifying message type (PLAY), address, and protocol
+   •    We present three strategies for integrating an LLM             version, the message consists of key-value pairs (key: value)
+        into a mutation-based protocol fuzzer, each of which           separated by carriage return and line feed characters (CRLF;
+        explicitly addresses an identified challenge of protocol       \r\n). The required order of RTSP messages is shown in
+        fuzzing. We develop an extended greybox fuzzing                Figure 2: Starting from the INIT state, only a message of type
+        algorithm and implement it as a prototype C HATAFL.            SETUP or ANNOUNCE would lead to a new state (READY).
+        The tool is publicly available at                              To reach the PLAY state from the INIT state, at least two
+                                                                       messages of specific types and structures are required.
+              https://github.com/ChatAFLndss/ChatAFL
+                                                                            A protocol fuzzer automatically generates message se-
+   •    We conducted experiments that demonstrate that our             quences that ideally follow the required structure and order of
+        LLM-guided stateful fuzzer prototype C HATAFL is               that protocol. We can distinguish two types of protocol fuzzers.
+        substantially more effective than the state-of-the-art         A generator-based protocol fuzzer [3], [25], [19] is given
+        AFLN ET and NSF UZZ in terms of the coverage of                machine-readable information about the protocol to generate
+        the protocol state space and the protocol implementa-          random message sequences from scratch. However, a protocol
+        tion code. Apart from enhanced coverage, C HATAFL              implementation itself, the manually written generator often
+        discovered nine previously unknown vulnerabilities in          only covers a small portion of the protocol specification, and
+        widely-used protocol implementations, the majority of          its implementation is tedious and error-prone [36].
+        which could not be found by AFLN ET and NSF UZZ.
+                                                                           A mutation-based protocol fuzzer [36], [38] uses a set of
+           II.   BACKGROUND AND M OTIVATION                            pre-recorded message sequences as seed inputs for mutation.
+                                                                       The recording ensures that the message structure and order
+   We start by introducing the main technical concepts in              are valid while mutational fuzzing will slightly corrupt both
+protocol fuzzing and elucidating the key open challenges that          [36]. In fact, all recently proposed protocol fuzzers, such as
+we seek to address in this paper. We then provide some                 AFLN ET [36] and NSF UZZ [38] follow this approach.
+background on large language models and our motivation.
+                                                                          Challenges. However, as a state-of-the-art (SOTA) ap-
+A. Protocol Fuzzing                                                    proach, mutation-based protocol fuzzing still faces several
+                                                                       challenges:
+    In order to facilitate the systematic and reliable exchange
+of information on the Internet, all participants agree to use            1 RFC   2326 (RTSP): https://datatracker.ietf.org/doc/html/rfc2326.
+
+
+                                                                   2
+                                Teardown
+                                                                                                      PLAY <Value> RTSP/1.0 \r\n
+  Describe/                     Setup/Options/         Play/Setup/Options/                            CSeq: <Value>\r\n
+  Options/                SetParameter/GetParameter          GetParameter/
+  Teardown                                                    SetParameter                            User-Agent: <Value>\r\n
+                       Setup/                  Play                                                   Session: <Value>\r\n
+                     Announce
+           INIT                  READY                   PLAY                                         Range: <Value>\r\n
+                     Teardown                  Pause                                                  \r\n
+                            Pause          Record                                Fig. 3.   Grammar for the RTSP PLAY client request.
+          Teardown
+                                RECORD
+                                                                                 initial seeds (C1), we propose to ask the LLM to add a random
+                                                                                 message to a given seed message sequence. But does this really
+                           Record /Setup/Options/
+                         SetParameter/GetParameter                               increase the diversity and the validity of the messages? To
+                                                                                 combat the unknown structure of messages (C2), we propose
+Fig. 2.    The state machine for the RTSP protocol from RFC 2326.
+                                                                                 to ask the LLM to provide machine-readable information
+                                                                                 about the message structure (i.e., the grammar) for every
+    •       (C1) Dependence on initial seeds. The effectiveness
+                                                                                 message type. But how good are those grammars compared
+            of mutation-based protocol fuzzers is severely limited
+                                                                                 to the ground truth and which message types are covered? To
+            by the provided initial seed inputs. The pre-recorded
+                                                                                 navigate the unknown state space (C3), we propose to ask the
+            message sequences will hardly cover the great diver-
+                                                                                 LLM, given the recent message exchange between fuzzer and
+            sity of protocol states and input structures as discussed
+                                                                                 protocol implementation, to return a message that would lead
+            in the protocol specification.
+                                                                                 to a new state. But does this really help us transition to a new
+    •       (C2) Unknown message structure. Without machine-                     state? We will investigate these questions carefully within the
+            readable information about the message structure, the                following case study.
+            fuzzer cannot make structurally interesting changes
+            to the seed messages, e.g., to construct messages of                 III.      C ASE S TUDY: T ESTING THE C APABILITIES OF LLM S
+            unseen types or to remove, substitute, or add an entire,                                 FOR P ROTOCOL F UZZING
+            coherent data structure to a seed message.
+                                                                                     In our study, we selected the Real Time Streaming Pro-
+    •       (C3) Unknown state space. Without machine-                           tocol (RTSP), along with its implementation L IVE 5552 from
+            readable information about the state space, the fuzzer               P RO F UZZ B ENCH [33]. RTSP is an application-level protocol
+            cannot identify the current state or be directed to                  for control over the delivery of data with real-time properties.
+            explore previously unseen states.                                    L IVE 555 implements RTSP in accordance with RFC 2326,
+                                                                                 functioning as a streaming server in entertainment and com-
+B. Large Language Models                                                         munications systems to manage streaming media servers. It is
+    Emerging pre-trained Large Language Models (LLMs)                            included in P RO F UZZ B ENCH, a widely-used benchmark for
+have demonstrated impressive performance on natural lan-                         stateful fuzzers of network protocols [36], [7], [38]. P RO -
+guage tasks, such as text generation [11], [44], [15] and                        F UZZ B ENCH comprises a suite of representative open-source
+conversations [43], [34]. LLMs have also been proven effective                   network servers for popular protocols, with L IVE 555 being
+in translating natural language specifications and instructions                  among them. Therefore, the study results on L IVE 555 would
+into executable code [20], [24], [14]. These models have                         be a strong indication of whether LLMs can effectively guide
+been trained on extensive corpora and possess the ability to                     protocol fuzzing. Our study was carried out in the state-of-the-
+execute specific tasks without the need for additional training                  art ChatGPT model 3 . In this section, we mainly demonstrate
+or hard coding [12]. They are invoked and controlled simply                      the capabilities of LLMs. Our approach and the corresponding
+by providing a natural language prompt. The degree to which                      prompts will be discussed more precisely in Section IV.
+LLMs understand the tasks depends largely on the prompts
+provided by users.                                                               A. Lifting Message Grammars: Quality and Diversity
+    The capabilities of LLMs have various implications for                           We ask the LLM to provide machine-readable information
+network protocols. Network protocols are implemented in ac-                      about the message structure (i.e., the grammar), and we evalu-
+cordance with the RFCs, which are written in natural language                    ate the quality of the generated grammars and the diversity of
+and available online. Since LLMs are pre-trained on billions                     message types covered w.r.t. the ground truth. To establish the
+of internet samples, they should be capable of understanding                     ground-truth grammar, two authors spent a total of 8 hours in
+RFCs as well. Additionally, LLMs have already demonstrated                       reading the RFC 2326, and manually and individually extract-
+strong text-generation capabilities. Considering messages are                    ing the corresponding grammar with the perfect agreement.
+in text format to be transmitted between servers and clients,                    We finally extracted the ground-truth grammar for 10 types of
+generating messages for LLMs should be straightforward.                          client requests specific to the RTSP protocol, each consisting of
+These capabilities of LLMs have the potential to address the                     about 2 to 5 header fields. Figure 3 shows the PLAY message
+open challenges of mutation-based protocol fuzzing. Moreover,                    grammar, corresponding to the grammar of the PLAY client
+the inherently automatic and easy-to-use attributes of LLMs                      request shown in Figure 1. The PLAY grammar includes 4
+align harmoniously with the design concept of fuzzing.                           essential header fields: CSeq, User-Agent, Session, and Range.
+   Motivation. In this paper, we propose to use LLMs to                            2 L IVE 555   available at http://www.live555.com/
+guide the protocol fuzzing. To alleviate the dependence on                         3 Available   at https://platform.openai.com/docs/models/gpt-3-5
+
+
+                                                                             3
+                                                                               Table I.     Processed results of client requests after being sent to the server.
+            50   50   50   50   50   50   48
+     50                                        47
+                                                    43     42                       Status      Accepted       Unsupported         Session-Mismatch
+                                                                                    Ratio         55.1%             20.4%                     24.5%
+
+     25
+                                                                               state-of-the-art fuzzers AFLNet and NSfuzz, and none of these
+                                                                               missing message types were generated. Therefore, it is crucial
+                                                                1   1          to enhance the initial seeds. Can we use the LLM to generate
+      0
+                                                                               client requests and augment the initial seed corpus?
+                                                                                   It would be optimal if the LLM could not only generate
+                                                                               accurate message contents but also insert the messages into
+                                                                               the appropriate locations of the client-request sequence. It
+                                                                               is known that the servers of network protocols are typically
+Fig. 4. Types of client requests in the answer set and the corresponding       stateful reactive systems. This feature determines that for a
+occurrence times for each type.                                                client request to be accepted by servers, it must satisfy two
+                                                                               mandatory conditions: (1) it appears in the appropriate states,
+Additionally, certain request types have specific header fields.               and (2) the message contents are accurate.
+For example, Transport is specific to SETUP requests, Session
+applies to all types except SETUP and OPTIONS, and Range                           To investigate this capability of the LLM, we requested
+is specific to PLAY, PAUSE, and RECORD requests.                               it to generate 10 messages for each of the 10 types of
+                                                                               client requests, resulting in a total of 100 client requests.5
+    To obtain the LLM grammar for analysis, we randomly                        Subsequently, we verified whether the client requests were
+sampled 50 answers from the LLM for the RTSP protocol and                      placed in the appropriate locations within a given client-request
+consolidated them into one answer set. 4 As shown in Figure 4,                 sequence. For this purpose, we compared them against the
+the LLM generates grammars for all ten message types that                      RTSP state machine shown in Figure 2, because the message
+we expected to see appear in over 40 answers from the LLM.                     sequences should transit based on the state machine. Once
+Additionally, the LLM occasionally generated 2 random types                    we ensured that a sequence of client requests was accurate
+of client requests, such as “SET DESCRIPTION”; however,                        based on the state machine, we sent it to the L IVE 555 server.
+each random type only appeared once in our answer set.                         By examining the response code from the server, we could
+    Furthermore, we examined the quality of the LLM-                           determine if the message content was accurate, thereby double-
+generated grammar. For 9 out of the 10 message types, the                      checking the message order as well.
+LLM produced a grammar that is identical to the ground-                            Our study results demonstrate that LLM is capable of
+truth grammar extracted from RFC for all answers. The only                     generating accurate messages and enriching the initial seeds.
+exception was the PLAY client request, where the LLM                           99% of the collected client requests were placed in the accurate
+overlooked the (optional) “Range” field in some answers. Upon                  positions. The only exception is that a “DESCRIBE” client
+further examination of the PLAY grammar in the entire answer                   request was inserted after the “SETUP” client requests. As only
+set, we discovered that the LLM accurately generated the                       one exception appeared, we consider the LLM performance
+PLAY grammar, including the “Range” field, in 35 answers                       to be acceptable. We sent the client-request sequences to the
+but omitted it in 15 answers. These findings demonstrate the                   L IVE 555 server and the processed results were shown in
+LLM’s ability to generate highly accurate message grammar,                     Table I. Approximately 55% of client requests can be directly
+which motivates us to leverage grammar to guide mutation.                      accepted by the server with the successful response code
+                                                                               “2xx”. However, unsuccessful cases are not due to lacking
+ The LLM generates machine-readable information for the                        capability of the LLM. In the unsuccessful set, 20.4% of
+ structures of all types of RTSP client requests that match                    the messages happened because L IVE 555 does not support
+ the ground truth, although there is some stochasticity.                       the functionality for “ANNOUNCE” and “RECORD”, despite
+                                                                               being included in its RFC. The remaining cases were attributed
+                                                                               to incorrect session IDs in the “PLAY”, “TEARDOWN”,
+B. Enriching the Seed Corpus: Diversity and Validity                           “GET PARAMETER” and “SET PARAMETER” requests. A
+    We ask the LLM to add a random message to a given seed                     session ID is dynamically assigned by the server and included
+message sequence and evaluate the diversity and validity of                    in the server response. Since the LLM lacks this context
+the message sequences. In P RO F UZZ B ENCH, the initial seed                  information, it is not able to generate a correct session ID.
+corpus of L IVE 555 comprises only 4 types of client requests                  However, when we replaced the session ID with the correct
+out of 10 present in the ground truth: DESCRIBE, SETUP,                        one, all of these messages were accepted by the server.
+PLAY, and TEARDOWN. The absence of the remaining 6                                 For our approach, we developed two methods to improve
+types of client requests leaves a significant portion of the                   the LLM’s capability of incorporating correct session IDs when
+RTSP state machine unexplored, as shown in Figure 2. While                     provided with additional context information. We first included
+it is possible for the fuzzers to generate the missing six                     the server’s responses in the prompt and then requested the
+types of client requests, the likelihood is relatively low. To                 LLM to generate the same types of messages. At this time,
+validate this observation, we examined seeds generated by                      the generated client requests were directly accepted by the
+  4 We   discuss the prompt engineering in Section IV-A.                         5 We   discuss the detailed model prompt in Section IV-B.
+
+
+                                                                           4
+                                                                                          failed to cover more states. Besides, there is also a small
+                 81%                                   16%                                percentage of inappropriate messages, which account for about
+                                                                                          2%, 10%, 1%, and 1% in our case study. These results
+                                                10%
+                         17%                                                              demonstrate that the LLMs have the capability to infer the
+                                                              74%                         protocol states albeit with extremely occasional mistakes.
+                                  2%
+                                                                                              Moreover, the generated types of client requests exhibit
+                                                                                          diversity. The LLM successfully generated client requests
+          (a) In the INIT state                 (b) In the READY state                    that encompass all state transitions for each individual state.
+                                                                                          Besides, the LLM also generated 2 to 5 appropriate types of
+                   1%                                    1%                               client requests. These results further demonstrate the potential
+              10%                                                                         of the LLM to guide fuzzing, enabling it to surpass the
+                                                                                          coverage plateau and explore a wide range of state transitions.
+                                                   30%
+                                                                                           Of the LLM-generated client requests, 69% to 89% induced
+                   89%                                       69%
+                                                                                           a transition to a different state, covering all state transitions
+                                                                                           for each individual state.
+
+         (c) In the PLAY state                 (d) In the RECORD state                              IV.   LLM-G UIDED P ROTOCOL F UZZING
+             State transition          No transition         Inappropriate                    Motivated by the impressive capabilities demonstrated by
+                                                                                          the LLMs in the case study (Section III), we develop LLM-
+Fig. 5. The next types of client requests generated by the LLM in each state.
+The types in gray induce state transitions, the ones in orange appear in the
+                                                                                          guided protocol fuzzing (LLMPF) to tackle the challenges of
+suitable state but do not trigger state transitions, and the ones in blue appear in       existing mutation-based protocol fuzzing (EMPF).
+the inappropriate states. Each segment represents one distinct message type.
+                                                                                              Algorithm 1 (without the gray-shaded text) specifies the
+                                                                                          general procedure of the classical EMPF approach. The input
+server. Furthermore, we attempted to include the session IDs                              is the protocol server under test P0 , the corresponding protocol
+into the given client-request sequence, and then the LLM also                             p, the initial seed corpus C, and the total fuzzing time T. The
+accurately inserted the same values into these messages and                               output consists of the final seed corpus C and the seeds C%
+produced correct results.                                                                 that crash the server. In each fuzzing iteration (lines 7-34),
+                                                                                          EMPF selects a progressive state s (line 7), and the sequence
+  The LLM is able to generate accurate messages and has                                   M (line 8) that exercises s to steer the fuzzer in exploring the
+  the capability to enrich the initial seeds.                                             larger space. To ensure that the selected state s is exercised, M
+                                                                                          is split into three parts (line 9): M1 , the sequence to reach s;
+                                                                                          M2 , the portion selected for mutation; and M3 is the remaining
+C. Inducing Interesting State Transitions                                                 subsequence. Subsequently, EMPF assigns the energy for M
+    We give the LLM the message exchange between fuzzer                                   (line 10) to determine mutated times and then mutates it into
+and the protocol implementation and ask it to return a message                            M ′ with (structure-unaware) mutators (line 16). This mutated
+that would lead to a new state. We evaluate how likely                                    sequence is then sent to the server (line 23). EMPF saves
+the message induce a transition to a new state. Specifically,                             M ′ that lead to crashes (lines 24-25) or increase code or state
+we provide the LLM with existing communication history,                                   coverage (lines 27-28). If the latter, it updates the state machine
+enabling a server respectively to reach each state (i.e., INIT,                           (line 29). This process is repeated until the assigned energy
+READY, PLAY, and RECORD). Afterward, we query the                                         runs out (line 10), at which point the next state is selected.
+LLM to determine the next client requests that can affect the                                 For our LLMPF approach, we augment the baseline logic
+server’s state. To mitigate the influence of the LLM’s stochastic                         of EMPF by incorporating the grayed components: (1) Ex-
+behavior, we prompted the LLM 100 times for each state.                                   tract the grammar by prompting the LLM (line 2) and utilize
+     Figure 5 shows the results. Each pie chart demonstrates the                          the grammar to guide the fuzzing mutation (lines 12-14)
+results for each state. Each segment in each pie chart represents                         (Section IV-A); (2) query the LLM to enrich the initial seeds
+a distinct type of client request. The gray portion represents the                        (line 3) (Section IV-B); and (3) leverage the LLM’s capability
+percentage of client-request types that can lead to state change.                         to break out of a coverage plateau (lines 4, 19-21, 26, 30 and
+The orange ones represent the message types that appear in the                            32) (Section IV-C). Now we will introduce each component.
+appropriate states but do not trigger any state transition (so
+there is no state change). The blue ones represent the types                              A. Grammar-guided Mutation
+that appear in the inappropriate state that would be directly                                In this section, we will introduce the approach to extracting
+rejected by the server. From Figure 5, we can see that there                              grammar from the LLM and then leveraging the grammar to
+are 81%, 74%, 89%, and 69% client requests, respectively, that                            guide the structure-aware mutation.
+can induce state transitions to different states. Additionally,
+approximately 17%, 16%, 10%, and 30% client requests can                                     1) Grammar Extraction: Before the fuzzer can ask the
+still be accepted and processed by the server although they                               LLM to generate a grammar for structure-aware mutation [37],
+do not trigger the state change. These messages are still                                 we encountered one immediate challenge: How to obtain a
+potentially useful to cover more code branches although they                              machine-readable grammar for the fuzzer? The fuzzer operates
+
+                                                                                      5
+  Algorithm 1: LLM-guided Protocol Fuzzing                                                 Prompt                          Model Output
+      Input: P0 : protocol implementation                                   Instruction:
+      Input: p: protocol name                                               For the RTSP protocol, all of client
+                                                                            request grammar is:                     1. DESCRIBE:
+      Input: C: initial seed corpus                                                                                 { DESCRIBE <Value> RTSP/1.0\r\n,
+      Input: T: total fuzzing time                                          Desired Format:                           Cseq: <Value>\r\n,
+      Output: C: final seed queue                                           Shot-1:                                   User-Agent: <Value>\r\n,
+                                                                            For the RTSP protocol, the PLAY           Accept: <Value>\r\n,
+      Output: C% : crashing seeds                                           client request grammar is:                \r\n}
+ 1    Pf ← I NSTRUMENT (P0 )                                                PLAY: {PLAY <Value> RTSP/1.0\r\n,
+ 2     Grammar G ← C HAT G RAMMAR (p)                                                 Cseq: <Value>\r\n,            2. SETUP:
+                                                                                      User-Agent: <Value>\r\n,      { SETUP <Value> RTSP/1.0\r\n,
+ 3     C ← C ∪ E NRICH C ORPUS (C, p)                                                 Session: <Value>\r\n,           Cseq: <Value>\r\n,
+ 4     PlateauLen ← 0                                                                 Range: <Value>\r\n,             User-Agent: <Value>\r\n,
+                                                                                      \r\n}
+ 5    StateMachine S ← ∅                                                                                              Transport: <Value>\r\n,
+                                                                            Shot-2:                                   \r\n}
+ 6    repeat
+ 7        State s ← C HOOSE S TATE (S)
+                                                                            For the HTTP protocol, the GET client                 …
+                                                                            request grammar is:
+ 8        Messages M, response R ← C HOOSE S EQUENCE (C, s)                 GET: {GET <Value>\r\n}
+ 9        ⟨M1 , M2 , M3 ⟩ ← M (i.e., split M in subsequences,
+            s.t. M1 is the message sequence to drive Pf to arrive        Fig. 6.    Example of the model prompt and the responding response for
+            at state s, and message M2 is selected to be mutated).       extracting the RTSP grammar.
+10        for i from 1 to A SSIGN E NERGY (M) do
+ 11             if PlateauLen < MaxPlateau then
+                                                                         ditional training or hard coding. Hence, the fuzzer prompts the
+ 12                   if U NIFORM R ANDOM () < ϵ then
+                                                                         LLM to generate the message grammar of the protocol under
+ 13                        M2 ′ ← G RAMMAR M UTATE (M2 , G)              test. However, the scope for prompt fine-tuning is extensive.
+ 14                        M ′ ← ⟨M1 , M2 ′ , M3 ⟩
+ 15                   else                                                   To make the LLM generate a machine-readable grammar,
+ 16                        M ′ ← ⟨M1 , R AND M UTATE (M2 ), M3 ⟩         we ultimately employ in-context few-shot learning [11], [42]
+ 17                   end                                                within the domain of prompt engineering. With the increasing
+ 18             else                                                     understanding of LLMs, many prompt engineering approaches
+ 19                    M2 ′ ← C HAT N EXT M ESSAGE (M1 , R)              have been proposed [11], [45], [46]. In-context learning serves
+ 20                    M ′ ← ⟨M1 , M2 ′ , M3 ⟩                           as an effective approach to fine-tuning the model. Few-shot
+                                                                         learning is utilized to enhance the context with a few examples
+ 21                    PlateauLen ← 0
+ 22             end                                                      of desired inputs and outputs. This enables the LLM to
+ 23             R′ ← S END T O S ERVER (Pf , M ′ )                       recognize the input prompt syntax and output patterns. With
+ 24             if I S C RASHES (M ′ , Pf ) then                         in-context few-shot learning, we prompt the LLM with a few
+ 25                   C% ← C% ∪ {M ′ }                                   examples to extract the protocol grammar in the desired format.
+ 26                    PlateauLen ← 0                                        Figure 6 illustrates the model prompt used to extract
+ 27             else if I S I NTERESTING (M ′ , Pf , S) then
+ 28                   C ← C ∪ {(M ′ , R′ )}
+                                                                         the RTSP grammar. In this prompt, the fuzzer provides two
+ 29                   S ← U PDATE S TATE M ACHINE (S, R′ )               grammar examples from two different protocols in the desired
+ 30                    PlateauLen ← 0                                    format. In this format, we retain the message keywords in the
+ 31             else                                                     grammar, which we consider to be immutable, and replace the
+ 32                    PlateauLen ← PlateauLen + 1                       mutable regions with the “⟨Value⟩”. Notice that, to guide the
+ 33             end                                                      LLM in properly generating grammar, we utilize two shots
+34        end                                                            instead of relying on a single example. This helps prevent
+35    until timeout T reached or abort-signal                            the LLM from strictly adhering to the given grammar and
+                                                                         potentially overlooking important facts.
+                                                                             In addition, another issue was revealed in our case study:
+on a single machine and is restricted to parsing a predetermined         the LLM may occasionally generate stochastic answers, such
+format. Unfortunately, the responses generated by the LLM                as “SET DESCRIPTION”. Fortunately, these instances are
+typically are in a natural language structure with considerable          rare. To address the stochastic nature of the minority-sampled
+flexibility. If the fuzzer is to understand the LLM’s responses,         generation, we engage in multiple conversations with the
+the LLM should consistently answer queries from our fuzzer               LLM and consider the majority of consistent answers as the
+in a predetermined format. An alternative option would involve           final grammar. This approach shares similarities with self-
+manually converting the LLM’s responses to the desired for-              consistency checks [45] in the domain of prompt engineering,
+mat. However, this approach would compromise the fuzzer’s                but it does not occur in chain-of-thought prompting.
+highly automated nature, which is less desirable. Therefore,
+the issue at hand is how to make the LLM answer questions                    Through these approaches, the fuzzer is able to effectively
+in the desired format.                                                   obtain accurate grammar from the LLM across various pro-
+                                                                         tocols. The model output shown in Figure 6 demonstrates
+   One common paradigm involves fine-tuning models to                    a portion of the RTSP grammar derived from the LLM. In
+achieve proficiency in a specific task [27]. Similarly, when it          practice, the LLMs are occasionally not sensitive to the word
+comes to the LLM, fine-tuning the prompt becomes necessary.              “all” in this prompt, resulting in them generating only part of
+This is because the LLM can perform specific tasks by simply             grammar types. To resolve this issue, we just simply prompt
+providing natural language prompts, without the need for ad-             the LLMs again to ask about the remaining grammar.
+
+                                                                     6
+                                                                                identified are highlighted in blue. During mutation, LLMPF
+    Grammar Corpus                       PLAY <Value> RTSP/1.0 \r\n             only selects these regions, ensuring the messages retain valid
+                                         CSeq: <Value>\r\n
+        OPTIONS                          User-Agent: <Value>\r\n
+                                                                                formats. However, if no grammar match is found, we consider
+          SETUP                                                                 all regions mutable.
+           DESCRIBE                      Session: <Value>\r\n
+              PLAY                       Range: <Value>\r\n
+                                         \r\n      PLAY Grammar
+                                                                                    To preserve the fuzzer’s capability of exploring some
+                                                                                corner cases, we continue to employ the structure-unaware
+                      ①Match                              ②Mark mutable
+                                                                                mutation approach from the classical EMPF, as demonstrated
+                      Grammar                             regions               in line 16 of Algorithm 1. Nonetheless, LLMPF conducts
+                                                                                structure-aware mutations with a higher likelihood, considering
+   PLAY rtsp://127.0.0.1:8554/aacAudioTest/ RTSP/1.0\r\n
+   CSeq: 4\r\n
+                                                                                that valid messages hold a greater potential for exploring a
+   User-Agent: ./testRTSPClient (LIVE555 Streaming Media v2018.08.28)\r\n       larger state space.
+   Session: 000022B8\r\n
+   Range: npt=0.000-\r\n                                 PLAY Request
+   \r\n                                                                         B. Enriching Initial Seeds
+                                                                                    Motivated by the ability of the LLM to generate new
+Fig. 7. Workflow of the grammar-based mutation using the PLAY request
+of the RTSP protocol as the example.
+                                                                                messages and insert them into the appropriate positions within
+                                                                                the provided message sequence (cf. Section III-B), we propose
+                                                                                to enrich the initial seed corpus used for fuzzing (line 3 of
+    Before commencing the fuzzing campaign (see line 2 of                       Algorithm 1). However, there are several challenges that our
+Algorithm 1 in the overview), our LLMPF approach engages                        approach must first tackle: (i) How to generate new messages
+in a conversation with the LLM to obtain the grammar.                           that carry the correct context information (e.g., the correct
+Subsequently, this grammar is saved into the grammar corpus                     session ID in the RTSP protocol)? (ii) How to maximize the
+G, which is utilized for structure-aware mutation throughout                    diversity of the generated sequences? (iii) How to prompt the
+the entire campaign. This design is intended to minimize                        LLM to generate the entire modified message sequence from
+the overhead of interacting with the LLM while ensuring                         the given seed message sequence?
+optimal fuzzing performance. Following that, we elaborate on
+the approach to provide guidance for structure-aware fuzzing                        As for Challenge (i), we found that the LLM can au-
+based on the extracted grammar.                                                 tomatically learn the required context information from the
+                                                                                provided message sequence. For instance, for our experiments,
+    2) Mutation based on Grammar: Using the grammar cor-                        P RO F UZZ B ENCH already possesses some message sequences
+pus extracted from the LLM, LLMPF conducts structure-                           as initial seeds (although they lack diversity). The initial seeds
+aware mutations of the seed message sequences. In previous                      of P RO F UZZ B ENCH are constructed by capturing the network
+work [23], researchers employed the LLM to generate variants                    traffic between the tested servers and the clients. Thereby, these
+of given inputs by tapping into their ability to comprehend                     initial seeds contain correct and sufficient context information
+input grammar. However, the limitation posed by the conver-                     from the servers. Hence, when prompting the LLM, we in-
+sation overhead restricts the frequency of interactions with                    clude the initial seeds from P RO F UZZ B ENCH to facilitate the
+the LLM. In our approach, we adopt a different strategy.                        acquisition of the necessary context information.
+LLMPF utilizes the extracted grammar to guide the mutations.
+The fuzzer extracts the grammar just once, enabling it to                           As for Challenge (ii), the fuzzer determines which types
+incorporate the grammar throughout the entirety of the fuzzing                  of client requests are missing in the initial seeds, i.e., what
+campaign. We leave opportunities to escape the coverage                         types of messages should be generated by the LLM to enrich
+plateau in Section IV-C. Here, we proceed to introduce the                      the initial seeds. In Section IV-A, we have obtained the
+workflow of mutation based on the extracted grammar.                            grammar for all types of client requests; thus, identifying
+                                                                                the missing types in initial seeds is not a difficult issue.
+    In line 9 of Algorithm 1, the fuzzer chooses the message                    Let us revisit the grammar prompt shown in Figure 6. The
+portion M2 for mutation as part of the algorithm design.                        prompt includes the names of message types (i.e., PLAY
+Let us assume M2 consists of multiple client requests, one                      and GET), and correspondingly, the message names are also
+of which is the PLAY client request of the RTSP protocol.                       included in the model output (e.g., DESCRIBE and SETUP).
+Our mutation approach guided by grammar is illustrated in                       We utilize this information to maintain a set of message types:
+Figure 7. It shows the workflow for mutating one single                         AllTypes = {messageType}, and one map from grammars to the
+RTSP PLAY client request. Specifically, when presented with                     corresponding type: G2T = {grammar → type}.
+the PLAY client request, LLMPF first matches it with the
+corresponding grammar. To expedite the matching process,                            While detecting the missing message types, we first utilize
+we maintain the grammar corpus in the map format: G =                           the grammar corpus G obtained in Section IV-A and the
+{type → grammar}. Here, type represents the types of client                     grammar-to-type map G2T to obtain existing message types
+requests. LLMPF uses the first line of each grammar as the                      and maintain them into a set (i.e., ExistingTypes). Conse-
+label for message types. The grammar corresponds to the                         quently, the missing message types are in the complement:
+concrete message grammar. Using the message type, LLMPF                         MissingTypes = (AllTypes - ExistingTypes). We then instruct
+retrieves the corresponding grammar. Subsequently, we employ                    the LLM to generate the missing types of messages and insert
+regular expressions (Regex) to match each header field in                       them into the initial seeds; thereby, our approach is based on
+the message with the grammar, marking regions as mutable                        existing initial seeds but enriches them. To avoid excessively
+falling under “⟨Value⟩”. In Figure 7, these mutable regions                     long initial seeds, we evenly select and add two missing types
+
+                                                                            7
+                  Prompt                          Model Output                                           Prompt Template
+   For the RTSP protocol, the following                                         In the [protocol-name] protocol, the communication history between
+   is one sequence of client requests:
+                                             DESCRIBE rtsp://…
+                                                                                the [protocol-name] client and the [protocol-name] server is as follows:
+   ```
+   DESCRIBE rtsp://….
+                                                                                Communication history:
+                                             SETUP rtsp://…                     ```
+   SETUP rtsp://…                                                               [Put the communication history here]
+                                             PLAY rtsp://…                      ```
+   PLAY rtsp://…
+
+   ```                                       SET_PARAMETER rtsp://…             The next client request that can induce the server’s state transition to
+   Please add the SET_PARAMETER
+                                                                                other states is:
+                                             TEARDOWN rtsp://…
+   and TEARDOWN client requests in
+   the accurate locations, and the                                              Desired format of one real client request:
+   modified sequence of client request is:                                      ```
+                                                                                [Put one real message example from the initial seed corpus here]
+                                                                                ```
+Fig. 8.    Example of the model prompt and the responding response for
+enriching initial seed corpus (we omit the details of messages).
+                                                                             Fig. 9. The prompt template for obtaining the next client request that can
+                                                                             induce the server’s state transition to other states.
+at a time in a given message sequence. This allows us to control
+the length and diversity of the initial messages.
+    As for Challenge (iii), to ensure the validity of the gener-             PlateauLen is reset to 0 if we encounter a seed that crashes
+ated message sequence, we design our prompt in the continua-                 the program (line 26) or when the coverage increases (line 30).
+tion format (i.e., “the modified sequence of client requests is:”).          Otherwise, if the seed is deemed uninteresting, PlateauLen is
+In practice, the obtained responses can be directly utilized as              incremented by 1 (line 32).
+the seeds, with the exception of removing the newline character                  Based on the value of PlateauLen, we determine whether
+(\n) at the beginning or adding any missing delimiters (\r\n)                the fuzzer has entered the coverage plateau. If PlateauLen does
+at the end. An illustrative example is presented in Figure 8. In             not exceed MaxPlateau, the predefined maximum length of
+this case, we instruct the LLM to insert two types of messages,              the coverage plateau (line 11), our LLMPF mutates messages
+“SET PARAMETER” and “TEARDOWN”, into the given                               using the strategy introduced earlier. The value of MaxPlateau
+sequence. The modified sequence is shown on the right.                       is specified by users and provided to the fuzzer. However, when
+                                                                             PlateauLen surpasses MaxPlateau, we consider the fuzzer to
+C. Surpassing Coverage Plateau                                               have entered the coverage plateau. In such case, LLMPF will
+                                                                             utilize the LLM to overcome the coverage plateau (lines 19-
+    Exploring unseen states poses a challenge for stateful
+                                                                             21). To achieve this, we employ the LLM to generate the
+fuzzers. To better understand this challenge, let us revisit the
+                                                                             next suitable client requests that may induce state transitions
+RTSP state machine illustrated in Figure 2. Assume the server
+                                                                             to other states. The prompt template is shown in Figure 9.
+is currently in the READY state after accepting a sequence of
+                                                                             We provide the LLM with the communication history between
+client requests. If the server intends to transition to different
+                                                                             servers and clients; i.e., the client requests and the correspond-
+states (e.g., the PLAY or RECORD state), the client must send
+                                                                             ing server responses. To ensure that the LLM generates an
+corresponding PLAY or RECORD requests. In the context of
+                                                                             authentic message rather than message types or descriptions,
+the fuzzing design, the fuzzer assumes the role of the client.
+                                                                             we demonstrate the desired format by extracting any message
+While the fuzzer possesses the capability to generate messages
+                                                                             from the initial seed corpus. Subsequently, the LLM infers the
+that induce state transitions, it requires the exploration of
+                                                                             current states and generate the next client request M2 ′ . This
+a considerable number of seeds. There is a high likelihood
+                                                                             request acts as a mutation of the original M2 and is inserted
+that the fuzzer may fail to generate suitable message orders
+                                                                             into the message sequence M ′ , which is then sent to the server.
+to cover the desired state transitions [36], [7]. Consequently,
+a substantial portion of the code space remains unexplored.                      Let us reconsider the RTSP example. Initially, the server is
+Therefore, it is important to explore additional states in order to          in the INIT state. Upon receiving the message sequence M1
+thoroughly test stateful servers. Unfortunately, accomplishing               = {SETUP}, it responds with R1 = {200-OK}, transitioning
+this task proves challenging for existing stateful fuzzers.                  to the READY state. Subsequently, the fuzzer encounters a
+    In this paper, when the fuzzer becomes unable to ex-                     coverage plateau, where it fails to generate interesting seeds.
+plore new coverage, we refer to this scenario as the fuzzer                  Upon noticing this, we stimulate the LLM by presenting the
+entering a coverage plateau. Motivated by the study results                  communication history H = {SETUP, 200-OK}. In response,
+in Section III-C, we utilize the LLM to assist the fuzzer                    the LLM is highly likely to reply a PLAY or RECORD
+in surpassing the coverage plateau. This occurs when the                     message, as indicated by the study results in Section III-C.
+fuzzer is unable to generate interesting seeds within a given                These messages lead the server to transition to a different state,
+time period. We quantify this duration based on the number                   overcoming the coverage plateau.
+of uninteresting seeds continuously generated by the fuzzer.
+Specifically, throughout the fuzzing campaign, we maintain a                 D. Implementation
+global variable called PlateauLen to keep track of the number
+of uninteresting seeds continuously observed thus far. Before                   We implemented this LLM-guided protocol fuzzing (cf.
+commencing the fuzzing campaign, PlateauLen is initialized                   Algorithm 1) into AFLN ET [36], called C HATAFL, to test
+to 0 (Line 4 of Algorithm 1). During each fuzzing iteration,                 protocols written in C/C++. AFLN ET is one of the most
+
+                                                                         8
+                                                                                                   Table II.   Detailed information about our subject programs.
+popular mutation-based open-source protocol fuzzers6 . It main-
+tains an inferred state machine and uses state and code                                           Subject         Protocol      #LOC      #Stars      Version
+feedback to guide the fuzzing campaign. The identification
+of the current state involves parsing the response codes from                                     Live555         RTSP            57k        631     31284aa
+servers’ response messages. A seed is considered interesting                                      ProFTPD         FTP            242k        445     61e621e
+if it increases state or code coverage. C HATAFL continues                                        PureFTPD        FTP             29k        572     10122d9
+to utilize this approach while seamlessly integrating the three                                   Kamailio        SIP            939k      1,915     a220901
+aforementioned strategies into the AFLN ET framework.                                             Exim            SMTP           118k        662     d6a5a05
+                                                                                                  forked-daapd    DAAP            79k      1,718     2ca10d9
+
+                       V.    E XPERIMENTAL D ESIGN                                           B. Benchmark and Baselines
+    To evaluate the utility of Large Language Models (LLMs)                                      Table II presents the subject programs that are used in our
+for tackling the challenges of mutation-based protocol fuzzing                               evaluation. Our benchmark consists of six text-based network
+of text-based network protocols, we seek to answer the fol-                                  protocol implementations, including five widely-used network
+lowing questions:                                                                            protocols (i.e., RTSP, FTP, SIP, SMTP, and DAAP). These
+                                                                                             subject programs cover all text-based network protocols in
+    RQ.1          State coverage. How much more state coverage                               P RO F UZZ B ENCH, a widely-used benchmark for evaluating
+                  does C HATAFL achieve compared to baseline?                                stateful protocol fuzzers [36], [32], [38], [41]. The protocols
+    RQ.2          Code coverage. How much more code coverage                                 cover a wide range of applications, including streaming, mes-
+                  does C HATAFL achieve compared to baseline?                                saging, and file transfer. The implementations are mature and
+                                                                                             widely used both in enterprises and by individual users. For
+    RQ.3          Ablation. What is the impact of each component
+                                                                                             each protocol, we selected implementations that are popular
+                  on the performance of C HATAFL?
+                                                                                             and suitable for use in real-world applications. Security flaws
+    RQ.4          New bugs. Is C HATAFL useful in discovering                                in these projects can have wide-reaching consequences.
+                  previously unknown bugs in widely-used and
+                  extensively-tested protocol implementations?                                   As baseline tools, we selected AFLN ET and NSF UZZ-v.
+                                                                                             Since our tool C HATAFL has been implemented into
+   To answer these questions, we follow the recommended                                      AFLN ET, every observed difference between C HATAFL and
+experimental design for fuzzing experiments [26], [10].                                      AFLN ET can be attributed to our changes to implement LLM
+                                                                                             guidance. AFLN ET [36] is a popular open-source, state-of-
+                                                                                             the-art, mutation-based, code- and state-guided protocol fuzzer.
+A. Configuration Parameters                                                                  NSF UZZ-v [38] extends AFLN ET to get a better handle on the
+                                                                                             protocol state space. It identifies state variables through static
+    In order to decide saturation, we set the maximum length                                 analysis and uses state variable values as fuzzer feedback to
+of the coverage plateau (MaxPlateau) to 512 non-coverage-                                    maximize the coverage of the state space. The underlying idea
+increasing message sequences. This value was determined                                      is very similar to that of SGF UZZ [7] which was published
+through a heuristic screening approach. In preliminary exper-                                around the same time but implemented into LibFuzzer [31].
+iments, we found 512 to be a reasonable setting for Max-                                     SGF UZZ also uses the sequence of state variable values to
+Plateau, achieved within approximately 10 minutes. Setting                                   implicitly capture the coverage of the protocol state space.
+the value too small would cause C HATAFL to overly query                                     Other protocol fuzzers, like S TATE AFL [32] and BooFuzz [25]
+the LLM, while setting it too large would lead C HATAFL                                      have previously been (unfavourably) compared to AFLN ET or
+to remain stuck for too long instead of benefiting from our                                  NSF UZZ-v, i.e., the tools that we use as baselines.
+optimization (cf. Section IV-C). Once the coverage plateau is
+reached, C HATAFL prompts the LLM to generate message
+                                                                                             C. Variables and Measures
+sequences that surpass the coverage plateau (Section IV-C). To
+limit the cost of LLM prompts, we set a quarter of MaxPlateau                                    In order to evaluate the effectiveness of C HATAFL versus
+as the maximum number of ineffective prompts.                                                the baseline fuzzers, we measure how well the protocol fuzzers
+                                                                                             cover the state space of the protocol and the code of the
+    As a large language model (LLM), we used the gpt-3.5-                                    protocol implementation. The key idea is that a protocol
+turbo model. In accordance with the recommendation to em-                                    fuzzer cannot find bugs in uncovered code or states. However,
+ploy a low temperature for precise and factual responses [39],                               coverage is only a proxy measure for the bug-finding ability
+[45], a temperature of 0.5 was used to extract the grammar                                   of a fuzzer [26], [10]. Hence, we complement the coverage
+and enrich the initial seeds (cf. Section IV-A & Section IV-B).                              results with bug-finding results.
+To generate new messages, J. Qiang et al. [23] found for
+greybox fuzzing, a temperature of 1.5 is optimal. Hence, we                                      Coverage. We report the coverage of both, the code and the
+set a temperature of 1.5 to break out of the coverage plateau                                state space. To evaluate code coverage, we measure the branch
+(cf. Section IV-C). When extracting the grammar, for the self-                               coverage achieved using the automated tooling provided by the
+consistency check [45], we use five repetitions. As confirmed                                benchmarking platform P RO F UZZ B ENCH [33]. To evaluate the
+in our case study (cf. Section III-A), we found five repetitions                             coverage of the state space, we measure (i) the number of
+sufficient to filter out incorrect cases.                                                    distinct states (state coverage) and the number of transitions
+                                                                                             between these states (transition coverage) using automatic
+  6 Available   at https://github.com/aflnet/aflnet; 689 stars at the time of writing.       tooling provided by the benchmarking platform. Like the
+
+                                                                                         9
+            Table III.   Average number of state transitions for our C HATAFL and the baselines AFLN ET and NSF UZZ in 10 runs of 24 hours.
+
+                                               Transition comparison with AFLN ET             Transition   comparison with NSF UZZ
+             Subject          C HATAFL
+                                              AFLN ET     Improv Speed-up Â12                NSF UZZ       Improv Speed-up Â12
+             Live555                160.00        83.80 90.98%      228.62× 1.00                 90.20      77.38%     63.09× 1.00
+             ProFTPD                246.70       172.60 42.91%        7.12× 1.00                181.20      36.11%      4.97× 1.00
+             PureFTPD               281.80       216.90 29.91%        5.61× 1.00                206.10      36.72%      7.94× 1.00
+             Kamailio               130.00        99.90 30.14%        5.53× 1.00                105.30      23.42%      4.58× 1.00
+             Exim                   108.40        62.70 72.98%       40.27× 1.00                 69.50      55.97%     13.25× 1.00
+             forked-daapd            25.40        21.40 18.65%        1.58× 1.00                 20.10      26.52%      1.79× 0.86
+             AVG                         -             - 47.60%      48.12×      -                    -     42.69%     15.94×      -
+
+
+Table IV.     Average number of states and the improvement of C HATAFL
+                 compared with AFLN ET and NSF UZZ.                               Compared to both baselines, C HATAFL exercised a greater
+                                                                              number of state transitions and significantly sped up the
+Subject      C HATAFL AFLN ET         Improv NSF UZZ     Improv Total         state exploration process. On average, C HATAFL exercised
+                                                                              48% more state transitions than AFLN ET. Specifically, in
+Live555          14.20  10.00         41.75%   11.70     21.16%   15
+                                                                              the L IVE 555 subject, C HATAFL increased the number of
+ProFTPD          28.70  22.60         26.84%   24.30     17.81%   30
+                                                                              state transitions by 91% compared to AFLN ET. Furthermore,
+PureFTPD         27.90  25.50          9.37%   24.00     16.20%   30
+                                                                              C HATAFL explored the same number of state transitions 48×
+Kamailio         17.00  14.00         21.43%   15.10     12.50%   23
+                                                                              faster than AFLN ET, on average. In comparison to NSF UZZ,
+Exim             19.50  14.10         38.19%   14.40     35.42%   23
+                                                                              C HATAFL covered 43% more state transitions on average
+forked-daapd     12.10   8.70         39.74%    8.00     51.39%   13
+                                                                              and achieved the same number of state transitions 16× faster.
+AVG                  -      -         29.55%       -     25.75%     -         For all subjects, the Vargha-Delaney effect size Â12 ≥ 0.86
+                                                                              indicates a substantial advantage of C HATAFL over both
+                                                                              AFLN ET and NSF UZZ in exploring state transitions.
+authors of AFLN ET and P RO F UZZ B ENCH, in the absence
+                                                                                  States. Table IV shows the average number of states cov-
+of ground truth state machines for the tested protocols, we
+                                                                              ered by our tool C HATAFL versus the two baselines AFLN ET
+define distinct states traversed by a message sequence the
+                                                                              and NSF UZZ-v and the corresponding percentage improve-
+set of unique response codes that are returned by the server.
+                                                                              ment. Clearly, C HATAFL outperformed both AFLN ET and
+To mitigate the impact of randomness, we report the average
+                                                                              NSF UZZ. Specifically, C HATAFL covered 30% more states
+coverage achieved across 10 repetitions of 24 hours.
+                                                                              than AFLN ET and 26% more states than NSF UZZ, respec-
+    Bugs. To identify bugs, we execute the tested programs                    tively. To put the number of covered states in the context of the
+under the Address Sanitizer (ASAN). C HATAFL stores the                       total number of reachable states, the last column of Table IV
+crashing message sequences, and then we use the AFLNet-                       shows the total number of states that have been covered by any
+replay utility provided by AFLN ET to reproduce the crashes                   of the three tools in any of the ten runs of 24 hours. We can see
+and debug the underlying causes. We distinguish different bugs                that the average fuzzing campaign of C HATAFL covers almost
+by analyzing stack traces reported by ASAN. Finally, we re-                   all reachable states. For instance, in the case of L IVE 555,
+port these bugs to their respective developers for confirmation.              C HATAFL covers an average of 14.2 out of 15 states, while
+                                                                              AFLN ET and NSF UZZ only manage to cover 10 states and
+                                                                              11.7 states, respectively. Only for Kamailio C HATAFL covers
+D. Experimental Infrastructure                                                a smaller proportion of the reachable state space (avg. 17; max.
+   All experiments were conducted on a machine equipped                       20 of 23 states). Nevertheless, C HATAFL still outperforms the
+with an Intel(R) Xeon(R) Platinum 8468V CPU. This machine                     baselines in terms of state coverage.
+has 192 logical cores running at 2.70GHz. It operates on
+Ubuntu 20.04.2 LTS with 512GB of main memory.                                  In terms of state coverage, on average, C HATAFL cov-
+                                                                               ers 48% and 43% more state transitions than AFLN ET
+                                                                               and NSF UZZ, respectively. Compared to the baseline,
+                  VI.    E XPERIMENTAL R ESULTS                                C HATAFL covers the same number of state transitions 48
+                                                                               and 16 times faster, respectively. In addition, C HATAFL
+RQ.1    State Space Coverage                                                   also explores a substantially larger proportion of the reach-
+    Transitions. Table III shows the average number of state                   able state space than both AFLN ET and NSF UZZ.
+transitions covered by our tool C HATAFL versus the two base-
+lines AFLN ET and NSF UZZ-v. To quantify the improvement
+                                                                              RQ.2    Code Coverage
+of C HATAFL over the baselines, we report the percentage
+improvement in terms of transition coverage achieved in 24                       Table V shows the average branch coverage achieved by
+hours (Improv), how much faster C HATAFL can achieve the                      C HATAFL and the baselines AFLN ET and NSF UZZ across 10
+same transition coverage as the baseline in 24 hours (Speed-                  fuzzing campaigns of 24 hours. To quantify the improvement
+up), and the probability that a random campaign of C HATAFL                   of C HATAFL over the baselines, we report the percentage
+outperforms a random campaign of the baseline (Â12 , Vargha-                 improvement in terms of branch coverage in 24 hours (Improv),
+Delaney measure of effect size [5]).                                          how much faster C HATAFL can achieve the same branch
+
+                                                                         10
+            Table V.      Average number of branches covered by our C HATAFL and the baselines AFLN ET and NSF UZZ in 10 runs of 24 hours.
+
+                                                  Branch comparison with AFLN ET                  Branch comparison with NSF UZZ
+             Subject              C HATAFL
+                                                 AFLN ET   Improv Speed-up Â12                  NSF UZZ Improv Speed-up Â12
+             Live555                2,928.40     2,860.20   2.38%      9.61× 1.00                2,807.60   4.30%     21.60× 1.00
+             ProFTPD                5,143.30     4,763.00   7.99%      4.04× 1.00                4,421.80 16.32%      21.96× 1.00
+             PureFTPD               1,134.30     1,056.30   7.39%      1.60× 0.91                1,041.10   8.96%      1.60× 1.00
+             Kamailio              10,064.00     9,404.10   7.02%    12.69× 1.00                 9,758.70   3.13%      2.95× 1.00
+             Exim                   3,789.40     3,647.60   3.89%      4.27× 1.00                3,564.30   6.32%     11.33× 0.77
+             forked-daapd           2,364.80     2,227.10   6.18%      4.63× 1.00                2,331.30   1.43%      1.66× 0.70
+             AVG                           -            -   5.81%      6.14×     -                      -   6.74%     10.18×     -
+
+                   Table VI.      Improvements in terms of branch coverage compared with baseline if we enable each strategy one by one.
+
+                                   Enable strategy SA (CL1)         Enable strategies SA and SB (CL2)               Enable all strategies (CL3)
+  Subject                CL0
+                                   Improv Speed-up Â12                Improv        Speed-up     Â12              Improv        Speed-up Â12
+  Live555              2,860.20     0.28%       1.60× 0.89          1.49% (1.21pp)      8.45×     1.00           2.38% (0.89pp)       9.61× 1.00
+  ProFTPD              4,763.00     3.63%       2.45× 0.60          5.27% (1.64pp)      3.69×     0.63           7.99% (2.72pp)       4.04× 1.00
+  PureFTPD             1,056.30     6.67%       1.34× 0.61          6.70% (0.03pp)      1.36×     0.86           7.39% (0.69pp)       1.60× 0.91
+  Kamailio             9,404.10     0.60%       1.75× 0.96          2.24% (1.64pp)      8.92×     1.00           7.02% (4.78pp)     12.69× 1.00
+  Exim                 3,647.60     2.36%       2.48× 0.52          2.54% (0.18pp)      2.36×     0.58           3.89% (1.35pp)       4.27× 1.00
+  forked-daapd         2,227.10     4.67%       2.48× 0.68          4.93% (0.26pp)      2.98×     1.00           6.18% (1.25pp)       4.63× 1.00
+  AVG                         -     3.04%       2.02×     -         3.86% (0.82pp)      4.63×        -           5.81% (1.95pp)       6.14×     -
+
+
+coverage as the baseline in 24 hours (Speed-up), and the                              •    CL3: AFLN ET plus all strategies (SA + SB + SC ),
+probability that a random campaign of C HATAFL outperforms                                 i.e.,CL3 is C HATAFL.
+a random campaign of the baseline (Â12 ).
+                                                                                      Table VI shows the results in terms of branch coverage
+    As we can see, for all subjects, C HATAFL covers more                        in a similar format we have used previously (Improv, Speed-
+branches than both baselines. Specifically, C HATAFL covers                      up, and Â12 ). However, compared to previous tables, crucially
+5.8% more branches than AFLN ET with a range from 2.4%                           the results in terms of improvement, speed-up, and Â12 effect
+to 8.0%. When compared to NSF UZZ, C HATAFL covers                               size are shown in the inverse direction. For instance, for
+6.7% more branches. In addition, C HATAFL covers the same                        ProFTPD, the configuration CL3 (i.e.,C HATAFL) achieves 8%
+number of branches 6× faster than AFLN ET and 10× faster                         more branch coverage than the baseline configuration CL0
+than NSF UZZ. For all subjects, the Vargha-Delaney effect size                   (i.e.,AFLN ET). The difference in improvement between two
+Â12 ≥ 0.70 demonstrates a substantial advantage of C HATAFL                     neighboring configurations (shown in parenthesis) quantifies
+over both baselines in terms of code coverage achieved.                          the effect of the strategy that is enabled. For instance, for
+                                                                                 ProFTPD, the configuration CL2 only achieves a 5.3% im-
+ In terms of code coverage, on average, C HATAFL cov-                            provement, which is 2.7 percentage points (pp) less than CL3,
+ ers 5.8% and 6.7% more branches than AFLN ET and                                demonstrating the effectiveness of strategy SC which was
+ NSF UZZ, respectively. In addition, C HATAFL achieves                           enabled from CL2 to CL3.
+ the same number of branches 6 and 10 times faster than
+ AFLN ET and NSF UZZ, respectively.                                                  Overall. All the strategies contributed to the improvement
+                                                                                 of branch coverage, and none of the strategies had a negative
+                                                                                 impact on branch coverage. Specifically, CL1 resulted in an
+RQ.3    Ablation Studies                                                         average increase of 3.04% in branch coverage compared to
+  C HATAFL implements three strategies to interact with the                      CL0. CL2 exhibited an average increase of 3.9%, while CL3
+LLM to overcome the challenges of protocol fuzzing:                              showed the highest average increase of 5.9% in branch cov-
+                                                                                 erage. Furthermore, CL1 achieved the same branch coverage
+    •    SA ) grammar-guided mutation,                                           2× faster than CL0, CL2 achieved the same branch coverage
+    •    SB ) enriching initial seeds, and                                       with a 5× speed-up, and CL3 demonstrated a 6× faster
+    •    SC ) surpassing coverage plateau.                                       achievement. Therefore, enabling all three strategies proved
+                                                                                 to be the most effective approach.
+    To evaluate the contribution of each strategy towards the
+increase in coverage, we conducted an ablation study. For this                       Strategy SA . We evaluated the impact of strategy SA (i.e.,
+purpose, we developed four tools:                                                grammar-based mutation). In ProFTPD, PureFTPD, Exim, and
+                                                                                 forked-daapd, CL1 increased the branch coverage by 2.4% to
+    •    CL0: AFLN ET, i.e., all strategies all are disabled,                    6.7%. However, in the remaining two subjects Live555 and
+    •    CL1: AFLN ET plus grammar-guided mutation (SA ),                        Kamailio, although CL1 also improved the branch coverage,
+    •    CL2: AFLN ET plus grammar-guided mutation (SA )                         it only increased by 0.28% and 0.60%, respectively. Upon
+         and enriching initial seeds (SB ), and                                  investigating the implementations of these two subjects, we
+
+                                                                            11
+          Table VII.   Statistics of 9 zero-day vulnerabilities discovered by C HATAFL in widely-used and extensively-tested protocol subjects.
+
+ID   Subject    Version      Bug Description                                                        Potential Security Issue      Status
+1    Live555    2023.05.10   Heap use after free in handling PLAY client requests                   Remote code execution         CVE-requested, fixed
+2    Live555    2023.05.10   Heap use after free in handling SETUP client requests                  Remote code execution         CVE-requested, fixed
+3    Live555    2023.05.10   Use after return in handling DESCRIBE client requests                  Remote code execution         CVE-requested
+4    Live555    2023.05.10   Use after return in handling SETUP client requests                     Remote code execution         CVE-requested
+5    Live555    2023.05.10   Heap buffer overflow in handling stream                                Remote code execution         CVE-requested
+6    Live555    2023.05.10   Memory leaks after allocating memory for stream parameters             Memory leakage                Reported
+7    Live555    2023.05.10   Heap use after free in calling RTPInterface::sendDataOverTCP           Remote code execution         CVE-requested
+8    ProFTPD    61e621e      Heap buffer overflow while parsing FTP commands                        Remote code execution         CVE-requested, fixed
+9    Kamailio   a220901      Memory leaks after allocating memory in parsing config files           Memory leakage                Reported
+
+
+discovered that their implementations do not strictly adhere to               repetitions over 24 hours) as C HATAFL. However, AFLN ET
+the message grammar. The messages with missing or incorrect                   was only able to discover three of them (i.e., bugs #5, #6, and
+header fields can still be accepted by their servers.                         #9), and NSF UZZ was able to discover four of them (i.e., bugs
+                                                                              #5, #6, #7, and #9). In addition, AFLN ET and NSF UZZ did
+    Strategy SB . When compared to CL1, which only enabled
+                                                                              not find any additional bugs.
+strategy SA , we observed the contribution of strategy SB . On
+average, enabling the strategy led to 0.82% more branches
+                                                                                  To understand the contributions of the LLM guidance,
+covered. Strategy SB significantly increased branch coverage
+                                                                              we conducted a more detailed investigation of Bug #1, a
+in Live555, ProFTPD, and Kamilio by 1.21% to 1.64%,
+                                                                              heap-use-after-free vulnerability. This bug occurs when the
+while it only increased branch coverage by about 0.03% to
+                                                                              allocated memory for the usage environment of a particular
+0.26% in the other three subjects. For the latter three subjects,
+                                                                              track is deallocated during processing PAUSE client requests.
+P RO F UZZ B ENCH included nearly all types of client requests;
+                                                                              Subsequently, this memory is overwritten upon receiving the
+therefore, there is not much chance to increase seed diversity.
+                                                                              PLAY client request, leading to a heap-use-after-free issue.
+   Strategy SC . When comparing CL3 to CL2, we can
+observe that enabling strategy SC significantly increased the                     In order to trigger this bug, it is necessary to involve several
+branch coverage by 0.69% to 4.78%. Specifically in ProFTPD                    types of client requests: SETUP, PLAY, and PAUSE. However,
+and Kamailio, strategy SC helps increase 2.72% and 4.78%                      the PAUSE client requests were not included in the initial
+branch coverage, respectively.                                                seeds used in previous works. While it is theoretically possible
+                                                                              for fuzzers to generate such client requests, it is unlikely. We
+ Overall, every strategy contributes to varying degrees of                    examined all the seeds generated by AFLN ET and NSF UZZ
+ improvement in branch coverage. Enabling strategies SA ,                     in our experiments and found that none of them produced the
+ SB , and SC one by one allows us to achieve the same                         PAUSE client requests in any of the runs. However, C HATAFL
+ branch coverage 2.0, 4.6, and 6.1 times faster, respectively.                prompts the LLM to add the PAUSE client requests during the
+                                                                              enrichment of the initial seeds (cf. Section IV-B).
+RQ.4   Discovering New Bugs
+                                                                                  Once the required client requests are available, triggering
+    In this experiment, we evaluate the utility of C HATAFL by                this bug necessitates sending specific messages to the server
+checking whether it is able to discover zero-day bugs in our                  that cover particular states and state transitions. Specifically,
+subject programs. For this purpose, we utilized C HATAFL on                   these messages should cover three states as shown in Fig-
+the latest versions of our subjects, running 10 repetitions over              ure 2: INIT, READY, and PLAY. Additionally, several state
+24 hours. In the course of the experiment, C HATAFL produced                  transitions need to be covered: INIT → READY, READY →
+promising results, as demonstrated in Table VII.                              PLAY, PLAY → READY, and then READY → PLAY again.
+                                                                              The fuzzer itself has the potential to cover these states and
+    A total of nine (9) unique and previously unknown vul-
+                                                                              state transitions with diverse seeds. Additionally, the LLM can
+nerabilities were discovered by C HATAFL, despite extensive
+                                                                              provide guidance to the fuzzer in order to cover them. For
+testing conducted by AFLN ET and NSF UZZ. Vulnerabilities
+                                                                              instance, during the PLAY states, the LLM can generate the
+were found in three of the six tested implementations and
+                                                                              next client request, PAUSE, to execute the PLAY → READY
+encompass various types of memory vulnerabilities, including
+                                                                              transition (cf. Section IV-C).
+use-after-free, buffer overflow, and memory leaks. Moreover,
+these bugs have potential security implications that can result
+                                                                                  Lastly, we should not ignore the contribution of structure-
+in remote code execution or memory leakage. We reported
+                                                                              aware mutation. To trigger this bug, a minimal message
+these bugs to the respective developers. Out of the 9 bugs, 7
+                                                                              sequence is required: SETUP → PLAY → PAUSE → PLAY.
+have been confirmed by the developers, and 3 have already
+                                                                              Omitting any of these messages will render the bug untrig-
+been fixed by now (the time of paper submission). We have
+                                                                              gerable. Existing mutation-based fuzzers, with their structure-
+requested CVE IDs for the confirmed bugs.
+                                                                              unaware mutation approach, have a high likelihood of breaking
+   We utilized AFLN ET and NSF UZZ to detect these 9                          the message structures and rendering them invalid. In contrast,
+vulnerabilities. Both AFLN ET and NSF UZZ were configured                     by utilizing the grammar derived from the LLM, structure-
+with the same subject versions to run an equal duration (i.e., 10             aware mutation efficiently maintains the validity of messages.
+
+                                                                         12
+ C HATAFL discovered 9 distinct, previously unknown bugs                    subsequently used for input generation. Whereas the whitebox
+ while AFLN ET and NSF UZZ only discovered 3 and 4 of                       fuzzers, such as P OLYGLOT [13], extract the message structure
+ those, respectively. AFLN ET and NSF UZZ did not find any                  through dynamic analysis techniques over systems under test,
+ additional bugs, either. Seven of the nine bugs (7/9) are                  such as symbolic execution and taint tracking. However, these
+ potentially security-critical.                                             approaches can only infer message structures based on the
+                                                                            observed messages. As a result, the inferred structure may
+                                                                            deviate significantly from the actual message structures.
+Experience on Manual Effort
+                                                                                Dynamic State Inference: Mutation-based fuzzing is one
+    During the C HATAFL’s usage, no manual effort was                       of the primary categories within fuzzing protocol implemen-
+needed to run the experiments for all protocols shown in                    tations. Mutation-based fuzzers [47], [9], [37], [31], [21],
+Table II. Specifically, when extracting grammar from the LLM,               [40], [4] generate new inputs by randomly mutating exist-
+we utilize the prompt shown in Figure 6. During protocol                    ing seeds selected from a corpus of seed inputs and utilize
+testing, only the protocol name (e.g., RTSP) in the Instruction             coverage information to systematically evolve this corpus.
+part is changed. Under Desired Format, Shot-1 and Shot-                     Guided by branch coverage feedback, they have been proven
+2 serve as examples for the LLM to print the grammar in                     to be effective in fuzzing stateless programs. However, when
+the given machine-readable structure so that C HATAFL can                   fuzzing stateful programs, branch coverage alone is a useful
+parse the printed grammar. We spent an hour obtaining these                 but insufficient metric for guiding the fuzzing campaign as
+exemplary shots, but this setup is a one-time effort; subsequent            elucidated in existing works [6]. Therefore, state coverage
+testing of other protocols requires no additional manual effort.            feedback is employed to work with branch coverage to guide
+With the grammar obtained from the LLM, the structure-aware                 the fuzzing campaign. However, identifying states presents a
+mutations are fully automatic (cf. Section IV-A).                           significant challenge. A series of works [7], [36], [32], [38]
+                                                                            proposes various state representation schemes. AFLN ET [36]
+    To enrich initial seeds, we utilize the prompt template in
+                                                                            utilizes the response code as states, constructs a state machine
+Figure 8. The entire prompt is automatically generated from
+                                                                            during the fuzzing campaign, and employs it as state-coverage
+this prompt template when utilizing C HATAFL for protocol
+                                                                            guidance. S TATE AFL [32], SGF UZZ [7], and NSF UZZ [38]
+testing. The protocol name and an existing message sequence
+                                                                            propose distinct state representation schemes based on program
+are automatically pasted into this template. In addition, the
+                                                                            variables. In this paper, we do not attempt to answer what states
+names for the message types under generation are sourced
+                                                                            are. Instead, we delegate this task to the LLM, allowing it to
+from the model output in Figure 6. In soliciting the LLM’s
+                                                                            infer states. This approach has proven effective.
+assistance to overcome coverage plateaus, we generate the
+complete prompt using the template in Figure 9. Therefore,                      Fuzzing based on Large Language Models: Following
+there is no manual effort needed to utilize C HATAFL.                       the remarkable success of pre-trained large language mod-
+                                                                            els (LLMs) in various natural language processing tasks,
+    C HATAFL is designed to test text-based protocols with
+                                                                            researchers have been exploring their potential in diverse
+publicly available RFCs. The specifications for most protocols
+                                                                            domains, including in fuzzing. For instance, C ODA M OSA [28]
+are documented in these publicly available RFCs, which are
+                                                                            was the first to apply LLMs to fuzzing (i.e., the automatic
+included as training data for the LLM. However, for certain
+                                                                            generation of test cases for Python modules). Later, T ITAN -
+proprietary protocols, whose RFCs are not included in the
+                                                                            F UZZ [17] and F UZZ GPT [18] used an LLM to automatically
+LLM training data, C HATAFL may not perform optimally
+                                                                            generate test cases for Deep Learning software libraries, specif-
+when testing them.
+                                                                            ically. While these works were taking a generational approach
+                                                                            to fuzzing, C HAT F UZZ [23] takes a mutational one by ask-
+                    VII.    R ELATED W ORK                                  ing the LLM to modify human-written test cases. Ackerman
+    Grammar-based fuzzing: Generation-based fuzzing gen-                    et al. [2] leverages the ambiguity of format specifications and
+erates messages from scratch based on manually constructed                  employs the LLM to recursively examine a natural language
+specifications [29], [19], [3], [25], [1], [8]. These specifications        format specification to generate instances for use as strong
+typically include a data model and a state model. The data                  seed examples to a mutation fuzzer. In contrast to these
+model describes the message grammar, while the state model                  techniques, C HATAFL separates the information extraction
+specifies the message order between servers and clients. How-               from the fuzzing. C HATAFL first extracts information about
+ever, constructing these specifications can be a laborious task             the structure and order of inputs from the LLM in machine-
+and requires large human efforts. In contrast, large language               readable format (i.e., via grammars and state machines) before
+models (LLMs) are pre-trained on billions of documents and                  running a highly efficient fuzzer that is fed with this informa-
+possess extensive knowledge about protocol specifications. In               tion. For efficiency, C HATAFL uses the LLM for a mutational
+C HATAFL, we leverage LLMs directly to obtain specification                 approach (similar to C HAT F UZZ) only whenever the coverage
+information, eliminating the need for additional manual efforts.            saturates during fuzzing.
+
+    Dynamic Message Inference: To reduce the reliance on                                         VIII.   C ONCLUSION
+prior knowledge and manual work before fuzzing, several
+existing works have been proposed to dynamically infer mes-                     Protocol fuzzing is an inherently difficult problem. As
+sage structures, including blackbox fuzzers [22], [35] and                  compared to file processing applications, where the inputs to
+whitebox fuzzers [13], [16], [30]. Blackbox fuzzers such as                 be fuzzed are given as file(s), protocols are typically reactive
+T REE F UZZ [35] employ machine learning techniques over                    systems that involve sustained interaction between system and
+the seed corpus to construct probabilistic models that are                  environment. This poses two separate but related challenges: a)
+
+                                                                       13
+to explore uncommon deep behaviours leading to crashes, we                              [11]   T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal,
+may need to generate complex sequences of valid events and                                     A. Neelakantan, P. Shyam, G. Sastry, A. Askell et al., “Language mod-
+                                                                                               els are few-shot learners,” Advances in neural information processing
+b) since the protocol is stateful, this also implicitly involves                               systems, vol. 33, pp. 1877–1901, 2020.
+on-the-fly state inference during fuzz campaign (since not all
+                                                                                        [12]   S. Bubeck, V. Chandrasekaran, R. Eldan, J. Gehrke, E. Horvitz, E. Ka-
+actions may be enabled in a state). Moreover, the effectiveness                                mar, P. Lee, Y. T. Lee, Y. Li, S. Lundberg, H. Nori, H. Palangi, M. T.
+of fuzzing heavily depends on the quality of the initial seeds,                                Ribeiro, and Y. Zhang, “Sparks of artificial general intelligence: Early
+which serve as the foundation for fuzzing generation.                                          experiments with gpt-4,” 2023.
+                                                                                        [13]   J. Caballero, H. Yin, Z. Liang, and D. Song, “Polyglot: Automatic
+    In this work, we have demonstrated that for protocols                                      extraction of protocol message format using dynamic binary analysis,”
+with publicly available RFCs, LLMs prove to be effective in                                    in Proceedings of the 14th ACM conference on Computer and commu-
+enriching initial seeds, enabling structure-aware mutation, and                                nications security, 2007, p. 317–329.
+aiding in state inference. We evaluated C HATAFL on a wide                              [14]   M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. de Oliveira Pinto, J. Kaplan,
+range of protocols from the widely-used P RO F UZZ B ENCH                                      H. Edwards, Y. Burda, N. Joseph, G. Brockman, A. Ray, R. Puri,
+suite. The results are highly promising: C HATAFL covered                                      G. Krueger, M. Petrov, H. Khlaaf, G. Sastry, P. Mishkin, B. Chan,
+                                                                                               S. Gray, N. Ryder, M. Pavlov, A. Power, L. Kaiser, M. Bavarian,
+more code and explored larger state space in significantly less                                C. Winter, P. Tillet, F. P. Such, D. Cummings, M. Plappert, F. Chantzis,
+time compared to the baseline tools. Furthermore, C HATAFL                                     E. Barnes, A. Herbert-Voss, W. H. Guss, A. Nichol, A. Paino, N. Tezak,
+found 9 zero-day vulnerabilities, while the baseline tools only                                J. Tang, I. Babuschkin, S. Balaji, S. Jain, W. Saunders, C. Hesse,
+discovered 3 or 4 of them.                                                                     A. N. Carr, J. Leike, J. Achiam, V. Misra, E. Morikawa, A. Rad-
+                                                                                               ford, M. Knight, M. Brundage, M. Murati, K. Mayer, P. Welinder,
+                                                                                               B. McGrew, D. Amodei, S. McCandlish, I. Sutskever, and W. Zaremba,
+                          ACKNOWLEDGMENT                                                       “Evaluating large language models trained on code,” 2021.
+                                                                                        [15]   A. Chowdhery, S. Narang, J. Devlin, M. Bosma, G. Mishra, A. Roberts,
+    This research is supported by the National Research Foun-                                  P. Barham, H. W. Chung, C. Sutton, S. Gehrmann, P. Schuh, K. Shi,
+dation, Singapore, and Cyber Security Agency of Singapore                                      S. Tsvyashchenko, J. Maynez, A. Rao, P. Barnes, Y. Tay, N. Shazeer,
+under its National Cybersecurity R&D Programme (Fuzz                                           V. Prabhakaran, E. Reif, N. Du, B. Hutchinson, R. Pope, J. Bradbury,
+Testing NRF-NCR25-Fuzz-0001). Any opinions, findings and                                       J. Austin, M. Isard, G. Gur-Ari, P. Yin, T. Duke, A. Levskaya, S. Ghe-
+                                                                                               mawat, S. Dev, H. Michalewski, X. Garcia, V. Misra, K. Robinson,
+conclusions, or recommendations expressed in this material are                                 L. Fedus, D. Zhou, D. Ippolito, D. Luan, H. Lim, B. Zoph, A. Spiri-
+those of the author(s) and do not reflect the views of National                                donov, R. Sepassi, D. Dohan, S. Agrawal, M. Omernick, A. M. Dai,
+Research Foundation, Singapore, and Cyber Security Agency                                      T. S. Pillai, M. Pellat, A. Lewkowycz, E. Moreira, R. Child, O. Polozov,
+of Singapore.                                                                                  K. Lee, Z. Zhou, X. Wang, B. Saeta, M. Diaz, O. Firat, M. Catasta,
+                                                                                               J. Wei, K. Meier-Hellstern, D. Eck, J. Dean, S. Petrov, and N. Fiedel,
+                                                                                               “Palm: Scaling language modeling with pathways,” 2022.
+                               R EFERENCES                                              [16]   W. Cui, M. Peinado, K. Chen, H. J. Wang, and L. Irun-Briz, “Tupni:
+ [1]   H. J. Abdelnur, R. State, and O. Festor, “Kif: a stateful sip fuzzer,” in               Automatic reverse engineering of input formats,” in Proceedings of the
+       Proceedings of the 1st international Conference on Principles, Systems                  15th ACM conference on Computer and communications security, 2008,
+       and Applications of IP Telecommunications, 2007, pp. 47–56.                             p. 391–402.
+ [2]   J. Ackerman and G. Cybenko, “Large language models for fuzzing                   [17]   Y. Deng, C. S. Xia, H. Peng, C. Yang, and L. Zhang, “Large language
+       parsers (registered report),” in Proceedings of the 2nd International                   models are zero-shot fuzzers: Fuzzing deep-learning libraries via large
+       Fuzzing Workshop, 2023, pp. 31–38.                                                      language models,” in Proceedings of the 32nd ACM SIGSOFT Interna-
+                                                                                               tional Symposium on Software Testing and Analysis, 2023.
+ [3]   D. Aitel, “The advantages of block-based protocol analysis for security
+       testing,” Immunity Inc., February, vol. 105, p. 106, 2002.                       [18]   Y. Deng, C. S. Xia, C. Yang, S. D. Zhang, S. Yang, and L. Zhang,
+ [4]   A. Andronidis and C. Cadar, “Snapfuzz: high-throughput fuzzing of                       “Large language models are edge-case fuzzers: Testing deep learning
+       network applications,” in Proceedings of the 31st ACM SIGSOFT                           libraries via fuzzgpt,” arXiv preprint arXiv:2304.02014, 2023.
+       International Symposium on Software Testing and Analysis, 2022, pp.              [19]   M. Eddington, “Peach fuzzer platform.” [Online]. Available: https:
+       340–351.                                                                                //gitlab.com/gitlab-org/security-products/protocol-fuzzer-ce
+ [5]   A. Arcuri and L. Briand, “A hitchhiker’s guide to statistical tests for          [20]   Z. Fan, X. Gao, A. Roychoudhury, and S. H. Tan, “Automated
+       assessing randomized algorithms in software engineering,” Software                      repair of programs from large language models,” arXiv preprint
+       Testing, Verification and Reliability, vol. 24, no. 3, pp. 219–250,                     arXiv:2205.10583, 2022.
+       2014. [Online]. Available: https://onlinelibrary.wiley.com/doi/abs/10.           [21]   A. Fioraldi, D. Maier, H. Eißfeldt, and M. Heuse, “AFL++: Combining
+       1002/stvr.1486                                                                          incremental steps of fuzzing research,” in Proceedings of the 14th
+ [6]   C. Aschermann, S. Schumilo, A. Abbasi, and T. Holz, “Ijon: Exploring                    USENIX Workshop on Offensive Technologies, 2020.
+       deep state spaces via fuzzing,” in Proceedings of the 41st IEEE                  [22]   C. Holler, K. Herzig, and A. Zeller, “Fuzzing with code fragments,” in
+       Symposium on Security and Privacy. IEEE, 2020, pp. 1597–1612.                           Proceedings of the 21st USENIX Security Symposium, 2012, pp. 445–
+ [7]   J. Ba, M. Böhme, Z. Mirzamomen, and A. Roychoudhury, “Stateful                         458.
+       greybox fuzzing,” in Proceedings of the 31st USENIX Security Sympo-
+                                                                                        [23]   J. Hu, Q. Zhang, and H. Yin, “Augmenting greybox fuzzing with
+       sium. USENIX Association, 2022, pp. 3255–3272.
+                                                                                               generative ai,” arXiv preprint arXiv:2306.06782, 2023.
+ [8]   G. Banks, M. Cova, V. Felmetsger, K. Almeroth, R. Kemmerer, and
+                                                                                        [24]   N. Jain, S. Vaidyanath, A. Iyer, N. Natarajan, S. Parthasarathy, S. Ra-
+       G. Vigna, “Snooze: toward a stateful network protocol fuzzer,” in
+                                                                                               jamani, and R. Sharma, “Jigsaw: Large language models meet program
+       Proceedings of the 9th International conference on information security,
+                                                                                               synthesis,” in Proceedings of the 44th International Conference on
+       vol. 4176. Springer, 2006, pp. 343–358.
+                                                                                               Software Engineering, 2022.
+ [9]   M. Böhme, V.-T. Pham, M.-D. Nguyen, and A. Roychoudhury, “Di-
+       rected greybox fuzzing,” in Proceedings of the 24th ACM SIGSAC                   [25]   Jtpereyda, “Boofuzz: A fork and successor of the sulley fuzzing
+       Conference on Computer and Communications Security, 2017, pp.                           framework.” [Online]. Available: https://github.com/jtpereyda/boofuzz
+       2329–2344.                                                                       [26]   G. Klees, A. Ruef, B. Cooper, S. Wei, and M. Hicks, “Evaluating
+[10]   M. Böhme, L. Szekeres, and J. Metzman, “On the reliability of                          fuzz testing,” in Proceedings of the 25th ACM SIGSAC Conference on
+       coverage-based fuzzer benchmarking,” in Proceedings of the 44th                         Computer and Communications Security, 2018.
+       International Conference on Software Engineering, ser. ICSE ’22, 2022,           [27]   Y. LeCun, Y. Bengio, and G. Hinton, “Deep learning,” nature, vol. 521,
+       pp. 1–13.                                                                               no. 7553, pp. 436–444, 2015.
+
+
+                                                                                   14
+[28]   C. Lemieux, J. Priya Inala, S. K. Lahiri, and S. Sen, “Codamosa:
+       Escaping coverage plateaus in test generation with pre-trained large
+       language models,” in Proceedings of the 45th International Conference
+       on Software Engineering, 2023.
+[29]   J. Li, B. Zhao, and C. Zhang, “Fuzzing: a survey,” Cybersecurity, vol. 1,
+       no. 1, pp. 1–13, 2018.
+[30]   Z. Lin, X. Jiang, D. Xu, and X. Zhang, “Automatic protocol format
+       reverse engineering through context-aware monitored execution.” in
+       Proceedings of the 16th Annual Network & Distributed System Security
+       Symposium, vol. 8, 2008, pp. 1–15.
+[31]   “libfuzzer – a library for coverage-guided fuzz testing,” LLVM.
+       [Online]. Available: https://llvm.org/docs/LibFuzzer.html
+[32]   R. Natella, “Stateafl: Greybox fuzzing for stateful network servers,”
+       Empirical Software Engineering, vol. 27, no. 7, p. 191, 2022.
+[33]   R. Natella and V.-T. Pham, “Profuzzbench: A benchmark for stateful
+       protocol fuzzing,” in Proceedings of the 30th ACM SIGSOFT interna-
+       tional symposium on software testing and analysis. ACM, 2021, pp.
+       662–665.
+[34]   OpenAI, “Gpt-4 technical report,” 2023.
+[35]   J. Patra and M. Pradel, “Learning to fuzz: Application-independent
+       fuzz testing with probabilistic, generative models of input data,” TU
+       Darmstadt, Department of Computer Science, Tech. Rep. TUD-CS-
+       2016-14664, 2016.
+[36]   V. Pham, M. Böhme, and A. Roychoudhury, “Aflnet: A greybox fuzzer
+       for network protocols,” in Proceedings of the 13th IEEE International
+       Conference on Software Testing, Verification and Validation: Testing
+       Tools Track. New York: IEEE, 2020.
+[37]   V.-T. Pham, M. Böhme, A. E. Santosa, A. R. Căciulescu, and A. Roy-
+       choudhury, “Smart greybox fuzzing,” IEEE Transactions on Software
+       Engineering, vol. 47, no. 9, pp. 1980–1997, 2021.
+[38]   S. Qin, F. Hu, Z. Ma, B. Zhao, T. Yin, and C. Zhang, “Nsfuzz: Towards
+       efficient and state-aware network service fuzzing,” ACM Transactions
+       on Software Engineering and Methodology, 2023.
+[39]   A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, I. Sutskever et al.,
+       “Language models are unsupervised multitask learners,” OpenAI blog,
+       vol. 1, no. 8, p. 9, 2019.
+[40]   S. Schumilo, C. Aschermann, A. Abbasi, S. Wörner, and T. Holz, “Nyx:
+       Greybox hypervisor fuzzing using fast snapshots and affine types.” in
+       Proceedings of the 29th USENIX Security Symposium, 2021, pp. 2597–
+       2614.
+[41]   S. Schumilo, C. Aschermann, A. Jemmett, A. Abbasi, and T. Holz,
+       “Nyx-net: network fuzzing with incremental snapshots,” in Proceedings
+       of the 17th European Conference on Computer Systems, 2022, pp. 166–
+       180.
+[42]   S. Sun, Y. Liu, D. Iter, C. Zhu, and M. Iyyer, “How does in-context
+       learning help prompt tuning?” arXiv preprint arXiv:2302.11521, 2023.
+[43]   R. Thoppilan, D. De Freitas, J. Hall, N. Shazeer, A. Kulshreshtha, H.-T.
+       Cheng, A. Jin, T. Bos, L. Baker, Y. Du et al., “Lamda: Language models
+       for dialog applications,” arXiv preprint arXiv:2201.08239, 2022.
+[44]   A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+       Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in
+       neural information processing systems, vol. 30, 2017.
+[45]   X. Wang, J. Wei, D. Schuurmans, Q. Le, E. Chi, S. Narang, A. Chowd-
+       hery, and D. Zhou, “Self-consistency improves chain of thought rea-
+       soning in language models,” in Proceedings of the 11th International
+       Conference on Learning Representations, 2023.
+[46]   J. Wei, X. Wang, D. Schuurmans, M. Bosma, E. Chi, Q. Le, and
+       D. Zhou, “Chain of thought prompting elicits reasoning in large
+       language models,” arXiv preprint arXiv:2201.11903, 2022.
+[47]   M. Zalewski, “Afl.” [Online]. Available: https://lcamtuf.coredump.cx/
+       afl/
+
+
+
+
+                                                                                   15
+                        A PPENDIX A                                        (4) Set up the docker image for each subject with all
+                    A RTIFACT A PPENDIX                                 fuzzers:
+    C HATAFL is a protocol fuzzer guided by large language                  $ ./setup.sh
+models (LLMs). This artifact contains the source code of
+C HATAFL and all the subjects utilized in the experimental                 After these, no further configuration is needed, and we
+sections of the paper. This document outlines the steps to              can proceed with a basic run to verify that everything is
+retrieve the artifact and provides guidance on using it to              functioning correctly. For example, to use C HATAFL for
+reproduce the experiments.                                              fuzzing pure-ftpd for a duration of 5 minutes in a single
+                                                                        run, we execute the following command:
+A. Description & Requirements                                               $ ./run.sh 1 5 pure-ftpd chatafl
+    In this section, we introduce how to obtain the artifact,
+including fuzzers and benchmarks, along with the software               This command encompasses instructions for running the fuzzer
+and hardware requirements to run it.                                    and collecting data. Once this process is completed (approxi-
+                                                                        mately 5 minutes later), we will observe the output in the same
+   1) How to access: We provide public access to our code               terminal:
+and experiment setups through the following Zenodo link:                    $ <FUZZER>: I am done!
+             https://zenodo.org/record/10115151
+                                                                        Then we can locate the results-pure-ftpd folder, hous-
+You can also access it in Github:                                       ing the fuzzing results, in the benchmark directory.
+
+          https://github.com/ChatAFLndss/ChatAFL                        C. Experiment Workflow
+The artifact is licensed under the Apache License 2.0.                      Our experiments consist of two primary phases: (1) exe-
+                                                                        cuting fuzzers on subjects to gather data, and (2) analyzing
+    2) Hardware dependencies: For a single execution of
+                                                                        this data to compare the performance of C HATAFL with that
+C HATAFL on a subject, standard commodity machines are
+                                                                        of baseline tools.
+sufficient to meet our requirements. These machines should
+have a minimum of a 1-core CPU, 8GB RAM, and a 32GB                        1) Gather code and state coverage: We leverage the fol-
+hard drive. However, when simultaneously running multiple               lowing command to run fuzzers on subjects:
+fuzzing sessions, it is necessary to ensure that each fuzzing               $ ./run.sh <container_number> <fuzzed_time>
+instance receives similar resource allocations.                                 <subjects> <fuzzers>
+    3) Software dependencies: For running the artifact, a work-
+ing Docker installation is required. The fuzzers execute                Where container_number specifies how many containers
+within Docker containers, but they are controlled by scripts            are created to run a single fuzzer on a particular subject (each
+running outside the container on the host system. All scripts on        container runs one fuzzer on one subject). fuzzed_time
+the host system are tested on Ubuntu 20.04. However, they               indicates the fuzzing time in minutes. subjects is the list
+are expected to work on any Linux distribution. To run these            of subjects under test, and fuzzers is the list of fuzzers
+scripts successfully, the host machines should have Python-3            that are utilized to fuzz subjects. For example, the command
+installed along with the pandas and matplotlib libraries.               above (run.sh 1 5 pure-ftpd chatafl) would cre-
+                                                                        ate 1 container for the fuzzer C HATAFL to fuzz the subject
+    4) Benchmarks: All the benchmarks required for evaluation           pure-ftpd for 5 minutes.
+are located within the benchmark directory of the Zenodo
+and Github repository.                                                      Once the allocated time reaches, the fuzzer is terminated,
+                                                                        and the data is subsequently gathered. The data gathered
+B. Artifact Installation & Configuration                                from the fuzzing campaign (i.e., code and state coverage,
+                                                                        seed corpus, generated grammar corpus, stall messages, and
+    We now set up the artifact, and the entire process is               enriched seeds) are archived and compressed. This archive is
+estimated to take 40 minutes.                                           then extracted from the container and placed into a host folder
+                                                                        results-<subject> in the benchmark directory.
+   (1) Download the artifact from Github:
+    $ git clone https://github.com/ChatAFLndss/                            2) Analyze data: After all data is gathered, the script
+        ChatAFL.git                                                     analyze.sh can be employed to construct plots illustrating
+                                                                        the average code and state coverage over time for fuzzers
+   (2) Set OpenAI API Key:                                              on each subject. The script is executed using the following
+                                                                        command:
+    $ export KEY=<OPENAI_API_KEY>
+                                                                            $ ./analyze.sh <subjects> <fuzzed_time>
+   We require users to use their own OpenAI API key here.
+                                                                           The script takes in 2 arguments - the list of subjects
+   (3) Install the dependencies Docker and Python-3                     under test and the duration of the run to be analyzed.
+along with the pandas and matplotlib required on the                    For example, executing the command (./analyze.sh
+host machine:                                                           pure-ftpd 240) generates plots illustrating state and
+    $ cd ChatAFL && ./deps.sh                                           code coverage over 240 minutes for fuzzers running
+
+                                                                   16
+on pure-ftpd. The command processes the results fold-                         2) Experiment (E2): [Ablation Study] [5 human-minutes +
+ers, producing cov_over_time_<subject>.png and                            180 compute-hours]: Each strategy in C HATAFL contributes
+state_over_time_<subject>.png visualizations.                             to enhancing code coverage (present results for the claim C3).
+   Finally, after completing the evaluation, we can execute the               [How to]: Run the C HATAFL fuzzer and two different
+clean.sh script to remove all docker containers and images                ablations - C HATAFL-CL1, C HATAFL-CL2, over the two
+from the system, leaving only the artifact folder.                        subjects proftpd and exim, respectively, iterating the pro-
+                                                                          cess 5 times. Each execution takes place within a container and
+                                                                          spans a duration of 360 minutes. Consequently, this experiment
+D. Major Claims                                                           involves a total of 30 containers, with each container running
+                                                                          fuzzing for 240 minutes and coverage collection for 120
+   •    C1: C HATAFL covers more states and achieves the                  minutes.
+        same state coverage faster than baselines. This is                    [Preparation] Ensure that the artifact installation is com-
+        proven by experiment (E1), whose results are reported             plete, meaning setup.sh has been executed.
+        in [Table III and Table IV].
+                                                                             [Execution] Execute the following commands:
+   •    C2: C HATAFL covers more code and achieves the
+                                                                              $ ./run.sh 5 240 proftpd,exim chatafl,chatafl-
+        same code coverage faster than baselines. This is                         cl1,chatafl-cl2
+        proven by experiment (E1), whose results are reported                 $ ./analyze.sh proftpd,exim 240
+        in [Table V].
+                                                                              [Results] Upon completion of the commands, a folder
+   •    C3: Each strategy proposed in the paper contributes
+                                                                          prefixed with res_ will be generated. This folder contains
+        to varying degrees of improvement in code coverage.
+                                                                          PNG files illustrating the code covered by three fuzzers over
+        This is proven by experiment (E2), whose results are
+                                                                          time as well as the output archives from all the runs. It will
+        reported in [Table VI].
+                                                                          be placed in the root directory of the artifact.
+
+                                                                          F. Customization
+E. Evaluation
+                                                                              We have the flexibility to choose the fuzzers for compar-
+    To conduct the experiments outlined in the paper, we                  isons and the subjects to undergo fuzzing. Additionally, we
+utilized a vast amount of resources. We executed a 24-hour                can define the fuzzing duration and extend our benchmarks by
+fuzzing session using 5 fuzzers on 6 subjects, each iterated 10           incorporating new subjects. For instance, we included a new
+times. Consequently, it is impractical to replicate all the exper-        subject, Lighttpd1, in our benchmarks.
+iments within a single day using a standard desktop machine.
+To facilitate the evaluation of the artifact, we downsized our
+experiments, employing fewer fuzzers, subjects, and iterations.
+
+    1) Experiment (E1): [Improvement of state and code cov-
+erage] [5 human-minutes + 180 compute-hours]: C HATAFL
+outperforms AFLN ET in state coverage and code coverage
+(present results for claims C1 and C2).
+    [How to] Run two fuzzers, C HATAFL and AFLN ET, on
+the three subjects kamailio, pure-ftpd, and live555,
+respectively, iterating the process 5 times. Each execution takes
+place within a container and spans a duration of 360 minutes.
+Consequently, this experiment involves a total of 30 containers,
+with each container running fuzzing for 240 minutes and
+coverage collection for 120 minutes.
+    [Preparation] Ensure that the artifact installation is com-
+plete, meaning setup.sh has been executed.
+   [Execution] Execute the following commands:
+     $ ./run.sh 5 240 kamailio,pure-ftpd,live555
+         chatafl,aflnet
+     $ ./analyze.sh kamailio,pure-ftpd,live555 240
+
+
+    [Results] Upon completion of the commands, a folder
+prefixed with res_ will be generated. This folder contains
+PNG files illustrating the state and code covered by two fuzzers
+over time as well as the output archives from all the runs. It
+will be placed in the root directory of the artifact.
+
+                                                                     17
+

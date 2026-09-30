@@ -1,0 +1,1102 @@
+                                                                                                                                                                                      1
+
+
+
+
+                                              Large Language Model assisted Hybrid Fuzzing
+                                                                             Ruijie Meng, Gregory J. Duck, and Abhik Roychoudhury
+
+
+
+                                           Abstract—Greybox fuzzing is one of the most popular methods                domain of inputs like greybox fuzzing, except that navigation
+                                        for detecting software vulnerabilities, which conducts a biased               is achieved by mutating path constraints instead of mutating
+                                        random search within the program input space. To enhance its                  inputs. A concolic execution engine executes the program with
+                                        effectiveness in achieving deep coverage of program behaviors,
+                                        greybox fuzzing is often combined with concolic execution,                    a concrete input while symbolically emulating the program
+                                        which performs a path-sensitive search over the domain of                     along the same execution path to compute path constraints.
+                                        program inputs. In hybrid fuzzing, conventional greybox fuzzing               By negating these path constraints, it transitions to alternative
+                                        is followed by concolic execution in an iterative loop, where                 branches. A constraint solver is then used to solve the negated
+                                        reachability roadblocks encountered by greybox fuzzing are                    constraints and generate concrete inputs that drive the execu-
+arXiv:2412.15931v2 [cs.SE] 5 May 2026
+
+
+
+
+                                        tackled by concolic execution. However, such hybrid fuzzing
+                                        still suffers from difficulties conventionally faced by concolic              tion along new paths. However, its effectiveness often comes
+                                        execution, such as the need for environment modeling and system               at the cost of efficiency [6], [7].
+                                        call support. In this work, we explore the potential of developing               Hybrid fuzzing [7] combines greybox fuzzing with concolic
+                                        “smart” concolic execution empowered by Large Language                        execution to leverage the strengths of both techniques and
+                                        Models (LLMs), leveraging their knowledge of code semantics                   maximize code coverage. It was first introduced in D RILLER
+                                        during constraint computing and solving. When coverage-based
+                                        greybox fuzzing reaches a roadblock in terms of reaching certain              [8] and has subsequently been followed by many testing
+                                        branches, we conduct a slicing on the execution trace and                     engines [9], [10], [11]. In hybrid fuzzing, greybox fuzzing
+                                        suggest modifications of the input to reach the relevant branches.            proceeds until it encounters roadblocks in unraveling a branch,
+                                        The LLM is used as a solver to generate the modified input                    which is evaluated to be almost always true or false. This
+                                        to reach the desired branches. Compared with state-of-the-art                 roadblock branch captures the frontier of the greybox fuzzing
+                                        hybrid fuzzers C O F UZZ, I NTRIGUER, and QSYM, our LLM-
+                                        based hybrid fuzzer H Y LL FUZZ (pronounced “hill fuzz”) covers               search. Concolic execution is then used to overcome this
+                                        31.43%, 44.56%, and 59.48% more code branches, respectively.                  frontier. Once the roadblock is overcome, greybox fuzzing can
+                                        Furthermore, the LLM-based concolic execution in H Y LL FUZZ                  take over again until another roadblock is encountered.
+                                        takes a time that is 3–19 times faster than the concolic execution               Unfortunately, hybrid fuzzing remains limited due to the
+                                        running in existing hybrid fuzzing tools. In extensively tested real-         underlying concolic execution. Traditional concolic execu-
+                                        world subjects, H Y LL FUZZ exposed seven previously unknown
+                                        bugs. This experience shows that LLMs can be effectively inserted             tion mechanically computes constraints and solves them for
+                                        into the iterative loop of hybrid fuzzers to efficiently expose more          satisfiability, without knowledge of the program semantics.
+                                        program behaviors.                                                            This leads to several challenges. For example, real-world
+                                          Index Terms—Hybrid Fuzzing, Concolic Execution, Large                       constructs, such as external libraries and system calls, require
+                                        Language Models.                                                              explicit modeling to allow further analysis, which may require
+                                                                                                                      years of manual effort [12], [13], [14]. Moreover, even when
+                                                                                                                      constraints are satisfiable, traditional solvers (e.g., Z3 [15])
+                                                                 I. I NTRODUCTION
+                                                                                                                      cannot prioritize solutions that also conform to the required
+                                           Greybox fuzzing [1], [2] is one of the most widely used                    input structure, potentially generating a number of syntacti-
+                                        techniques today to detect security vulnerabilities in software               cally invalid inputs. Compounding the problem, program paths
+                                        systems. At its core, greybox fuzzing performs an adaptive and                in programming languages (e.g. C/C++ and Java) must be
+                                        biased random search over the input space to find crashing                    symbolically translated as logic constraints that are solvable
+                                        inputs. It conducts lightweight compile-time instrumentation                  for solvers. However, both constraint computing and constraint
+                                        on selected program elements (e.g., branches), and at runtime                 solving are time-consuming [9], [10], [5].
+                                        records which instrumented elements are exercised for a given                    Recent advances in Large Language Models (LLMs) open
+                                        input. This runtime feedback then guides the input mutation                   up opportunities for developing smart concolic execution
+                                        to generate new ones and explore more program behaviors.                      to address these challenges. Similar to traditional constraint
+                                           Although greybox fuzzing is highly effective, it often                     solvers, LLMs have shown the capability of analyzing exe-
+                                        gets stuck at complex branches that are rarely evaluated                      cution paths and then generating inputs [16], [17]. However,
+                                        as true, such as those guarded by magic bytes (e.g.,                          unlike traditional solvers, LLMs have a knowledge of the
+                                        if(input == "\uDB16\uDC06")). In such cases, concolic                         program semantics. LLMs trained on terabytes of data corpus
+                                        execution is more effective in generating inputs to cover                     can understand external libraries [18], eliminating the need
+                                        the branches. Concolic execution [3], [4], [5] searches the                   for manual modeling, and can infer code functionalities [19],
+                                           R. Meng is with the National University of Singapore, Singapore. E-mail:   [20], allowing the generation of syntactically valid inputs.
+                                        ruijie meng@u.nus.edu.                                                        Furthermore, LLMs are more adaptive and capable of directly
+                                           G. Duck is with the National University of Singapore, Singapore. E-mail:   reasoning in high-level programming languages. This allows
+                                        gregory@comp.nus.edu.sg.
+                                           A. Roychoudhury is with the National University of Singapore, Singapore.   the LLM-based approach to bypass the translation of source
+                                        E-mail: abhik@nus.edu.sg.                                                     code to logic formulas, thus accelerating the analysis process.
+                                                                                                                                                              2
+
+
+
+   Building on this, we propose H Y LL FUZZ, a hybrid fuzzer        1 /* *
+that integrates LLM-based concolic execution. Specifically,         2 * Parse an XML ( SGML ) comment
+                                                                    3 * Comment ::= ' <! - - ' (( Ch - ' -' ) |( ' -' ( Ch - ' -' ) ) ) * ' --> '
+when greybox fuzzing reaches a coverage plateau, where it has       4 */
+difficulty covering new program paths, H Y LL FUZZ identifies       5 void x m lP ar se C om me nt ( x m l P a r s e r C t x t P t r ctxt ) {
+                                                                    6    ...
+the roadblocks to overcome. The subsequent steps align with         7    do {
+the principles of traditional concolic execution. H Y LL FUZZ       8       // Skip 20+ path c o n d i t i o n s
+                                                                    9        printf ( " % c " , * in ) ;
+executes the input that reaches the branch condition, but fails    10       if (* in == ' -' ) {
+to satisfy it. Meanwhile, H Y LL FUZZ constructs a dynamic         11          if ( in [1] == ' -' ) {
+                                                                   12              if ( in [2] == ' >' ) {
+slice of the relevant execution path. Instead of translating the   13                 return ;
+execution path into logic formulas, H Y LL FUZZ preserves the      14              } in ++;
+                                                                   15          } goto get_more ;
+path as-is in the form of a source code slice. The LLM is then     16       }
+prompted to modify the input based on the sliced code path         17    } while (((* in >=0 x20 ) && (* in <=0 x7F ) ) || (* in ==0 x09
+                                                                                ) || (* in ==0 x0a ) ) ;
+and generate new inputs to overcome roadblocks. These LLM-         18    ...
+generated inputs are added to the seed corpus, where they are      19 }
+                                                                   20
+retrieved and evaluated by greybox fuzzing. Whenever greybox       21 void x m l P a r s e C o n t e n t I n t e r n a l ( x m l P a rs e r C t x tPtr ctxt ) {
+fuzzing hits a coverage plateau again, this process is repeated.   22    const xmlchatr * cur = ctxt - > input - > cur ;
+                                                                   23    ...
+   The embodiment of our approach in the form of H Y LL-           24    /* This case : a comment */
+FUZZ, shows strong promise in delivering effectiveness, effi-      25    if ((* cur == ' <' ) && ( NXT (1) == ' ! ' ) && ( NXT (2) ==
+                                                                                ' -' ) && ( NXT (3) == ' -' ) ) {
+ciency, and usability. To the best of our knowledge, previous      26       x ml Pa rs eC o mm en t ( ctxt ) ;
+hybrid fuzzers have not considered all three of these important    27    }
+                                                                   28    ...
+dimensions. In terms of effectiveness, H Y LL FUZZ achieves        29 }
+31–59% more branch coverage on average compared to state-
+of-the-art hybrid fuzzers. In terms of efficiency (median time),
+each concolic execution run of H Y LL FUZZ consumes 3–19           Fig. 1: Code fragment extracted from parser.c in libxml2.
+times less time compared to those of state-of-the-art hybrid
+fuzzers. Finally, in terms of usability, H Y LL FUZZ by defini-
+tion does not involve any symbolic modeling of instructions or     libraries (e.g., printf in Fig. 1) behind models, which allows
+building hand-crafted environment models, thereby naturally        symbolic reasoning over execution paths. These models are
+lowering the barrier to entry.                                     typically handwritten. For example, KLEE [4] includes over
+   In summary, we make the following main contributions:           2500 lines of C code to support only 40 system calls, although
+• We propose an LLM-based concolic execution engine, with
+                                                                   the Linux kernel has more than 300 system calls. Writing these
+   knowledge of the code semantics during input generation.        models is usually labor-intensive, even taking multiple person-
+   This approach addresses the problems that affect traditional    years in some cases [12].
+   concolic execution engines.                                        During fuzzing, greybox fuzzing generates inputs that reach
+• We implemented our approach in a novel hybrid fuzzer             complex branch conditions (e.g., line 25 in Fig. 1) but fail to
+   H Y LL FUZZ, which combines greybox fuzzing with LLM-           satisfy them, as they are always evaluated to false. In such
+   based concolic execution invoked whenever a roadblock is        cases, concolic execution is invoked. Starting from an input
+   encountered. Our tool is publicly available at:                 generated by greybox fuzzing, concolic execution executes
+                                                                   it while emulating the code path to compute symbolic con-
+                https://github.com/mengrj/hyllfuzz
+                                                                   straints, such as (= (select input i) 60) for (*cur ==
+• We evaluated H Y LL FUZZ on several widely used bench-
+                                                                   '<'). However, symbolic emulation can introduce significant
+   marks, and compared it with state-of-the-art hybrid fuzzers.    time overhead, such as being several orders of magnitude
+   The results demonstrate that H Y LL FUZZ delivers signifi-      slower than native execution [5], [10], [9]. The condition on
+   cantly greater effectiveness, efficiency, and usability.        line 25 checks if the string represents the opening delimiter
+                                                                   (<!--) of an XML comment, which involves four separate path
+                 II. M OTIVATING E XAMPLE                          constraints. Since concolic execution can only negate and solve
+   To motivate our approach, we use the libxml2 example to         one constraint per round, covering the full branch requires
+demonstrate how LLM-based concolic execution is integrated         multiple rounds. Furthermore, a single round of constraint
+into hybrid fuzzing to address the challenges. libxml2 [21]        solving may take up to 500 seconds [10].
+is a widely used XML parser and also a common subject for             In addition, constraint solvers solve constraints just for satis-
+evaluating fuzzing performance [22], [23], [24]. The code          fiability, without considering syntactic validity. When solving
+from parser.c in Fig. 1 shows how libxml2 parses an XML            the constraints for line 17, solvers prioritize the value 0x20,
+comment. The magic values (line 25) and nested conditions          thereby generating syntactically invalid inputs that lack the
+(lines 10–12) are roadblocks for greybox fuzzing, and hybrid       closing delimiter (-->). Such invalid inputs are immediately
+fuzzing thus invokes concolic execution to solve them.             rejected by the parser and thus fail to cover deeper program
+   Let us first take a look at how traditional hybrid fuzzing      behaviors. Although the additional path conditions (lines 10–
+works. To apply concolic execution to the real-world code,         12) can eventually guide the solver toward generating valid
+traditional engines must abstract any system calls and external    inputs, doing so requires satisfying more than 20 path condi-
+                                                                                                                                                               3
+
+
+
+
+                         ...                                                 <?xml version="1.0" encoding="UTF-8"?>   <?xml version="1.0" encoding="UTF-8"?>
+                         void xmlCtxtParseContentInternal(xmlCtxtPtr ctxt)   <!DOCTYPE laptop SYSTEM "laptop.dtd">    <!-- Simple comment -->
+                            if ((CMP5(CUR_PTR, '<', '?', 'x', 'm', 'l'))&&   <laptop>                                 <laptop>
+  Branch Condition:              (IS_BLANK_CH(NXT(5)))){                                                                  <manufacturer>Dell</manufacturer>
+                                                                                 <manufacturer>Dell</manufacturer>
+       parser.c:25                 ...
+                                                                                                                          <model>XPS 13</model>
+                            }                                                    <model>XPS 13</model>
+  Branch Covered:                                                                <specifications>                         <specifications>
+                            xmlParseContentInternal(ctxt);
+       else branch       }                                                            <ram>16GB</ram>                          <ram>16GB</ram>
+  Seed ID:               void xmlParseContentInternal(xmlCtxtPtr ctxt){               <storage>512GB SSD</storage>             <storage>512GB SSD</storage>
+                              while(ctxt->input->cur < ctxt->input->end){                                                      <display>13.3" 4K</display>
+       1                        const xmlchatr *cur = ctxt->input->cur;               <display>13.3" 4K</display>
+                                                                                 </specifications>                        </specifications>
+                                assert ((*cur == '<') && (NXT(1) == '!')
+                                     &&(NXT(2) == '-')&&(NXT(3)=='-'))           <price>1499.99</price>                   <price>1499.99</price>
+                           }}                                                </laptop>                                </laptop>
+
+
+    Roadblock               Code Slice (only a portion shown)                            Seed Input                               New Input
+
+Fig. 2: Workflow of solving the roadblock at parser.c:25 based on a seed input (selected from the seed corpus of the greybox
+fuzzer) and the constraints related to the roadblock (sliced from source code) to generate a new input by the LLM.
+
+
+tions (as shown in Fig. 1). This further reduces the efficiency                traditional solvers are limited to modifying only symbolized
+of concolic execution. In our experiments, traditional concolic                data fields. This capability further enhances the effectiveness
+execution failed to generate a syntactically valid XML comment                 of H Y LL FUZZ. In libxml2, H Y LL FUZZ can cover twice as
+for input. In the best case, the engines only generated inputs                 many code branches as state-of-the-art hybrid fuzzers.
+with a partial opening delimiter (e.g., <!), which are unable
+to explore subsequent program behaviors.                                                      III. LLM- ASSISTED H YBRID F UZZING
+   In this paper, we propose a novel hybrid fuzzer H Y LL FUZZ,                A. Overview
+which integrates LLM-based concolic execution to address                          H Y LL FUZZ is a hybrid fuzzer that combines greybox
+the above problems. The workflow of H Y LL FUZZ to solve                       fuzzing with LLM-based concolic execution to maximize
+the roadblock in parser.c:25 is shown in Fig. 2. H Y LL-                       code coverage. It is designed as a plug-in that can seam-
+FUZZ relies on LLMs to directly reason about the underlying                    lessly integrate with greybox fuzzers, without requiring any
+functionalities of external constructs, without requiring manual               modifications to their source code. The overall workflow of
+modeling. During fuzzing, when the greybox fuzzer reaches a                    H Y LL FUZZ is illustrated in Fig. 3. The process is initiated
+coverage plateau, H Y LL FUZZ activates its LLM-based con-                     by the greybox fuzzer, which takes in as input the program
+colic execution. It first identifies the roadblock condition                   under test and initial input seeds provided by the user. The
+(parser.c:25) and determines the already covered branch                        greybox fuzzer iteratively selects inputs, generates new inputs
+(else branch). It then finds the corresponding input that                      via mutation, and saves “interesting” inputs (that cover new
+reaches this condition, denoted ID:1 by the greybox fuzzer.                    branches) into the seed corpus for further examination.
+All of this information forms Roadblock.                                          Running in parallel, H Y LL FUZZ continuously analyzes the
+   H Y LL FUZZ next performs a concrete execution using the                    code covered by the seed corpus and maintains a report of
+selected input and collects the corresponding execution trace.                 uncovered branches (Sec. III-B). When the greybox fuzzer
+It performs backward code slicing along the trace. Specifically,               struggles to cover new branches within a given time, H Y LL-
+it expresses the target condition as an assertion and then slices              FUZZ steps in by identifying roadblocks from the maintained
+the relevant code that affects the variables in this assertion (i.e.,          coverage report. Each roadblock consists of a partially cov-
+cur and NXT) through the control and data flow. This code                      ered branch condition, the branches already covered for this
+slice represents the path constraints. Since LLMs can directly                 condition, and an input from the seed corpus that reaches
+reason over source code written in programming languages,                      this condition. H Y LL FUZZ then simulates traditional concolic
+H Y LL FUZZ just keeps them as-is, and there is no need for                    execution by running the program with the selected input
+constraint translation. Using the code slice and the seed input,               and generating the relevant path slice from the source code
+the LLM is prompted to generate a new input to satisfy the                     (Sec. III-C). H Y LL FUZZ negates the target branch condition
+constraints, which is then evaluated by the greybox fuzzer.                    and prompts the LLM to generate a new input that covers the
+In our experiments, for a single execution, our code slicing                   previously uncovered branch (Sec. III-D). The newly generated
+combined with LLM-based solving is several times faster than                   input is added back into the seed corpus, assisting the greybox
+traditional constraint computing and solving.                                  fuzzer in overcoming the roadblocks. The seed corpus forms
+   H Y LL FUZZ treats the entire condition, including four con-                a bridge between the greybox fuzzer and the LLM-based
+straints, as a single solving target. Furthermore, from context                concolic execution engine.
+information, such as function names (e.g., xmlParseComment)
+and code comments (e.g., Parse an XML (SGML) comment),                         B. Code Coverage Analysis
+LLMs infer that the code is parsing the opening delimiter of                     1) Generating Coverage Report: The first step of H Y LL-
+an XML comment. It then automatically appends the closing                      FUZZ   is to analyze branch coverage using inputs from the
+delimiter, generating a syntactically valid input that naturally               seed corpus generated by the greybox fuzzer. This aims to
+covers subsequent branches (e.g., lines 10–12). In contrast,                   identify the branch conditions that (1) are reached by at least
+                                                                                                                                       4
+
+
+
+
+                                                    Yes                            Code                   LLM           New
+                                        Stuck?               Roadblock             Slicer                 Solver        Input
+                    Source Code                                                             Code Slice
+     Program                            Seed          Coverage
+                     Greybox
+                      Fuzzer           Corpus         Analyzer
+                                                                 Coverage Report
+    Initial Seeds
+
+           Fig. 3: Overall workflow of H Y LL FUZZ including greybox fuzzing and LLM-based concolic execution.
+
+
+one input, and (2) have at least one branch not covered yet by           Algorithm 1: Analysis of Coverage and Roadblocks
+the greybox fuzzer. Such conditions become potential targets              Input : Program P, source code C, seed corpus S
+for LLM-based concolic execution. H Y LL FUZZ does not rely               Globals: Coverage report R, partially covered conditions I
+on the coverage bitmap recorded by the greybox fuzzer, as                 Output : Roadblock B to be solved by concolic execution
+this bitmap only provides an approximate measure of branch           1    R ← ∅; I ← ∅
+coverage and is known to suffer from collisions [25]. Instead,       2    func AnalyzeCodeCoverage(P, C, S):
+H Y LL FUZZ maintains an independent branch coverage report          3        ast ← BuildAST(C)
+                                                                     4        for seed ∈ S do
+by directly analyzing inputs stored in the seed corpus. This         5            trace ← execute(P, seed )
+process is illustrated in Algorithm 1.                               6            foreach stmt ∈ trace do
+   H Y LL FUZZ works at the source code level. It first builds       7                if ¬isCond(stmt, ast) then continue
+the Abstract Syntax Tree (AST) for the program (line 3). Next,       8                branchCovd ← AnalyzeBrn(stmt, ast, trace)
+H Y LL FUZZ retrieves the inputs from the seed corpus S of the       9                R ← R ∪ {⟨stmt, branchCovd , seed ⟩}
+                                                                    10                if isFullyCovered(stmt, R) then
+greybox fuzzer and executes each to collect the corresponding       11                    I ← I\{stmt}
+execution trace (line 5). Here, the trace is represented as
+                                                                    12                else if stmt ∈
+                                                                                                   / I then I ← I ∪ {stmt}
+a sequence of code statements arranged in execution order,
+where each statement is labeled by its location in source code.     13    func RetrieveRoadblock(P, C, S):
+   For each statement in the trace, H Y LL FUZZ checks if it is     14        AnalyzeCodeCoverage(P, C, S)
+a conditional statement (e.g., if- or switch- statement) (line      15        condStmt ← pop(I)
+7). If so, H Y LL FUZZ further determines which branches of         16        branchCovd ← GetBrnCovered(R, condStmt)
+this condition are covered by the trace (line 8). Simultane-        17        seed ← GetSeedForBrn(R, condStmt, branchCovd )
+                                                                    18        I ← DecreasePriority(I, condStmt)
+ously, H Y LL FUZZ computes the total branch number for this        19        return B⟨condStmt, branchCovd , seed ⟩
+condition, which is used to determine whether all branches
+are covered by the full inputs from S. This information is
+then recorded in the coverage report R (line 9). H Y LL FUZZ
+also tracks the corresponding seed in R for concolic execution.     priority is increased. This helps prioritize conditions that result
+Furthermore, H Y LL FUZZ maintains partially covered condi-         in more coverage. Finally, once all branches of a condition
+tions in a separate structure I (lines 10–12), which supports       are covered, it is removed from I, since it no longer contains
+the selection of roadblocks in the next phase. It is worth noting   roadblock branches (line 11).
+that, similar to traditional concolic execution, H Y LL FUZZ           After selecting a partially covered condition condStmt from
+only tracks conditions that are actually reached by seeds. Any      I (line 15), H Y LL FUZZ determines which of its branches
+condition that has not been reached yet is not a target for any     has been covered (branchCovd ) (line 16). For example, for
+concolic execution.                                                 an if-statement, it indicates which branch, then-branch or
+   2) Selecting a Roadblock: H Y LL FUZZ continuously mon-          else-branch, is covered. H Y LL FUZZ then invokes concolic
+itors whether the greybox fuzzer fails to cover new branches        execution by negating the branch condition to explore previ-
+within the given time. To do this, H Y LL FUZZ checks the time      ously uncovered branches. It also retrieves the corresponding
+elapsed since the greybox fuzzer found the last new code path.      input for the concrete execution (line 17). These three elements
+If the duration exceeds the allotted threshold, the greybox         together define a roadblock: (1) a partially covered condition
+fuzzer is considered to have entered a coverage plateau. At         (condStmt), (2) the branches covered (branchCovd ), and (3)
+this point, H Y LL FUZZ iteratively performs a code coverage        an input (seed ) that reaches this condition (line 19).
+analysis and identifies roadblocks from the coverage report R
+and partially covered conditions I.
+   To ensure fair selection, H Y LL FUZZ arranges I as priority     C. Code Slice Generation
+queue, assigning the highest priority to newly added condi-           Once a roadblock is selected, the next step is to generate a
+tions. Once a condition is selected, its priority is reduced to     representation of the relevant path constraints. Since H Y LL-
+avoid starvation. However, if solving a condition successfully      FUZZ prompts the LLM for input generation, the path can
+generates a new input that increases the code coverage, as          be represented in the original programming language (e.g., C,
+validated by the greybox fuzzer (illustrated in Sec. III-D), its    C++, or Java), which the LLM can directly reason over. Our
+                                                                                                                                                       5
+
+
+
+ Algorithm 2: Dynamic Code Slice Generation
+                                                                        You are an expert in concolic execution, working with a variant of this
+     Input: Program P, source code C, roadblock B                       technique that generates new inputs based on the code sliced from the
+     Output: Dynamic code slice (path constraints)                      program and a given input.                                              1
+1    func BuildSlice(P, C, B):                                          I will provide the sliced code along with an input. The input may be
+2        ⟨condStmt, branchCovd , seed ⟩ ← B                             valid or malformed. Your task is to generate a new valid input that
+3        ast ← BuildAST(C)                                              satisfies the assertion in the sliced code. The assertion is reached during
+4        ⟨s1 , ..., sn , condStmt, ...⟩ ← execute(P, seed )             the execution of the provided input, but is not satisfied.                2
+5        stmts ← {assert(!branchCovd ))}                                Follow these steps to generate a new input:
+6        vars ← getVars(condStmt)                                       1. Review the sliced code and the provided input.
+7        for i ∈ n..1 do
+                                                                        2. Modify specific fields of the input as needed, or completely havoc the
+ 8            if si modifies any variable v ∈ vars, or                  whole input to satisfy the assertion.
+ 9                any condition from si reads any v ∈ vars
+                                                                        3. Ensure the new input satisfies the assertion and is syntactically valid.3
+10              then
+11                   stmts ← stmts ∪ {si }                              The following are the sliced code and the provided input. Generate a
+12                   vars ← vars ∪ getDependencies(v, si )              new input based on the sliced code to satisfy the assertion. Your answer
+                                                                        should be the generated input.                                         4
+13       slice ← ∅
+14       for s ∈ stmts do                                               Please keep the same format as the given input. Write your answer in the
+                                                                        consistent format: ```my_answer: <Put your answer here>```.            5
+15            slice ← slice ∪ {s} ∪ getCtx(ast, s)
+                                                                        The sliced code is as follows:
+16       return FlattenSlice(slice)                                       ```{sliced_code}```                                                     6
+                                                                        The provided input is as follows:
+                                                                          ```{seed_content}```                                                    7
+approach differs from traditional concolic execution engines,
+                                                                      Fig. 4: Prompt template for generating new input based on the
+which translate the path into a new representation (e.g., an
+                                                                      given input and relevant code slice.
+SMT formula) suitable for solving.
+   H Y LL FUZZ designs a modified dynamic back slic-
+ing algorithm over a concrete execution trace (shown
+                                                                      accumulates s as well as any context of s. Broadly, the context
+in Algorithm 2). The algorithm takes the roadblock B
+                                                                      includes all elements of the AST:
+⟨condStmt, branchCovd , seed ⟩ obtained from the previous
+step. It constructs the AST for the source code (line 3) in           1) control-flow structure enclosing s, including if-, while-,
+advance. It performs a concrete execution using the selected              for-, and switch- statements;
+seed to get the execution trace that executes condStmt at             2) enclosing function definition, including types/parameters;
+least once (line 4). The algorithm then generates a modified          3) declarations (local and global) for each variable used by s;
+dynamic slice along the concrete execution trace as path              4) syntax necessary to parse any of the above, including
+constraints, suitable for LLM prompting.                                  braces ({/}) and semicolons (;);
+   It then initializes a set of statements of interest stmts          5) formatting (whitespace) and comments.
+(line 5) and variables of interest vars (line 6). The orig-           Finally, the collected set of file ranges in flattened into a
+inal condStmt is negated by replacing it with the asser-              string suitable for prompt generation, preserving the original
+tion: assert(!branchCovd ). This assertion serves as the              file formatting and ordering (line 16).
+target for the LLM-based concolic execution, which must
+be held in order to cover new branches. Specifically, given
+                                                                      D. LLM-based Input Generation
+(if (c) then ... else ...), then:
+- assert(!c) is generated if the then-branch is covered;                 After collecting the relevant code slice, the LLM is
+- assert(c) is generated if the else-branch is covered.               prompted to generate a new syntactically valid input aimed
+For (switch (x) { case v1 : ... case vn : ... default: ... }),        at covering the previously uncovered branch for the roadblock
+the assertion is generated as:                                        condition. The template of the prompt is shown in Fig. 4,
+                                                                      which consists of several parts (⃝ 1 –⃝
+                                                                                                            7 ).
+           assert(x = w1 || ... || x = wm || dflt)                       The parts ⃝1,⃝ 2 , and ⃝3 together form the system prompt.
+ where (1) the subset {w1 , ..., wm } ⊆ {v1 , ..., vn } corresponds   Part ⃝ 1 defines the LLM’s persona as an expert in concolic
+to the non-covered case-branches from the switch-statement,           execution, working with a variant of this technique. Based on
+and (2) dflt will be the expression (x ̸= v1 && ... && x ̸= vn )      our observations, the LLMs have sufficient knowledge regard-
+if the default-branch both exists and is non-covered, or dflt         ing concolic execution. Since H Y LL FUZZ simulates traditional
+will be false (unused) otherwise.                                     concolic execution, Part ⃝  1 can help the LLM understand
+   Once these are built, the modified dynamic slice is con-           the overall task. Part ⃝ 2 gives a more detailed description
+structed. It iterates over the execution trace in reverse order,      of the task: generating a new syntactically valid input that
+and collects all statements stmts that condStmt is (transi-           satisfies the assertion in the sliced code. The whole task of
+tively) data dependent (lines 7–12). It then accumulates the          H Y LL FUZZ is relatively complex and includes several steps.
+slice from the data-dependent statements stmts (lines 13–15).         To maintain the effectiveness of the LLM, Part ⃝   3 includes
+This essentially accumulates fragments of the original source         detailed instructions that break down the task into simpler
+file(s) into a coherent slice. For each statement s ∈ stmts, it       subtasks, guiding the LLM step by step. While generating a
+                                                                                                                                     6
+
+
+
+new input, the LLM can slightly modify or havoc the given            TABLE I: Detailed information about benchmark subjects used
+input, but ensure that it is syntactically valid.                    in our experiments for RQ.1–RQ.4.
+   The parts ⃝  4 –⃝7 are included in the user prompt. Part
+                                                                     Subject      #LOC     Version Description
+⃝4 describes the task and highlights that the answer is a
+concrete input instead of other formats (e.g., one program that      as-new      96.78k     v2.43 Assemble code into object files
+                                                                     bc          11.32k v1.08.2 Perform mathematical calculations
+generates inputs). This part also prevents the LLM from print-
+                                                                     calc        62.03k v2.16.0.0 Perform advanced calculations
+ing intermediate results, helping reduce token usage. Part ⃝    5
+                                                                     cflow       37.39k v1.7.90 Generate call graphs for C code
+further specifies the expected output format, which simplifies
+                                                                     cJSON       17.23k v1.7.18 Parse JSON files
+response extraction and ensures that the generated inputs are
+                                                                     curl        188.4k v8.13.0 Transfer data with URL syntax
+immediately usable. Parts ⃝  6 and ⃝7 include the code slice and
+                                                                     cxxfilt     96.78k     v2.43 Demangle C++ symbol names
+the given input, respectively, each enclosed within delimiters       infotocap 100.48k       v6.4 Convert terminfo into termcap
+for clear separation. The input given is one that reaches the        jq          34.11k a8f27cc Parse JSON files
+condition but fails to cover the target roadblock branches.          libxml2    201.95k v2.13.4 Parse XML files
+Our insight is that slightly modifying a few bytes can often         Lua         35.22k    v5.4.7 Interpret Lua scripts
+solve the roadblock, which can be simpler than generating            MuJS        16.77k    v1.3.5 Interpret Javascript files
+a new input from scratch. However, if slight modifications           php       2123.39k    v8.4.6 Interpret PHP files
+cannot achieve the goal, causing havoc to the input becomes          SQLite3 593.90k       3.48.0 Manage SQL database files
+necessary, although this is a secondary option. Furthermore,
+the input provided serves as an example to illustrate the correct
+input format (i.e., “one-shot” prompt) and offers more context            guage released from the 2024 DARPA and ARPA-H’s
+to help the LLM reason through the task.                                  Artificial Intelligence Cyber Challenge?
+   After receiving the input generated by the LLM, H Y LL-
+FUZZ adds it to the seed corpus, where it can be automatically
+retrieved and executed by the greybox fuzzer. The greybox            A. Experimental Setup
+fuzzer is configured as a distributed fuzzer, with a key feature        1) Comparison Baselines: As baseline tools, we selected
+being its ability to analyze seeds from one or more collabora-       three state-of-the-art hybrid fuzzers for comparison: QSYM
+tors. Before the generated input is added to the seed corpus,        [9], I NTRIGUER [10], and C O F UZZ [7]. D RILLER [8] is the
+there is no additional validation; instead, this task is delegated   first hybrid fuzzer that combines greybox fuzzing with con-
+to the greybox fuzzer. The fuzzer executes the new input and         colic execution; however, it does not scale to large real-world
+saves it in the seed corpus if it covers new branches.               benchmark subjects, as reported in previous works [9], [7].
+                                                                     Among existing hybrid fuzzers, only QSYM and I NTRIGUER
+                                                                     align with H Y LL FUZZ in their goal of improving concolic
+                       IV. E VALUATION
+                                                                     execution integrated in hybrid fuzzing, although they do so by
+   To evaluate the efficacy of H Y LL FUZZ, we seek to answer        incorporating fast symbolic emulation and constraint-solving
+the following research questions:                                    strategies. C O F UZZ is the most recent hybrid fuzzer, developed
+RQ.1 (Branch Coverage and Bug Finding) Can H Y LL FUZZ               after comprehensively evaluating all previous greybox fuzzers
+     cover more code branches compared to the baselines? Can         [11], [26], [27], which have also shown lower effectiveness
+     H Y LL FUZZ find additional bugs over the baselines?            compared to C O F UZZ. Each of these hybrid fuzzers integrates
+RQ.2 (Time Usage of Concolic Execution) How much time                its own concolic execution engine with the greybox fuzzer
+     does LLM-based concolic execution in H Y LL FUZZ take           AFL. For a fair comparison, we also integrated AFL into
+     to generate a single input? Is it faster than the baselines?    H Y LL FUZZ to build a hybrid fuzzer.
+                                                                        2) Benchmark Subjects: Table I lists the benchmark sub-
+RQ.3 (Coverage Improvement Analysis) How does H Y LL-
+                                                                     jects used in our evaluation to answer the research questions
+     FUZZ achieve higher code coverage than the baselines?
+                                                                     RQ.1 to RQ.4. Our benchmark comprises 14 widely-used
+     Does the code coverage improvement stem from solving
+                                                                     real-world programs, including three parsers (for JSON and
+     a larger number of roadblocks? Do the efficiency and
+                                                                     XML), two binutils utilities (as-new and cxxfilt), three
+     the solving capability of LLM-based concolic execution
+                                                                     language interpreters (for Lua, PHP and JavaScript), two
+     contribute to the code coverage improvement? Does the
+                                                                     transformation tools (for URL and terminfo), one GNU utility
+     hybrid architecture of LLM-based concolic execution
+                                                                     (cflow), one database engine (SQLite3), and two mathemat-
+     contribute to the improvement?
+                                                                     ical calculators (bc and calc). These subjects involve both
+RQ.4 (Unsolved Roadblock Analysis) How does H Y LL-                  string-based and arithmetic path constraints.
+     FUZZ fail to solve certain roadblocks? How many road-              For each subject, we report the details on the code lines, the
+     blocks are selected for solving yet remain unsolved in          version used in our evaluation, and their primary functionality.
+     H Y LL FUZZ? Does the number of solving attempts affect         These subjects are widely utilized in practice and represent
+     the results? Are there any roadblocks that are solved by        diverse functionalities and codebase sizes. Our benchmark
+     the baselines but remain unsolved by H Y LL FUZZ?               includes all text-based input subjects that are incorporated into
+RQ.5 (Case Study) Can H Y LL FUZZ expose the bug in                  popular fuzzing benchmark suites: M AGMA [23], U NI F UZZ
+     Jenkins implemented in a different programming lan-             [24], and F UZZ B ENCH [22], as well as all those used in
+                                                                                                                                     7
+
+
+
+TABLE II: Average number of branches covered by our H Y LL FUZZ, and the baselines C O F UZZ, I NTRIGUER, and QSYM.
+
+                                   Comparison with C O F UZZ     Comparison with I NTRIGUER         Comparison with QSYM
+     Subject    H Y LL FUZZ
+                                  C O F UZZ Improv SpeedUp      I NTRIGUER Improv SpeedUp           QSYM Improv SpeedUp
+    as-new            8145.2        6150.0 32.44%      4.85×         5640.2 44.41%         6.70×    4831.9 68.57%        25.71×
+    bc                1203.7         984.1 22.31%      5.49×         1015.1 18.58%         5.40×     982.3 22.54%         5.49×
+    calc              7194.5        4724.3 52.29%     18.49×         5328.1 35.03%         5.74×    4795.1 50.04%        17.36×
+    cflow             1238.2        1167.2   6.08%    11.16×         1194.1   3.69%        6.43×    1152.9   7.40%       14.55×
+    cJSON              379.9         375.5   1.17%    22.50×          347.4   9.36%       57.60×     343.9 10.47%        80.00×
+    curl              3789.0        3285.0 15.34%      6.75×         3379.0 12.13%         1.35×    3281.0 15.48%         6.76×
+    cxxfilt           2448.4        2199.6 11.31%      2.78×         2039.1 20.07%         3.80×    1951.0 25.49%         4.39×
+    infotocap         1729.0        1545.4 11.88%      2.84×         1474.9 17.23%         3.72×     933.2 85.28%       240.00×
+    jq                2076.0        2026.2   2.46%    30.64×         2039.7   1.78%       27.17×    2018.6   2.84%       34.29×
+    libxml2           6811.6        3282.4 107.52%    32.00×         3163.8 115.30%       49.66×    3092.3 120.28%       51.43×
+    Lua               3529.3        2923.8 20.71%      5.45×         2438.0 44.76%        12.20×    1951.5 80.85%        24.83×
+    MuJS              3666.0        2454.0 49.39%      7.70×         2078.0 76.42%        14.85×    2096.0 74.90%        14.69×
+    php              17268.7        8926.5 93.45%      6.26×         5554.2 210.91%       53.33×    5683.5 203.84%       45.00×
+    SQLite3          19746.0       17369.5 13.68%      1.75×        17300.3 14.14%         1.76×   11990.0 64.69%        96.00×
+    Average                   -          -   31.43%   11.33×               -   44.56%     17.84×          -   59.48%     47.18×
+
+
+
+existing hybrid fuzzing works [9], [10], [7]. In addition to        baseline tools, we report the percentage increase in terms of
+these string-heavy programs, we include two widely-used             branch coverage in 24 hours (Improv), and how much faster
+numerical-heavy programs (i.e., bc and calc) to evaluate the        H Y LL FUZZ can achieve the same branch coverage as the
+generality of H Y LL FUZZ.                                          baseline tools (SpeedUp).
+   3) Configuration Parameters: For the subject programs, we           Overall, H Y LL FUZZ achieved more branch coverage than
+adopted the same configuration parameters as those used in          all state-of-the-art hybrid fuzzers on all subjects, with improve-
+previous work [22], [23], [24], [7]. We used the gpt-4o model       ments ranging from 1.17% to 210.91%. Compared to C O -
+as the large language model, with the temperature set to 0.5        F UZZ, I NTRIGUER, and QSYM, H Y LL FUZZ covered 31.43%,
+for precise and factual responses. Additionally, to determine       44.56%, and 59.48% more code branches on average, respec-
+if the greybox fuzzer is stuck, we set a time threshold of 90       tively. In addition, H Y LL FUZZ covered the same number of
+seconds; if the fuzzer fails to cover new code paths within this    branches 11.33× faster than C O F UZZ, 17.84× faster than
+period, the concolic execution engine is triggered. This time       I NTRIGUER, and 47.18× faster than QSYM.
+frame aligns with the default settings used by the baseline            To account for randomness, we measured the Vargha-
+tools. Following suggestions from the fuzzing community [6],        Delaney [29] effect size Â12 , which indicates the probability
+[28], each experiment was run for 24 hours, and we report the       that a random campaign of H Y LL FUZZ outperforms a random
+average over 10 runs to mitigate the impact of randomness. All      campaign of comparison tools. In all subjects, Â12 = 1 (that is,
+experiments were conducted on an Intel® Xeon® Platinum              Â12 ≥ 0.70), indicating that H Y LL FUZZ consistently achieved
+8468V CPU with 192 logical cores clocked at 2.70GHz,                higher branch coverage in all runs than each baseline. This
+512GB of memory, and Ubuntu 22.04.3 LTS.                            shows a significant improvement of H Y LL FUZZ over baselines
+                                                                    in code coverage.
+B. Branch Coverage and Bug Finding (RQ.1)                              In addition, we measured both the monetary costs and
+   The primary goal of hybrid fuzzers is to maximize code           the token usage required to run these experiments. It is
+coverage, making it a key metric for evaluating the perfor-         worth noting that the monetary cost is relatively low: in our
+mance of hybrid fuzzers. In our evaluation, we measured the         experiments, running a subject for one hour only cost 0.40
+branch coverage achieved by H Y LL FUZZ and the state-of-the-       USD on average. The required token count was also modest.
+art hybrid fuzzers using gcovr. To ensure a fair comparison,        The average token count per prompt was 1,570, with the
+we used the same seeds for each fuzzer. Each fuzzer was             maximum observed being 3,020 tokens in php containing
+run on each subject for 24 hours and repeated 10 times; we          millions of code lines. We did not encounter cases where the
+report the average data (i.e., mean values) as the final results.   generated code slices exceeded the LLM’s context window
+Since higher code coverage typically increases the likelihood       limit. These results further demonstrated the practical utility
+of exposing bugs [28], we also report the number of bugs            of H Y LL FUZZ.
+discovered during these runs.                                          2) Results on Bug Finding: Although these subjects have
+   1) Results on Branch Coverage: Table II shows the final          been extensively tested by existing fuzzers, H Y LL FUZZ found
+code coverage achieved by H Y LL FUZZ compared to three             seven unique and previously unknown bugs in their latest
+baseline fuzzers. We report the average number (i.e., mean          version: two in cxxfilt, two in php, and three in calc.
+values) of branches covered by each fuzzer in 24 hours across       In contrast, the baseline fuzzers only found two (one in
+10 runs. To quantify the improvement of H Y LL FUZZ over the        php and one in calc) of these bugs in total, and also did
+                                                                                                                                                                      8
+
+
+
+not find any additional bugs. We reported these bugs to the                                       400
+
+
+
+
+                                                                     Time Concumption (seconds)
+                                                                                                                                       CoFuzz      Intriguer
+respective developers, and all have been confirmed. These
+                                                                                                  300                                  QSYM        HyLLfuzz
+bugs include null pointer dereference, undefined behavior, and
+buffer overflows.
+   Upon closer investigation, we found that the missed bugs                                       200
+were hidden behind complex path constraints. For example,
+exposing the bugs in cxxfilt requires solving deep path                                           100
+constraints—involving 13 and 16 function calls, respectively.
+The baselines faced a similar difficulty in exposing the bugs in                                    0
+calc. Concolic execution engines in the baselines often drop                                             1     1001       2001           3001    4001          5001
+
+some path constraints for better solving efficiency, but also                                                                    (a)
+compromise the performance. We observed that the solving
+capability of the baselines significantly declined with the                                   H Y LL FUZZ       vs C O F UZZ     vs I NTRIGUER     vs QSYM
+increase in the path constraint depth. This observation is con-                                         Med     Med Speedup Med Speedup Med Speedup
+sistent with the finding of a recent study [30]. In addition, ex-                                       4.97   17.39  3.50× 20.95 4.22× 95.00 19.11×
+posing the php bug missed by the baselines requires generating
+                                                                                                        Avg     Avg Speedup Avg Speedup Avg Speedup
+a valid function in the PHP input: function name(){}, where
+                                                                                                        7.66   23.72  3.10× 20.96 2.74× 125.26 16.35×
+each byte corresponds to one branch condition. Generating
+this segment requires multiple rounds of constraint computing                                                                    (b)
+and solving. Traditional concolic execution just managed to
+generate a partial segment (e.g., fun), thereby failing to trigger   Fig. 5: Wall-clock time used by the baselines C O F UZZ,
+the bug.                                                             I NTRIGUER, QSYM, and our H Y LL FUZZ for each run of
+                                                                     concolic execution (seconds).
+ H Y LL FUZZ achieves significantly higher code coverage
+ than C O F UZZ, I NTRIGUER, and QSYM, covering 31.43%,
+ 44.56%, and 59.48% more code on average, respec-                    consumption compared to the baselines; however, we believe
+ tively. Moreover, H Y LL FUZZ achieves the same number              this cost is justified by the substantial gains in efficacy.
+ of branches 11.33 times, 17.84 times, and 47.18 times
+ faster than these baselines. In extensively tested projects,                  Each concolic execution run in H Y LL FUZZ takes 4.97
+ H Y LL FUZZ exposed seven unique and previously unknown                       seconds in the median, which is 3.50 times, 4.22 times,
+ bugs, while baselines only found two of them without                          and 19.11 times faster than that of C O F UZZ, I NTRIGUER,
+ finding any additional bugs.                                                  and QSYM, respectively.
+
+
+C. Time Usage of Concolic Execution (RQ.2)                           D. Coverage Improvement Analysis (RQ.3)
+   To evaluate the efficiency of LLM-based concolic execution,          We further conducted an in-depth analysis to understand
+we measured the time required for each concolic execu-               how H Y LL FUZZ achieved a significant improvement in code
+tion run to generate an input. Specifically, for the baselines       coverage compared to the baselines. In this analysis, we com-
+I NTRIGUER, QSYM, and C O F UZZ, we measured the time                pared H Y LL FUZZ with hybrid fuzzers C O F UZZ, I NTRIGUER,
+used for constraint computing alongside concrete execution           and QSYM to evaluate the performance of different concolic
+and constraint solving via SMT solvers to generate an input.         execution engines. In addition, we included an additional
+Similarly, for H Y LL FUZZ, we measured the time used for dy-        comparison with the grammar-aware fuzzers NAUTILUS [31]
+namic code slicing along the concrete execution, and constraint      and S UPERION [32] to evaluate whether the LLM-based con-
+solving using an LLM to generate an input—from the prompt            straint reasoning and solving contribute to the code coverage
+construction to obtaining a concrete input from the LLM.             improvement.
+   We randomly sampled 5000 concolic execution runs of                  1) Number of Solved Roadblocks: We started by analyzing
+H Y LL FUZZ and three baselines C O F UZZ, I NTRIGUER, and           whether the increase in branch coverage correlates with the
+QSYM across all subjects, respectively. Fig. 5 (a) shows the         number of roadblocks solved. In Table III, we report the
+time usage of each fuzzer within these sampled runs, while           average number of roadblocks solved per run by H Y LL FUZZ
+Fig. 5 (b) shows the average time and median time usage.             and the baselines based on 10 runs of 24 hours. On average,
+As we can see, compared to all these baselines, H Y LL FUZZ          H Y LL FUZZ solved 411.4 roadblocks, while the baselines
+substantially reduces time usage, although these baselines           solved 212.4, 181.6, and 144.3 roadblocks, respectively. In
+adopt optimization strategies.                                       certain subjects (e.g., jq, curl, and cJSON), H Y LL FUZZ
+   In this experiment, we reported and compared the wall-            solved relatively few roadblocks, while H Y LL FUZZ solved
+clock time used, as it is a standard metric for evaluating           more than 800 roadblocks in subjects calc, libxml2 and
+fuzzers and is also particularly important for end-users seeking     php. In all subjects, H Y LL FUZZ consistently outperformed all
+to mitigate security risks. We acknowledge that, due to the          baseline fuzzers in terms of the number of roadblocks solved
+use of an LLM, H Y LL FUZZ incurs additional GPU resource            within the same time frame. When comparing the performance
+                                                                                                                                  9
+
+
+
+TABLE III: Average number of roadblocks solved by our             TABLE IV: Number of roadblocks solved by baselines us-
+H Y LL FUZZ and baselines C O F UZZ, I NTRIGUER and QSYM.         ing H Y LL FUZZ-selected roadblocks (baseline-modified) and
+                                                                  baselines with their original designs (baseline-original), and
+  Subject     H Y LL FUZZ   C O F UZZ   I NTRIGUER   QSYM         our H Y LL FUZZ.
+  as-new            585.0      298.7         250.4     155.1
+  bc                200.0       74.5         135.0      70.0          Tool                   php       jq       bc       calc
+  calc              880.1      177.0         361.0     172.0          baseline-modified     205.3      9.0     117.0    369.0
+  cflow             100.0       55.4          59.3      26.9          baseline-original     698.3      4.4     135.0    361.0
+  cJSON              84.5       72.9          18.4       0.0          H Y LL FUZZ           827.1     44.0     200.0    880.1
+  curl               76.3       89.0          36.6      56.7
+  cxxfilt           193.8      139.7         106.3     104.8
+  infotocap         309.0      265.0         248.1     165.0       1 yy523 :
+                                                                   2   yych = *++ YYCURSOR ;
+  jq                 44.0        1.3           4.4       0.1       3   if ( yych == ' R ' ) goto yy597 ;
+  libxml2           842.0      224.0         158.1     269.0       4   if ( yych == ' r ' ) goto yy597 ;
+  Lua               624.3      301.1         290.1     112.0       5   goto yy140 ;
+                                                                   6
+  MuJS              758.6      454.8         315.1     378.2       7 yy597 :
+  php               837.1      698.3         423.0     511.0       8   ++ YYCURSOR ;
+                                                                   9   if (( yych = * YYCURSOR ) <= ' ˆ ' ) {...}
+  SQLite3           224.6      121.6         136.1       0.0      10   else {
+                                                                  11      if ( yych <= ' d ' ) { ... }
+  Average           411.4      212.4         181.6     144.3      12      else {
+                                                                  13         if ( yych <= ' z ' ) goto yy655 ; ...
+                                                                  14      }
+                                                                  15   }
+of H Y LL FUZZ in different subjects, we observe that a larger
+number of solved roadblocks almost corresponds to a greater       Fig. 6: Code fragment from php showing input interpretation.
+increase in code coverage. These results demonstrate a positive
+correlation between the number of roadblocks solved and the
+improvement in code coverage.                                     bc and calc.
+   2) Contribution of Fast Concolic Execution: We further            In Table IV, we report the results of using the concolic
+analyzed whether the increase in branch coverage is due to        execution engines of the baselines to solve the roadblocks
+the fast concolic execution engine. To this end, we measured      selected by H Y LL FUZZ. The best-performing baselines could
+the number of inputs generated by the concolic execution          only solve 205.3, 9.0, 117.0, and 369.0 roadblocks in php,
+engines of H Y LL FUZZ and the baselines within 24 hours. On      jq, bc, and calc, respectively. These results are similar
+average, H Y LL FUZZ generated 2828 inputs, while C O F UZZ,      to those obtained using their original designs, in which the
+I NTRIGUER, and QSYM generated 2494, 2154, and 1475               best baseline solved 698.3, 4.4, 135.0, and 361.0 roadblocks,
+inputs, respectively. H Y LL FUZZ significantly outperformed      respectively. In contrast, our H Y LL FUZZ using LLM-based
+QSYM, generating more than twice as many inputs in the            solving solved substantially more roadblocks, whose numbers
+same time frame. However, compared to C O F UZZ and I N -         are 837.1, 44.0, 200.0, and 880.1 in the same subjects,
+TRIGUER , H Y LL FUZZ only achieved a slightly higher input       respectively. These results indicate that the improvement of
+number. This result indicates that fast concolic execution con-   H Y LL FUZZ in code coverage stems from its LLM-based
+tributes to improved code coverage. However, the performance      solving ability rather than from the use of a different roadlock-
+gain cannot be fully attributed to the fast LLM-based engine      selection strategy.
+of H Y LL FUZZ, as C O F UZZ and I NTRIGUER generated a              We further manually analyzed the branches covered by
+comparable number of inputs.                                      H Y LL FUZZ but missed by the baselines. Fig. 6 illustrates how
+   3) Contribution of LLM-based Solving: We next analyzed         php interprets keywords containing the byte ‘R’. In our evalu-
+whether the solving capability of H Y LL FUZZ contributed         ation, the baselines failed to generate the simple keyword try,
+to increasing code coverage. We examined this from two            which is necessary to explore certain program behaviors. After
+aspects. First, we used the concolic execution engines of the     interpreting the input “tr”, H Y LL FUZZ inferred the code se-
+baselines to solve the roadblocks selected by H Y LL FUZZ, and    mantics and correctly generated the missing letter “y” to solve
+then compared the number of roadblocks solved by different        the condition on line 13, generating a syntactically valid input
+techniques under the same time budget (i.e., 24 hours). This      and achieving global optima. In contrast, the baselines focus
+analysis is intended to demonstrate that the performance gains    only on local optima and prioritize the value “z”, generating
+of H Y LL FUZZ stem from LLM-based solving rather than from       “trz”. This example demonstrates how H Y LL FUZZ generates
+the differences in roadblock selection. Second, we conducted      a single keyword effectively. The format php includes more
+a manual analysis of the branches covered by H Y LL FUZZ but      complex keywords like “return”, “break”, and “function”.
+missed by the baselines to elucidate the role of LLM-based        Without knowledge of the program semantics, the baselines
+solving in this process. To this end, we selected two string-     struggled to generate them. Conversely, the jq inputs are
+based subjects php and jq, where H Y LL FUZZ achieved a           JSON files with relatively simple structures; for example,
+higher increase in code coverage in php but only a smaller        “{}” represents key-value pairs and “[]” represents arrays.
+improvement in jq, as well as two arithmetic-based subjects       This makes H Y LL FUZZ just perform slightly better than the
+                                                                                                                                   10
+
+
+
+TABLE V: Average number of branches covered our H Y LL-            TABLE VI: Average number of branches covered by both
+FUZZ, and grammar-aware fuzzers NAUTILUS and S UPERION.            H Y LL FUZZ and its ablation tool H Y LL FUZZ without only
+                                                                   concrete execution.
+            H Y LL FUZZ   N AUTILUS        S UPERION
+  Subject
+            #Branches #Branches Improv #Branches Improv                    Subject      H Y LL FUZZ        HF0       Improv
+ libxml2        6811.6     3126.0   117.90%    2503.1 172.13%              php              17268.7     12656.2      36.44%
+ Lua            3529.3     2358.7    49.63%         -        -             jq                2076.0      2023.1       2.61%
+ MuJS           3666.0     2234.7    64.05%    2014.9 81.94%               bc                1203.7      1031.4      16.71%
+ php           17268.7    13011.5    32.72%         -        -             calc              7194.5      5087.6      41.41%
+ Average              -         - 66.07%            - 127.04%              Average                 -           -     24.29%
+
+
+
+baselines in jq. For the arithmetic-based subjects bc and          same paradigm. However, given that LLMs have the potential
+calc, we observed that the concolic execution engines of the       of reasoning over concrete execution traces and generating
+baselines failed to solve the deep path constraints. The success   inputs, it is natural to question whether this hybrid architecture
+rate of constraint solving significantly decreased as the depth    remains necessary. In other words, could an LLM combined
+of path constraints increased, which is also reported in the       solely with concrete execution already achieve comparable
+recent study [30].                                                 results?
+   4) Contribution of LLM-based Deeper Reasoning: From                To investigate this question, we developed an ablation
+the previous analysis, we observed that one advantage of LLM-      baseline HF0, which uses the LLM directly to reason over
+based solving is its awareness of input structures compared to     concrete execution and then generate new inputs, while keep-
+traditional SMT-based solvers, which contributes to the cov-       ing all other strategies (e.g., roadblock selection) the same.
+erage improvement to some extent. This raises the following        We evaluated HF0 on the same set of subjects php, jq, bc,
+questions: What is the contribution of the H Y LL FUZZ’s deeper    and calc as that used in our previous analysis. Each subject
+reasoning over the path constraints? Can the improvement be        was run for 24 hours and repeated 10 times. The average code
+achieved solely through the ability to generate syntactically      coverage achieved by both H Y LL FUZZ and its ablation HF0
+valid inputs?                                                      is shown in Table VI. From this result, we could see that the
+   To answer these questions, we included two state-of-the-art     hybrid architecture is necessary, as it significantly improves
+grammar-aware fuzzers NAUTILUS [31] and S UPERION [32]             the code coverage. In addition, H Y LL FUZZ also reduces the
+for comparison. Grammar-aware fuzzers are specifically de-         LLM token usage by approximately 3.5× compared to HF0.
+signed to handle structured input formats. Such a comparison       Therefore, this hybrid architecture not only improves coverage
+can highlight the contribution of the deeper reasoning over        but also lowers monetary costs.
+path constraints during input generation. We compared the
+branch coverage achieved by H Y LL FUZZ with that achieved          The code improvement of H Y LL FUZZ stems from its
+by grammar-aware fuzzers. L ANG F UZZ [33] is not included,         ability to solve a larger number of roadblocks compared
+as its source code is not publicly available. Both NAUTILUS         to the baselines. The efficiency of LLM-based concolic
+and S UPERION rely on input specifications to generate new          execution, the LLM-based reasoning and constraint-solving
+inputs, and these specifications are manually written. By           capabilities, and the hybrid architecture of LLM-based
+default, NAUTILUS only supports the javascript, php, lua,           concolic execution all contribute to this improvement.
+and xml inputs, while S UPERION supports the javascript
+and xml inputs. We also attempted to use LLMs to automate
+specification generation; however, the current LLMs fail to        E. Unsolved Roadblock Analysis (RQ.4)
+achieve this. As a result, the grammar-aware fuzzers could            In this analysis, we evaluated how H Y LL FUZZ failed to
+only fuzz the subjects libxml2, Lua, MuJS, and php. We ran         solve certain roadblocks, which aims to provide insights
+each fuzzer on each subject for 24 hours and repeated 10 times.    about how to effectively use LLM-based concolic execution.
+   The average number of branches covered by each fuzzer           Specifically, we analyzed how many roadblocks are selected
+is shown in Table V. As we can see, H Y LL FUZZ covers sub-        for solving but remain unsolved by H Y LL FUZZ. We further
+stantially more code branches than both baselines. Specifically,   investigated whether the number of solving attempts affects the
+compared to NAUTILUS and S UPERION, H Y LL FUZZ covered            results. In addition, we evaluated whether there are roadblocks
+66.07% and 127.04% more branches, respectively. These re-          that are solved by the baselines but not solved by H Y LL FUZZ.
+sults indicate that to achieve this code coverage improvement,     These analyses are conducted on two string-based subjects jq
+only handling the input structures is not sufficient, and the      and php, and two algorithm-based subjects bc and calc.
+deeper reasoning over path constraints plays a significant role       1) Number of Roadlocks Selected for Solving yet Unsolved
+in this improvement.                                               by H Y LL FUZZ: During the fuzzing campaign, we tracked how
+   5) Contribution of Hybrid Architecture of LLM-based Con-        many roadblocks were selected by H Y LL FUZZ for solving,
+colic Execution: Concolic execution adopts a hybrid architec-      and how many roadblocks were unfortunately unsolved by
+ture that combines concrete execution with symbolic execu-         H Y LL FUZZ at the end. The corresponding statistics and
+tion. Our LLM-based concolic execution approach follows this       unsolved rates are reported in Table VII. Overall, H Y LL FUZZ
+                                                                                                                                                       11
+
+
+
+TABLE VII: Number of roadblocks selected for solving (#Se-
+lected), number of roadblocks finally unsolved by H Y LL FUZZ                                    50.59%
+
+
+
+
+                                                                   Number of Solved Roadblocks
+(#Unsolved), and the unsolved rate (UnsolvedRate).
+
+  Tool               php         jq          bc         calc
+  #Selected         1131.2        72.9       238.2     1091.1
+  #Unsolved          294.1        28.9        38.2      211.0
+  UnsolvedRate     26.26%      39.64%      16.04%     19.34%                                         23.28%
+
+
+successfully solved more than 60% of the selected roadblocks,                                             9.02%     7.90%
+while the unsolved rates range from 16.04% to 39.64% across                                                               0.10% 0.00% 2.26% 0.78%
+                                                                                                               3.14%
+the evaluated subjects.                                                                                                0.59% 0.02% 0.36% 0.20% 1.77%
+   We then manually analyzed the reasons why H Y LL FUZZ
+failed to solve these roadblocks. It is surprising to find that                                  1    2    3    4   5   6   7   8   9 10 11 12 13 14
+this is not due to the limitations of LLM-based concolic            Fig. 7: Number ofNumber
+                                                                                        solvedofroadblocks
+                                                                                                 Solving Attempts
+                                                                                                             (in percentage) under
+execution. Instead, the majority of the roadblocks (up to 80%)      different numbers of solving attempts.
+left unsolved by H Y LL FUZZ are in fact unsatisfiable, as the
+corresponding branches are controlled by their configurations
+and program environments rather than by the fuzzed inputs.          covered by H Y LL FUZZ. While we initially expected to reveal
+For example, a branch condition in calc checks whether log-         limitations of LLM-based concolic execution used in H Y LL-
+ging information should be printed. Since printing is disabled      FUZZ, we found that this issue does not arise from its inability
+in the configuration, the flipped branch cannot be satisfied.       to solve the relevant path constraints. Instead, most of the
+Similarly, for the branch conditions that check whether the         branches uncovered by H Y LL FUZZ occur in switch-case
+files are successfully opened or whether memory allocation          conditions, where multiple branches coexist. In such cases,
+succeeds, their flipped branches are also unsatisfiable, as they    H Y LL FUZZ represents the solving target in the or form after
+depend on the execution environments. In the current design         flipping the conditions, and then randomly selects one path
+of H Y LL FUZZ, roadblocks are selected uniformly for solving       conditions to satisfy. As a result, some branches are missed,
+without performing any satisfiability analysis, and branches        because H Y LL FUZZ chooses one constraint to satisfy while
+that are inherently unsatisfiable are not deprioritized. A more     the baselines solve a different path constraint. This explains
+effective design would consider the feasibility of a roadblock      why H Y LL FUZZ ultimately fails to cover some branches.
+before selection; we leave this direction for future work.
+   2) Number of Solving Attempts Required to Solve a Road-                           H Y LL FUZZ failed to solve approximately 16.04% to
+lock: Given the nondeterministic nature of the LLM responses,                        39.64% of the selected roadblocks. While increasing the
+we further analyzed whether the number of solving attempts                           number of solving attempts can slightly improve the suc-
+affects the success rate of solving. To this end, we counted                         cess rate, this effect is limited to five attempts. Additionally,
+the number of solved roadblocks under different numbers of                           a small number of branches were solved by the baselines
+solving attempts, and the results are illustrated in Fig. 7. We                      but missed by H Y LL FUZZ. Our manual analysis revealed
+observe that more than 50% of the roadblocks are solved with                         that these unsolved branches are not due to limitations of
+a single solving attempt, and that using fewer than five solving                     LLM-based concolic execution in H Y LL FUZZ.
+attempts is sufficient to solve 94% of all solvable roadblocks.
+These results indicate that the LLM responses are relatively
+stable, and that increasing the number of solving attempts up to    F. Case Study (RQ.5)
+five can improve the success rate; however, additional attempts        In the previous research questions, we evaluated the per-
+beyond five yield little further improvement.                       formance of H Y LL FUZZ on C/C++ programs in combination
+   3) Number of Roadlocks Solved by Baselines but Unsolved          with AFL. H Y LL FUZZ has also been adapted for testing pro-
+by H Y LL FUZZ: We conducted an additional analysis to              grams written in other programming languages and combined
+evaluate whether there are roadblocks that are solved by the        with other greybox fuzzers. We conducted a case study on
+baselines but remain unsolved by H Y LL FUZZ. To this end, we       the Jenkins subject [34] written in Java, by integrating the
+counted the code branches uniquely covered by H Y LL FUZZ           greybox fuzzer JAZZER [35] (designed to fuzz Java programs)
+and by the baselines. The results are shown in Fig. 8. As           into H Y LL FUZZ. For this study, we selected the bug manually
+expected, H Y LL FUZZ uniquely covered substantially more           created by the 2024 DARPA and ARPA-H’s Artificial Intelli-
+branches, reflecting its significant coverage improvement.          gence Cyber Challenge (AIxCC) [36], and released after the
+In contrast, the three baselines C O F UZZ, I NTRIGUER, and         gpt-4o snapshot. The details are shown in Fig. 9.
+QSYM also uniquely covered a small number of branches                  The bug occurs on line 32 in Fig. 9. To reach this location,
+in the subjects: 8 branches in bc, 144 branches in calc, 0          the input must satisfy several conditions. In condition ⃝
+                                                                                                                            1 , the
+branches in jq, and 556 branches in php.                            input data is split by the symbol “\0”, and the resulting parts
+   We then manually analyzed why these branches were not            must have a length of 3. Once this condition is satisfied, the
+                                                                                                                                                              12
+
+
+
+
+                                                                         1   public static void fuzzerTestOneInput(byte[] data) throws Exception {
+                                                                         2       String whole = new String(data);
+                                                                         3       String[] parts = whole.split("\0");
+                                                                         4       if (parts.length == 3) {            1
+                                                                         5          UtilMain nw = new UtilMain();
+                                                                         6          Jenkins mockJ = Mockito.mock(Jenkins.class);
+                                                                         7          when(mockJ.hasPermission(Jenkins.ADMINISTER)).thenReturn(false);
+                                                                         8          nw.jenkin = mockJ;
+                                                                         9          try { ...
+                                                                        10             HttpServletRequest mockRequest =
+                                                                                                              Mockito.mock(HttpServletRequest.class);
+                                                                        11             List<String> headerNamesList = new ArrayList<>();
+                                                                        12             headerNamesList.add(parts[0]);       Mock Behavior of a Request 2
+                                                                        13             Enumeration<String> headerNamesEnumeration =
+                                                                                                               Collections.enumeration(headerNamesList);
+                                                                        14             when(mockRequest.getHeaderNames()).thenReturn(
+                                                                                                               headerNamesEnumeration);
+                                                                        15             when(mockRequest.getHeader(parts[0])).thenReturn(parts[1]);
+                                                                        16              RequestImpl req = new RequestImpl(replacer.stapler,
+                                                                                                               mockRequest, Collections.emptyList(), null);
+                                                                        17              replacer.setCurrentRequest(req);
+                                                                        18              HttpServletResponse mockResp =
+                                                                                                               Mockito.mock(HttpServletResponse.class);
+                                                                        19              ResponseImpl resp = new ResponseImpl(replacer.stapler, mockResp);
+Fig. 8: Number of code branches uniquely covered by H Y LL-             20              replacer.setCurrentResponse(resp);
+                                                                        21              nw.doexecCommandUtils(parts[2], req , resp );
+FUZZ (in orange) and the baselines (in blue).
+                                                                        22   ... } } }                            3                           4
+
+                                                                        23   public void doexecCommandUtils(String cmdSeq2, StaplerRequest
+                                                                                                                   request, StaplerResponse response)
+input passes the first constraint and triggers the execution of         24     throws ServletException, IOException, BadCommandException {
+code ⃝ 2 . Although no new conditions are introduced in ⃝     2 , it    25
+                                                                        26       boolean isAllowed = jenkins().hasPermission(Jenkins.ADMINISTER);
+mocks the behavior of a request, and any concolic execution             27       byte[] sha256 = DigestUtils.sha256("breakin the law");
+engines require proper modeling of these behaviors. Following           28       if (containsHeader(request.getHeaderNames(), "x-evil-backdoor")) {
+                                                                        29          String backdoorValue = request.getHeader("x-evil-backdoor");
+this, the function doexecCommandUtils is invoked, with                  30          byte[] providedHash = DigestUtils.sha256(backdoorValue);
+the three input parts passed as its arguments: parts[2],                31          if (MessageDigest.isEqual(sha256, providedHash)) {
+                                                                        32               //Vulnerable Location
+parts[0] for req, and parts[1] for resp. Upon entering                  33          }
+this function, to satisfy the condition ⃝
+                                        3 , the request value (i.e.,    34   ... } }
+parts[0]) must contain the string “x-evil-backdoor”. The
+return value is then assigned to the variable backdoorValue            Fig. 9: Case study of the bug from the Jenkins subject in Java
+(line 29), which is derived from parts[1] (line 15). This              released in the 2024 DARPA and ARPA-H’s AIxCC.
+value is hashed using the sha256 function (line 30), and the
+resulting hash must match the hash of “breakin the law”
+to satisfy the final condition ⃝ 4.                                    baselines. Currently, our findings are limited to text-based in-
+   To expose the bug, the greybox fuzzer generated inputs              puts, including both string-based and arithmetic-based inputs.
+that reached the condition at line 28; however, it failed to           However, these findings may not be generalized to other types
+generate correct inputs to cover the branch. At this point,            of binary-based inputs, as the current LLMs face challenges in
+H Y LL FUZZ was invoked to identify this roadblock, slice the          generating non-text responses. Furthermore, the applicability
+relevant code, and prompt the LLM to generate inputs. As               of H Y LL FUZZ is currently restricted to open-source programs,
+a result, H Y LL FUZZ managed to overcome this roadblock.              as it relies on code slices extracted from the source code.
+Subsequently, H Y LL FUZZ was iteratively involved in reaching
+deeper and deeper code locations, and finally exposed the
+                                                                       H. Limitations
+bug. Based on our evaluation, traditional concolic execution
+engines are incapable of exposing this bug. Condition ⃝           4       Existing hybrid fuzzers execute locally on CPU-based hard-
+is related to a one-way function, which is unsolvable for              ware, whereas H Y LL FUZZ relies on a remotely hosted LLM
+traditional constraint solvers. Moreover, satisfying condition         service with asymmetric computational resources (e.g., GPUs).
+⃝3 requires precise reasoning over code ⃝        2 , which poses       As a result, the reported wall-clock performance also reflects
+another significant challenge for traditional concolic execution.      differences in the underlying execution environments. How-
+                                                                       ever, our primary goal is to evaluate the practical effectiveness
+ H Y LL FUZZ can be effectively extended to test programs              of LLM-assisted hybrid fuzzing as an end-to-end workflow,
+ implemented in a different programming language.                      rather than hardware-normalized solver performance.
+                                                                          Another limitation concerns the possibility of data leakage
+                                                                       in LLM-based systems. Since modern LLMs are trained on
+G. Discussion                                                          massive corpora of public data, it is possible that some or all
+   We evaluated H Y LL FUZZ on widely-used real-world sub-             of the evaluated programs appeared in the training data, which
+jects with diverse input types and large codebases. Our results        may influence the LLM’s ability to reason about program
+demonstrate that this approach is highly promising, achieving          behavior. At the same time, H Y LL FUZZ also demonstrated
+substantial improvements in code coverage compared to the              effectiveness on the AIxCC Jenkins case study, which was
+                                                                                                                                  13
+
+
+
+released after the gpt-4o snapshot used in our experiments.         required in environment modeling. To scale to large real-
+That said, evaluating the extent of this influence remains an       world programs, several optimizations are proposed to address
+open research question.                                             these limitations. QSYM [9] uses concrete execution to model
+                                                                    external environments and collects an incomplete set of con-
+                     V. R ELATED W ORK                              straints to improve efficiency. I NTRIGUER [10] uses solvers
+                                                                    for complicated constraints only and lowers the priority of
+A. Hybrid Fuzzing                                                   instructions that use a wide range of input offsets. While these
+   Hybrid fuzzing was first introduced through hybrid concolic      optimizations reduce time overhead and modeling efforts, they
+testing [37], which combines random testing with concolic           may also compromise the performance of concolic execution.
+execution. D RILLER [8] was the first tool to integrate greybox     Our tool seeks to address these limitations at their core by
+fuzzing with concolic execution, demonstrating effectiveness        leveraging the knowledge of the LLMs. The recent study [18]
+in uncovering vulnerabilities in the 2016 DARPA’s Cyber             shows that LLMs can reason over constraints comparable to
+Grand Challenge subjects. However, D RILLER struggles to            traditional tools such as KLEE in toy programs and even
+scale to large real-world programs due to the performance           outperform them in programs with implicit data flow or out-of-
+bottlenecks inherent in concolic execution. To address this lim-    code constraints. These findings further validate the promise
+itation, QSYM [9] introduces fast symbolic emulation, accel-        of our approach.
+erated constraint solving, and efficient environment modeling.
+Building on this, I NTRIGUER [10] further improves perfor-          C. LLM-based Unit Test Generation
+mance by adopting field-level constraint solving. Continuing           Recent studies [40], [41] have investigated the capabilities
+these works, H Y LL FUZZ also aims to improve the efficacy of       of LLMs in assisting in automatic unit test generation. Ex-
+concolic execution, but by leveraging recent advancements in        isting approaches use the LLMs to generate unit tests for
+large language models (LLMs) and eliminating the need for           programs in different programming languages. For example,
+translation from a high-level programming language to logic         T EST P ILOT [42] prompts LLMs to generate JavaScript unit
+formulas.                                                           tests, while C HAT U NI T EST [43] and H I TS [44] focus on
+   In contrast to improving the performance of concolic execu-      Java unit tests. Similarly, C ODA MOSA [45], C OVERU P [46],
+tion, several hybrid fuzzers [11], [26], [27], [7] aim to improve   and S YM P ROMPT [20] guide the LLM to generate unit tests
+seed synchronization and scheduling. D IG F UZZ [11] employs        for Python programs. These prompts include natural language
+a Monte Carlo-based probabilistic path prioritization model         descriptions of the intended code functionality, the expected
+to guide concolic execution to solve the most challenging           properties, and the source code of the methods under test.
+paths. MEUZZ [26] leverages machine learning to predict             These works primarily aim to improve the quality and effec-
+which seeds are likely to yield better fuzzing results, while       tiveness of unit tests, while H Y LL FUZZ focuses on improving
+PANGOLIN [27] preserves exploration states to guide mutation        system testing through fuzzing.
+and constraint solving. Based on evaluating all previous hybrid        H Y LL FUZZ also shares some similarities with these works.
+fuzzers, C O F UZZ [7] introduced a coordinated strategy to         Like C ODA MOSA and C HAT U NI T EST, H Y LL FUZZ incor-
+better integrate greybox fuzzing and concolic execution. These      porates source code into LLM prompts. However, rather
+general strategies are applicable to various hybrid fuzzers,        than including entire modules, H Y LL FUZZ extracts only the
+including H Y LL FUZZ, to enhance overall performance. How-         relevant path constraints for a specific execution path using
+ever, H Y LL FUZZ itself does not target improving seed syn-        program analysis, and then guides the LLM to generate
+chronization and scheduling.                                        new inputs by reasoning over these constraints. In contrast,
+                                                                    C ODA MOSA and C HAT U NI T EST rely on full source code,
+B. Concolic Execution                                               which can hinder coverage when methods involve complex or
+                                                                    numerous path conditions. This is a limitation noted by prior
+   DART [3] is the first concolic testing tool, pioneering the
+                                                                    work such as H I TS [44]. To mitigate this, H I TS proposes
+combination of concrete and symbolic execution to incremen-
+                                                                    decomposing focal methods into smaller slices and generating
+tally generate test inputs. CUTE [38] extends DART to handle
+                                                                    tests for each slice. However, these slices are LLM-generated
+multithreaded programs. EXE [39] performs mixed concrete
+                                                                    fragments that may span multiple or partial execution paths
+and symbolic execution, while KLEE [4] is a redesign of EXE
+                                                                    and are not grounded in formal static or dynamic slicing
+that can check a large number of different software systems.
+                                                                    techniques. Moreover, H I TS incurs additional LLM costs
+S2E [12] applies concolic execution to binary code. These
+                                                                    for code slicing, reportedly exceeding two dollars per large
+foundational works lay the groundwork for concolic execution,
+                                                                    file. In comparison, H Y LL FUZZ employs dynamic slicing to
+from the core concept to real-world use. H Y LL FUZZ follows
+                                                                    extract path constraints aligned with specific execution goals,
+the principles of traditional concolic execution, but we explore
+                                                                    thereby avoiding unnecessary LLM overhead and eliminating
+the potential to develop smart concolic execution, with knowl-
+                                                                    additional slicing costs.
+edge of the program semantics during input generation.
+   With the increase of real-world programs in size and com-
+plexity, concolic execution shows limitations in checking large     D. LLM-based Fuzzing
+programs, such as significant time overhead from symbolic             LLMs have also been employed in various fuzzers to
+emulation and constraint solving, as well as the manual effort      enhance test generation during fuzz testing. T ITAN F UZZ [47]
+                                                                                                                                         14
+
+
+
+uses the LLMs to generate test cases for deep learning software     TABLE VIII: H Y LL FUZZ and AUTO B UG [51] comparison.
+libraries. C HATAFL [16] uses LLMs to enhance network                    Aspect               H Y LL FUZZ           AUTO B UG
+fuzzing. LLM4F UZZ [17] uses the LLMs to improve test
+                                                                         Execution model       Concolic             Symbolic
+case generation while fuzzing smart contracts. F UZZ 4A LL               Goal                  Fuzzing         Analysis / verification
+[48] advances compiler testing by leveraging LLMs. In these              Constraints        Dynamic slicing      Symbolic slicing
+fuzzers, the interleaving between LLMs and greybox fuzzing is            Guarantees         None (fuzzing)      Formal foundation
+                                                                         Coverage               Edge                   Path
+similar to that of hybrid fuzzers. The LLMs are usually queried          Cost                   Lower                 Higher
+only when greybox fuzzing reaches a coverage plateau, due to
+the expensive cost of the LLM calls. Similarly, hybrid fuzzers,
+including H Y LL FUZZ, invoke the heavy concolic execution          scenarios, whereas AUTO B UG emphasizes principled reason-
+whenever facing a fuzzing plateau.                                  ing over program paths. To highlight the differences, we
+   However, unlike existing fuzzers, H Y LL FUZZ assists grey-      consider the loop in lines 7–17 from Fig. 1. AutoBug sys-
+box fuzzing in a fundamentally different way. Existing ap-          tematically explores path summaries via path decomposition.
+proaches exploit the extensive domain knowledge of LLMs—            In contrast, H Y LL FUZZ only considers the subset of paths
+such as knowledge of deep-learning libraries, network proto-        driven by coverage-guided fuzzing, and will invoke LLM-
+cols, and user specifications—to generate valid inputs during       based reasoning only when a roadblock is encountered.
+fuzzing. For example, C HATAFL generates new inputs based              Considering only the loop, AUTO B UG explores up to 7
+on the LLM’s understanding of network protocols, including          distinct path summaries derived from the code structure,
+input formats and state machines. These approaches do not           each potentially triggering an LLM invocation. In contrast,
+dive into the codebases or reason over code paths. In contrast,     H Y LL FUZZ explores at most 3 paths to achieve edge coverage
+our fuzzer H Y LL FUZZ uses LLMs to generate new inputs by          in this example, and invokes the LLM only if a roadblock
+its reasoning over the code path constraints in the form of code    is encountered. If the other 20+ conditionals are considered,
+slices, and the new inputs aim to satisfy these path constraints.   the number of unique path summaries can increase combi-
+This makes H Y LL FUZZ analogous to traditional concolic            natorially. This difference reflects a fundamental trade-off:
+execution integrated into hybrid fuzzing, while H Y LL FUZZ         H Y LL FUZZ reduces analysis cost by focusing on reachable
+enhances traditional concolic execution through LLM-based           and coverage-relevant paths, whereas AUTO B UG aims for
+reasoning. To the best of our knowledge, no previous works          systematic path exploration. H Y LL FUZZ is therefore more
+leverage LLMs to improve the efficacy of hybrid fuzzing.            suitable for large-scale fuzzing scenarios where exhaustive
+                                                                    path reasoning is infeasible.
+E. LLM-based Path Reasoning
+                                                                                          VI. C ONCLUSION
+   Recent studies [49], [50] have also leveraged LLMs to
+reason about path constraints, though in different contexts and        In this paper, we present H Y LL FUZZ, a hybrid fuzzer that
+with different research goals from H Y LL FUZZ. LLMDFA              combines greybox fuzzing with smart concolic execution pow-
+focuses on analyzing dataflow information, where LLMs are           ered by large language models (LLMs). Taking advantage of
+used to extract source and sink locations, and then summarize       recent advances in LLMs, H Y LL FUZZ explores the potential
+their dataflows based on path constraints. On the other hand,       to develop smart concolic execution, with knowledge of the
+LL IFT aims to improve the performance of detecting Use-            code semantics during input generation. In our evaluation,
+Before-Initialization bugs; here, LLMs are used to identify         H Y LL FUZZ shows strong promise in terms of effectiveness,
+variable initializers and their post conditions, and subsequently   efficiency, and usability. Our evaluation results show that
+determine whether variables are properly initialized. Both          H Y LL FUZZ can cover 31%–59% more code branches than
+LLMDFA and LL IFT are designed to advance static anal-              the state-of-the-art hybrid fuzzers QSYM, I NTRIGUER, and
+ysis. In contrast, H Y LL FUZZ leverages LLMs to reason over        C O F UZZ, leading to more bugs found. In addition, H Y LL-
+path constraints to enable smart concolic execution, thereby        FUZZ reduces the time usage of each concolic execution run
+improving the fuzzing performance.                                  by 3–19 times. Moreover, H Y LL FUZZ avoids the combination
+                                                                    of a heavy symbolic execution infrastructure and reduces the
+                                                                    manual effort involved in environment modeling and system
+F. LLM-based Symbolic Execution
+                                                                    call support, which naturally enhances the usability of hybrid
+   A closely related line of work is LLM-based symbolic             fuzzing and lowers the barrier to its adoption.
+execution, as implemented by AUTO B UG [51], which uses
+LLMs for path-based program analysis. While H Y LL FUZZ                                       R EFERENCES
+and AUTO B UG share the common idea of leveraging LLMs              [1] M. Böhme, C. Cadar, and A. Roychoudhury, “Fuzzing: Challenges and
+to reason about program behavior, they represent two distinct           reflections,” IEEE Software, vol. 38, no. 3, 2021.
+design points in the space of LLM-assisted program analysis.        [2] M. Böhme, V.-T. Pham, and A. Roychoudhury, “Coverage-based grey-
+                                                                        box fuzzing as markov chain,” in Proceedings of the 2016 ACM SIGSAC
+The key differences are summarized in Table VIII.                       Conference on Computer and Communications Security (CCS), 2016,
+   Conceptually, H Y LL FUZZ optimizes for practical input-             pp. 1032–1043.
+space exploration under fuzzing, whereas AUTO B UG targets          [3] P. Godefroid, N. Klarlund, and K. Sen, “Dart: Directed automated
+                                                                        random testing,” in Proceedings of the 2005 ACM SIGPLAN conference
+systematic path reasoning for program analysis. As such,                on Programming language design and implementation (PLDI), 2005,
+H Y LL FUZZ emphasizes efficiency and scalability in testing            pp. 213–223.
+                                                                                                                                                             15
+
+
+
+ [4] C. Cadar, D. Dunbar, D. R. Engler et al., “Klee: Unassisted and auto-        [25] S. Gan, C. Zhang, X. Qin, X. Tu, K. Li, Z. Pei, and Z. Chen, “Collafl:
+     matic generation of high-coverage tests for complex systems programs,”            Path sensitive fuzzing,” in Proceedings of the 39th IEEE Symposium on
+     in Proceedings of the 8th USENIX Symposium on Operating Systems                   Security and Privacy (IEEE S&P), 2018, pp. 679–696.
+     Design and Implementation (OSDI), 2008, pp. 209–224.                         [26] Y. Chen, M. Ahmadi, R. M. farkhani, B. Wang, and L. Lu, “{MEUZZ}:
+ [5] S. Poeplau and A. Francillon, “Symbolic execution with {SymCC}:                   Smart seed scheduling for hybrid fuzzing,” in Proceedings of the
+     Don’t interpret, compile!” in Proceedings of the 29th USENIX Security             23rd International Symposium on Research in Attacks, Intrusions and
+     Symposium (USENIX Security 20), 2020, pp. 181–198.                                Defenses (RAID), 2020, pp. 77–92.
+ [6] M. Böhme, C. Cadar, and A. Roychoudhury, “Fuzzing: Challenges and           [27] H. Huang, P. Yao, R. Wu, Q. Shi, and C. Zhang, “Pangolin: Incremental
+     reflections,” IEEE Software, vol. 38, no. 3, pp. 79–86, 2020.                     hybrid fuzzing with polyhedral path abstraction,” in Proceedings of the
+ [7] L. Jiang, H. Yuan, M. Wu, L. Zhang, and Y. Zhang, “Evaluating                     41st IEEE Symposium on Security and Privacy (IEEE S&P), 2020, pp.
+     and improving hybrid fuzzing,” in Proceedings of the 45th IEEE/ACM                1613–1627.
+     International Conference on Software Engineering (ICSE), 2023, pp.           [28] G. Klees, A. Ruef, B. Cooper, S. Wei, and M. Hicks, “Evaluating
+     410–422.                                                                          fuzz testing,” in Proceedings of the 2018 ACM SIGSAC conference on
+ [8] N. Stephens, J. Grosen, C. Salls, A. Dutcher, R. Wang, J. Corbetta,               computer and communications security (CCS), 2018, pp. 2123–2138.
+     Y. Shoshitaishvili, C. Kruegel, and G. Vigna, “Driller: Augmenting           [29] G. Neumann, M. Harman, and S. Poulding, “Transformed vargha-
+     fuzzing through selective symbolic execution.” in Proceedings of the              delaney effect size,” in Proceedings of Search-Based Software Engi-
+     2016 Network and Distributed System Security Symposium (NDSS),                    neering: 7th International Symposium, 2015, pp. 318–324.
+     vol. 16, 2016, pp. 1–16.                                                     [30] M. Wu, J. Xiang, K. Chen, P. Di, S. H. Tan, H. Cui, and Y. Zhang,
+ [9] I. Yun, S. Lee, M. Xu, Y. Jang, and T. Kim, “{QSYM}: A practical                  “Tumbling down the rabbit hole: How do assisting exploration strategies
+     concolic execution engine tailored for hybrid fuzzing,” in Proceedings            facilitate grey-box fuzzing?” in Proceedings of the 47th IEEE/ACM
+     of the 27th USENIX Security Symposium (USENIX Security), 2018, pp.                International Conference on Software Engineering (ICSE), 2025, pp.
+     745–761.                                                                          2036–2048.
+[10] M. Cho, S. Kim, and T. Kwon, “Intriguer: Field-level constraint solving      [31] C. Aschermann, T. Frassetto, T. Holz, P. Jauernig, A.-R. Sadeghi,
+     for hybrid fuzzing,” in Proceedings of the 2019 ACM SIGSAC Con-                   and D. Teuchert, “Nautilus: Fishing for deep bugs with grammars.”
+     ference on Computer and Communications Security (CCS), 2019, pp.                  in Proceedings of the 2019 Network and Distributed System Security
+     515–530.                                                                          Symposium (NDSS), vol. 19, 2019, p. 337.
+[11] L. Zhao, Y. Duan, and J. XUAN, “Send hardest problems my way:                [32] J. Wang, B. Chen, L. Wei, and Y. Liu, “Superion: Grammar-aware grey-
+     Probabilistic path prioritization for hybrid fuzzing,” in Proceedings of          box fuzzing,” in Proceedings of the 2019 IEEE/ACM 41st International
+     the 2019 Network and Distributed System Security Symposium (NDSS),                Conference on Software Engineering (ICSE), 2019, pp. 724–735.
+     2019.                                                                        [33] C. Holler, K. Herzig, and A. Zeller, “Fuzzing with code fragments,”
+[12] V. Chipounov, V. Kuznetsov, and G. Candea, “S2e: A platform for in-               in Proceedings of the 21st USENIX Security Symposium (USENIX
+     vivo multi-path analysis of software systems,” in Proceedings of the 16th         Security), 2012, pp. 445–458.
+     International Conference on Architectural Support for Programming            [34] “Jenkins,” https://www.jenkins.io/.
+     Languages and Operating Systems (ASPLOS), 2011, pp. 265–278.                 [35] Code-Intelligence, “Coverage-guided, in-process fuzzing for the jvm,”
+[13] R. Meng, G. J. Duck, and A. Roychoudhury, “Program environment                    https://github.com/CodeIntelligenceTesting/jazzer.
+     fuzzing,” in Proceedings of the 2024 on ACM SIGSAC Conference on             [36] “AIxCC,” https://aicyberchallenge.com/.
+     Computer and Communications Security (CCS), 2024, pp. 720–734.               [37] R. Majumdar and K. Sen, “Hybrid concolic testing,” in Proceedings
+[14] A. Pandey, P. R. G. Kotcharlakota, and S. Roy, “Deferred concretization           of the 29th International Conference on Software Engineering (ICSE),
+     in symbolic execution via fuzzing,” in Proceedings of the 28th ACM                2007, pp. 416–426.
+     SIGSOFT International Symposium on Software Testing and Analysis             [38] K. Sen, D. Marinov, and G. Agha, “Cute: A concolic unit testing engine
+     (ISSTA), 2019, pp. 228–238.                                                       for c,” ACM SIGSOFT Software Engineering Notes, vol. 30, no. 5, pp.
+[15] L. De Moura and N. Bjørner, “Z3: An efficient smt solver,” in Inter-              263–272, 2005.
+     national conference on Tools and Algorithms for the Construction and         [39] C. Cadar, V. Ganesh, P. M. Pawlowski, D. L. Dill, and D. R. Engler,
+     Analysis of Systems, 2008, pp. 337–340.                                           “Exe: Automatically generating inputs of death,” ACM Transactions on
+[16] R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large                       Information and System Security (TISSEC), vol. 12, no. 2, pp. 1–38,
+     language model guided protocol fuzzing,” in Proceedings of the 31st               2008.
+     Annual Network and Distributed System Security Symposium (NDSS),             [40] M. Schäfer, S. Nadi, A. Eghbali, and F. Tip, “An empirical evaluation of
+     2024.                                                                             using large language models for automated unit test generation,” IEEE
+[17] C. Shou, J. Liu, D. Lu, and K. Sen, “Llm4fuzz: Guided fuzzing of smart            Transactions on Software Engineering, 2023.
+     contracts with large language models,” arXiv preprint arXiv:2401.11108,      [41] L. Yang, C. Yang, S. Gao, W. Wang, B. Wang, Q. Zhu, X. Chu, J. Zhou,
+     2024.                                                                             G. Liang, Q. Wang et al., “On the evaluation of large language models in
+[18] Z. Jiang, M. Wen, J. Cao, X. Shi, and H. Jin, “Towards understanding the          unit test generation,” in Proceedings of the 39th IEEE/ACM International
+     effectiveness of large language models on directed test input generation,”        Conference on Automated Software Engineering (ASE), 2024, pp. 1607–
+     in Proceedings of the 39th IEEE/ACM International Conference on                   1619.
+     Automated Software Engineering (ASE), 2024, pp. 1408–1420.                   [42] M. Schäfer, S. Nadi, A. Eghbali, and F. Tip, “An empirical evaluation of
+[19] X. Hou, Y. Zhao, Y. Liu, Z. Yang, K. Wang, L. Li, X. Luo, D. Lo,                  using large language models for automated unit test generation,” IEEE
+     J. Grundy, and H. Wang, “Large language models for software engi-                 Transactions on Software Engineering, 2023.
+     neering: A systematic literature review,” ACM Transactions on Software       [43] Y. Chen, Z. Hu, C. Zhi, J. Han, S. Deng, and J. Yin, “Chatunitest: A
+     Engineering and Methodology (TOSEM), 2023.                                        framework for llm-based test generation,” in Companion Proceedings of
+[20] G. Ryan, S. Jain, M. Shang, S. Wang, X. Ma, M. K. Ramanathan,                     the 32nd ACM International Conference on the Foundations of Software
+     and B. Ray, “Code-aware prompting: A study of coverage-guided test                Engineering (FSE), 2024, pp. 572–576.
+     generation in regression setting using llm,” Proceedings of the ACM on       [44] Z. Wang, K. Liu, G. Li, and Z. Jin, “Hits: High-coverage llm-based
+     Software Engineering, vol. 1, no. FSE, pp. 951–971, 2024.                         unit test generation via method slicing,” in Proceedings of the 39th
+[21] GNOME, “libxml2,” https://github.com/GNOME/libxml2.                               IEEE/ACM International Conference on Automated Software Engineer-
+[22] J. Metzman, L. Szekeres, L. Simon, R. Sprabery, and A. Arya,                      ing (ASE), 2024, pp. 1258–1268.
+     “Fuzzbench: an open fuzzer benchmarking platform and service,” in            [45] C. Lemieux, J. P. Inala, S. K. Lahiri, and S. Sen, “Codamosa: Escaping
+     Proceedings of the 29th ACM joint meeting on European software                    coverage plateaus in test generation with pre-trained large language mod-
+     engineering conference and symposium on the foundations of software               els,” in Proceedings of the 45th IEEE/ACM International Conference on
+     engineering (ESEC/FSE), 2021, pp. 1393–1403.                                      Software Engineering (ICSE), 2023, pp. 919–931.
+[23] A. Hazimeh, A. Herrera, and M. Payer, “Magma: A ground-truth fuzzing         [46] J. A. Pizzorno and E. D. Berger, “Coverup: Coverage-guided llm-based
+     benchmark,” Proc. ACM Meas. Anal. Comput. Syst., 2020.                            test generation,” arXiv preprint arXiv:2403.16218, 2024.
+[24] Y. Li, S. Ji, Y. Chen, S. Liang, W.-H. Lee, Y. Chen, C. Lyu, C. Wu,          [47] Y. Deng, C. S. Xia, H. Peng, C. Yang, and L. Zhang, “Large language
+     R. Beyah, P. Cheng et al., “{UNIFUZZ}: A holistic and pragmatic                   models are zero-shot fuzzers: Fuzzing deep-learning libraries via large
+     {Metrics-Driven} platform for evaluating fuzzers,” in Proceedings of              language models,” in Proceedings of the 32nd ACM SIGSOFT interna-
+     the 30th USENIX Security Symposium (USENIX Security), 2021, pp.                   tional symposium on software testing and analysis (ISSTA), 2023, pp.
+     2777–2794.                                                                        423–435.
+                                                                                16
+
+
+
+[48] C. S. Xia, M. Paltenghi, J. Le Tian, M. Pradel, and L. Zhang, “Fuzz4all:
+     Universal fuzzing with large language models,” in Proceedings of the
+     IEEE/ACM 46th International Conference on Software Engineering
+     (ICSE), 2024, pp. 1–13.
+[49] C. Wang, W. Zhang, Z. Su, X. Xu, X. Xie, and X. Zhang, “Llmdfa:
+     analyzing dataflow in code with large language models,” Advances in
+     Neural Information Processing Systems, vol. 37, pp. 131 545–131 574,
+     2024.
+[50] H. Li, Y. Hao, Y. Zhai, and Z. Qian, “Enhancing static analysis for
+     practical bug detection: An llm-integrated approach,” Proceedings of the
+     ACM on Programming Languages, vol. 8, no. OOPSLA1, pp. 474–499,
+     2024.
+[51] Y. Li, R. Meng, and G. J. Duck, “Large language model powered sym-
+     bolic execution,” Proceedings of the ACM on Programming Languages,
+     vol. 9, no. OOPSLA2, pp. 3148–3176, 2025.
+

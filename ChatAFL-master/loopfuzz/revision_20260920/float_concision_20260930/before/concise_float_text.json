@@ -1,0 +1,1050 @@
+{
+  "backup": "before_float_concision",
+  "rule": "Short captions and cell phrases; preserve numerical evidence, denominators, missingness, independent code/IPSM semantics, and uncertainty.",
+  "floats": [
+    {
+      "file": "main.revised.tex",
+      "label": "fig:mismatch",
+      "caption": {
+        "old": "Observed native terminal code-branch and IPSM state-edge counts for the three motivating targets (mean and sample standard deviation (SD); observed run counts are labeled; nominal target $N=10$). All available A and D observations are retained. Runtime and provenance differences prevent a matched-horizon causal interpretation. This figure tests the earlier narrative against current observations: it does not assert that all three hypothesized mismatch types were reproduced.",
+        "new": "A/D code and IPSM endpoints (mean $\\pm$ SD; actual $n$ shown)."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:architecture",
+      "caption": {
+        "old": "Controller contract: $P$ precedes execution; $U/R$ and distinct code/IPSM evidence precede queue disposition. Native saving must not bypass the boundary. Security-oracle artifacts are preserved separately.",
+        "new": "Evidence-gated admission with provisional and durable queues."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:posterior",
+      "caption": {
+        "old": "Productivity calibration: prediction precedes reward. IPSM state-edge growth is diagnostic and excluded from the main reward.",
+        "new": "Online productivity calibration using pre-update predictions and code rewards."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:reliability",
+      "caption": {
+        "old": "Descriptive reliability of the E-archive logged reward, shown separately by target. Pre-update probabilities are grouped into ten fixed equal-width bins; dots show the mean prediction and episode-weighted reward frequency. The dashed diagonal denotes perfect calibration. Whiskers are percentile 95\\% CIs from 2,000 resamples of whole runs within target; bins represented by fewer than two runs have no CI. Lower strips give exact episode counts; empty bins have no estimate. Only records with positive mutation counts are included. The reward marks native coverage-save events, which may include hit-count novelty; it is not independently replayed source-branch gain. Episodes have unequal energy and no verified completion flag. Nominal $N=10$; actual $n$ and episode count $m$ are shown.",
+        "new": "E-arm proxy-reward calibration. Points: bin means; bars: 95\\% CIs."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:trajectories",
+      "caption": {
+        "old": "Observed A--E code-branch trajectories from 465 archives. Time is measured from each fuzzer\\_stats start time. Lines are medians and shaded regions are interquartile ranges, computed on a five-minute grid by linear interpolation only between recorded observations. A run contributes neither before its first observation nor after its last; the actual contributing $n$ at 24 hours is shown in A--E order. The plot displays 0--24 hours without imposing a completed 24-hour campaign on interrupted runs. Full time-dependent denominators accompany the figure data; the nominal target remains $N=10$. All 45 main target--arm combinations are represented, including ten E--bftpd archives. Native pipeline/build comparability remains unverified; these curves are descriptive, and shaded ranges are not CIs.",
+        "new": "A--E code-branch trajectories: medians and interquartile ranges."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:posterior_cases",
+      "caption": {
+        "old": "State-level E-archive illustrations for the three motivating targets, selected by the deterministic rule in the text. Upper panels show pre-update probabilities; lower panels show the logged final selection score divided by the frontier score. Each point is positioned at the logged episode-end time; connecting lines only guide the eye. Zero-frontier records have an undefined multiplier and are omitted from the lower panels. Colors identify states within each target, not equivalent states across targets. Unequal mutation energy, possible posterior resets, and native save-event rewards limit interpretation. The selected source paths and exact plotted values accompany the figure.",
+        "new": "E-arm state histories: pre-update probabilities (top) and scheduling multipliers (bottom)."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:dispositions",
+      "caption": {
+        "old": "Logged candidate dispositions (left) and first failed trial flags in $P\\!\\rightarrow\\!U\\!\\rightarrow\\!R$ order (right), pooled within each archive arm. Exact counts accompany percentages. The candidate denominators are 1,326/2,227/735 for C/D/E; the trial denominators are 1,326/2,226/734. D and E each have one unmatched candidate, whose narrow segment is identified by the count. Passing $P/U/R$ does not establish code gain or durable queue membership. Provisional, converted, and expired outcomes have no validated lifecycle evidence and are not assigned zero rates.",
+        "new": "C/D/E reported dispositions (left) and first failed $P/U/R$ predicates (right)."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:cost",
+      "caption": {
+        "old": "Saved token counters versus native terminal code coverage, with one marker per B--E archive (371 observations). Token usage is the saved prompt-plus-completion count, expressed in thousands; individual observations show the available dispersion without imposing a fitted efficiency frontier. Different targets have separate axes; all 36 B--E target--arm combinations have saved counters, including ten E--bftpd archives. AFLNet lacks a comparable saved counter and is not assigned a synthetic zero. Horizons and build provenance are not matched, and final counters may lag the event stream. This is a descriptive cost--coverage view, not reconciled billing or a cost-matched causal comparison.",
+        "new": "Reported tokens versus terminal code branches, by target and arm."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "fig:callcost",
+      "caption": {
+        "old": "Saved model-call counters versus native terminal branch coverage for the same 371 B--E observations as \\figref{fig:cost}. Each marker represents a run; no regression, Pareto frontier, or missing usage is inferred. Separate target scales preserve the different program coverage surfaces. Call counts do not measure token expenditure or CPU-hours.",
+        "new": "Reported model calls versus terminal code branches, by target and arm."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:boundary",
+      "caption": {
+        "old": "Motivating mismatch hypotheses and their present evidential boundary.",
+        "new": "Motivating hypotheses and current evidence."
+      },
+      "cells": [
+        {
+          "row": "Forked-daapd",
+          "column": 1,
+          "old": "Overestimation: IPSM state-edge growth without downstream code gain.",
+          "new": "Overestimation: IPSM growth without downstream code gain."
+        },
+        {
+          "row": "Forked-daapd",
+          "column": 2,
+          "old": "Selected-state episodes with growing IPSM structure and low code reward.",
+          "new": "Growing IPSM structure with low episode code reward."
+        },
+        {
+          "row": "Forked-daapd",
+          "column": 3,
+          "old": "The new archive does not reproduce the older endpoint code regression.",
+          "new": "Prior endpoint code regression not reproduced."
+        },
+        {
+          "row": "Lighttpd1",
+          "column": 1,
+          "old": "Underestimation: code exploration within a shallow response abstraction.",
+          "new": "Underestimation: code progress within shallow response states."
+        },
+        {
+          "row": "Lighttpd1",
+          "column": 2,
+          "old": "Code-branch gain with little IPSM state-edge gain, joined to executions.",
+          "new": "Code-branch gain with little IPSM gain, linked to executions."
+        },
+        {
+          "row": "Lighttpd1",
+          "column": 3,
+          "old": "Both native endpoint metrics increase; their aggregate changes do not establish hidden productive states.",
+          "new": "Both endpoints increase; hidden productivity remains unverified."
+        },
+        {
+          "row": "LightFTP",
+          "column": 1,
+          "old": "Saturation mismatch: response novelty persists after code progress plateaus.",
+          "new": "Saturation: IPSM novelty after code progress plateaus."
+        },
+        {
+          "row": "LightFTP",
+          "column": 2,
+          "old": "Aligned code-branch and IPSM state-edge trajectories before and after saturation.",
+          "new": "Aligned code/IPSM trajectories across saturation."
+        },
+        {
+          "row": "LightFTP",
+          "column": 3,
+          "old": "Near-equal native code endpoints motivate the test; current-build trajectories are still required.",
+          "new": "Near-equal endpoints; matched-version trajectories still needed."
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:novelty",
+      "caption": {
+        "old": "Prior work and novelty boundary. This compares mechanisms, not measured performance.",
+        "new": "Prior mechanisms and novelty boundaries."
+      },
+      "cells": [
+        {
+          "row": "AFLNet; StateAFL; NSFuzz",
+          "column": 2,
+          "old": "Calibrate a retained response proxy without claiming semantic-state recovery.",
+          "new": "Calibrate the response proxy; no semantic-state recovery."
+        },
+        {
+          "row": "ChatAFL; LLM synthesis",
+          "column": 1,
+          "old": "Protocol-informed message/sequence proposals.",
+          "new": "Protocol-informed message/sequence generation."
+        },
+        {
+          "row": "ChatAFL; LLM synthesis",
+          "column": 2,
+          "old": "Execute-before-promote and bounded provisional validation.",
+          "new": "Execute-before-promote; bounded provisional validation."
+        },
+        {
+          "row": "The Bandit's States~\\cite{bandits_states2023}",
+          "column": 2,
+          "old": "Bandit formulation is prior art; independent reward and queue evidence are the focus.",
+          "new": "Prior bandit formulation; independent reward and queue evidence here."
+        },
+        {
+          "row": "Zhang et al.~\\cite{zhang2026thompson}",
+          "column": 1,
+          "old": "Seed scheduling using Thompson sampling.",
+          "new": "Thompson-sampling seed scheduling."
+        },
+        {
+          "row": "Zhang et al.~\\cite{zhang2026thompson}",
+          "column": 2,
+          "old": "Beta estimation and Thompson sampling are reused components.",
+          "new": "Reused Beta estimation and Thompson sampling."
+        },
+        {
+          "row": "SSGFuzz~\\cite{ssgfuzz2026}",
+          "column": 1,
+          "old": "State-significance-guided protocol fuzzing.",
+          "new": "State-significance-guided fuzzing."
+        },
+        {
+          "row": "SSGFuzz~\\cite{ssgfuzz2026}",
+          "column": 2,
+          "old": "Distinguish state importance from calibration against code productivity.",
+          "new": "Code-productivity calibration, distinct from state importance."
+        },
+        {
+          "row": "Magma~\\cite{magma2020}; evaluation methodology",
+          "column": 1,
+          "old": "Ground-truth bug conditions and repeated evaluation.",
+          "new": "Ground-truth bug conditions; repeated evaluation."
+        },
+        {
+          "row": "Magma~\\cite{magma2020}; evaluation methodology",
+          "column": 2,
+          "old": "Information-controlled network rediscovery with minimal security-patch pairs.",
+          "new": "Information-controlled network rediscovery; minimal security-patch pairs."
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:predicates",
+      "caption": {
+        "old": "Admission predicates relative to the recorded pre-trial snapshot.",
+        "new": "Admission predicates and required evidence."
+      },
+      "cells": [
+        {
+          "row": "Predicate",
+          "column": 3,
+          "old": "Required audit fields",
+          "new": "Required evidence"
+        },
+        {
+          "row": "$P$",
+          "column": 1,
+          "old": "Schema and local structural checks pass.",
+          "new": "Prespecified structure and format."
+        },
+        {
+          "row": "$P$",
+          "column": 2,
+          "old": "Missing field, invalid length or delimiter.",
+          "new": "Missing field; invalid length/delimiter."
+        },
+        {
+          "row": "$P$",
+          "column": 3,
+          "old": "Candidate ID, parser/schema version, reason, hypothesis hash.",
+          "new": "Candidate identity; validation criteria; reason; hypothesis version."
+        },
+        {
+          "row": "$U$",
+          "column": 1,
+          "old": "Adapter-defined acceptable response.",
+          "new": "Adapter accepts response."
+        },
+        {
+          "row": "$U$",
+          "column": 2,
+          "old": "Rejection, timeout, reset, drop, unparseable reply.",
+          "new": "Rejection; timeout/reset/drop; unparseable reply."
+        },
+        {
+          "row": "$U$",
+          "column": 3,
+          "old": "Response code/hash, adapter, flags, exception rule.",
+          "new": "Response identity; acceptance criteria; failures; exceptions."
+        },
+        {
+          "row": "$R$",
+          "column": 2,
+          "old": "Repeats a sink or misses the destination.",
+          "new": "Repeated sink; missed destination."
+        },
+        {
+          "row": "$R$",
+          "column": 3,
+          "old": "Source, intended target, observed state sequence.",
+          "new": "Source/target; observed state sequence."
+        },
+        {
+          "row": "$\\gcode$",
+          "column": 3,
+          "old": "Pre/post code observations, novelty class, favored reason.",
+          "new": "Pre/post code coverage; novelty class; favored reason."
+        },
+        {
+          "row": "$\\gstate$",
+          "column": 2,
+          "old": "Known response-state structure.",
+          "new": "Known IPSM structure."
+        },
+        {
+          "row": "$\\gstate$",
+          "column": 3,
+          "old": "Pre/post IPSM observations and new transitions.",
+          "new": "Pre/post IPSM; new transitions."
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:implementation",
+      "caption": {
+        "old": "Controller contract versus inspected implementation and available evidence. Source findings describe the current checkout; archive/source identity is not assumed without a commit or binary hash.",
+        "new": "Operational criteria and evidence limitations."
+      },
+      "cells": [
+        {
+          "row": "Contract",
+          "column": 0,
+          "old": "Contract",
+          "new": "Requirement"
+        },
+        {
+          "row": "Gate precedes durable promotion",
+          "column": 1,
+          "old": "Native saving may precede post-trial $U/R$ checks.",
+          "new": "Retention may precede $U/R$ verification."
+        },
+        {
+          "row": "Gate precedes durable promotion",
+          "column": 2,
+          "old": "Disposition/reason text does not certify strict queue protection.",
+          "new": "Disposition labels do not verify queue protection."
+        },
+        {
+          "row": "Independent state-only trial evidence",
+          "column": 1,
+          "old": "IPSM update depends on saving in the inspected path.",
+          "new": "State assessment depends on prior retention."
+        },
+        {
+          "row": "Independent state-only trial evidence",
+          "column": 2,
+          "old": "Zero provisional events cannot establish a low state-only rate.",
+          "new": "Zero provisional events do not establish a low state-only rate."
+        },
+        {
+          "row": "Full structural and reachability checks",
+          "column": 1,
+          "old": "$P$ can mean action schema; $R$ accepts generic state transitions.",
+          "new": "$P$: structural recognition; $R$: generic transition."
+        },
+        {
+          "row": "Full structural and reachability checks",
+          "column": 2,
+          "old": "Audit exact parser and target-hit evidence.",
+          "new": "Full validity and target reachability remain unverified."
+        },
+        {
+          "row": "Main reward is new code coverage",
+          "column": 1,
+          "old": "Bitmap novelty includes hit-count changes; some named branch fields count bitmap slots.",
+          "new": "Observed novelty may reflect execution frequency."
+        },
+        {
+          "row": "Main reward is new code coverage",
+          "column": 2,
+          "old": "Keep offline branches, bitmap slots, and save events distinct.",
+          "new": "Separate code branches, execution frequency, and retention."
+        },
+        {
+          "row": "Fixed-energy episode",
+          "column": 1,
+          "old": "Existing rounds vary mutation energy and may include zero-execution attempts.",
+          "new": "Variable mutation energy; zero-execution attempts."
+        },
+        {
+          "row": "Fixed-energy episode",
+          "column": 2,
+          "old": "Raw episode productivity is not equal-opportunity productivity.",
+          "new": "Raw episodes do not provide equal opportunities."
+        },
+        {
+          "row": "Strict provisional budget",
+          "column": 1,
+          "old": "Limits checked after a whole fuzzing round.",
+          "new": "Limits checked after whole fuzzing rounds."
+        },
+        {
+          "row": "Strict provisional budget",
+          "column": 2,
+          "old": "Nominal 64/30-second thresholds are not enforced maxima.",
+          "new": "64-mutation/30-second limits may be exceeded."
+        },
+        {
+          "row": "Verified run configuration",
+          "column": 1,
+          "old": "Start event is written before some environment flags are parsed.",
+          "new": "Effective settings may differ from initial declarations."
+        },
+        {
+          "row": "Verified run configuration",
+          "column": 2,
+          "old": "Cross-check launcher, end records, and effective execution path.",
+          "new": "Verify conditions throughout each experimental trial."
+        },
+        {
+          "row": "Equal total call/token caps",
+          "column": 1,
+          "old": "The logged 64 cap concerns plateau use; token-cap logging does not prove enforcement.",
+          "new": "64-call cap covers plateau use; token enforcement unverified."
+        },
+        {
+          "row": "Equal total call/token caps",
+          "column": 2,
+          "old": "No existing total-budget fairness claim.",
+          "new": "Total-budget fairness remains unverified."
+        },
+        {
+          "row": "Repair disabled in C/D/E",
+          "column": 1,
+          "old": "Code defaults and activation differ from the prospective configuration.",
+          "new": "Actual repair conditions are incompletely established."
+        },
+        {
+          "row": "Repair disabled in C/D/E",
+          "column": 2,
+          "old": "Legacy labels do not certify the complete D-arm contract.",
+          "new": "Reported arm identity does not establish adherence."
+        }
+      ],
+      "row_aliases": {
+        "Contract": "Requirement"
+      }
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:events",
+      "caption": {
+        "old": "Required logging schema. Each event also includes run ID, schema version, event sequence, and timestamp. Required fields are not claimed to be fully present in the current archive.",
+        "new": "Observation classes and required measurements."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:arms",
+      "caption": {
+        "old": "Confirmatory arm matrix. Repair is disabled in C/D/E. Names specify required configurations, not inferred identities from archive filenames.",
+        "new": "Required configurations for arms A--E."
+      },
+      "cells": [
+        {
+          "row": "B: Controlled ChatAFL",
+          "column": 4,
+          "old": "B--A: total controlled LLM-lineage change.",
+          "new": "B--A: controlled LLM-lineage change."
+        },
+        {
+          "row": "E: LoopFuzz-gated-calibrated",
+          "column": 4,
+          "old": "E--D: scheduling calibration.",
+          "new": "E--D: calibration effect."
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:targets",
+      "caption": {
+        "old": "Target/protocol/build matrix. Blank build fields await exact commit, image, coverage, and reset manifests.",
+        "new": "Targets, protocols, and experimental conditions."
+      },
+      "cells": [
+        {
+          "row": "Target",
+          "column": 2,
+          "old": "Commit/version",
+          "new": "Target version"
+        },
+        {
+          "row": "Target",
+          "column": 3,
+          "old": "Image digest",
+          "new": "Execution environment"
+        },
+        {
+          "row": "Target",
+          "column": 4,
+          "old": "Coverage build / reset hook",
+          "new": "Coverage / reset procedure"
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:llm",
+      "caption": {
+        "old": "Shared LLM configuration required for B--E. Blank values await the confirmatory freeze; historical settings do not fill these cells.",
+        "new": "Shared LLM settings required for B--E."
+      },
+      "cells": [
+        {
+          "row": "Field",
+          "column": 0,
+          "old": "Field",
+          "new": "Parameter"
+        },
+        {
+          "row": "Field",
+          "column": 1,
+          "old": "Frozen value",
+          "new": "Prespecified value"
+        },
+        {
+          "row": "Field",
+          "column": 2,
+          "old": "Required handling",
+          "new": "Comparability requirement"
+        },
+        {
+          "row": "Provider / endpoint / immutable model version",
+          "column": 0,
+          "old": "Provider / endpoint / immutable model version",
+          "new": "Model, version, and inference service"
+        },
+        {
+          "row": "Provider / endpoint / immutable model version",
+          "column": 2,
+          "old": "Record resolved version; an alias alone is insufficient.",
+          "new": "Identical resolved version; name alone insufficient."
+        },
+        {
+          "row": "Temperature by call class",
+          "column": 2,
+          "old": "Match corresponding call classes across arms.",
+          "new": "Match each call class across arms."
+        },
+        {
+          "row": "Top-$p$ / presence and frequency penalties",
+          "column": 2,
+          "old": "Explicit values or documented provider defaults.",
+          "new": "Explicit values or documented defaults."
+        },
+        {
+          "row": "Maximum output tokens per attempt",
+          "column": 2,
+          "old": "Shared cap; record truncation and failures.",
+          "new": "Shared limit; include truncated/failed responses."
+        },
+        {
+          "row": "Maximum attempted calls / total tokens",
+          "column": 2,
+          "old": "Include all classes and retries.",
+          "new": "Count all call classes and retries."
+        },
+        {
+          "row": "Timeout / retry count / backoff",
+          "column": 0,
+          "old": "Timeout / retry count / backoff",
+          "new": "Timeout and repeated-request policy"
+        },
+        {
+          "row": "Timeout / retry count / backoff",
+          "column": 2,
+          "old": "Fixed policy; record realized waits and failures.",
+          "new": "Identical policy; account for waiting and failures."
+        },
+        {
+          "row": "Model-side seed / support status",
+          "column": 2,
+          "old": "Record support; do not promise service determinism.",
+          "new": "Record support; no determinism guarantee."
+        },
+        {
+          "row": "Prompt corpus / template version",
+          "column": 2,
+          "old": "Shared information policy; prompt/reply hashes.",
+          "new": "Shared information policy; traceable prompts/responses."
+        },
+        {
+          "row": "Plateau cadence / threshold / reset",
+          "column": 2,
+          "old": "Same trigger, including state-growth dependencies.",
+          "new": "Shared intervention and state-growth criteria."
+        }
+      ],
+      "row_aliases": {
+        "Field": "Parameter",
+        "Provider / endpoint / immutable model version": "Model, version, and inference service",
+        "Timeout / retry count / backoff": "Timeout and repeated-request policy"
+      }
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:mainresults",
+      "caption": {
+        "old": "Archive-derived final code-branch count / branch-coverage AUC (branch-hours). Each cell shows mean $\\pm$ sample SD and observed $n$ on the first line, with AUC on the second line. The nominal target is 10 runs; all 45 main target--arm groups have observations. Missing runs are not imputed. These descriptive endpoints do not replace matched-horizon causal inference.",
+        "new": "Branch endpoints (top) and AUCs (bottom), mean $\\pm$ SD."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:mechanisms",
+      "caption": {
+        "old": "Logged mechanism totals across the available C/D/E archives. Candidate and trial IDs are scoped to each archive; disposition labels are not independently verified queue membership. Metrics requiring descendant joins or verified fixed-energy, independent code-branch rewards remain blank; the separate logged-reward diagnostics appear in Table~\\ref{tab:logged_calibration}.",
+        "new": "C/D/E mechanism observations; blanks indicate unvalidated evidence."
+      },
+      "cells": [
+        {
+          "row": "Candidate records",
+          "column": 4,
+          "old": "Distinct candidate IDs within each archive.",
+          "new": "Distinct candidates within each experimental record."
+        },
+        {
+          "row": "Trial records",
+          "column": 4,
+          "old": "Distinct trial IDs within each archive.",
+          "new": "Distinct trials within each experimental record."
+        },
+        {
+          "row": "Reject / durable labels",
+          "column": 4,
+          "old": "Logged trial dispositions.",
+          "new": "Reported trial outcomes."
+        },
+        {
+          "row": "First failed logged $P/U/R$",
+          "column": 0,
+          "old": "First failed logged $P/U/R$",
+          "new": "First failed $P/U/R$"
+        },
+        {
+          "row": "First failed logged $P/U/R$",
+          "column": 4,
+          "old": "First false field in $P$, then $U$, then $R$ order; trial denominator.",
+          "new": "First false $P$, then $U$, then $R$; denominator: trials."
+        },
+        {
+          "row": "Direct durable rate",
+          "column": 4,
+          "old": "Logged disposition labels / generated candidates.",
+          "new": "Durable labels / generated candidates."
+        },
+        {
+          "row": "State-only provisional rate",
+          "column": 4,
+          "old": "All candidates; not enabled for C.",
+          "new": "All candidates; disabled for C."
+        },
+        {
+          "row": "Provisional conversion / expiration",
+          "column": 4,
+          "old": "Provisional admissions, including pending/censored counts.",
+          "new": "Provisional admissions; include pending/censored cases."
+        },
+        {
+          "row": "Trial latency (ms)",
+          "column": 4,
+          "old": "Mean $\\pm$ sample SD of within-run mean \\texttt{latency\\_ms}; runs with trials only.",
+          "new": "Mean $\\pm$ SD of within-run trial means; contributing runs only."
+        },
+        {
+          "row": "Promotion latency",
+          "column": 4,
+          "old": "Requires verified queue-promotion timestamps.",
+          "new": "Verified queue-promotion timestamps required."
+        },
+        {
+          "row": "Downstream productivity@64",
+          "column": 4,
+          "old": "Later descendants, excluding admission gain.",
+          "new": "Descendant code gain; exclude admission gain."
+        },
+        {
+          "row": "Queue size / nonproductive retention",
+          "column": 4,
+          "old": "Queue state plus C--D counterfactual.",
+          "new": "Queue state and C--D counterfactual."
+        },
+        {
+          "row": "BS / ECE / AUPRC",
+          "column": 4,
+          "old": "Fixed-energy source-branch reward; separate logged-reward diagnostics in Table~\\ref{tab:logged_calibration}.",
+          "new": "Fixed-energy code-branch reward; proxy diagnostics: \\namedref{Table}{tab:logged_calibration}."
+        },
+        {
+          "row": "Code gain per candidate / 1,000 tokens",
+          "column": 4,
+          "old": "Joined gain and complete usage.",
+          "new": "Joined code gain and complete usage."
+        }
+      ],
+      "row_aliases": {
+        "First failed logged $P/U/R$": "First failed $P/U/R$"
+      }
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:repair",
+      "caption": {
+        "old": "Optional repair diagnostics. Repair is outside primary causal comparisons; unavailable observations stay blank.",
+        "new": "Optional repair diagnostics; unavailable values remain blank."
+      },
+      "cells": []
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:cve",
+      "caption": {
+        "old": "Supplied vulnerability case inventory. Build and CVE identities follow the local case reports. L denotes an attached log; R denotes a report-only observation. A local guard or an unsuccessful patch attempt does not establish equivalence to the upstream security fix.",
+        "new": "Vulnerability cases and supporting evidence (L: direct observation; R: report)."
+      },
+      "cells": [
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "column": 1,
+          "old": "\\texttt{61e621e743346};\\newline ASan; command buffer 65,535 bytes",
+          "new": "Reported vulnerable version; ASan; 65,535-byte command buffer"
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "column": 2,
+          "old": "60,006-byte input; heap-buffer-overflow, one-byte read beyond a 65,568-byte region (L).",
+          "new": "60,006-byte input; heap-buffer-overflow: one-byte read beyond a 65,568-byte region (L)."
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}\\newline ProFTPD / FTP",
+          "column": 3,
+          "old": "Reported base + \\texttt{97bbe68363cc}; three rejection/no-ASan rounds (L). Same input and buffer configuration are stated in that log.",
+          "new": "Reported security patch; three rejections, no ASan (L); same input/buffer."
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "column": 1,
+          "old": "2023.05.10 campaign snapshot; public report identifies 2026.02.26 (R)",
+          "new": "Campaign: 2023.05.10; public report: 2026.02.26 (R)"
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "column": 2,
+          "old": "728-byte public PoC; heap-use-after-free excerpt (L). A separate fuzzer-discovered input is described but absent.",
+          "new": "728-byte public PoC; heap-use-after-free (L). Fuzzer-discovered input absent."
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}\\newline LIVE555 / RTSP",
+          "column": 3,
+          "old": "Local handler-removal attempt still triggers, 1/1 (R). Successful upstream-patch differential unavailable.",
+          "new": "Attempted local patch: 1/1 still triggers (R); upstream-patch comparison absent."
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "column": 1,
+          "old": "\\texttt{a2209018fb};\\newline TCP listener required",
+          "new": "Reported vulnerable version; TCP required"
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "column": 2,
+          "old": "278-byte input; negative Content-Length value $-10$ (L). This is the overflow predicate, not a crash count.",
+          "new": "278-byte input; parsed Content-Length $-10$ (L): overflow predicate, not crash count."
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}\\newline Kamailio / SIP over TCP",
+          "column": 3,
+          "old": "Local \\texttt{INT\\_MAX/10} guard suppresses the fingerprint (R); upstream fix is identified as \\texttt{060b6c2530c8}. Patched log and repeat count unavailable.",
+          "new": "Local overflow guard suppresses diagnostic (R); equivalence to the identified security patch unverified."
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "column": 1,
+          "old": "Reported 27.2,\\newline \\texttt{2ca10d9b}",
+          "new": "Reported version 27.2"
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "column": 2,
+          "old": "148-byte input; lexer errors, failed health probe, process still alive (R). No standalone replay log.",
+          "new": "148-byte input; lexer errors; health probe fails; process alive (R). Direct replay evidence absent."
+        },
+        {
+          "row": "SMARTPL availability case\\newline forked-daapd / HTTP",
+          "column": 3,
+          "old": "No patched-version replay. No CVE assigned; report associates parser removal with version 28.4.",
+          "new": "No patched replay/CVE; parser reportedly removed in 28.4."
+        },
+        {
+          "row": "Case / interface",
+          "column": 1,
+          "old": "Reported vulnerable build",
+          "new": "Reported vulnerable version"
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:cveresults",
+      "caption": {
+        "old": "Recorded replay and sampled-input outcomes. R/L have the meanings in Table~\\ref{tab:cve}. Fractions retain the original batch denominators; vulnerable-side batches are report-only unless specified. The control column records separate tests, not matched A--E campaigns. No absent trial is imputed.",
+        "new": "Reported replay batches and separate controls; original denominators retained."
+      },
+      "cells": [
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "column": 1,
+          "old": "1/1 known seed; 1/1 fuzzer crash (Sept.~22); 3/3 batch crashes (Sept.~25).",
+          "new": "1/1 seed; 1/1 fuzzer crash (Sept.~22); 3/3 batch crashes (Sept.~25)."
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "column": 2,
+          "old": "0/3 ASan activations after the reported upstream fix; 3/3 FTP 500 rejections (L, Sept.~28).",
+          "new": "Reported fix: 0/3 ASan activations; 3/3 FTP 500 rejections (L, Sept.~28)."
+        },
+        {
+          "row": "\\mbox{CVE-2023-51713}",
+          "column": 3,
+          "old": "Vulnerable and patched replay evidence available. Counts are from different batches; no arm-specific discovery probability or trigger time.",
+          "new": "Separate replay batches; no arm-specific discovery probability or trigger time."
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "column": 1,
+          "old": "1/1 public PoC; three fuzzer inputs reported at 3/3 each; later aggregate 8/9.",
+          "new": "1/1 public PoC; three fuzzer inputs: 3/3 each; later aggregate: 8/9."
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "column": 2,
+          "old": "Local patch attempt: 1/1 still triggers (R). Successful patched-side denominator unavailable.",
+          "new": "Local patch: 1/1 still triggers (R); successful patched-side denominator absent."
+        },
+        {
+          "row": "\\mbox{CVE-2026-38998}",
+          "column": 3,
+          "old": "Keep the 3/3 batches and 8/9 aggregate separate. Fuzzer input and individual trial records missing; no confirmed patched pair.",
+          "new": "Unpooled batches; fuzzer input/trial records absent; no confirmed patch pair."
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}",
+          "column": 1,
+          "old": "1/1 seed; 3/4 from a 60-s queue; 19/20 from a 60-min queue; 19/20 sampled from a 1,540-min queue; 50/51 in another 60-min batch.",
+          "new": "1/1 seed; queue samples: 3/4 (60 s), 19/20 (60 min), 19/20 (1,540 min), 50/51 (separate 60-min batch)."
+        },
+        {
+          "row": "\\mbox{CVE-2026-39863}",
+          "column": 3,
+          "old": "Queue-sample outcomes, not campaign recall. No extrapolation to all 195 reported large-header entries; no attached patched log.",
+          "new": "Queue samples, not campaign recall; no extrapolation to 195 entries; patched-version evidence absent."
+        },
+        {
+          "row": "SMARTPL availability case",
+          "column": 1,
+          "old": "5/5 advisory-input repeats; 3/3 repeats of a 48-message seed; 1/1 later advisory replay.",
+          "new": "5/5 advisory repeats; 3/3 48-message-seed repeats; 1/1 later advisory replay."
+        },
+        {
+          "row": "SMARTPL availability case",
+          "column": 2,
+          "old": "SMARTPL predicate hits among five sampled campaign hang inputs: 0/5 (R). Patched replay unavailable.",
+          "new": "Sampled campaign hangs: 0/5 SMARTPL hits (R); patched replay absent."
+        },
+        {
+          "row": "SMARTPL availability case",
+          "column": 3,
+          "old": "Known-input availability evidence; not five validated bugs, not a CVE, and not demonstrated rediscovery in the long campaigns.",
+          "new": "Known-input unavailability; no confirmed campaign rediscovery or CVE."
+        }
+      ]
+    },
+    {
+      "file": "main.revised.tex",
+      "label": "tab:threats",
+      "caption": {
+        "old": "Threats, protocol controls, and remaining evidence limits.",
+        "new": "Validity threats, required controls, and evidence limits."
+      },
+      "cells": [
+        {
+          "row": "Internal",
+          "column": 1,
+          "old": "Admission-only C--D; scheduling-only E--D; repair off; paired snapshot diagnostics.",
+          "new": "Admission-only C--D; scheduling-only E--D; repair off; paired initial states."
+        },
+        {
+          "row": "Internal",
+          "column": 2,
+          "old": "Missing target-arm observations and implementation-ordering differences prevent attribution.",
+          "new": "Missing observations; differing operation order."
+        },
+        {
+          "row": "Construct",
+          "column": 1,
+          "old": "Separate IPSM state edges, code branches, bitmap counts, reached/triggered events.",
+          "new": "Separate IPSM state edges, code branches, bitmap counts, and reached/triggered events."
+        },
+        {
+          "row": "Construct",
+          "column": 2,
+          "old": "Native novelty and terminal summaries do not fully instantiate the proposed measures.",
+          "new": "Observed proxies incompletely measure the intended criteria."
+        },
+        {
+          "row": "Statistical",
+          "column": 1,
+          "old": "Repeated trials, test families, effect sizes, clustered/hierarchical intervals, censoring.",
+          "new": "Repeated trials; test families; effect sizes; clustered/hierarchical intervals; censoring."
+        },
+        {
+          "row": "Statistical",
+          "column": 2,
+          "old": "Unequal-duration partial data cannot establish confirmatory effects.",
+          "new": "Partial, unequal-duration data; no confirmatory effects."
+        },
+        {
+          "row": "Selection",
+          "column": 1,
+          "old": "Complete intention-to-run ledger and predefined infrastructure reruns.",
+          "new": "Intention-to-run accounting; prespecified infrastructure repetitions."
+        },
+        {
+          "row": "Selection",
+          "column": 2,
+          "old": "Result manifests omit planned/unlaunched attempts; extra rows do not establish independent launches.",
+          "new": "Uninitiated trials unobserved; additional records need not be independent."
+        },
+        {
+          "row": "Reproducibility",
+          "column": 1,
+          "old": "Build/image pins, seeds, prompts/replies, event joins, resource traces.",
+          "new": "Identical versions, conditions, seeds, prompts, and measurement definitions."
+        },
+        {
+          "row": "Reproducibility",
+          "column": 2,
+          "old": "Aliases and incomplete provenance prevent exact replication claims.",
+          "new": "Unresolved model versions and incomplete experimental provenance."
+        },
+        {
+          "row": "External",
+          "column": 1,
+          "old": "Multiple targets/protocols, negative cases, declared adapter assumptions.",
+          "new": "Multiple targets/protocols; negative cases; adapter assumptions."
+        },
+        {
+          "row": "External",
+          "column": 2,
+          "old": "Textual targets do not establish transfer to encrypted or opaque binary protocols.",
+          "new": "Encrypted/opaque binary protocols untested."
+        },
+        {
+          "row": "Security",
+          "column": 1,
+          "old": "Minimal patch pairs, independent triggers, information separation.",
+          "new": "Minimal patch pairs; independent triggers; information separation."
+        },
+        {
+          "row": "Security",
+          "column": 2,
+          "old": "Replay dossiers lack controlled A--E outcomes and complete patch/build provenance; model pretraining leakage cannot be excluded.",
+          "new": "Controlled A--E and version-pair evidence incomplete; pretraining leakage unresolved."
+        }
+      ]
+    },
+    {
+      "file": "observed_tables.updated_20260929.tex",
+      "label": "tab:observed_inventory",
+      "caption": {
+        "old": "Current archive inventory. A and D use benchmark rows; D is counted once because the supplied \\texttt{ablation/gated\\_fixed} directory duplicates benchmark LoopFuzz. Nominal target is 10 runs per target. Status and exit-code labels are descriptive.",
+        "new": "Available observations by target; D-arm status and duration."
+      },
+      "cells": []
+    },
+    {
+      "file": "observed_tables.updated_20260929.tex",
+      "label": "tab:observed_endpoints",
+      "caption": {
+        "old": "Exploratory native terminal endpoints from current summary rows (mean $\\pm$ sample SD). All available A and D rows are retained; unequal stopping times and source-build uncertainty preclude causal comparisons.",
+        "new": "A/D code and IPSM endpoints (mean $\\pm$ SD)."
+      },
+      "cells": [],
+      "row_aliases": {}
+    },
+    {
+      "file": "observed_tables.updated_20260929.tex",
+      "label": "tab:observed_log_counts",
+      "caption": {
+        "old": "Logged schema-v2 counts in current LoopFuzz D archives. Reject, provisional, and durable are recorded labels, not independently verified queue membership.",
+        "new": "D-arm observations; reported decisions do not verify queue membership."
+      },
+      "cells": []
+    },
+    {
+      "file": "observed_costs.updated_20260929.tex",
+      "label": "tab:observed_costs",
+      "caption": {
+        "old": "Recorded LoopFuzz D costs from current benchmark archives: per-run minimum--maximum by target. Total tokens combine prompt and completion counters; k denotes 1,000 tokens.",
+        "new": "Reported D-arm costs: per-run ranges by target."
+      },
+      "cells": []
+    },
+    {
+      "file": "figures_updated_20260929/logged_calibration_table.tex",
+      "label": "tab:logged_calibration",
+      "caption": {
+        "old": "E-archive diagnostics for the logged coverage-save reward on positive-execution episodes. Values in brackets are percentile 95\\% CIs from 2,000 bootstrap resamples of whole runs within each target. BS and ECE are lower-is-better; AUPRC uses non-interpolated AP. The prequential reference uses Beta(1,1)-smoothed past included rewards in the same run. These are descriptive diagnostics, not the fixed-energy code-branch metrics in Table~\\ref{tab:mechanisms}.",
+        "new": "E-arm proxy-reward calibration (95\\% CIs in brackets)."
+      },
+      "cells": []
+    },
+    {
+      "file": "archive_arm_results.updated_20260929.tex",
+      "label": "tab:archive_arms",
+      "caption": {
+        "old": "Complete current archive observations (mean $\\pm$ sample SD). The nominal target is $N=10$; $n$ is the observed count. AUC integrates each recorded trajectory in branch-hours. Missing target--arm combinations have no row and remain unavailable.",
+        "new": "Observed endpoints and full-trajectory AUC (mean $\\pm$ SD)."
+      },
+      "cells": []
+    }
+  ],
+  "prose_edits": [
+    {
+      "file": "main.revised.tex",
+      "old": "Percentile 95\\% CIs use 2,000 bootstrap resamples of whole runs within each target; they do not resolve unknown dependence between launches.",
+      "new": "Percentile 95\\% CIs use 2,000 bootstrap resamples of whole runs within each target; they do not resolve unknown dependence between launches. Empty bins have no estimate, and bins represented by fewer than two runs have no CI. In \\namedref{Figure}{fig:reliability}, points pair the bin-mean pre-update prediction with reward frequency; the diagonal denotes perfect calibration. Lower strips give positive-mutation episode counts, with actual runs $n$, episodes $m$, and nominal $N=10$."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "Changes in the set of contributing runs can change an aggregate curve even when individual histories do not decrease.",
+      "new": "Each run contributes only between its first and last observation; time-dependent denominators accompany the figure data. Changes in the set of contributing runs can change an aggregate curve even when individual histories do not decrease."
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "\\begin{table*}[!tbp]\n\\centering\\footnotesize\n\\caption{Required event fields by function.}\n\\label{tab:events}\n\\begin{tabularx}{\\textwidth}{l Y}\n\\toprule\nStream & Minimum additional fields \\\\\n\\midrule\n\\texttt{run\\_config} & Arm; target/fuzzer commits; image digest; model/version/endpoint; temperature, top-$p$, penalties; call/token caps; seed; CPU/memory quota; start/end; termination reason. \\\\\n\\texttt{candidate\\_event} & Candidate/prompt IDs; prompt/raw-reply hashes; raw candidate or artifact path; action; input/output tokens; source/requested states; generation timestamp; parent candidate. \\\\\n\\texttt{admission\\_trial} & Candidate/trial IDs; $P/U/R$ and reasons; response code/hash; timeout/reset/drop; state sequence; target/frontier reached; pre/post IPSM nodes/state edges and code coverage; favored reason; latency; disposition. \\\\\n\\texttt{provisional\\_event} & Stable candidate/provisional IDs; budget; actual descendant executions/code gain; first productive descendant; conversion timestamp; promotion latency; expiration/censoring reason. \\\\\n\\texttt{state\\_selection\\_episode} & Episode/state/seed IDs; pre-update $\\alpha,\\beta,\\widehat{\\theta}$; Thompson sample; frontier/final score; mutations; code-branch/IPSM state-edge gain; reward; post-update $\\alpha,\\beta$; latency; completion status. \\\\\n\\texttt{bug\\_event} & Anonymous oracle ID; reached/triggered; first trigger time; reproducing input; vulnerable/patched result; sanitizer evidence; root-cause signature. CVE identity remains isolated metadata. \\\\\n\\texttt{repair\\_event} (optional) & Repair/parent IDs; failure/counterexample; before/after hypothesis hashes; changed field; validation before/after; post-repair predicates/descendant gain; tokens/latency. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}",
+      "new": "\\begin{table*}[!tbp]\n\\centering\\footnotesize\n\\caption{Observation classes and required measurements.}\n\\label{tab:events}\n\\begin{tabularx}{\\textwidth}{@{}>{\\raggedright\\arraybackslash}p{0.27\\textwidth} Y Y@{}}\n\\toprule\nObservation class & Experimental context & Measurements / outcomes \\\\\n\\midrule\nExperimental conditions & Arm; target/fuzzer versions; execution environment; model/service version; sampling parameters; random seed. & Call/token limits; CPU/memory allocation; observation period; termination reason. \\\\\nCandidate generation & Candidate and prompt identity; parentage; original request/response; action; source/intended states. & Input/output tokens; generation time. \\\\\nAdmission trial & Candidate/trial correspondence; $P/U/R$ and reasons; response identity; failures; state sequence; target reachability. & Pre/post IPSM nodes/state edges and code coverage; coverage-based priority; latency; decision. \\\\\nProvisional validation & Candidate identity; validation budget; first productive descendant. & Descendant executions/code gain; conversion time; promotion latency; expiration/censoring. \\\\\nState-selection episode & Episode/state/seed identity; pre-update $\\alpha,\\beta,\\widehat{\\theta}$; Thompson sample; frontier/selection scores. & Mutation count; code-branch/IPSM state-edge gain; reward; post-update $\\alpha,\\beta$; duration; completion. \\\\\nSecurity outcome & Anonymous oracle identity; reproducing input; diagnostic evidence; root cause. & Reached/triggered; first trigger time; vulnerable/patched outcomes. \\\\\nRepair (optional) & Repair lineage; failure/counterexample; original/revised hypothesis; changed component. & Pre/post validation; post-repair predicates/descendant gain; tokens/latency. \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table*}"
+    },
+    {
+      "file": "main.revised.tex",
+      "old": "Table~\\ref{tab:events} specifies joinable fields. Missing fields are not replaced with zero.",
+      "new": "The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \\namedref{Table}{tab:events} specifies the corresponding evidence. Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata. Missing observations are not assigned zero values."
+    },
+    {
+      "file": "archive_arm_results.updated_20260929.tex",
+      "old": "\\noindent AUC is measured in branch-hours; IPSM denotes state edges. Status codes reproduce the archive: C=completed, X=exit\\_137\\_near\\_limit, S=sigabrt, O=oom\\_killed; they do not independently identify failure causes. Missing target--arm combinations have no row and are not zero-valued observations.",
+      "new": "\\noindent AUC: branch-hours over each recorded trajectory. The IPSM column reports state-edge counts. Reported termination categories: C=completion, X=termination near the time limit, S=abort, O=memory exhaustion. Categories do not independently establish causes."
+    },
+    {
+      "file": "observed_tables.updated_20260929.tex",
+      "old": " & \\multicolumn{2}{c}{Code branches (\\texttt{b\\_abs})} & \\multicolumn{2}{c}{IPSM state edges} \\\\",
+      "new": " & \\multicolumn{2}{c}{Code branches} & \\multicolumn{2}{c}{IPSM state edges} \\\\"
+    }
+  ],
+  "round2_backup": "before_float_concision_round2",
+  "caption_policy": "One short identifying caption, at most 14 whitespace tokens; methodological details are stated once in the accompanying prose."
+}

@@ -1,0 +1,1096 @@
+         Fuzz4All: Universal Fuzzing with Large Language Models
+               Chunqiu Steven Xia                                                Matteo Paltenghi                                    Jia Le Tian
+                University of Illinois                                               University of                              University of Illinois
+              Urbana-Champaign, USA                                               Stuttgart, Germany                          Urbana-Champaign, USA
+               chunqiu2@illinois.edu                                              mattepalte@live.it                            jialelt2@illinois.edu
+
+                                                   Michael Pradel                                       Lingming Zhang
+                                                  University of                                        University of Illinois
+                                               Stuttgart, Germany                                    Urbana-Champaign, USA
+                                            michael@binaervarianz.de                                  lingming@illinois.edu
+
+ABSTRACT                                                                                        (ICSE ’24), April 14–20, 2024, Lisbon, Portugal. ACM, New York, NY, USA,
+Fuzzing has achieved tremendous success in discovering bugs and                                 13 pages. https://doi.org/10.1145/3597503.3639121
+vulnerabilities in various software systems. Systems under test
+(SUTs) that take in programming or formal language as inputs,                                   1    INTRODUCTION
+e.g., compilers, runtime engines, constraint solvers, and software                              Fuzz testing [69, 84], also known as fuzzing, is an automated testing
+libraries with accessible APIs, are especially important as they are                            approach for generating inputs designed to expose unexpected be-
+fundamental building blocks of software development. However,                                   haviors, e.g., crashes, of a system under test (SUT). Researchers and
+existing fuzzers for such systems often target a specific language,                             practitioners have successfully built practical fuzzing tools, which
+and thus cannot be easily applied to other languages or even other                              have shown great success in finding numerous bugs and vulnera-
+versions of the same language. Moreover, the inputs generated                                   bilities in real-world systems [6]. A particularly important family
+by existing fuzzers are often limited to specific features of the in-                           of SUTs are systems that take in programming or formal language
+put language, and thus can hardly reveal bugs related to other or                               inputs, e.g., compilers, runtime engines, and constraint solvers. Nu-
+new features. This paper presents Fuzz4All, the first fuzzer that                               merous fuzzers have been proposed for such systems since they are
+is universal in the sense that it can target many different input                               the fundamental building blocks for software development [12]. For
+languages and many different features of these languages. The key                               example, finding bugs in compilers and runtime engines is crucial
+idea behind Fuzz4All is to leverage large language models (LLMs)                                because they can affect all corresponding downstream applications.
+as an input generation and mutation engine, which enables the                                      Traditional fuzzers can be categorized into generation-based [34,
+approach to produce diverse and realistic inputs for any practi-                                49, 81] and mutation-based [21, 31, 69]. Generation-based fuzzers
+cally relevant language. To realize this potential, we present a novel                          aim to directly synthesize complete code snippets, e.g., using a pre-
+autoprompting technique, which creates LLM prompts that are well-                               defined grammar for the target language. Instead of synthesizing
+suited for fuzzing, and a novel LLM-powered fuzzing loop, which                                 from scratch, mutation-based fuzzers apply mutation operators or
+iteratively updates the prompt to create new fuzzing inputs. We                                 transformation rules to a set of high quality fuzzing seeds. Unfor-
+evaluate Fuzz4All on nine systems under test that take in six differ-                           tunately, both traditional fuzzing approaches face the following
+ent languages (C, C++, Go, SMT2, Java, and Python) as inputs. The                               limitations and challenges:
+evaluation shows, across all six languages, that universal fuzzing                                 C1: Tight coupling with target system and language. Traditional
+achieves higher coverage than existing, language-specific fuzzers.                              fuzzers are often designed to target a specific language or a par-
+Furthermore, Fuzz4All has identified 98 bugs in widely used sys-                                ticular SUT. However, designing and implementing a fuzzer is
+tems, such as GCC, Clang, Z3, CVC5, OpenJDK, and the Qiskit                                     extremely time-consuming. For example, Csmith [81], a fuzzer
+quantum computing platform, with 64 bugs already confirmed by                                   for C/C++ compilers, has more than 80k lines of code, while Syz-
+developers as previously unknown.                                                               kaller [70], a fuzzer for Linux system calls, contains tens of thou-
+                                                                                                sands of handcrafted rules [10] to generate and modify system calls.
+ACM Reference Format:
+                                                                                                Because each target language is different, it is often non-trivial to
+Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Ling-
+                                                                                                reuse the effort of implementing a fuzzer from one input language
+ming Zhang. 2024. Fuzz4All: Universal Fuzzing with Large Language Mod-
+els. In 2024 IEEE/ACM 46th International Conference on Software Engineering                     for another. Furthermore, fuzzing strategies that work well for one
+                                                                                                SUT may not work at all for another one.
+                                                                                                   C2: Lack of support for evolution. Real-world systems are con-
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed           stantly evolving, e.g., by adding new features to the input language.
+for profit or commercial advantage and that copies bear this notice and the full citation       Traditional fuzzers designed for a specific version of a language
+on the first page. Copyrights for components of this work owned by others than the              or SUT may lose their effectiveness on a new version and cannot
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior specific permission   be easily used to test newly implemented features. For example,
+and/or a fee. Request permissions from permissions@acm.org.                                     Csmith supports only a limited set of features up to C++11, while
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                                   the C++ language has evolved significantly since then. In fact, re-
+© 2024 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+ACM ISBN 979-8-4007-0217-4/24/04. . . $15.00                                                    cent work [20] shows that over a six-month fuzzing period, Csmith
+https://doi.org/10.1145/3597503.3639121                                                         was not able to uncover any new bugs in the latest releases of the
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                            Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+
+
+GCC and Clang compilers, showing that new versions of compilers              the syntactic and semantic constraints of the input language. Finally,
+are becoming immune to existing fuzzers.                                     Fuzz4All does not require any instrumentation of the SUT, making
+    C3: Restricted generation ability. Even within the scope of a spe-       the approach easily applicable in practice.
+cific target language, both generation-based and mutation-based                 We perform an extensive evaluation on six input languages
+fuzzing often are unable to cover a large part the input space.              (C, C++, SMT, Go, Java, and Python) and nine SUTs. For each of
+Generation-based fuzzers heavily rely on an input grammar to                 them, we compare our approach against state-of-the-art generation-
+synthesize valid code, and additionally are equipped with semantic           based and mutation-based fuzzers. The results show that Fuzz4All
+rules that ensure the validity of the synthesized code. To generate          achieves the highest code coverage across all languages, improving
+a high amount of valid fuzzing inputs or to side-step difficult-to-          the previous state-of-the-art coverage by 36.8%, on average. Ad-
+model language features, generation-based fuzzers often use a sub-           ditionally, we demonstrate that Fuzz4All supports both general
+set of the full language grammar, which limits them to test only a           fuzzing and fuzzing targeted at specific features of the SUT, which a
+subset of all language features. Similarly, mutation-based fuzzers           user decides upon by providing adequate input documents. Finally,
+are limited by their mutation operators and require high quality             Fuzz4All detects 98 bugs across our studied SUTs, with 64 already
+seeds that can be difficult to obtain.                                       confirmed by developers as previously unknown.
+Our work. We present Fuzz4All, the first fuzzer that is universal in         Contributions: This paper makes the following contributions:
+the sense that it can target many different input languages and many         ★ Universal fuzzing. We introduce a new dimension for fuzzing
+different features of theses languages. Our approach fundamentally             that directly leverages the multi-lingual capabilities of LLMs to
+differs from existing general-purpose fuzzers, e.g., AFL [50] and              fuzz-test many SUTs with a wide range of meaningful inputs.
+libFuzzer [43], which use extremely simple mutations, are unaware            ★ Autoprompting for fuzzing. We present a novel autoprompt-
+of the target language, and therefore struggle to produce meaningful           ing stage to support both general and targeted fuzzing by auto-
+programming language fuzzing inputs. Instead, our key idea is to               matically distilling user inputs into a prompt that is effective at
+leverage a large language model (LLM) as an input generation and               generating inputs to the SUT.
+mutation engine. Because LLMs are pre-trained on large amounts               ★ LLM-powered fuzzing loop. We present an algorithm that con-
+of examples in various programming languages and other formal                  tinuously generates new fuzzing inputs by iteratively modifying
+languages, they come with an implicit understanding of the syntax              the prompt with selected examples and generation strategies.
+and semantics of these languages. Fuzz4All leverages this ability            ★ Evidence of real-world effectiveness. We show across six pop-
+by using an LLM as a universal input generation and mutation                   ular languages and nine real-world SUTs (e.g., GCC, CVC5, Go,
+engine.                                                                        javac, and Qiskit) that our approach significantly improves cover-
+    The input to Fuzz4All are user-provided documents describing               age compared to state-of-the-art fuzzers (avg. 36.8%) and detects
+the SUT, and optionally, specific features of the SUT to focus on,             98 bugs, with 64 already confirmed as previously unknown.
+e.g., in the form of documentation, example code, or formal specifi-
+cations. However, these user inputs may be too verbose to directly
+use as a prompt for the LLM. Instead of requiring the user to manu-          2 BACKGROUND AND RELATED WORK
+ally engineer a prompt [47], which is time-consuming, we present
+an autoprompting step that automatically distills all user-provided          2.1 Large Language Models
+inputs into a concise and effective prompt for fuzzing. This prompt          Recent developments in natural language processing (NLP) has
+is the initial input to an LLM that generates fuzzing inputs. Since          lead to the wide-spread adoption of large language models (LLMs)
+continuously sampling with the same prompt would lead to many                for both natural language [8] and code tasks [80]. State-of-the-
+similar fuzzing inputs, we present an LLM-powered fuzzing loop,              art LLMs are based on transformers [73] and can be classified into
+which iteratively updates the prompt to generate a diverse set of            decoder-only (e.g., GPT3 [8] and StarCoder [41]), encoder-only (e.g.,
+fuzzing inputs. To this end, Fuzz4All combines fuzzing inputs gen-           BERT [19] and CodeBERT [22]) and encoder-decoder (BART [40]
+erated in previous iterations with natural language instructions,            and CodeT5 [83]) models. More recently, instruction-based LLMs
+e.g., asking to mutate these inputs. The LLM-generated fuzzing               (e.g., ChatGPT [65] and GPT4 [55]) and LLMs fine-tuned using re-
+inputs are then passed to the SUT, which we validate against a               inforcement learning from human feedback (RLHF) [88] are shown
+user-provided test oracle, such as checking for system crashes.              to understand and follow complex instructions [4, 56, 65].
+    Fuzz4All addresses the previously discussed limitations and                 LLMs are typically either fine-tuned [63] or prompted [47] to
+challenges of traditional fuzzers. Instead of meticulously designing         perform specific tasks. Fine-tuning updates the model weights
+a single-purpose fuzzer for a specific SUT (C1), Fuzz4All, by using          through further training on a task-specific dataset. However, suit-
+an LLM as the generation engine, can be applied to a wide range of           able datasets may be unavailable, and as LLM sizes continue to
+SUTs and input languages. Compared to existing fuzzers that target           grow [35], fine-tuning an LLM is also increasingly expensive. Prompt-
+a specific version of the SUT or input language (C2), Fuzz4All               ing, on the other hand, does not require explicitly updating the
+can easily evolve with the target. For example, to fuzz-test a newly         model weights, but provides the LLM with a description of the task,
+implemented feature, a user can simply provide documentation                 and optionally, a few examples of solving the task. The process
+or example code related to that feature. To address the restricted           of picking the input (i.e., prompt) is known as prompt engineer-
+generation ability of traditional fuzzers (C3), Fuzz4All exploits            ing [47], where a user tries different input instructions until finding
+the fact that LLMs are pre-trained on billions of code snippets,             one that works well. Recently, researchers have proposed auto-
+enabling them to create a wide range of examples that likely obey            prompting [68], an automatic process that uses LLM gradients to
+Fuzz4All: Universal Fuzzing with Large Language Models                                                     ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+select either soft prompts [42, 62], i.e., continuous vector embed-       Very recently, researchers have also directly leveraged LLMs for
+dings, or hard prompts [64, 71], i.e., natural language text. Even        fuzzing specific libraries, e.g., TitanFuzz [18] uses Codex [13] to
+more recently, researchers have substituted gradient-based methods        generate seed programs and InCoder [24] to perform template-
+by computing a proxy score of effectiveness [87].                         based mutation for fuzzing deep learning libraries [61, 72].
+   This work leverages LLMs for the important problem of fuzzing.            Unlike prior learning- and LLM-based fuzzers, Fuzz4All is eas-
+Unlike traditional autoprompting and proxy-based approaches, our          ily applicable across many programming languages. Prior work
+autoprompting strategy directly synthesizes prompts using GPT4            trains language-specific models or requires language-specific pars-
+and scores them according to a fuzzing-specific goal.                     ing. Even TitanFuzz, a recent LLM-based approach, is designed
+                                                                          specifically for deep learning libraries with hand-crafted prompts
+                                                                          and mutation patterns, and therefore cannot be easily extended to
+2.2     Fuzzing and Testing                                               other SUTs. Furthermore, unlike existing techniques, which pro-
+Fuzz testing aims to generate inputs that cause unexpected behav-         duce general fuzzing inputs in a particular language, Fuzz4All
+iors of the SUT. Traditional fuzzers can be classified into generation-   additionally supports targeted fuzzing, which can generate code
+based [34, 49, 81] and mutation-based [21, 31, 69]. Generation-based      snippets that focus on selected features.
+fuzzers create complete code snippets using pre-defined grammars             In addition to fuzzing, LLMs have also been applied to the re-
+and built-in knowledge of the semantics of the target language.           lated problem of unit test generation [5, 39, 54, 66, 74, 82]. Co-
+Csmith [81] and YARPGen [49] hard-code language specifications            daMosa [39] interleaves traditional search-based software testing
+to ensure the validity of generated code snippets to test C and           with querying Codex to generate new unit tests whenever a cover-
+C++ compilers, respectively. jsfunfuzz [34] combines a language           age plateau is reached. TestPilot [66] prompts Codex with method
+grammar with historical bug-triggering code snippets to generate          source code and example usages to generate unit tests and to fix
+new inputs to test JavaScript engines. Generation-based fuzzers           incorrectly generated tests. In contrast to these LLM-based test gen-
+have also been used to test OpenCL [44], the JVM [11], CUDA [33],         erators, which require a specific type of input (e.g., function source
+deep learning compilers [45], Datalog engines [53], and interactive       code) and only work for unit testing [54, 66], by using our novel
+debuggers [38]. Mutation-based fuzzers [69] iteratively perform           autoprompting stage, Fuzz4All can take inputs in arbitrary formats
+transformations on seeds to generate new fuzzing inputs. In addi-         for both general and targeted fuzzing. Furthermore, such unit test
+tion to basic mutations, researchers have developed complex trans-        generators often require manual work to check or complete the
+formations targeted at ensuring type consistency [11, 59], adding         tests as they are limited by automatically generated test-oracles,
+historical bug-triggering code snippets [31, 86], and coverage feed-      which even state-of-the-art LLMs [15, 65] cannot always produce
+back [3, 21, 46]. To benefit from both generation and mutation,           reliably. Instead, Fuzz4All leverages widely-used fuzzing oracles,
+many fuzzers use a combination of both approaches [12, 51].               such as crashes, and is fully automated.
+   Different from the above fuzzers, which target specific SUTs or
+languages, another line of research is on general-purpose fuzzing.
+AFL [50] and libFuzzer [43] are general-purpose fuzzers that use          3   FUZZ4ALL APPROACH
+genetic algorithms with a fitness function to prioritize fuzzing          We present Fuzz4All, a universal fuzzer that leverages LLMs to
+inputs for further mutations that achieve new coverage. These             support both general and targeted fuzzing of any SUTs that take in
+mutations are unaware of the SUT and focus on byte-level transfor-        programming language input. Figure 1 provides an overview of our
+mations. That is, when applied on SUTs that receive programming           approach. Fuzz4All first takes in arbitrary user input that describes
+languages as input, general-purpose fuzzers are extremely unlikely        the fuzzing inputs to be generated, e.g., documentation of the SUT,
+to produce valid inputs. Recent work [28] has instead added regular       example code snippets, or specifications. As the user input may
+expression-based mutation operators to match common program-              be long, redundant, and partially irrelevant, the approach distills
+ming statements (e.g., change + to -). The simplicity of these mu-        it into a concise but informative prompt for fuzzing. To this end,
+tation operators limits the ability of such fuzzers at covering new       Fuzz4All performs an autoprompting step (Section 3.1) by using a
+code, especially in more complex languages, such as C [21, 28]. Poly-     large, state-of-the-art distillation LLM to sample multiple different
+Glot [14] is another language-agnostic fuzzer, which first parses         candidate prompts 1 . Each candidate prompt is passed on to the
+the seed programs into a uniform intermediate representation using        generation LLM to generate code snippets (i.e., fuzzing inputs) 2 .
+a language-specific grammar and then uses a set of mutation oper-         Fuzz4All then selects the prompt that produces the highest quality
+ators to generate new programs. While promising, PolyGlot still           fuzzing inputs 3 .
+uses a limited set of mutations and cannot achieve the same level of          Fuzz4All builds on two models, a distillation LLM that reduces
+coverage as fuzzers that are designed for a particular language [21].     the given user input and a generation LLM that creates the fuzzing
+   To complement traditional fuzzing techniques and apply fuzzing         inputs, to balance the trade-off between the costs and benefits differ-
+to emerging domains, learning-based fuzzers have been proposed.           ent LLMs provide. Because the distillation LLM needs to understand
+Prior learning-based techniques mainly focus on training a neural         and distill arbitrary user input, we use a high-end, large founda-
+network to generate fuzzing inputs. TreeFuzz [60] parses the train-       tional model with strong natural language understanding abilities.
+ing corpus into a tree structure and through tree traversal, learns a     However, directly using such a large model for input generation
+probabilistic, generative model that synthesizes new fuzzing inputs.      would be inefficient due to the high inference cost of autoregressive
+Deep learning models have been used to fuzz PDF parsers [26],             generation. Instead, to perform efficient fuzzing, Fuzz4All uses a
+OpenCL [17], C [48], network protocols [85], and JavaScript [37].         smaller model as the generation LLM. While our approach is general
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                                                                             Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+     user inputs
+
+                   std::expected                               import ("fmt" "math/big")
+                                                               func main() {
+                   The class template std::expected provides                                         (theory Ints
+                                                                    operands    []float64{2.6,
+                   a way to store either of two values. An
+                                                               2.5}                                  :funs ((NUMERAL Int)
+                   object of std::expected at any given time
+                                                                    for mode    big.ToNearestEven;          (- Int Int)
+                   Member types            Definition          mode     big.ToPositiveInf; mode             (- Int Int Int :left-assoc)
+                   value_type(c++23)   T                       {                                            (+ Int Int Int :left-assoc)
+                   error_type(c++23)   E                                  fmt.Printf(" %s", mode)           (* Int Int Int :left-assoc)
+                   ...                                              }
+                                                               }
+
+                           documentation                            example code                          specification
+                                                                                                                                                                 System Under Test
+                                     sample
+                                  1
+                                    prompts                    distillation                          std::expected                          std::expected                                 4 sample        int main(){
+                                                                                                                                                                                                          std::variant
+                                                                   LLM                               provides a way to                      provides a way to
+                                                                                                                                                                                                         int main(){
+                                                                                                                                                                                                            ...
+                                                                                                                                                                                                         std::expected
+                                                                                                     store either a ...                     store either a ...                                             ...
+
+                                                                                                        best prompt                           input prompt                                              fuzzing inputs
+                                                                                                                                                                         generation
+                                                                                                                       3 score &                                            LLM
+                  std::expected                                                                                       select prompt
+                  provides a way to                                                                                                            6                                                                    5
+                std::expected
+                  store either a ...                                                        int main(){                int main(){          update                                                                select
+                provides a way to                                                           std::variant               std::variant
+              std::expected                                                                int main(){                int main(){            input                                                                 code
+
+
+
+                                                                                                                ...
+                store either a ...                                                            ...                        ...
+              provides a way to                                                            std::expected              std::expected
+                                                                                                                                            prompt                                                               snippet
+              store either a ...                                                              ...                       ...
+
+
+                                                                                                      code snippets                                               generate-new
+             candidate prompts                                                                                                                                                          int main(){
+                                                                                                                                                                                        std::expected
+                                                                                                                                                                 mutate-existing          ...
+
+                                                                                                2 sample                                                                               selected code
+                                                                  generation                                                                                     semantic-equiv
+                                                                                                                                                                                          snippet
+                                                                     LLM
+                                                                                                 Autoprompting                                               generation strategies
+                                                                                                                                                                                                 Fuzzing Loop
+
+                                                                                                                    Figure 1: Overview of Fuzz4All.
+
+
+ Algorithm 1: Autoprompting for fuzzing                                                                                                       shown in Figure 1, user inputs may include technical documenta-
+1    Function Autoprompting:                                                                                                                  tion, example code, specifications, or even combinations of different
+        Input : userInput, numSamples                                                                                                         modalities. Unlike traditional fuzzers that require inputs to follow
+        Output : inputPrompt
+                                                                                                                                              a specific format, e.g., code snippets to use as seeds or well-formed
+ 2      greedyPrompt ← M D (userInput, APInstruction, temp=0)                                                                                 specifications, Fuzz4All can directly understand the natural lan-
+ 3      candidatePrompts ← [ greedyPrompt ]
+ 4      while |candidatePrompts | < numSamples do                                                                                             guage descriptions or code examples in the user input. However,
+ 5          prompt ← M D (userInput, APInstruction, temp=1)                                                                                   some information in the user input may be redundant or irrelevant,
+ 6          candidatePrompts ← candidatePrompts + [ prompt ]                                                                                  and hence, directly using the user inputs as a prompt for the gener-
+ 7      inputPrompt ←       arg max   Scoring (M G (p), SUT)                                                                                  ation LLM may be ineffective, as confirmed by our ablation study
+                                                 p∈candidatePrompts
+ 8                 return inputPrompt                                                                                                         in Section 5.3. Therefore, the goal of autoprompting is to generate
+                                                                                                                                              a distilled input prompt that enables effective LLM-based fuzzing.
+
+                                                                                                                                              3.1.1 Autoprompting Algorithm. Algorithm 1 details Fuzz4All’s
+                                                                                                                                              autoprompting step. The inputs are the user input and the number
+across any pairs of distillation and generation LLMs, we implement
+                                                                                                                                              of candidate prompts to generate. The final output is the input
+Fuzz4All with the state-of-the-art GPT4 [55] and StarCoder [41].
+                                                                                                                                              prompt selected to be used for the fuzzing campaign. As our goal is
+   Using the best prompt selected via autoprompting as the initial
+                                                                                                                                              to use a distillation LLM to generate prompts that distill the infor-
+input prompt for the generation LLM, we then move on to the
+                                                                                                                                              mation provided by the user, we give the following autoprompting
+fuzzing loop (Section 3.2), where Fuzz4All continuously samples
+                                                                                                                                              instruction to the distillation LLM: “Please summarize the above
+the generation LLM to generate fuzzing inputs 4 . To avoid gener-
+                                                                                                                                              information in a concise manner to describe the usage and function-
+ating many similar fuzzing inputs, Fuzz4All continuously updates
+                                                                                                                                              ality of the target”. Let M D be the distillation LLM, userInput be
+the input prompt in each iteration. Specifically, the approach selects
+                                                                                                                                              the user input and APInstruction be the autoprompting instruction.
+a previously generated input as an example 5 , which demonstrates
+                                                                                                                                              The prompt prompt generated can be formalized as the conditional
+the kind of future inputs we want the model to generate. In addi-
+                                                                                                                                              probability: M D ( prompt | userInput, APInstruction)
+tion to the example, Fuzz4All also appends a generation instruction
+                                                                                                                                                  Fuzz4All first generates a candidate prompt using greedy sam-
+to the initial prompt, which guides the model toward generating
+                                                                                                                                              pling with temperature 0 (line 2). By first sampling with low temper-
+new fuzzing inputs 6 . This process is repeated while continuously
+                                                                                                                                              ature, the algorithm obtains a plausible solution with a high degree
+passing the generated fuzzing inputs into the SUT and checking its
+                                                                                                                                              of confidence. This approach is commonly used in other domains,
+behavior against a user-defined oracle, such as crashes.
+                                                                                                                                              e.g., program synthesis [13], where the greedy output is evaluated
+                                                                                                                                              first to check if it can solve the problem. The algorithm then moves
+3.1                Autoprompting                                                                                                              on to sampling with higher temperature to obtain more diverse
+The following presents the details of the first of two main steps of                                                                          prompts (line 5), as done in prior work [13, 79]. Compared to a
+Fuzz4All, which distills the given user input via autoprompting                                                                               greedy approach, sampling with high temperature yields different
+into a prompt suitable for fuzzing. The user input may describe the                                                                           prompts that can each provide a unique distilled summary of the
+SUT in general, or particular feature of the SUT to be tested. As                                                                             user input. Each generated prompt is added to a list of candidate
+Fuzz4All: Universal Fuzzing with Large Language Models                                                                            ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+                The C++23 std::expected class template provides a way to store either an
+High level      expected value of type T or an unexpected value of type E. It is useful for        Algorithm 2: Fuzzing loop
+description     handling functions that may return an error or a valid result. The stored value
+of feature      is allocated directly within the storage occupied by the expected object,         1    Function FuzzingLoop:
+                without dynamic memory allocation.
+                                                                                                          Input : inputPrompt, timeBudget
+Descriptions    The template parameters are T (the expected value type) and E (the unexpected
+                value type). Both types must meet the Destructible requirements, and certain              Output : bugs
+of the inputs   types are not allowed.
+
+                std::expected provides member functions for construction, destruction,
+                                                                                                   2      genStrats ← [ generate-new, mutate-existing,
+                assignment, and accessing the stored values. Observers like operator bool and              semantic-equiv ]
+                has_value can be used to check if the object contains an expected value.
+                Functions like value, error, and value_or can be used to access the expected       3      fuzzingInputs ← M G (inputPrompt + generate-new)
+                or unexpected values.
+                                                                                                   4      bugs ← Oracle (fuzzingInputs, SUT)
+                Monadic operations like and_then, transform, or_else, and transform_error
+                allow chaining operations on expected values and handling errors in a              5      while timeElapsed < timeBudget do
+Different
+usages of
+                functional manner.                                                                 6          example ← sample (fuzzingInputs, SUT)
+target          Modifiers like emplace and swap can be used to construct the expected value
+                in-place or exchange the contents of expected objects. Non-member functions
+                                                                                                   7          instruction ← sample (genStrats)
+                like operator:= and swap(std::expected) provide comparison and swapping            8          fuzzingInputs ← M G (inputPrompt + example +
+                functionality.
+
+                Helper classes like unexpected, bad_expected_access, and unexpect_t are used
+                                                                                                                instruction)
+                to represent unexpected values, exceptions, and in-place construction tags for     9          bugs ← bugs + Oracle (fuzzingInputs, SUT)
+                unexpected values in expected objects.
+                                                                                                  10      return bugs
+
+       Figure 2: Autoprompting result for std::expected.
+
+                                                                                                  documentation, which is repeated for each function. Instead, in the
+prompts (line 6), until the algorithm reaches the desired number of                               distilled input prompt, these functions are grouped together in a
+candidates.                                                                                       concise manner that still illustrates how they can be used. Using
+    To pick the best input prompt to be used in the fuzzing step,                                 the distilled input prompt, Fuzz4All can generate fuzzing inputs
+the algorithm evaluates each candidate prompt by performing a                                     that effectively target the std::expected feature of C++ compilers.
+small-scale fuzzing experiment. Specifically, the approach uses each                              3.1.3 Comparison with Existing Autoprompting Techniques. To the
+prompt as an input to the generation LLM to produce multiple code                                 best of our knowledge, we are the first to automatically distill
+snippets per prompt. Fuzz4All then scores the generated code                                      knowledge from arbitrary user inputs for a software engineering
+snippets for each prompt based on a scoring function. While the                                   task using black-box autoprompting. Compared to prior work on
+scoring function can be based on a variety of different metrics, e.g.,                            autoprompting in NLP [68] and software engineering [75], which
+coverage, bug finding, or the complexity of generated fuzzing inputs,                             optimize the prompt by accessing model gradients, our autoprompt-
+to make the approach lightweight and general, our scoring function                                ing needs only black-box, sampling access to the distillation LLM.
+is the number of unique generated code snippets that are valid, i.e.,                             While the use of a scoring function to evaluate each prompt is
+accepted by the target SUT. This metric is chosen since for fuzzing,                              similar to recent work in NLP [87], our scoring function directly
+we want fuzzing inputs to be valid or close to valid to the logic deep                            evaluates the prompt on the exact downstream task of generating
+inside the SUT. Let M G be the generation LLM, p be a candidate                                   valid code snippets, instead of using an approximate proxy scoring
+prompt, isValid be a function that returns 1 if a generated code c                                function.
+is valid and 0 otherwise. Our default scoring function is defined as:
+Í
+   c∈ M G (p) [ isValid ( c, SUT)]. Finally, Fuzz4All selects the input                           3.2     Fuzzing Loop
+prompt with the highest score (line 7) as the initial input prompt to
+be used for fuzzing. In summary, our autoprompting step combines                                  Given the input prompt created in the first step of Fuzz4All, the
+both prompt generation and scoring, which allows Fuzz4All to                                      goal of the fuzzing loop is to generate diverse fuzzing inputs using a
+automatically generate and select a prompt suitable for the fuzzing                               generation LLM. However, due to the probabilistic nature of LLMs,
+target.                                                                                           sampling multiple times using the same input would produce the
+                                                                                                  same or similar code snippets. For fuzzing, we aim to avoid such
+3.1.2 Example: Autoprompting. Figure 2 shows an example of an                                     repeated inputs and instead want to generate a diverse set of fuzzing
+input prompt generated by our autoprompting algorithm. The ex-                                    inputs that cover new code and discover new bugs. To accomplish
+ample is for fuzzing C++ compilers while focusing specifically on                                 this goal, we exploit the ability of LLMs to utilize both examples
+std::expected, a new feature introduced in C++23. As the user                                     and natural language instructions to guide the generation.
+input, we pass the original cppreference documentation [2] to                                        The high-level idea of the fuzzing loop is to continuously aug-
+Fuzz4All, which spans multiple screen lengths with small tables                                   ment the original input prompt by selecting an example fuzzing
+and verbose descriptions (498 words, 3,262 characters). In contrast,                              input from previous iterations and by specifying a generation strat-
+the distilled input prompt created by the autoprompting algorithm                                 egy. The goal of using an example is to demonstrate the kind of
+provides a more concise natural language description of the tar-                                  code snippet we want the generation LLM to produce. The gener-
+geted feature (214 words, 1,410 characters). The input prompt con-                                ation strategies are designed as instructions on what to do with
+tains a high-level description of how std::expected is to be used.                                the provided code example. These strategies are inspired by tradi-
+For example, the input prompt contains a concise sentence (high-                                  tional fuzzers, mimicking their ability to synthesize new fuzzing
+lighted in orange) that summarizes the situations the feature is                                  inputs (as in generation-based fuzzers) and to produce variants of
+useful in. Additionally, the input prompt contains descriptions of                                previously generated inputs (as in mutation-based fuzzers). Before
+the inputs, as well as the different usages (i.e., member functions)                              each new iteration of the fuzzing loop, Fuzz4All appends both an
+of the feature. For example, functions and_then, transform, or_else,                              example and a generation strategy to the input prompt, enabling
+and transform_error have very similar descriptions in the original                                the generation LLM to continuously create new fuzzing inputs.
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                                          Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+
+
+                            strategy name                    generation instruction
+                                                                                                           the generate-new strategy to synthesize new fuzzing inputs. Next,
+                                                       Please create a program which uses complex
+                             generate-new                   {SMT2 logic} for an {SMT solver}               taking a generated, valid fuzzing input as an example, the algo-
+                                                 Please create a mutated program that modifies the
+                            mutate-existing
+ distillation LLM                                               previous generation                        rithm queries the model to create a new input 2 based on the
+                                                     Please create a semantically equivalent program
+                            semantic-equiv                      to the previous generation                 mutate-existing strategy, which aims to mutate the selected ex-
+      SMT2 supports
+      several theories,
+      including integer                                       (declare-const x1 Real)
+                                                                                                           ample. We observe that the new fuzzing input subtly modifies the
+      and real arithmetic
+  1
+       initial prompt
+                                                              (assert (! (= x1 1)))                        previous input by swapping the type of a variable as well as adding
+                                                              (check-sat)
+       generate-new
+                                   generation LLM
+                                                                                                           some computation. In the next fuzzing iteration 3 , the algorithm
+      SMT2 supports
+                                                                                                           selects the previously generated fuzzing input as the example and
+      several theories,
+      including integer
+                                                              (declare-const x1 Int)                       uses the semantic-equiv generation strategy, which aims to create
+      and real arithmetic                                     (assert (! (= x1 1)))
+  2
+       initial prompt                                         (check-sat)                                  an input that does not modify the semantics of the given exam-
+           example                                            (get-model)
+                                    generation LLM                                                         ple. This time, we observe that the new fuzzing input simply adds
+      mutate-existing
+                                                                                                           a syntax tag to the selected example. In fact, the combination of
+      SMT2 supports
+      several theories,
+      including integer
+                                                              (declare-const x1 Int)                       generation strategies shown in the example helps Fuzz4All to gen-
+      and real arithmetic                                     (assert (! (= x1 1)
+  3
+       initial prompt                                                      :named a))
+                                                                                                           erate a fuzzing input that causes an unexpected crash in the SMT
+           example                                            (check-sat)                                  solver. The crash exposes one of the real-world bugs detected by
+                                    generation LLM            (get-model)
+      semantic-equiv                                                                                       Fuzz4All during our evaluation, which has been confirmed and
+                                                                                                           fixed by developers.
+ Figure 3: Fuzzing strategies and example of fuzzing loop.
+                                                                                                           3.2.3 Oracle. The fuzzing inputs produced by Fuzz4All during the
+                                                                                                           fuzzing loop can be used to check the behavior of the SUT against
+                                                                                                           an oracle to detect bugs. The oracle is custom for each SUT, and it
+3.2.1 Fuzzing Loop Algorithm. Algorithm 2 describes the fuzzing
+                                                                                                           can be fully defined and customized by the user. For example, when
+loop. The inputs are the initial input prompt and the fuzzing budget.
+                                                                                                           fuzzing C compilers, a user could define a differential testing oracle
+The final output is a set of bugs identified by the user-defined
+                                                                                                           that compares the compiler behavior under different optimization
+oracle. First, the algorithm initializes the generation strategies
+                                                                                                           levels [81]. In this paper, we focus on simple and easy-to-define
+(generate-new, mutate-existing, and semantic-equiv), which will
+                                                                                                           oracles, such as crashes due to segmentation faults and internal
+be used to modify the input prompt during the fuzzing loop (line 2).
+                                                                                                           assertion failures, with more details discussed in Section 4.2.
+Figure 3 (top-right) lists our three generation strategies along with
+their corresponding instructions. For the first invocation of the
+generation LLM, denoted with M G , the algorithm does not yet                                              4     EXPERIMENTAL DESIGN
+have any examples of fuzzing inputs. Hence, it appends to the input                                        We evaluate Fuzz4All on the following research questions:
+prompt the generate-new generation instruction, which guides the                                           • RQ1: How does Fuzz4All compare against existing fuzzers?
+model toward producing a first batch of fuzzing inputs (line 3).                                           • RQ2: How effective is Fuzz4All in performing targeted fuzzing?
+   Next, the algorithm enters the main fuzzing loop (lines 5–9),                                           • RQ3: How do different components contribute to Fuzz4All’s
+which continuously updates the prompt to create new fuzzing in-                                              effectiveness?
+puts. To this end, the algorithm selects an example from the previous                                      • RQ4: What real-world bugs does Fuzz4All find?
+batch of generated fuzzing inputs, randomly picking from all those
+fuzzing inputs that are valid for the SUT (line 6). In addition to the
+                                                                                                           4.1     Implementation
+example, the algorithm also randomly picks one of the three gen-
+eration strategies (line 7). The generation strategy either instructs                                      Fuzz4All is primarily implemented in Python. The autoprompting
+the model to mutate the selected example (mutate-existing), to                                             and fuzzing loop components of Fuzz4All contain only 872 LoC.
+produce a fuzzing input that is semantically equivalent to the ex-                                         Compared to traditional fuzzers, such as Csmith (>80K LoC), which
+ample (semantic-equiv), or to come up with a new fuzzing input                                             need high manual effort to implement generators, Fuzz4All has a
+(generate-new). The algorithm concatenates the initial input prompt,                                       very lightweight implementation. Fuzz4All uses GPT4 [55] as the
+the selected example, and the selected generation strategy into a                                          distillation LLM to perform autoprompting since this model is the
+new prompt, and then queries the generation LLM with this prompt                                           state-of-the-art for a wide range of NLP-based reasoning tasks [9].
+to produce another batch of fuzzing inputs (line 8).                                                       Specifically, we use the gpt-4-0613 checkpoint with max_token of
+   The main fuzzing loop is repeated until the algorithm has ex-                                           500 provided via the OpenAI API [27]. max_token forces the prompts
+hausted the fuzzing budget. For each created fuzzing input, Fuzz4All                                       to always fit within the context window of the generation LLM.
+passes the input to the SUT. If the user-defined oracle identifies an                                      For autoprompting, we sample four candidate prompts, generate
+unexpected behavior, e.g., a crash, then the algorithm adds a report                                       30 fuzzing inputs each, and evaluate using a scoring function based
+to the set of detected bugs (lines 4 and 9).                                                               on validity rate (as described in Section 3.1.1). For the fuzzing loop,
+                                                                                                           we use the Hugging Face implementation of the StarCoder [41]
+3.2.2 Example: Fuzzing Loop. Figure 3 illustrates how our fuzzing                                          model as the generation LLM, which is trained on over one trillion
+loop uses input examples and the generation strategies to create                                           code tokens across over 80 languages. Our default setting when
+different fuzzing inputs. In this case, we are fuzzing an SMT solver                                       generating fuzzing inputs uses a temperature of 1, a batch size of
+where the inputs are logic formulas written in the SMT2 language.                                          30, a maximum output length of 1,024 using nucleus sampling [32]
+Initially 1 , there are no examples, and hence, the algorithm uses                                         with a top-p of 1.
+Fuzz4All: Universal Fuzzing with Large Language Models                                                         ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+                 Table 1: SUTs and baseline tools.                            4.2.5 Quantum Computing Platform. We target Qiskit [1], a pop-
+                                                                              ular quantum computing framework [23]. Qiskit is built on top
+  Language           SUT(s)           Baseline tool(s)            Version     of Python, i.e., both the input program and the compilation are
+  C             GCC, Clang     GrayC [21], Csmith [81]         GCC-13.1.1     defined in Python code. Thus, creating a valid input for Qiskit
+  C++          G++, Clang++             YARPGen [49]           G++-13.1.1     means using the Qiskit Python APIs in a meaningful way, e.g., to
+  SMT2            Z3, CVC5              TypeFuzz [59]          CVC5-1.0.5     create a quantum circuit. It is challenging for traditional synthesis
+  Go                     Go               go-fuzz [25]           go-1.20.6
+  Java                 javac         Hephaestus [11]     OpenJDK-javac-18     tools to handle dynamically typed general-purpose languages (like
+  Python              Qiskit             MorphQ [58]          qiskit-0.43.1   Python) [29, 67], not to mention the additional API constraints and
+                                                                              quantum-specific nature of many bugs [57], making fuzzing Qiskit
+                                                                              a particularly difficult challenge. Our baseline is MorphQ [58], a
+4.2     Systems Under Test and Baselines                                      recent fuzzer that uses a template- and grammar-based approach to
+                                                                              generate valid quantum programs and then applies metamorphic
+To demonstrate the generality of Fuzz4All, we evaluate it on six
+                                                                              transformations.
+input languages and nine SUTs. Table 1 shows each of the languages,
+                                                                                  Unlike for the other SUTs, which receive fuzzing inputs in a
+SUTs, and the corresponding baseline tools. Note that we compare
+                                                                              file, to invoke Qiskit, we must run the generated Python program
+coverage on one SUT per language, with the SUT versions used
+                                                                              itself. As an oracle, we add statements at the end of the generated
+for coverage measurements shown in the last column of Table 1.
+                                                                              Python file, which collect all QuantumCircuit objects via Python’s
+Except for the coverage experiments, we perform fuzzing on the
+                                                                              built-in introspection APIs and then apply two oracles on each
+nightly release of each target. Unless otherwise mentioned, we use
+                                                                              circuit. The two oracles are directly borrowed from previous work
+unexpected compiler crashes as the oracle and consider a fuzzing
+                                                                              for a fair comparison [58]. The first oracle compiles the circuit
+input as valid if it compiles successfully. Each baseline fuzzer is
+                                                                              via a transpile call with different optimization levels and reports
+run with its default settings. For baseline fuzzers that require input
+                                                                              any crash. The second oracle converts the circuit to its lower-level
+seeds, we use the default seed corpus provided in their replication
+                                                                              QASM [16] representation and then reads it back, reporting any
+repository. We now present more evaluation details for each SUT.
+                                                                              crash.
+4.2.1 C/C++ Compilers. We target the popular GCC and Clang
+compilers and provide the standard C library documentation as user            4.3    Experimental Setup and Metrics
+input to Fuzz4All by default. Our baselines include Csmith [81],              Fuzzing campaigns. For RQ1, we use a fuzzing budget of 24
+a classic generation-based C compiler fuzzer, and GrayC [21], a               hours (including autoprompting), which is used commonly in prior
+recent mutation-based fuzzer that uses coverage feedback together             work [36]. To account for variance, we repeat the experiment for
+with specialized mutation operators. For C++, we target new C++23             both Fuzz4All and the baselines five times. Due to the high cost
+features by providing the C++23 standard documentation as input               of experiments, for later RQs, we use a fuzzing budget of 10,000
+to Fuzz4All. Our baseline is YARPGen [49], a generation-based                 generated fuzzing inputs and repeat four times for the ablation
+fuzzer that extends Csmith with new language features in C++ and              study.
+generation policies to trigger different compiler optimizations.              Environment. Experiments are conducted on a 64-core worksta-
+                                                                              tion with 256 GB RAM running Ubuntu 20.04.5 LTS with 4 NVIDIA
+4.2.2 SMT Solvers. We run Fuzz4All on Z3 and CVC5 with com-
+                                                                              RTX A6000 GPUs (only one GPU is used per fuzzing run).
+monly enabled developer settings, such as debug and assertion,
+                                                                              Metrics. We use the widely adopted measure of code coverage
+following prior work [59, 77, 78]. Fuzz4All generates SMT for-
+                                                                              for evaluating fuzzing tools [7, 36, 76]. To be uniform, we report
+mulas as fuzzing inputs using an overview documentation of the
+                                                                              the line coverage for each of the targets studied in the evaluation.
+SMT2 language and SMT solver as input by default. A fuzzing input
+                                                                              Following prior work [36], we use the Mann-Whitney U-test [52]
+is considered valid if the SMT solver returns either SAT or UNSAT
+                                                                              to compute statistical significance and indicate significant (p < 0.05)
+without any error. Our baseline is state-of-the-art TypeFuzz [59],
+                                                                              coverage results in applicable tables (Tables 2 and 4) with *. We
+which mutates existing SMT expressions based on newly generated
+                                                                              additionally measure the validity rate (% valid) of inputs as the
+expressions of the same type.
+                                                                              percentage of fuzzing inputs generated that are valid and unique.
+4.2.3 Go Toolchain. We run Fuzz4All on the most recent version                As Fuzz4All supports both general and targeted fuzzing, to assess
+of Go. By default, we use the Go standard library documentation as            the effectiveness of targeted fuzzing, we report the hit rate, i.e.,
+input to Fuzz4All. As a baseline, we use go-fuzz [25], a coverage-            the percentage of fuzzing inputs that use a specific target feature
+guided, mutation-based fuzzer designed for Go, which generates                (checked with simple regular expressions). Finally, we also report
+inputs for various Go standard libraries using handwritten tem-               the most important metric and goal of fuzzing: the number of bugs
+plates.                                                                       detected by Fuzz4All for each of our nine SUTs.
+
+4.2.4 Java Compiler. We evaluate Fuzz4All on the OpenJDK Java                 5 RESULTS
+compiler, javac, which compiles source code into bytecode. Our de-
+fault input is the latest standard Java API documentation page. We            5.1 RQ1: Comparison against Existing Fuzzers
+compare against Hephaestus [11], a recent combined generation-                5.1.1 Coverage over Time. Figure 4 shows the 24-hour coverage
+and mutation-based fuzzer designed for JVM compilers and target-              trend of Fuzz4All compared with the baselines, where the solid
+ing type-related bugs.                                                        line shows average coverage and the area indicates the minimum
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                                                                             Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+
+
+                          200                                                                                 220
+    Coverage (#K lines)
+
+
+
+
+                                                                                        Coverage (#K lines)
+
+
+
+
+                                                                                                                                                                       Coverage (#K lines)
+                          175                                                                                 200                                                                            55
+                          150                                                                                 180
+                                                                                                                                                                                             50
+                          125                                                                                 160
+                          100                                                                                 140                                                                            45
+
+                           75                              GrayC           Fuzz4All                           120                                       YarpGen                                                       TypeFuzz       seed
+                                                                                                                                                                                             40
+                           50                              seed            Csmith                                                                       Fuzz4All                                                      Fuzz4All
+                                                                                                              100
+                                0   2     4    6   8    10 12 14 16 18 20 22 24                                  0   2    4   6   8     10 12 14 16 18 20 22 24                               0    2   4   6   8   10 12 14 16 18 20 22 24
+                                                          Hours                                                                           Hours                                                                      Hours
+
+                                                       (a) GCC                                                                        (b) G++                                                                  (c) CVC5
+                                                                                                                                                                                             35
+                          40                                                                                  16
+    Coverage (#K lines)
+
+
+
+
+                                                                                        Coverage (#K lines)
+
+
+
+
+                                                                                                                                                                       Coverage (#K lines)
+                                                                                                                                                                                             30
+
+                                                                                                              14                                                                             25
+                          30
+                                                                                                              12                                                                             20
+
+                                                                                                                                                                                             15
+                          20                                                                                  10
+                                                            go-fuzz            seed                                                                   Hephaestus                             10                                  MorphQ
+                                                            Fuzz4All                                           8                                      Fuzz4All                                                                   Fuzz4All
+                          10                                                                                                                                                                  5
+                            0       2    4    6    8    10 12 14 16 18 20 22 24                                0     2    4   6   8    10 12 14 16 18 20 22 24                                 0   2   4   6   8   10 12 14 16 18 20 22 24
+                                                          Hours                                                                          Hours                                                                       Hours
+
+                                                       (d) Go                                                                         (e) javac                                                                (f) Qiskit
+
+                                         Figure 4: Coverage trend of Fuzz4All against state-of-the-art fuzzers in a 24-hour fuzzing campaign.
+
+Table 2: Fuzz4All against state-of-the-art fuzzers (* indicates                                                                                  Unlike the baseline fuzzers, which reach a coverage plateau by
+statistically significant coverage improvement).                                                                                              the end of the 24-hour period, Fuzz4All keeps finding inputs that
+                                                                                                                                              cover new code, even near the end of the fuzzing campaign. Recall
+   Target                                     Fuzzer      # programs         % valid                          Coverage                        that during each iteration of Fuzz4All’s fuzzing loop, the original
+                                             GrayC               104,326      95.96%     167,453                                              input prompt is updated with both a new example and a generation
+   GCC                                      Csmith                61,883      99.99%     111,668                                              strategy (Section 3.2), nudging the LLM to generate new fuzzing
+                                          Fuzz4All                44,324      37.26%   *198,927                          +18.8%               inputs. We hypothesize that this allows Fuzz4All to effectively
+                                          YARPGen                255,581      99.99%     166,614                                              generate new and diverse fuzzing inputs even after a long period
+   G++
+                                          Fuzz4All                26,365      40.74%   *210,743                          +26.5%
+                                                                                                                                              of fuzzing, leading to sustained coverage increase.
+                                          TypeFuzz                43,001      93.24%      46,174
+   CVC5
+                                          Fuzz4All                36,054      47.63%    *57,674                          +24.9%
+                                           go-fuzz                20,002     100.00%      38,024                                              5.1.2 Generation Validity, Number, and Coverage. We examine the
+   Go
+                                          Fuzz4All                22,817      23.02%    *43,317                          +13.7%               number of fuzzing inputs generated and their validity rate across
+                                        Hephaestus               728,217      57.22%      10,285                                              our studied SUTs. In Table 2, Column “# programs” represents
+   javac
+                                          Fuzz4All                31,967      49.05%    *16,552                          +60.9%
+                                                                                                                                              the number of unique inputs generated, “% valid” is the percent-
+                                           MorphQ                 38,474     100.00%      19,929
+   Qiskit
+                                          Fuzz4All                33,454      24.90%    *34,988                          +75.6%               age of fuzzing inputs that are valid, and “Coverage” shows the
+                                                                                                                                              final coverage obtained by each fuzzer along with the relative im-
+                                                                                                                                              provement over the best baseline. We first observe that almost
+                                                                                                                                              all traditional fuzzing tools can achieve a very high validity rate
+and maximum across five runs. We observe that Fuzz4All achieves                                                                               apart from Hephaestus, which purposefully generates invalid code
+the highest coverage by the end of the fuzzing campaign across all                                                                            (focused on incorrect types) to check for miscompilation bugs. In
+targets, with an average improvement of 36.8% compared to the top                                                                             contrast, Fuzz4All has a lower percentage of valid fuzzing inputs
+performing baselines. Contrasting with generation-based fuzzers                                                                               generated (56.0% average reduction compared to baseline tools).
+(i.e., YARPGen and MorphQ), Fuzz4All is able to almost immedi-                                                                                Furthermore, the raw number of fuzzing inputs generated by base-
+ately achieve higher coverage, demonstrating the powerful genera-                                                                             line tools are also much higher. By using an LLM as the generation
+tive ability of LLMs in producing diverse code snippets compared to                                                                           engine, Fuzz4All is bottlenecked by GPU inference, leading to
+traditional program generation techniques. While mutation-based                                                                               43.0% fewer fuzzing inputs compared to traditional fuzzers.
+fuzzers (i.e., go-fuzz and GrayC) are able to achieve higher cov-                                                                                In spite of the lower validity rate and number of fuzzing inputs,
+erage in the beginning through the use of high quality seeds, the                                                                             Fuzz4All generates much more diverse programs compared to
+coverage gained via mutations rapidly falls off and Fuzz4All is                                                                               traditional fuzzing tools, as evidenced by the high coverage obtained
+able to slowly but surely cover more code. Note that we include                                                                               (+36.8% average increase). Additionally, even invalid code snippets
+the autoprompting time as part of the fuzzing budget for a fair                                                                               that are close to valid can be useful for fuzzing, as they allow for
+comparison, which incurs negligible overhead (avg. 2.3 minutes per                                                                            finding bugs in the validation logic of the SUT. In Section 5.4, we
+fuzzing campaign).                                                                                                                            further describe the various types of bugs detected by Fuzz4All,
+Fuzz4All: Universal Fuzzing with Large Language Models                                                                      ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+with both valid and invalid code snippets, to additionally showcase          Table 3: Hit rate and coverage during targeted fuzzing.
+the benefit of generating diverse fuzzing inputs.
+   We note that Fuzz4All achieves a wide range of validity rates                                             C targeted campaign (keywords)
+and numbers of fuzzing inputs across different SUTs. The number of                                               typedef              union      goto    General
+fuzzing inputs varies across targets due to the varying cost to invoke                                                              47.16%     0.48%       4.38%
+
+
+
+
+                                                                                   Hit rate
+                                                                                              typedef             83.11%
+the SUT after each fuzzing iteration for bug detection. Regarding                             union               10.80%            80.43%     0.10%       0.32%
+                                                                                              goto                 0.22%             0.11%    77.62%       1.16%
+validity rate, a general-purpose programming language, such as C,
+                                                                                   Coverage                       123,226           125,041   120,452    188,148
+has a relatively lower validity rate compared to domain-specific
+languages, such as the SMT2 language used for SMT solvers. A more                                       C++ targeted campaign (built-in functions)
+                                                                                                                   apply          expected    variant    General
+rigorous language, e.g., Go, which does not allow any declared but
+                                                                                                                                     0.41%     0.68%       0.32%
+
+
+
+
+                                                                                   Hit rate
+                                                                                              apply               70.23%
+unused variables, has an even lower validity rate. We also observe
+                                                                                              expected             0.26%            79.72%     0.94%       1.33%
+a low validity rate for fuzzing quantum computing platforms. As                               variant              1.16%             5.98%    93.19%       3.63%
+quantum computing is an emerging area with its own set of library
+                                                                                   Coverage                       182,261           175,963   182,333    193,254
+APIs, the generation LLM may not have seen as many examples
+                                                                                                            SMT targeted campaign (theories)
+of quantum programs during its training as for more established                                                    Array            BitVec       Real    General
+languages. Nevertheless, Fuzz4All is still able to leverage user-
+                                                                                                                                     2.08%     1.44%      11.07%
+
+
+
+
+                                                                                   Hit rate
+                                                                                              Array               82.23%
+provided documentation to generate interesting fuzzing inputs                                 BitVec               2.57%            88.48%     0.86%       5.46%
+that use quantum library APIs and achieve an impressive coverage                              Real                 1.45%             0.17%    96.01%      17.36%
+improvement (+75.6%) compared to the state-of-the-art fuzzer.                      Coverage                        46,392            48,841    47,619      52,449
+                                                                                                         Go targeted campaign (built-in libraries)
+                                                                                                                  atomic            atomic       heap    General
+                                                                                                                                     0.04%     0.06%       1.01%
+
+                                                                                   Hit rate
+                                                                                              atomic              90.09%
+5.2     RQ2: Effectiveness of Targeted Fuzzing                                                big                  0.18%            97.20%     0.23%       3.63%
+We now evaluate the ability of Fuzz4All to perform targeted                                   heap                 0.30%             0.04%    91.18%       2.22%
+fuzzing, i.e., to generate fuzzing inputs that focus on a particular               Coverage                        10,156            12,986      9,790     37,561
+feature. For each target SUT and language, we target three different                                       Java targeted campaign (keywords)
+example features and compare them to the setup with general user                                              instanceof      synchronized    finally    General
+input, as used for RQ1 (described in Section 4.3). These features are                                                                0.08%     0.85%       1.86%
+                                                                                   Hit rate
+
+
+
+
+                                                                                              instanceof          88.00%
+built-in libraries or functions/APIs (Go, C++ and Qiskit), language                           synchronized         0.16%            94.80%     0.16%       0.85%
+                                                                                              finally              0.51%             3.17%    78.62%       0.82%
+keywords (C and Java), and theories (SMT). The user input for the
+targeted fuzzing runs is documentation of the particular feature                   Coverage                        14,546            13,972    13,203      16,128
+we are focusing on. Table 3 shows the results of targeted fuzzing                                            Qiskit targeted campaign (APIs)
+as well as the default general fuzzing used in RQ1. Each column                                                   switch          for loop     linear    General
+represents a targeted fuzzing run where we focus on one feature.                                                                     0.00%     0.00%       0.00%
+                                                                                   Hit rate
+
+
+
+
+                                                                                              switch              71.76%
+                                                                                              for loop             0.17%            75.97%     0.00%       0.00%
+The value in each cell shows the hit rate of the feature (Section 4.3)
+                                                                                              linear               0.00%             0.00%    54.79%       0.00%
+for a particular fuzzing run. We also include the coverage results
+                                                                                   Coverage                        30,597            26,703    29,535      33,853
+obtained.
+   We observe that targeting a specific feature yields a high amount
+of fuzzing inputs that directly use the feature, with an average
+                                                                          new features. This ability of Fuzz4All will be valuable to developers
+hit rate of 83.0%. This result demonstrates that Fuzz4All indeed
+                                                                          who want to test novel features or components of a SUT.
+performs targeted fuzzing by prompting the generation LLM with
+an input prompt that describes a particular feature. Furthermore,
+                                                                          5.3          RQ3: Ablation Study
+we observe that fuzzing on features that are related can lead to a
+moderately high cross-feature hit rate (i.e., hit rate of feature X on    To study how each component of Fuzz4All contributes to the
+fuzzing run for feature Y). For example, the C keywords typedef           overall fuzzing effectiveness, we conduct an ablation study based
+and union are both related to type operations, and hence, their           on the two key components of Fuzz4All: (a) Autoprompting, the
+cross-feature hit rate is high compared to an unrelated feature,          type of initial input prompt provided to the generation LLM; (b)
+such as goto. As shown in Table 3, a general fuzzing approach,            Fuzzing loop, the use of selected examples and generation strategies.
+while achieving the highest overall code coverage, can be extremely       We study three variants for each of the two key components. Table 4
+inefficient in targeting a specific feature (average 96.0% reduction in   shows the coverage and validity rate of our studied variants.
+hit rate compared with Fuzz4All’s targeted fuzzing). For example,         5.3.1 Autoprompting. First, we examine the effect of different ini-
+in Qiskit, the general fuzzing campaign has a 0% hit rate of the          tial inputs provided to the generation LLM. To reduce the impact
+three target features. This can be explained by the fact that these       of additional factors, we fix the generation strategy to only use
+features were added recently to Qiskit and are not yet widely used,       generate-new and study three variants1 : 1) no input does not use
+thus being extremely rare in the LLM training data. However, by           any initial prompts 2) raw prompt directly uses the raw user input as
+providing suitable user input during the targeted fuzzing campaign,
+Fuzz4All can successfully generate fuzzing inputs that use these          1 The   impact of additional generation strategies can be found in Section 5.3.2.
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                                     Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+
+
+ Table 4: Effectiveness of variants (* indicates statistically significant coverage improvement compared w/ 2nd best variant).
+
+                                                                      C                    C++                    SMT                     Go                     Java                  Qiskit
+                     Variants      Description
+                                                                  Cov.    % valid       Cov.     % valid       Cov.     % valid       Cov.     % valid      Cov.    % valid          Cov.    % valid
+                                   no initial prompt           127,261    42.57%     181,493     51.63%       50,838    49.49%      35,765     39.54%     14,374     50.25%        31,701    34.63%
+           prompt.
+
+
+
+
+                     no input
+            Auto
+
+
+
+
+                     raw prompt    use user-provided input     137,204    33.95%     189,030     33.79%       49,697    39.49%      36,168     16.84%     15,445     37.64%        31,922    22.74%
+                     autoprompt    apply autoprompting         182,530    39.09%     190,318     36.62%       51,496    45.04%      36,732     24.87%     15,838     45.54%        32,691    29.12%
+                                   generate-new w/o example     143,349   34.23%      190,288    28.25%       50,089    18.41%       35,839    19.38%      15,444    44.69%         32,663   24.04%
+   Fuzzing
+
+
+
+
+                     w/o example
+    loop
+
+
+
+
+                     w/ example    generate-new w/ example      182,530   39.09%      190,318    36.62%       51,496    45.04%       36,732    24.87%      15,838    45.54%         32,691   29.12%
+                     Fuzz4All      all strategies w/ example   185,491    40.58%    *193,845     41.22%     *53,069     50.06%     *37,981     32.00%    *16,209     50.99%       *33,913    27.45%
+
+
+
+the initial prompt, 3) autoprompt applies autoprompting to generate                                              Table 5: Summary of Fuzz4All-detected bugs.
+the initial prompt. We observe that across all studied languages, the
+no input variant achieves the lowest coverage. In no input, we do                                                                         Confirmed
+                                                                                                                          Total                                     Pending         Won’t fix
+not provide any initial prompt, which provides useful information                                                                    Unknown         Known
+on the features we want to generate fuzzing inputs for. As such,
+                                                                                                               GCC            30                14          11                5                 0
+the LLM can only generate simple code snippets with high validity                                              Clang          27                18           9                0                 0
+rate but is less effective in covering the SUT. We observe a cover-                                            CVC5            9                 7           2                0                 0
+age boost as we use the raw prompt variant, where we provide the                                               Z3             14                12           0                0                 2
+raw documentation as the initial prompt. However, we can further                                               Go              4                 2           2                0                 0
+improve both the code coverage and the validity rate by using our                                              Java            3                 3           0                0                 0
+                                                                                                               Qiskit         11                 8           2                1                 0
+autoprompting stage to distill the user input into a concise but in-
+formative prompt (autoprompt), instead of using the raw user input.                                            Total          98                64          26                6                 2
+Directly using the user-provided input may include information
+that is irrelevant for fuzzing, leading to both a lower validity rate
+(as the generation LLM may struggle to understand the raw docu-                                            #include <optional>
+                                                                                                           void y(std optional<int> z)
+mentation) and lower coverage (since, unlike our autoprompting                                                      noexcept(noexcept(std            optional<int>{z})) {}
+generated prompt, the raw documentation is not designed to be                                         (a) GCC bug: Internal compiler error (segmentation fault)
+used for LLM generation).
+                                                                                                           #include <iostream>
+                                                                                                           using E = std numeric_limits<int>;
+5.3.2 Fuzzing loop. Next, we examine the different variants of                                             auto fail(E e)    decltype(throw e, void()) { throw e; }
+our fuzzing loop setup by keeping the initial prompt the same (by                                     (b) Clang bug: Segmentation fault
+using the default autoprompting): 1) w/o example does not select
+                                                                                                           package main
+an example during the fuzzing loop (i.e., it continuously samples                                          import ("runtime")
+from the same initial prompt), 2) w/ example selects an example                                            func main() { runtime.ReadMemStats(nil) }
+
+but only uses the generate-new instruction2 , 3) Fuzz4All is the                                      (c) Go bug: Segmentation violation
+full approach with all generation strategies used. We first observe                                        from qiskit import QuantumCircuit, ClassicalRegister
+                                                                                                           crz = ClassicalRegister(1, name="crz")
+that by only sampling from the same input (w/o example), LLMs                                              qc = QuantumCircuit(crz)
+will often repeatedly generate the same or similar fuzzing inputs.                                         qc.qasm(filename="my.qasm")
+                                                                                                           QuantumCircuit.from_qasm_file("my.qasm")
+On average, 8.0% of the fuzzing inputs generated are repeated in
+w/o example compared to only 4.7% when using the full Fuzz4All                                        (d) Qiskit bug: Crash
+approach. Adding an example to the input prompt (w/ example)
+avoids sampling from the same distribution and improves both the                                                 Figure 5: Exemplary bugs found by Fuzz4All.
+coverage and the validity rate. Finally, the full Fuzz4All approach
+achieves the highest coverage across all SUTs. Compared to the w/
+example variant (the second-best), the full Fuzz4All adds additional
+generation strategies, semantic-equiv and mutate-existing, which                                      Fuzz4All across languages and SUTs. A detailed list of reported
+provide useful instructions to the generation LLM.                                                    bugs and issue links can be found in our artifact.
+
+5.4              RQ4: Bug Finding                                                                     5.4.1 Examples. Figure 5a shows a bug found in GCC when using
+                                                                                                      noexcept(x), a C++ feature that specifies a function is non-throwing
+Table 5 summarizes the bugs found by Fuzz4All on our nine studied                                     if x evaluates to true. In this example bug, Fuzz4All generates a
+SUTs. In total, Fuzz4All detects 98 bugs, with 64 bugs already                                        rather complex code using std::optional, which indicates that a
+confirmed by the developers as previously unknown. These results                                      particular value may or may not be present at runtime. While this
+not only demonstrate the practical effectiveness of Fuzz4All in                                       code is valid and should compile correctly, this combination of dif-
+finding large amounts of bugs but also the promised generality of                                     ficult runtime dependencies cause GCC to crash with an internal
+2 Notethat autoprompt and w/ example are the same variant, but we include them                        compiler error. We note that this bug cannot be found by prior
+separately for ease of comparison.                                                                    techniques since they simply do not support the noexcept feature.
+Fuzz4All: Universal Fuzzing with Large Language Models                                                             ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+The developers have already confirmed and fixed this bug. Interest-       information [30] . This limitation is common to most pipelines that
+ingly, they even added a slightly modified version of our submitted       use LLMs, and we hope to address it in our future work.
+code snippet to the official test suite of GCC.
+    Figure 5b shows a bug found in Clang, where the invalid code          7     CONCLUSION
+leads to a segmentation fault. Fuzz4All uses an unusual syntax for        We present Fuzz4All, a universal fuzzer leveraging LLMs to sup-
+function declaration (i.e., auto x (...) -> return_type ), which          port both general and targeted fuzzing of arbitrary SUTs that take
+makes use of the decltype operation in C++. However, the bug              in a multitude of programming languages. Fuzz4All uses a novel
+occurs when the throw statement inside of the decltype is evaluated       autoprompting stage to produce input prompts that concisely sum-
+first, skipping the evaluation of the return type since throw exits       marize the user-provided inputs. In its fuzzing loop, Fuzz4All
+the scope early and crashes Clang. This code, while invalid, is still     iteratively updates the initial input prompt with both code exam-
+useful to reveal a bug in the Clang frontend as confirmed by the          ples and generation strategies aimed at producing diverse fuzzing
+developers. Additionally, prior fuzzing tools can hardly find this        inputs. Evaluation results on nine different SUTs across six differ-
+bug since they typically focus on generating valid code only and          ent languages demonstrate that Fuzz4All is able to significantly
+do not handle the especially difficult-to-model decltype function.        improve coverage compared to state-of-the-art tools. Furthermore,
+    Figure 5c shows a bug found in Go where a nil input causes a          Fuzz4All is able to detect 98 bugs with 64 already confirmed by
+segmentation fault instead of producing a useful failure message.         developers as previously unknown.
+This bug is found by targeting the runtime Go standard library,
+where we provide the documentation, which includes the descrip-
+                                                                          DATA AVAILABILITY
+tion of the ReadMemStats function. The bug has been confirmed and
+fixed by the developers. While this bug might look simple (invoking       Our code and data are available at: https://doi.org/10.5281/zenodo.
+a singular function), it cannot be found by the go-fuzz baseline          10456883 and https://github.com/fuzz4all/fuzz4all
+simply because go-fuzz requires manually written templates to tar-
+get specific libraries, and runtime is not a part of any such template.   ACKNOWLEDGMENT
+With Fuzz4All, users can directly target any Go standard libraries        This work was supported by the National Science Foundation
+by providing relevant input information (e.g., documentation).            (grants CCF-2131943 and CCF-2141474), Kwai Inc., the European
+    Figure 5d shows a bug found in Qiskit’s QASM exporter. A quan-        Research Council (ERC, grant agreement 851895), and the German
+tum program, represented by the qc variable, is exported to QASM,         Research Foundation within the ConcSys and DeMoCo projects.
+a low level representation, silently generating an invalid output file,
+which leads to a crash when being reimported. The problem is that         REFERENCES
+the exporter represents the register in QASM using its name as iden-       [1] 2021. Qiskit/Qiskit. https://github.com/Qiskit/qiskit.
+tifier, i.e.,"crz", which also is the name of a well-known operation       [2] 2023. std::expected. https://en.cppreference.com/w/cpp/utility/expected.
+                                                                           [3] Cornelius Aschermann, Tommaso Frassetto, Thorsten Holz, Patrick Jauernig,
+of the QASM language, thus making the generated code ambiguous.                Ahmad-Reza Sadeghi, and Daniel Teuchert. 2019. NAUTILUS: Fishing for Deep
+Note that prior work [58] could not find this bug because they                 Bugs with Grammars.. In NDSS.
+use pre-defined templates with only anonymous registers, whereas           [4] Yejin Bang, Samuel Cahyawijaya, Nayeon Lee, Wenliang Dai, Dan Su, Bryan
+                                                                               Wilie, Holy Lovenia, Ziwei Ji, Tiezheng Yu, Willy Chung, et al. 2023. A multitask,
+Fuzz4All effectively leverages the quantum knowledge of LLMs to                multilingual, multimodal evaluation of chatgpt on reasoning, hallucination, and
+inject a meaningful string literal for detecting this bug.                     interactivity. arXiv preprint arXiv:2302.04023 (2023).
+                                                                           [5] Patrick Bareiß, Beatriz Souza, Marcelo d’Amorim, and Michael Pradel. 2022. Code
+                                                                               Generation Tools (Almost) for Free? A Study of Few-Shot, Pre-Trained Language
+                                                                               Models on Code. CoRR abs/2206.01335 (2022). https://doi.org/10.48550/arXiv.
+6    THREATS TO VALIDITY                                                       2206.01335 arXiv:2206.01335
+                                                                           [6] Marcel Böhme, Cristian Cadar, and Abhik Roychoudhury. 2020. Fuzzing: Chal-
+Internal. The main internal threat comes from the implementa-                  lenges and reflections. IEEE Software 38, 3 (2020), 79–86.
+tion of Fuzz4All. To address this, we performed code reviews and           [7] Marcel Böhme, László Szekeres, and Jonathan Metzman. 2022. On the reliability
+testing to ensure correctness. Furthermore, we run each baseline               of coverage-based fuzzer benchmarking. In Proceedings of the 44th International
+                                                                               Conference on Software Engineering. 1621–1633.
+from their provided replication package whenever possible.                 [8] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+External. The main external threat is our evaluation targets. To               Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+                                                                               Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+support our generality claim, we apply Fuzz4All on nine different              Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter,
+SUTs across six languages. Additionally, to account for variance               Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin
+in long fuzzing runs, we repeat the 24-hour fuzzing campaign five              Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya
+                                                                               Sutskever, and Dario Amodei. 2020. Language Models are Few-Shot Learners.
+times and check for statistically significant results. Since the gen-          arXiv:2005.14165.
+eration LLM leverages the knowledge acquired during its training           [9] Sébastien Bubeck, Varun Chandrasekaran, Ronen Eldan, Johannes Gehrke, Eric
+done within the last year, reapplying Fuzz4All using the exact                 Horvitz, Ece Kamar, Peter Lee, Yin Tat Lee, Yuanzhi Li, Scott Lundberg, et al. 2023.
+                                                                               Sparks of artificial general intelligence: Early experiments with gpt-4. arXiv
+checkpoint of the LLM (StarCoder) used in this work might degrade              preprint arXiv:2303.12712 (2023).
+the effectiveness in the future due to data-shift. Fuzz4All can mit-      [10] Alexander Bulekov, Bandan Das, Stefan Hajnoczi, and Manuel Egele. 2023. No
+                                                                               Grammar, No Problem: Towards Fuzzing the Linux Kernel without System-Call
+igate this using the autoprompting step where more up-to-date                  Descriptions. In Network and Distributed System Security (NDSS) Symposium
+documentation/example code allows the model to also generate                   2023.
+up-to-date fuzzing inputs. One additional threat comes from the           [11] Stefanos Chaliasos, Thodoris Sotiropoulos, Diomidis Spinellis, Arthur Gervais,
+                                                                               Benjamin Livshits, and Dimitris Mitropoulos. 2022. Finding typing compiler bugs.
+use of the distillation LLM to generate the initial inputs, where              In Proceedings of the 43rd ACM SIGPLAN International Conference on Programming
+the LLM may “hallucinate”, i.e., produce made-up or inaccurate                 Language Design and Implementation. 183–198.
+ICSE ’24, April 14–20, 2024, Lisbon, Portugal                                             Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang
+
+
+[12] Junjie Chen, Jibesh Patra, Michael Pradel, Yingfei Xiong, Hongyu Zhang, Dan                   861–871.
+     Hao, and Lu Zhang. 2020. A survey of compiler testing. ACM Computing Surveys             [34] jsfunfuzz 2017. Introducing jsfunfuzz. https://www.squarefree.com/2007/08/02/
+     (CSUR) 53, 1 (2020), 1–36.                                                                    introducing-jsfunfuzz/.
+[13] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira             [35] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess,
+     Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman,               Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. 2020.
+     et al. 2021. Evaluating large language models trained on code. arXiv preprint                 Scaling laws for neural language models. arXiv preprint arXiv:2001.08361 (2020).
+     arXiv:2107.03374 (2021).                                                                 [36] George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. 2018.
+[14] Yongheng Chen, Rui Zhong, Hong Hu, Hangfan Zhang, Yupeng Yang, Dinghao                        Evaluating Fuzz Testing. In Proceedings of the 2018 ACM SIGSAC Conference on
+     Wu, and Wenke Lee. 2021. One engine to fuzz’em all: Generic language processor                Computer and Communications Security (CCS ’18). Association for Computing
+     testing with semantic validation. In 2021 IEEE Symposium on Security and Privacy              Machinery, New York, NY, USA, 2123–2138. https://doi.org/10.1145/3243734.
+     (SP). IEEE, 642–658.                                                                          3243804
+[15] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav                  [37] Suyoung Lee, HyungSeok Han, Sang Kil Cha, and Sooel Son. 2020. Montage: A
+     Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebas-                    Neural Network Language { Model-Guided } { JavaScript } Engine Fuzzer. In 29th
+     tian Gehrmann, Parker Schuh, Kensen Shi, Sasha Tsvyashchenko, Joshua Maynez,                  USENIX Security Symposium (USENIX Security 20). 2613–2630.
+     Abhishek Rao, Parker Barnes, Yi Tay, Noam Shazeer, Vinodkumar Prabhakaran,               [38] Daniel Lehmann and Michael Pradel. 2018. Feedback-directed differential testing
+     Emily Reif, Nan Du, Ben Hutchinson, Reiner Pope, James Bradbury, Jacob Austin,                of interactive debuggers. In ESEC/SIGSOFT FSE. 610–620.
+     Michael Isard, Guy Gur-Ari, Pengcheng Yin, Toju Duke, Anselm Levskaya, Sanjay            [39] Caroline Lemieux, Jeevana Priya Inala, Shuvendu K Lahiri, and Siddhartha Sen.
+     Ghemawat, Sunipa Dev, Henryk Michalewski, Xavier Garcia, Vedant Misra, Kevin                  2023. CODAMOSA: Escaping Coverage Plateaus in Test Generation with Pre-
+     Robinson, Liam Fedus, Denny Zhou, Daphne Ippolito, David Luan, Hyeontaek                      trained Large Language Models. In 45th International Conference on Software
+     Lim, Barret Zoph, Alexander Spiridonov, Ryan Sepassi, David Dohan, Shivani                    Engineering.
+     Agrawal, Mark Omernick, Andrew M. Dai, Thanumalayan Sankaranarayana                      [40] Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman
+     Pillai, Marie Pellat, Aitor Lewkowycz, Erica Moreira, Rewon Child, Oleksandr                  Mohamed, Omer Levy, Ves Stoyanov, and Luke Zettlemoyer. 2019. Bart: Denoising
+     Polozov, Katherine Lee, Zongwei Zhou, Xuezhi Wang, Brennan Saeta, Mark Diaz,                  sequence-to-sequence pre-training for natural language generation, translation,
+     Orhan Firat, Michele Catasta, Jason Wei, Kathy Meier-Hellstern, Douglas Eck,                  and comprehension. arXiv preprint arXiv:1910.13461 (2019).
+     Jeff Dean, Slav Petrov, and Noah Fiedel. 2022. PaLM: Scaling Language Modeling           [41] Raymond Li, Loubna Ben Allal, Yangtian Zi, Niklas Muennighoff, Denis Kocetkov,
+     with Pathways. arXiv:2204.02311 [cs.CL]                                                       Chenghao Mou, Marc Marone, Christopher Akiki, Jia Li, Jenny Chim, et al. 2023.
+[16] Andrew W. Cross, Lev S. Bishop, John A. Smolin, and Jay M. Gambetta. 2017.                    StarCoder: may the source be with you! arXiv preprint arXiv:2305.06161 (2023).
+     Open Quantum Assembly Language. arXiv:1707.03429 [quant-ph] (July 2017).                 [42] Xiang Lisa Li and Percy Liang. 2021. Prefix-tuning: Optimizing continuous
+     arXiv:1707.03429 [quant-ph]                                                                   prompts for generation. arXiv preprint arXiv:2101.00190 (2021).
+[17] Chris Cummins, Pavlos Petoumenos, Alastair Murray, and Hugh Leather. 2018.               [43] libFuzzer 2023. libFuzzer – a library for coverage-guided fuzz testing. https:
+     Compiler fuzzing through deep learning. In Proceedings of the 27th ACM SIGSOFT                //llvm.org/docs/LibFuzzer.html.
+     International Symposium on Software Testing and Analysis. 95–105.                        [44] Christopher Lidbury, Andrei Lascu, Nathan Chong, and Alastair F Donaldson.
+[18] Yinlin Deng, Chunqiu Steven Xia, Haoran Peng, Chenyuan Yang, and Lingming                     2015. Many-core compiler fuzzing. ACM SIGPLAN Notices 50, 6 (2015), 65–76.
+     Zhang. 2023. Large Language Models are Zero-Shot Fuzzers: Fuzzing Deep-                  [45] Jiawei Liu, Jinkun Lin, Fabian Ruffy, Cheng Tan, Jinyang Li, Aurojit Panda, and
+     Learning Libraries via Large Language Models. In Proceedings of the 32nd ACM                  Lingming Zhang. 2023. Nnsmith: Generating diverse and valid test cases for deep
+     SIGSOFT International Symposium on Software Testing and Analysis. 423–435.                    learning compilers. In Proceedings of the 28th ACM International Conference on
+[19] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2018. Bert:                 Architectural Support for Programming Languages and Operating Systems, Volume
+     Pre-training of deep bidirectional transformers for language understanding. arXiv             2. 530–543.
+     preprint arXiv:1810.04805 (2018).                                                        [46] Jiawei Liu, Yuxiang Wei, Sen Yang, Yinlin Deng, and Lingming Zhang. 2022.
+[20] Karine Even-Mendoza, Cristian Cadar, and Alastair F Donaldson. 2022.                          Coverage-guided tensor compiler fuzzing with joint ir-pass mutation. Proceedings
+     CsmithEdge: more effective compiler testing by handling undefined behaviour                   of the ACM on Programming Languages 6, OOPSLA1 (2022), 1–26.
+     less conservatively. Empirical Software Engineering 27, 6 (2022), 129.                   [47] Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and
+[21] Karine Even-Mendoza, Arindam Sharma, Alastair F. Donaldson, and Cristian                      Graham Neubig. 2021. Pre-train, Prompt, and Predict: A Systematic Survey of
+     Cadar. 2023. GrayC: Greybox Fuzzing of Compilers and Analysers for C (ISSTA                   Prompting Methods in Natural Language Processing. CoRR abs/2107.13586 (2021).
+     2023). Association for Computing Machinery, New York, NY, USA, 1219–1231.                     arXiv:2107.13586 https://arxiv.org/abs/2107.13586
+     https://doi.org/10.1145/3597926.3598130                                                  [48] Xiao Liu, Xiaoting Li, Rupesh Prajapati, and Dinghao Wu. 2019. Deepfuzz:
+[22] Zhangyin Feng, Daya Guo, Duyu Tang, Nan Duan, Xiaocheng Feng, Ming Gong,                      Automatic generation of syntax valid c programs for fuzz testing. In Proceedings
+     Linjun Shou, Bing Qin, Ting Liu, Daxin Jiang, and Ming Zhou. 2020. CodeBERT: A                of the AAAI Conference on Artificial Intelligence, Vol. 33. 1044–1051.
+     Pre-Trained Model for Programming and Natural Languages. arXiv:2002.08155.               [49] Vsevolod Livinskii, Dmitry Babokin, and John Regehr. 2020. Random testing for
+[23] Mark Fingerhuth, Tomáš Babej, and Peter Wittek. 2018. Open Source Software                    C and C++ compilers with YARPGen. Proceedings of the ACM on Programming
+     in Quantum Computing. PLOS ONE 13, 12 (Dec. 2018), e0208561. https://doi.                     Languages 4, OOPSLA (2020), 1–25.
+     org/10.1371/journal.pone.0208561                                                         [50] M. Zalewski 2016. American Fuzzy Lop - Whitepaper. https://lcamtuf.coredump.
+[24] Daniel Fried, Armen Aghajanyan, Jessy Lin, Sida Wang, Eric Wallace, Freda Shi,                cx/afl/technical_details.txt.
+     Ruiqi Zhong, Wen-tau Yih, Luke Zettlemoyer, and Mike Lewis. 2022. Incoder: A             [51] Haoyang Ma. 2023. A Survey of Modern Compiler Fuzzing. arXiv preprint
+     generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999            arXiv:2306.06884 (2023).
+     (2022).                                                                                  [52] Henry B Mann and Donald R Whitney. 1947. On a test of whether one of
+[25] go-fuzz 2023. go-fuzz: randomized testing for Go. https://github.com/dvyukov/                 two random variables is stochastically larger than the other. The annals of
+     go-fuzz.                                                                                      mathematical statistics (1947), 50–60.
+[26] Patrice Godefroid, Hila Peleg, and Rishabh Singh. 2017. Learn&fuzz: Machine              [53] Muhammad Numair Mansur, Maria Christakis, and Valentin Wüstholz. 2021.
+     learning for input fuzzing. In 2017 32nd IEEE/ACM International Conference on                 Metamorphic testing of Datalog engines. In ESEC/FSE ’21: 29th ACM Joint Eu-
+     Automated Software Engineering (ASE). IEEE, 50–59.                                            ropean Software Engineering Conference and Symposium on the Foundations of
+[27] gpt4endpoint 2023. Models - GPT-4. https://platform.openai.com/docs/models/                   Software Engineering. 639–650. https://doi.org/10.1145/3468264.3468573
+     gpt-4.                                                                                   [54] Pengyu Nie, Rahul Banerjee, Junyi Jessy Li, Raymond J. Mooney, and Milos
+[28] Alex Groce, Rijnard van Tonder, Goutamkumar Tulajappa Kalburgi, and Claire                    Gligoric. 2023. Learning Deep Semantics for Test Completion. In 45th International
+     Le Goues. 2022. Making no-fuss compiler fuzzing effective. In Proceedings of the              Conference on Software Engineering.
+     31st ACM SIGPLAN International Conference on Compiler Construction. 194–204.             [55] OpenAI. 2023. GPT-4 Technical Report. arXiv:2303.08774 [cs.CL]
+[29] Sumit Gulwani, Oleksandr Polozov, Rishabh Singh, et al. 2017. Program synthesis.         [56] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela
+     Foundations and Trends® in Programming Languages 4, 1-2 (2017), 1–119.                        Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. 2022.
+[30] Zhijiang Guo, Michael Schlichtkrull, and Andreas Vlachos. 2022. A survey on                   Training language models to follow instructions with human feedback. Advances
+     automated fact-checking. Transactions of the Association for Computational                    in Neural Information Processing Systems 35 (2022), 27730–27744.
+     Linguistics 10 (2022), 178–206.                                                          [57] Matteo Paltenghi and Michael Pradel. 2022. Bugs in Quantum computing plat-
+[31] Christian Holler, Kim Herzig, and Andreas Zeller. 2012. Fuzzing with code                     forms: an empirical study. Proc. ACM Program. Lang. 6, OOPSLA (2022), 1–27.
+     fragments. In 21st USENIX Security Symposium (USENIX Security 12). 445–458.                   https://doi.org/10.1145/3527330
+[32] Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and Yejin Choi. 2019. The                 [58] Matteo Paltenghi and Michael Pradel. 2023. MorphQ: Metamorphic Testing of
+     Curious Case of Neural Text Degeneration. arXiv:1904.09751.                                   the Qiskit Quantum Computing Platform. In 2023 IEEE/ACM 45th International
+[33] Bo Jiang, Xiaoyan Wang, Wing Kwong Chan, TH Tse, Na Li, Yongfeng Yin, and                     Conference on Software Engineering (ICSE). IEEE Computer Society, 2413–2424.
+     Zhenyu Zhang. 2020. Cudasmith: A fuzzer for CUDA compilers. In 2020 IEEE                      https://doi.org/10.1109/ICSE48619.2023.00202
+     44th Annual Computers, Software, and Applications Conference (COMPSAC). IEEE,
+Fuzz4All: Universal Fuzzing with Large Language Models                                                                                ICSE ’24, April 14–20, 2024, Lisbon, Portugal
+
+
+[59] Jiwon Park, Dominik Winterer, Chengyu Zhang, and Zhendong Su. 2021. Gener-                   Generation. In Proceedings of the 2021 Conference on Empirical Methods in Natural
+     ative type-aware mutation for testing SMT solvers. Proceedings of the ACM on                 Language Processing, EMNLP 2021.
+     Programming Languages 5, OOPSLA (2021), 1–19.                                         [84]   Andreas Zeller, Rahul Gopinath, Marcel Böhme, Gordon Fraser, and Christian
+[60] Jibesh Patra and Michael Pradel. 2016. Learning to fuzz: Application-independent             Holler. 2019. The fuzzing book.
+     fuzz testing with probabilistic, generative models of input data. (2016).             [85]   Hui Zhao, Zhihui Li, Hansheng Wei, Jianqi Shi, and Yanhong Huang. 2019. Seq-
+[61] PyTorch 2023. PyTorch. http://pytorch.org.                                                   Fuzzer: An Industrial Protocol Fuzzing Framework from a Deep Learning Perspec-
+[62] Guanghui Qin and Jason Eisner. 2021. Learning How to Ask: Querying LMs with                  tive. In 2019 12th IEEE Conference on Software Testing, Validation and Verification
+     Mixtures of Soft Prompts. In Proceedings of the 2021 Conference of the North Amer-           (ICST). 59–67. https://doi.org/10.1109/ICST.2019.00016
+     ican Chapter of the Association for Computational Linguistics: Human Language         [86]   Yingquan Zhao, Zan Wang, Junjie Chen, Mengdi Liu, Mingyuan Wu, Yuqun
+     Technologies (NAACL-HLT).                                                                    Zhang, and Lingming Zhang. 2022. History-Driven Test Program Synthesis
+[63] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al. 2018.                 for JVM Testing. In Proceedings of the 44th International Conference on Software
+     Improving language understanding by generative pre-training. (2018).                         Engineering (Pittsburgh, Pennsylvania) (ICSE ’22). 1133–1144.
+[64] Timo Schick and Hinrich Schütze. 2020. Exploiting cloze questions for few shot        [87]   Yongchao Zhou, Andrei Ioan Muresanu, Ziwen Han, Keiran Paster, Silviu Pitis,
+     text classification and natural language inference. arXiv preprint arXiv:2001.07676          Harris Chan, and Jimmy Ba. 2022. Large language models are human-level
+     (2020).                                                                                      prompt engineers. arXiv preprint arXiv:2211.01910 (2022).
+[65] John Schulman, Barret Zoph, Jacob Hilton Christina Kim, Jacob Menick, Ji-             [88]   Daniel M. Ziegler, Nisan Stiennon, Jeffrey Wu, Tom B. Brown, Alec Radford,
+     ayi Weng, Juan Felipe Ceron Uribe, Liam Fedus, Luke Metz, Michael Pokorny,                   Dario Amodei, Paul Christiano, and Geoffrey Irving. 2019. Fine-Tuning Language
+     Rapha Gontijo Lopes, Shengjia Zhao, Arun Vijayvergiya, Eric Sigler, Adam Perel-              Models from Human Preferences. arXiv:1909.08593.
+     man, Chelsea Voss, Mike Heaton, Joel Parish, Dave Cummings, Rajeev Nayak,
+     Valerie Balcom, David Schnurr, Tomer Kaftan, Chris Hallacy, Nicholas Turley,
+     Noah Deutsch, Vik Goel, Jonathan Ward, Aris Konstantinidis, Wojciech Zaremba,
+     Long Ouyang, Leonard Bogdonoff, Joshua Gross, David Medina, Sarah Yoo, Teddy
+     Lee, Ryan Lowe, Dan Mossing, Joost Huizinga, Roger Jiang, Carroll Wainwright,
+     Diogo Almeida, Steph Lin, Marvin Zhang, Kai Xiao, Katarina Slama, Steven Bills,
+     Alex Gray, Jan Leike, Jakub Pachocki, Phil Tillet, Shantanu Jain, Greg Brockman,
+     and Nick Ryder. 2022. ChatGPT: Optimizing Language Models for Dialogue.
+     (2022). https://openai.com/blog/chatgpt/.
+[66] Max Schäfer, Sarah Nadi, Aryaz Eghbali, and Frank Tip. 2023. Adaptive Test
+     Generation Using a Large Language Model. arXiv:2302.06527 [cs.SE]
+[67] Kensen Shi, David Bieber, and Rishabh Singh. 2022. Tf-coder: Program synthesis
+     for tensor manipulations. ACM Transactions on Programming Languages and
+     Systems (TOPLAS) 44, 2 (2022), 1–36.
+[68] Taylor Shin, Yasaman Razeghi, Robert L Logan IV, Eric Wallace, and Sameer Singh.
+     2020. Autoprompt: Eliciting knowledge from language models with automatically
+     generated prompts. arXiv preprint arXiv:2010.15980 (2020).
+[69] Michael Sutton, Adam Greene, and Pedram Amini. 2007. Fuzzing: Brute Force
+     Vulnerability Discovery. Addison-Wesley Professional.
+[70] syzkaller 2023. syzkaller - kernel fuzzer. https://github.com/google/syzkaller.
+[71] Derek Tam, Rakesh R Menon, Mohit Bansal, Shashank Srivastava, and Colin
+     Raffel. 2021. Improving and simplifying pattern exploiting training. arXiv preprint
+     arXiv:2103.11955 (2021).
+[72] TensorFlow 2023. TensorFlow. https://www.tensorflow.org.
+[73] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+     Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all
+     you need. Advances in neural information processing systems 30 (2017).
+[74] Vasudev Vikram, Caroline Lemieux, and Rohan Padhye. 2023. Can Large Lan-
+     guage Models Write Good Property-Based Tests? arXiv preprint arXiv:2307.04346
+     (2023).
+[75] Chaozheng Wang, Yuanhang Yang, Cuiyun Gao, Yun Peng, Hongyu Zhang,
+     and Michael R Lyu. 2022. No more fine-tuning? an experimental evaluation of
+     prompt tuning in code intelligence. In Proceedings of the 30th ACM Joint European
+     Software Engineering Conference and Symposium on the Foundations of Software
+     Engineering. 382–394.
+[76] Anjiang Wei, Yinlin Deng, Chenyuan Yang, and Lingming Zhang. 2022. Free
+     lunch for testing: Fuzzing deep-learning libraries from open source. In Proceedings
+     of the 44th International Conference on Software Engineering. 995–1007.
+[77] Dominik Winterer, Chengyu Zhang, and Zhendong Su. 2020. On the unusual
+     effectiveness of type-aware operator mutations for testing SMT solvers. Proc.
+     ACM Program. Lang. 4, OOPSLA (2020), 193:1–193:25.
+[78] Dominik Winterer, Chengyu Zhang, and Zhendong Su. 2020. Validating SMT
+     Solvers via Semantic Fusion. In Proceedings of the 41st ACM SIGPLAN Conference
+     on Programming Language Design and Implementation. 718–730.
+[79] Chunqiu Steven Xia and Lingming Zhang. 2023. Keep the Conversation Go-
+     ing: Fixing 162 out of 337 bugs for $0.42 each using ChatGPT. arXiv preprint
+     arXiv:2304.00385 (2023).
+[80] Frank F. Xu, Uri Alon, Graham Neubig, and Vincent Josua Hellendoorn. 2022.
+     A Systematic Evaluation of Large Language Models of Code. In Proceedings of
+     the 6th ACM SIGPLAN International Symposium on Machine Programming (San
+     Diego, CA, USA) (MAPS 2022). Association for Computing Machinery, New York,
+     NY, USA, 1–10.
+[81] Xuejun Yang, Yang Chen, Eric Eide, and John Regehr. 2011. Finding and under-
+     standing bugs in C compilers. In Proceedings of the 32nd ACM SIGPLAN conference
+     on Programming language design and implementation. 283–294.
+[82] Zhiqiang Yuan, Yiling Lou, Mingwei Liu, Shiji Ding, Kaixin Wang, Yixuan Chen,
+     and Xin Peng. 2023. No More Manual Tests? Evaluating and Improving ChatGPT
+     for Unit Test Generation. arXiv:2305.04207 [cs.SE]
+[83] Shafiq Joty Yue Wang, Weishi Wang and Steven C.H. Hoi. 2021. CodeT5: Identifier-
+     aware Unified Pre-trained Encoder-Decoder Models for Code Understanding and
+

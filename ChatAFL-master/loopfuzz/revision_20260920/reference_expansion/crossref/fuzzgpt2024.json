@@ -1,0 +1,2223 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=Large+Language+Models+are+Edge-Case+Generators+Crafting+Unusual+Programs+for+Fuzzing+Deep+Learning+Libraries&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 7476688,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                19
+              ]
+            ],
+            "date-time": "2026-09-19T09:36:44Z",
+            "timestamp": 1789810604215,
+            "version": "4.0.1"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 86,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    2,
+                    6
+                  ]
+                ],
+                "date-time": "2024-02-06T00:00:00Z",
+                "timestamp": 1707177600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100000001",
+              "name": "NSF (National Science Foundation)",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "CCF-2131943"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CCF-2131943"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            },
+            {
+              "DOI": "10.13039/100000001",
+              "name": "NSF (National Science Foundation)",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "CCF-2141474"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CCF-2141474"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                6
+              ]
+            ]
+          },
+          "DOI": "10.1145/3597503.3623343",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                6
+              ]
+            ],
+            "date-time": "2024-02-06T15:53:16Z",
+            "timestamp": 1707234796000
+          },
+          "page": "1-13",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 118,
+          "title": [
+            "Large Language Models are Edge-Case Generators: Crafting Unusual Programs for Fuzzing Deep Learning Libraries"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-4628-4219",
+              "authenticated-orcid": false,
+              "given": "Yinlin",
+              "family": "Deng",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-8660-9324",
+              "authenticated-orcid": false,
+              "given": "Chunqiu Steven",
+              "family": "Xia",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-7976-5086",
+              "authenticated-orcid": false,
+              "given": "Chenyuan",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0009-8974-3356",
+              "authenticated-orcid": false,
+              "given": "Shizhuo Dylan",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0008-1160-800X",
+              "authenticated-orcid": false,
+              "given": "Shujing",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-5175-2702",
+              "authenticated-orcid": false,
+              "given": "Lingming",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois Urbana-Champaign, Champaign, Illinois, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                6
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2023. Coverage.py. https://github.com/nedbat/coveragepy."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "2023. FuzzGPT artifact. https://github.com/ise-uiuc/FuzzGPT."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "2023. requests. https://pypi.org/project/requests/."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Wasi Uddin Ahmad Saikat Chakraborty Baishakhi Ray and Kai-Wei Chang. 2021. Unified Pre-training for Program Understanding and Generation. arXiv:2103.06333 [cs.CL]",
+              "DOI": "10.18653/v1/2021.naacl-main.211"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MS.2020.3016773"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "Hospitals turn to artificial intelligence to help with an age-old problem:Doctors' poor bedside manners. The Washington Post",
+              "author": "Brown Dalvin",
+              "year": "2021",
+              "unstructured": "Dalvin Brown. 2021. Hospitals turn to artificial intelligence to help with an age-old problem:Doctors' poor bedside manners. The Washington Post (2021). https://www.washingtonpost.com/technology/2021/02/16/virtual-ai-hospital-patients/."
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "Tom Brown Benjamin Mann Nick Ryder Melanie Subbiah Jared D Kaplan Prafulla Dhariwal Arvind Neelakantan Pranav Shyam Girish Sastry Amanda Askell et al. 2020. Language models are few-shot learners. Advances in neural information processing systems 33 (2020) 1877--1901."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/290941.291025"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2019.00037"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "volume-title": "Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al.",
+              "author": "Chen Mark",
+              "year": "2021",
+              "unstructured": "Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al. 2021. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374 (2021)."
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.3115/v1/D14-1179"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3213846.3213848"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597926.3598067"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3540250.3549085"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "Murali Krishna Ramanathan, Ramesh Nallapati, Parminder Bhatia, Dan Roth, and Bing Xiang.",
+              "author": "Ding Yangruibo",
+              "year": "2022",
+              "unstructured": "Yangruibo Ding, Zijian Wang, Wasi Uddin Ahmad, Murali Krishna Ramanathan, Ramesh Nallapati, Parminder Bhatia, Dan Roth, and Bing Xiang. 2022. CoCoMIC: Code Completion By Jointly Modeling In-file and Cross-file Context. arXiv preprint arXiv:2212.10007 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133917"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Zhangyin Feng Daya Guo Duyu Tang Nan Duan Xiaocheng Feng Ming Gong Linjun Shou Bing Qin Ting Liu Daxin Jiang and Ming Zhou. 2020. CodeBERT: A Pre-Trained Model for Programming and Natural Languages. arXiv:2002.08155.",
+              "DOI": "10.18653/v1/2020.findings-emnlp.139"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT'20)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++: Combining Incremental Steps of Fuzzing Research. In Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT'20). USENIX Association, USA, Article 10, 1 pages."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "volume-title": "Incoder: A generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999",
+              "author": "Fried Daniel",
+              "year": "2022",
+              "unstructured": "Daniel Fried, Armen Aghajanyan, Jessy Lin, Sida Wang, Eric Wallace, Freda Shi, Ruiqi Zhong, Wen-tau Yih, Luke Zettlemoyer, and Mike Lewis. 2022. Incoder: A generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "unstructured": "Leo Gao Stella Biderman Sid Black Laurence Golding Travis Hoppe Charles Foster Jason Phang Horace He Anish Thite Noa Nabeshima et al. 2020. The pile: An 800gb dataset of diverse text for language modeling. arXiv preprint arXiv:2101.00027 (2020)."
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "unstructured": "GitHub. 2022. torch.nn.PixelShuffle crash with floating point exception when input has 0 size in the last three dimensions. (2022). https://github.com/pytorch/pytorch/issues/85155."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2017.8115618"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510092"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and Ming Zhou.",
+              "author": "Guo Daya",
+              "year": "2021",
+              "unstructured": "Daya Guo, Shuo Ren, Shuai Lu, Zhangyin Feng, Duyu Tang, Shujie Liu, Long Zhou, Nan Duan, Alexey Svyatkovskiy, Shengyu Fu, Michele Tufano, Shao Kun Deng, Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and Ming Zhou. 2021. GraphCodeBERT: Pre-training Code Representations with Data Flow. arXiv:2009.08366 [cs.SE]"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3324884.3416571"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/2337223.2337322"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "volume-title": "Long Short-term Memory. Neural computation 9 (12",
+              "author": "Hochreiter Sepp",
+              "year": "1997",
+              "unstructured": "Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long Short-term Memory. Neural computation 9 (12 1997), 1735--80."
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "USENIX Security Symposium. 445--458",
+              "author": "Holler Christian",
+              "year": "2012",
+              "unstructured": "Christian Holler, Kim Herzig, Andreas Zeller, et al. 2012. Fuzzing with Code Fragments.. In USENIX Security Symposium. 445--458."
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "unstructured": "HuggingFace 2022. Hugging Face. https://huggingface.co."
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2666356.2594334"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2858965.2814319"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "volume-title": "Proceedings of the 29th USENIX Conference on Security Symposium. 2613--2630",
+              "author": "Lee Suyoung",
+              "year": "2020",
+              "unstructured": "Suyoung Lee, HyungSeok Han, Sang Kil Cha, and Sooel Son. 2020. Montage: A neural network language model-guided javascript engine fuzzer. In Proceedings of the 29th USENIX Conference on Security Symposium. 2613--2630."
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Jiawei Liu Jinkun Lin Fabian Ruffy Cheng Tan Jinyang Li Aurojit Panda and Lingming Zhang. 2023. NNSmith: Generating Diverse and Valid Test Cases for Deep Learning Compilers. In ASPLOS. 530--543.",
+              "DOI": "10.1145/3575693.3575707"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/2022.deelio-1.10"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3527317"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "first-page": "1",
+              "article-title": "Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing",
+              "volume": "55",
+              "author": "Liu Pengfei",
+              "year": "2023",
+              "unstructured": "Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and Graham Neubig. 2023. Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing. Comput. Surveys 55, 9 (2023), 1--35.",
+              "journal-title": "Comput. Surveys"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1609/aaai.v33i01.33011044"
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "Decoupled Weight Decay Regularization. In International Conference on Learning Representations. https://openreview.net/forum?id=Bkg6RiCqY7",
+              "author": "Loshchilov Ilya",
+              "year": "2019",
+              "unstructured": "Ilya Loshchilov and Frank Hutter. 2019. Decoupled Weight Decay Regularization. In International Conference on Learning Representations. https://openreview.net/forum?id=Bkg6RiCqY7"
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "unstructured": "M. Zalewski 2016. American Fuzzy Lop - Whitepaper. https://lcamtuf.coredump.cx/afl/technical_details.txt."
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "volume-title": "Learning Performance-Improving Code Edits. arXiv preprint arXiv:2302.07867",
+              "author": "Madaan Aman",
+              "year": "2023",
+              "unstructured": "Aman Madaan, Alexander Shypula, Uri Alon, Milad Hashemi, Parthasarathy Ranganathan, Yiming Yang, Graham Neubig, and Amir Yazdanbakhsh. 2023. Learning Performance-Improving Code Edits. arXiv preprint arXiv:2302.07867 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "volume-title": "All but End Car Crashes? The Potential Is There. The New York Times",
+              "author": "Mohn Tanya",
+              "year": "2022",
+              "unstructured": "Tanya Mohn. 2022. Can A.I. All but End Car Crashes? The Potential Is There. The New York Times (2022). https://www.nytimes.com/2022/04/19/technology/ai-road-car-safety.html."
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "volume-title": "Codegen: An open large language model for code with multi-turn program synthesis. arXiv preprint arXiv:2203.13474",
+              "author": "Nijkamp Erik",
+              "year": "2022",
+              "unstructured": "Erik Nijkamp, Bo Pang, Hiroaki Hayashi, Lifu Tu, Huan Wang, Yingbo Zhou, Silvio Savarese, and Caiming Xiong. 2022. Codegen: An open large language model for code with multi-turn program synthesis. arXiv preprint arXiv:2203.13474 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "volume-title": "Guy Gur-Ari, Henryk Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David Luan, et al.",
+              "author": "Nye Maxwell",
+              "year": "2021",
+              "unstructured": "Maxwell Nye, Anders Johan Andreassen, Guy Gur-Ari, Henryk Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David Luan, et al. 2021. Show your work: Scratchpads for intermediate computation with language models. arXiv preprint arXiv:2112.00114 (2021)."
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "volume-title": "https://openai.com/blog/chatgpt",
+              "author": "AI.",
+              "year": "2023",
+              "unstructured": "OpenAI. 2023. ChatGPT. (2023). https://openai.com/blog/chatgpt."
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/D19-1250"
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00107"
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "unstructured": "PyTorch 2023. PyTorch. http://pytorch.org."
+            },
+            {
+              "key": "e_1_3_2_1_50_1",
+              "unstructured": "Alec Radford Karthik Narasimhan Tim Salimans Ilya Sutskever et al. 2018. Improving language understanding by generative pre-training. (2018)."
+            },
+            {
+              "key": "e_1_3_2_1_51_1",
+              "unstructured": "Alec Radford Jeffrey Wu Rewon Child David Luan Dario Amodei Ilya Sutskever et al. 2019. Language models are unsupervised multitask learners. OpenAI blog 1 8 (2019) 9."
+            },
+            {
+              "key": "e_1_3_2_1_52_1",
+              "volume-title": "A survey of deep learning for scientific discovery. arXiv preprint arXiv:2003.11755",
+              "author": "Raghu Maithra",
+              "year": "2020",
+              "unstructured": "Maithra Raghu and Eric Schmidt. 2020. A survey of deep learning for scientific discovery. arXiv preprint arXiv:2003.11755 (2020)."
+            },
+            {
+              "key": "e_1_3_2_1_53_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/2022.naacl-main.191"
+            },
+            {
+              "key": "e_1_3_2_1_54_1",
+              "volume-title": "Using A.I. to Detect Breast Cancer That Doctors Miss. The New York Times",
+              "author": "Satariano Adam",
+              "year": "2023",
+              "unstructured": "Adam Satariano and Cade Metz. 2023. Using A.I. to Detect Breast Cancer That Doctors Miss. The New York Times (2023). https://www.nytimes.com/2023/03/05/technology/artificial-intelligence-breast-cancer-detection.html."
+            },
+            {
+              "key": "e_1_3_2_1_55_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TIT.1965.1053799"
+            },
+            {
+              "key": "e_1_3_2_1_56_1",
+              "volume-title": "Transportation Generation: See How AI and the Metaverse Are Shaping the Automotive Industry at GTC. Nvidia Blog",
+              "author": "Shapiro Danny",
+              "year": "2023",
+              "unstructured": "Danny Shapiro. 2023. Transportation Generation: See How AI and the Metaverse Are Shaping the Automotive Industry at GTC. Nvidia Blog (2023). https://blogs.nvidia.com/blog/2023/02/16/ai-metaverse-shaping-automotive-industry-gtc/."
+            },
+            {
+              "key": "e_1_3_2_1_57_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/CVPR.2016.207"
+            },
+            {
+              "key": "e_1_3_2_1_58_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/2020.emnlp-main.346"
+            },
+            {
+              "key": "e_1_3_2_1_59_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2020.3013716"
+            },
+            {
+              "key": "e_1_3_2_1_60_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2983990.2984038"
+            },
+            {
+              "key": "e_1_3_2_1_61_1",
+              "volume-title": "Fuzzing: Brute Force Vulnerability Discovery",
+              "author": "Sutton Michael",
+              "year": "2007",
+              "unstructured": "Michael Sutton, Adam Greene, and Pedram Amini. 2007. Fuzzing: Brute Force Vulnerability Discovery. Addison-Wesley Professional."
+            },
+            {
+              "key": "e_1_3_2_1_62_1",
+              "unstructured": "TensorFlow 2023. TensorFlow. https://www.tensorflow.org."
+            },
+            {
+              "key": "e_1_3_2_1_63_1",
+              "volume-title": "A Smarter App Is Watching Your Wallet. The New York Times",
+              "author": "Tugend Alina",
+              "year": "2021",
+              "unstructured": "Alina Tugend. 2021. A Smarter App Is Watching Your Wallet. The New York Times (2021). https://www.nytimes.com/2021/03/09/business/apps-personal-finance-budget.html."
+            },
+            {
+              "key": "e_1_3_2_1_64_1",
+              "volume-title": "Attention is all you need. Advances in neural information processing systems 30",
+              "author": "Vaswani Ashish",
+              "year": "2017",
+              "unstructured": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. Advances in neural information processing systems 30 (2017)."
+            },
+            {
+              "key": "e_1_3_2_1_65_1",
+              "volume-title": "Hung Viet Pham, and Lin Tan",
+              "author": "Wang Jiannan",
+              "year": "2022",
+              "unstructured": "Jiannan Wang, Thibaud Lutellier, Shangshu Qian, Hung Viet Pham, and Lin Tan. 2022. EAGLE: Creating Equivalent Graphs to Test Deep Learning Libraries. (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_66_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE-SEIP52600.2021.00042"
+            },
+            {
+              "key": "e_1_3_2_1_67_1",
+              "volume-title": "Code4struct: Code generation for few-shot structured prediction from natural language. arXiv preprint arXiv:2210.12810",
+              "author": "Wang Xingyao",
+              "year": "2022",
+              "unstructured": "Xingyao Wang, Sha Li, and Heng Ji. 2022. Code4struct: Code generation for few-shot structured prediction from natural language. arXiv preprint arXiv:2210.12810 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_68_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409761"
+            },
+            {
+              "key": "e_1_3_2_1_69_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510041"
+            },
+            {
+              "key": "e_1_3_2_1_70_1",
+              "volume-title": "Chi, Quoc Le, and Denny Zhou",
+              "author": "Wei Jason",
+              "year": "2022",
+              "unstructured": "Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Ed Chi, Quoc Le, and Denny Zhou. 2022. Chain of thought prompting elicits reasoning in large language models. arXiv preprint arXiv:2201.11903 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_71_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3428261"
+            },
+            {
+              "key": "e_1_3_2_1_72_1",
+              "volume-title": "Revisiting the Plastic Surgery Hypothesis via Large Language Models. arXiv preprint arXiv:2303.10494",
+              "author": "Xia Chunqiu Steven",
+              "year": "2023",
+              "unstructured": "Chunqiu Steven Xia, Yifeng Ding, and Lingming Zhang. 2023. Revisiting the Plastic Surgery Hypothesis via Large Language Models. arXiv preprint arXiv:2303.10494 (2023)."
+            },
+            {
+              "key": "e_1_3_2_1_73_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534220"
+            },
+            {
+              "key": "e_1_3_2_1_74_1",
+              "volume-title": "An explanation of in-context learning as implicit bayesian inference. arXiv preprint arXiv:2111.02080",
+              "author": "Xie Sang Michael",
+              "year": "2021",
+              "unstructured": "Sang Michael Xie, Aditi Raghunathan, Percy Liang, and Tengyu Ma. 2021. An explanation of in-context learning as implicit bayesian inference. arXiv preprint arXiv:2111.02080 (2021)."
+            },
+            {
+              "key": "e_1_3_2_1_75_1",
+              "volume-title": "Fuzzing Automatic Differentiation in Deep-Learning Libraries. In International Conference on Software Engineering (ICSE).",
+              "author": "Yang Chenyuan",
+              "year": "2023",
+              "unstructured": "Chenyuan Yang, Yinlin Deng, Jiayi Yao, Yuxing Tu, Hanchi Li, and Lingming Zhang. 2023. Fuzzing Automatic Differentiation in Deep-Learning Libraries. In International Conference on Software Engineering (ICSE). to appear."
+            },
+            {
+              "key": "e_1_3_2_1_76_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1993498.1993532"
+            },
+            {
+              "key": "e_1_3_2_1_77_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3453483.3454054"
+            },
+            {
+              "key": "e_1_3_2_1_78_1",
+              "volume-title": "Complementary Explanations for Effective In-Context Learning. arXiv preprint arXiv:2211.13892",
+              "author": "Ye Xi",
+              "year": "2022",
+              "unstructured": "Xi Ye, Srinivasan Iyer, Asli Celikyilmaz, Ves Stoyanov, Greg Durrett, and Ramakanth Pasunuru. 2022. Complementary Explanations for Effective In-Context Learning. arXiv preprint arXiv:2211.13892 (2022)."
+            },
+            {
+              "key": "e_1_3_2_1_79_1",
+              "volume-title": "EMNLP",
+              "author": "Yue Wang Shafiq Joty",
+              "year": "2021",
+              "unstructured": "Shafiq Joty Yue Wang, Weishi Wang and Steven C.H. Hoi. 2021. CodeT5: Identifieraware Unified Pre-trained Encoder-Decoder Models for Code Understanding and Generation. In EMNLP 2021."
+            },
+            {
+              "key": "e_1_3_2_1_80_1",
+              "unstructured": "Andreas Zeller Rahul Gopinath Marcel Böhme Gordon Fraser and Christian Holler. 2019. The fuzzing book."
+            },
+            {
+              "key": "e_1_3_2_1_81_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238187"
+            },
+            {
+              "key": "e_1_3_2_1_82_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3062341.3062379"
+            },
+            {
+              "key": "e_1_3_2_1_83_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST.2019.00016"
+            },
+            {
+              "key": "e_1_3_2_1_84_1",
+              "volume-title": "History-Driven Test Program Synthesis for JVM Testing. In ICSE",
+              "author": "Zhao Yingquan",
+              "year": "2022",
+              "unstructured": "Yingquan Zhao, Zan Wang, Junjie Chen, Mengdi Liu, Mingyuan Wu, Yuqun Zhang, and Lingming Zhang. 2022. History-Driven Test Program Synthesis for JVM Testing. In ICSE 2022. 1133--1144."
+            },
+            {
+              "key": "e_1_3_2_1_85_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3551349.3556894"
+            },
+            {
+              "key": "e_1_3_2_1_86_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3372297.3417260"
+            },
+            {
+              "key": "e_1_3_2_1_87_1",
+              "volume-title": "Ekin Dogus Cubuk, and Quoc Le",
+              "author": "Zoph Barret",
+              "year": "2020",
+              "unstructured": "Barret Zoph, Golnaz Ghiasi, Tsung-Yi Lin, Yin Cui, Hanxiao Liu, Ekin Dogus Cubuk, and Quoc Le. 2020. Rethinking pre-training and self-training. Advances in neural information processing systems 33 (2020), 3833--3845."
+            }
+          ],
+          "event": {
+            "name": "ICSE '24: IEEE/ACM 46th International Conference on Software Engineering",
+            "location": "Lisbon Portugal",
+            "acronym": "ICSE '24",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering",
+              "IEEE CS",
+              "Faculty of Engineering of University of Porto"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the IEEE/ACM 46th International Conference on Software Engineering"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3597503.3623343",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3597503.3623343",
+              "content-type": "application/pdf",
+              "content-version": "vor",
+              "intended-application": "syndication"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3597503.3623343",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                18
+              ]
+            ],
+            "date-time": "2025-06-18T18:49:11Z",
+            "timestamp": 1750272551000
+          },
+          "score": 78.82484,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3597503.3623343"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                6
+              ]
+            ]
+          },
+          "references-count": 86,
+          "alternative-id": [
+            "10.1145/3597503.3623343",
+            "10.1145/3597503"
+          ],
+          "URL": "https://doi.org/10.1145/3597503.3623343",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                2,
+                6
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-02-06",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                19
+              ]
+            ],
+            "date-time": "2026-09-19T17:27:42Z",
+            "timestamp": 1789838862246,
+            "version": "4.0.1"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 86,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2023,
+                    7,
+                    12
+                  ]
+                ],
+                "date-time": "2023-07-12T00:00:00Z",
+                "timestamp": 1689120000000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "funder": [
+            {
+              "DOI": "10.13039/100000001",
+              "name": "National Science Foundation",
+              "doi-asserted-by": "publisher",
+              "award": [
+                "CCF-2131943,CCF-2141474"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "CCF-2131943,CCF-2141474"
+                  ]
+                }
+              ],
+              "id": [
+                {
+                  "id": "10.13039/100000001",
+                  "id-type": "DOI",
+                  "asserted-by": "publisher"
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "DOI": "10.1145/3597926.3598067",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                13
+              ]
+            ],
+            "date-time": "2023-07-13T16:12:53Z",
+            "timestamp": 1689264773000
+          },
+          "page": "423-435",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 321,
+          "title": [
+            "Large Language Models Are Zero-Shot Fuzzers: Fuzzing Deep-Learning Libraries via Large Language Models"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Yinlin",
+              "family": "Deng",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "University of Illinois at Urbana-Champaign, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Chunqiu Steven",
+              "family": "Xia",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois at Urbana-Champaign, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Haoran",
+              "family": "Peng",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Science and Technology of China, China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Chenyuan",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois at Urbana-Champaign, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Lingming",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Illinois at Urbana-Champaign, USA"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                13
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "2022. Beta distribution. https://en.wikipedia.org/wiki/Beta_distribution \t\t\t\t  2022. Beta distribution. https://en.wikipedia.org/wiki/Beta_distribution"
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "2022. Codex Documentation - Best Practices. https://beta.openai.com/docs/guides/code/best-practices \t\t\t\t  2022. Codex Documentation - Best Practices. https://beta.openai.com/docs/guides/code/best-practices"
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "unstructured": "2022. Coverage.py. https://github.com/nedbat/coveragepy \t\t\t\t  2022. Coverage.py. https://github.com/nedbat/coveragepy"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "unstructured": "2022. Gamma function. https://en.wikipedia.org/wiki/Gamma_function \t\t\t\t  2022. Gamma function. https://en.wikipedia.org/wiki/Gamma_function"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Wasi Uddin Ahmad Saikat Chakraborty Baishakhi Ray and Kai-Wei Chang. 2021. Unified Pre-training for Program Understanding and Generation. arxiv:2103.06333. \t\t\t\t  Wasi Uddin Ahmad Saikat Chakraborty Baishakhi Ray and Kai-Wei Chang. 2021. Unified Pre-training for Program Understanding and Generation. arxiv:2103.06333.",
+              "DOI": "10.18653/v1/2021.naacl-main.211"
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "unstructured": "Jacob Austin Augustus Odena Maxwell Nye Maarten Bosma Henryk Michalewski David Dohan Ellen Jiang Carrie Cai Michael Terry Quoc Le and Charles Sutton. 2021. Program Synthesis with Large Language Models. arxiv:2108.07732 \t\t\t\t  Jacob Austin Augustus Odena Maxwell Nye Maarten Bosma Henryk Michalewski David Dohan Ellen Jiang Carrie Cai Michael Terry Quoc Le and Charles Sutton. 2021. Program Synthesis with Large Language Models. arxiv:2108.07732"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "unstructured": "Rahul Banerjee. 2021. Writing Better Tests with AI and GitHub Copilot. Codecov https://about.codecov.io/blog/writing-better-tests-with-ai-and-github-copilot/ \t\t\t\t  Rahul Banerjee. 2021. Writing Better Tests with AI and GitHub Copilot. Codecov https://about.codecov.io/blog/writing-better-tests-with-ai-and-github-copilot/"
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MS.2020.3016773"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "volume-title": "Hospitals turn to artificial intelligence to help with an age-old problem: Doctors",
+              "author": "Brown Dalvin",
+              "year": "2021",
+              "unstructured": "Dalvin Brown . 2021. Hospitals turn to artificial intelligence to help with an age-old problem: Doctors ’ poor bedside manners. The Washington Post , https://www.washingtonpost.com/technology/ 2021 /02/16/virtual-ai-hospital-patients/ Dalvin Brown. 2021. Hospitals turn to artificial intelligence to help with an age-old problem: Doctors’ poor bedside manners. The Washington Post, https://www.washingtonpost.com/technology/2021/02/16/virtual-ai-hospital-patients/"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "unstructured": "Tom B. Brown Benjamin Mann Nick Ryder Melanie Subbiah Jared Kaplan Prafulla Dhariwal Arvind Neelakantan Pranav Shyam Girish Sastry Amanda Askell Sandhini Agarwal Ariel Herbert-Voss Gretchen Krueger Tom Henighan Rewon Child Aditya Ramesh Daniel M. Ziegler Jeffrey Wu Clemens Winter Christopher Hesse Mark Chen Eric Sigler Mateusz Litwin Scott Gray Benjamin Chess Jack Clark Christopher Berner Sam McCandlish Alec Radford Ilya Sutskever and Dario Amodei. 2020. Language Models are Few-Shot Learners. arXiv:2005.14165 \t\t\t\t  Tom B. Brown Benjamin Mann Nick Ryder Melanie Subbiah Jared Kaplan Prafulla Dhariwal Arvind Neelakantan Pranav Shyam Girish Sastry Amanda Askell Sandhini Agarwal Ariel Herbert-Voss Gretchen Krueger Tom Henighan Rewon Child Aditya Ramesh Daniel M. Ziegler Jeffrey Wu Clemens Winter Christopher Hesse Mark Chen Eric Sigler Mateusz Litwin Scott Gray Benjamin Chess Jack Clark Christopher Berner Sam McCandlish Alec Radford Ilya Sutskever and Dario Amodei. 2020. Language Models are Few-Shot Learners. arXiv:2005.14165"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "volume-title": "Advances in Neural Information Processing Systems",
+              "author": "Chapelle Olivier",
+              "year": "2011",
+              "unstructured": "Olivier Chapelle and Lihong Li. 2011. An Empirical Evaluation of Thompson Sampling . In Advances in Neural Information Processing Systems , J. Shawe-Taylor, R. Zemel, P. Bartlett, F. Pereira, and K.Q. Weinberger (Eds.). 24, Curran Associates, Inc. . https://proceedings.neurips.cc/paper/ 2011 /file/e53a0a2978c28872a4505bdb51db06dc-Paper.pdf Olivier Chapelle and Lihong Li. 2011. An Empirical Evaluation of Thompson Sampling. In Advances in Neural Information Processing Systems, J. Shawe-Taylor, R. Zemel, P. Bartlett, F. Pereira, and K.Q. Weinberger (Eds.). 24, Curran Associates, Inc.. https://proceedings.neurips.cc/paper/2011/file/e53a0a2978c28872a4505bdb51db06dc-Paper.pdf"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "volume-title": "Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, and Greg Brockman.",
+              "author": "Chen Mark",
+              "year": "2021",
+              "unstructured": "Mark Chen , Jerry Tworek , Heewoo Jun , Qiming Yuan , Henrique Ponde de Oliveira Pinto , Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, and Greg Brockman. 2021 . Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374. Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, and Greg Brockman. 2021. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374."
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.3115/v1/D14-1179"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "unstructured": "Aakanksha Chowdhery Sharan Narang Jacob Devlin Maarten Bosma Gaurav Mishra Adam Roberts Paul Barham Hyung Won Chung Charles Sutton Sebastian Gehrmann Parker Schuh Kensen Shi Sasha Tsvyashchenko Joshua Maynez Abhishek Rao Parker Barnes Yi Tay Noam Shazeer Vinodkumar Prabhakaran Emily Reif Nan Du Ben Hutchinson Reiner Pope James Bradbury Jacob Austin Michael Isard Guy Gur-Ari Pengcheng Yin Toju Duke Anselm Levskaya Sanjay Ghemawat Sunipa Dev Henryk Michalewski Xavier Garcia Vedant Misra Kevin Robinson Liam Fedus Denny Zhou Daphne Ippolito David Luan Hyeontaek Lim Barret Zoph Alexander Spiridonov Ryan Sepassi David Dohan Shivani Agrawal Mark Omernick Andrew M. Dai Thanumalayan Sankaranarayana Pillai Marie Pellat Aitor Lewkowycz Erica Moreira Rewon Child Oleksandr Polozov Katherine Lee Zongwei Zhou Xuezhi Wang Brennan Saeta Mark Diaz Orhan Firat Michele Catasta Jason Wei Kathy Meier-Hellstern Douglas Eck Jeff Dean Slav Petrov and Noah Fiedel. 2022. PaLM: Scaling Language Modeling with Pathways. arxiv:2204.02311. \t\t\t\t  Aakanksha Chowdhery Sharan Narang Jacob Devlin Maarten Bosma Gaurav Mishra Adam Roberts Paul Barham Hyung Won Chung Charles Sutton Sebastian Gehrmann Parker Schuh Kensen Shi Sasha Tsvyashchenko Joshua Maynez Abhishek Rao Parker Barnes Yi Tay Noam Shazeer Vinodkumar Prabhakaran Emily Reif Nan Du Ben Hutchinson Reiner Pope James Bradbury Jacob Austin Michael Isard Guy Gur-Ari Pengcheng Yin Toju Duke Anselm Levskaya Sanjay Ghemawat Sunipa Dev Henryk Michalewski Xavier Garcia Vedant Misra Kevin Robinson Liam Fedus Denny Zhou Daphne Ippolito David Luan Hyeontaek Lim Barret Zoph Alexander Spiridonov Ryan Sepassi David Dohan Shivani Agrawal Mark Omernick Andrew M. Dai Thanumalayan Sankaranarayana Pillai Marie Pellat Aitor Lewkowycz Erica Moreira Rewon Child Oleksandr Polozov Katherine Lee Zongwei Zhou Xuezhi Wang Brennan Saeta Mark Diaz Orhan Firat Michele Catasta Jason Wei Kathy Meier-Hellstern Douglas Eck Jeff Dean Slav Petrov and Noah Fiedel. 2022. PaLM: Scaling Language Modeling with Pathways. arxiv:2204.02311."
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3213846.3213848"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3540250.3549085"
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Zhangyin Feng Daya Guo Duyu Tang Nan Duan Xiaocheng Feng Ming Gong Linjun Shou Bing Qin Ting Liu Daxin Jiang and Ming Zhou. 2020. CodeBERT: A Pre-Trained Model for Programming and Natural Languages. arXiv:2002.08155 \t\t\t\t  Zhangyin Feng Daya Guo Duyu Tang Nan Duan Xiaocheng Feng Ming Gong Linjun Shou Bing Qin Ting Liu Daxin Jiang and Ming Zhou. 2020. CodeBERT: A Pre-Trained Model for Programming and Natural Languages. arXiv:2002.08155",
+              "DOI": "10.18653/v1/2020.findings-emnlp.139"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT’20)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eiß feldt, and Marc Heuse . 2020 . AFL++: Combining Incremental Steps of Fuzzing Research . In Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT’20) . USENIX Association, USA. Article 10, 1 pages. Andrea Fioraldi, Dominik Maier, Heiko Eiß feldt, and Marc Heuse. 2020. AFL++: Combining Incremental Steps of Fuzzing Research. In Proceedings of the 14th USENIX Conference on Offensive Technologies (WOOT’20). USENIX Association, USA. Article 10, 1 pages."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2025113.2025179"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2012.14"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "volume-title": "Incoder: A generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999.",
+              "author": "Fried Daniel",
+              "year": "2022",
+              "unstructured": "Daniel Fried , Armen Aghajanyan , Jessy Lin , Sida Wang , Eric Wallace , Freda Shi , Ruiqi Zhong , Wen-tau Yih, Luke Zettlemoyer , and Mike Lewis . 2022 . Incoder: A generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999. Daniel Fried, Armen Aghajanyan, Jessy Lin, Sida Wang, Eric Wallace, Freda Shi, Ruiqi Zhong, Wen-tau Yih, Luke Zettlemoyer, and Mike Lewis. 2022. Incoder: A generative model for code infilling and synthesis. arXiv preprint arXiv:2204.05999."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "unstructured": "Josiah Willard Gibbs. 1902. Elementary principles in statistical mechanics: developed with especial reference to the rational foundations of thermodynamics. C. Scribner’s sons. \t\t\t\t  Josiah Willard Gibbs. 1902. Elementary principles in statistical mechanics: developed with especial reference to the rational foundations of thermodynamics. C. Scribner’s sons."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2017.8115618"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "Proceedings of the 27th International Conference on Neural Information Processing Systems -",
+              "volume": "2",
+              "author": "Goodfellow Ian J.",
+              "year": "2014",
+              "unstructured": "Ian J. Goodfellow , Jean Pouget-Abadie , Mehdi Mirza , Bing Xu , David Warde-Farley , Sherjil Ozair , Aaron Courville , and Yoshua Bengio . 2014 . Generative Adversarial Nets . In Proceedings of the 27th International Conference on Neural Information Processing Systems - Volume 2 (NIPS’14). MIT Press, Cambridge, MA, USA. 2672–2680. Ian J. Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. 2014. Generative Adversarial Nets. In Proceedings of the 27th International Conference on Neural Information Processing Systems - Volume 2 (NIPS’14). MIT Press, Cambridge, MA, USA. 2672–2680."
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510092"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "volume-title": "Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and Ming Zhou.",
+              "author": "Guo Daya",
+              "year": "2021",
+              "unstructured": "Daya Guo , Shuo Ren , Shuai Lu , Zhangyin Feng , Duyu Tang , Shujie Liu , Long Zhou , Nan Duan , Alexey Svyatkovskiy , Shengyu Fu , Michele Tufano , Shao Kun Deng , Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and Ming Zhou. 2021 . GraphCodeBERT: Pre-training Code Representations with Data Flow . arxiv:2009.08366. Daya Guo, Shuo Ren, Shuai Lu, Zhangyin Feng, Duyu Tang, Shujie Liu, Long Zhou, Nan Duan, Alexey Svyatkovskiy, Shengyu Fu, Michele Tufano, Shao Kun Deng, Colin Clement, Dawn Drain, Neel Sundaresan, Jian Yin, Daxin Jiang, and Ming Zhou. 2021. GraphCodeBERT: Pre-training Code Representations with Data Flow. arxiv:2009.08366."
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3324884.3416571"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.5555/2337223.2337322"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "Long Short-term Memory. Neural computation, 9",
+              "author": "Hochreiter Sepp",
+              "year": "1997",
+              "unstructured": "Sepp Hochreiter and Jürgen Schmidhuber . 1997. Long Short-term Memory. Neural computation, 9 ( 1997 ), 12, 1735–80. Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long Short-term Memory. Neural computation, 9 (1997), 12, 1735–80."
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "volume-title": "USENIX Security Symposium. 445–458",
+              "author": "Holler Christian",
+              "year": "2012",
+              "unstructured": "Christian Holler , Kim Herzig , and Andreas Zeller . 2012 . Fuzzing with Code Fragments .. In USENIX Security Symposium. 445–458 . Christian Holler, Kim Herzig, and Andreas Zeller. 2012. Fuzzing with Code Fragments.. In USENIX Security Symposium. 445–458."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "unstructured": "Ari Holtzman Jan Buys Li Du Maxwell Forbes and Yejin Choi. 2019. The Curious Case of Neural Text Degeneration. arXiv:1904.09751 \t\t\t\t  Ari Holtzman Jan Buys Li Du Maxwell Forbes and Yejin Choi. 2019. The Curious Case of Neural Text Degeneration. arXiv:1904.09751"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3203217.3203241"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "unstructured": "2022. Hugging Face.  https://huggingface.co \t\t\t\t  2022. Hugging Face.  https://huggingface.co"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "volume-title": "Ng",
+              "author": "Huval Brody",
+              "year": "2015",
+              "unstructured": "Brody Huval , Tao Wang , Sameep Tandon , Jeff Kiske , Will Song , Joel Pazhayampallil , Mykhaylo Andriluka , Pranav Rajpurkar , Toki Migimatsu , Royce Cheng-Yue , Fernando Mujica , Adam Coates , and Andrew Y . Ng . 2015 . An Empirical Evaluation of Deep Learning on Highway Driving . arxiv:1504.01716. Brody Huval, Tao Wang, Sameep Tandon, Jeff Kiske, Will Song, Joel Pazhayampallil, Mykhaylo Andriluka, Pranav Rajpurkar, Toki Migimatsu, Royce Cheng-Yue, Fernando Mujica, Adam Coates, and Andrew Y. Ng. 2015. An Empirical Evaluation of Deep Learning on Highway Driving. arxiv:1504.01716."
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "unstructured": "2015. libFuzzer a library for coverage-guided fuzz testing.  https://llvm.org/docs/LibFuzzer.html \t\t\t\t  2015. libFuzzer a library for coverage-guided fuzz testing.  https://llvm.org/docs/LibFuzzer.html"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "unstructured": "2020. Keras.  https://keras.io/ \t\t\t\t  2020. Keras.  https://keras.io/"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3360607"
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2594291.2594334"
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Lee Suyoung",
+              "year": "2020",
+              "unstructured": "Suyoung Lee , HyungSeok Han , Sang Kil Cha , and Sooel Son . 2020 . Montage: A Neural Network Language $Model-Guided$$JavaScript$ Engine Fuzzer . In 29th USENIX Security Symposium (USENIX Security 20) . 2613–2630. Suyoung Lee, HyungSeok Han, Sang Kil Cha, and Sooel Son. 2020. Montage: A Neural Network Language $Model-Guided$$JavaScript$ Engine Fuzzer. In 29th USENIX Security Symposium (USENIX Security 20). 2613–2630."
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "volume-title": "CODAMOSA: Escaping Coverage Plateaus in Test Generation with Pre-trained Large Language Models. In 45th International Conference on Software Engineering.",
+              "author": "Lemieux Caroline",
+              "year": "2023",
+              "unstructured": "Caroline Lemieux , Jeevana Priya Inala , Shuvendu K Lahiri , and Siddhartha Sen . 2023 . CODAMOSA: Escaping Coverage Plateaus in Test Generation with Pre-trained Large Language Models. In 45th International Conference on Software Engineering. Caroline Lemieux, Jeevana Priya Inala, Shuvendu K Lahiri, and Siddhartha Sen. 2023. CODAMOSA: Escaping Coverage Plateaus in Test Generation with Pre-trained Large Language Models. In 45th International Conference on Software Engineering."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238176"
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.18653/v1/2021.emnlp-main.243"
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "unstructured": "Jiawei Liu Jinkun Lin Fabian Ruffy Cheng Tan Jinyang Li Aurojit Panda and Lingming Zhang. 2023. NNSmith: Generating Diverse and Valid Test Cases for Deep Learning Compilers. In ASPLOS. 530–543. \t\t\t\t  Jiawei Liu Jinkun Lin Fabian Ruffy Cheng Tan Jinyang Li Aurojit Panda and Lingming Zhang. 2023. NNSmith: Generating Diverse and Valid Test Cases for Deep Learning Compilers. In ASPLOS. 530–543."
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3527317"
+            },
+            {
+              "key": "e_1_3_2_1_46_1",
+              "volume-title": "Yuyao Wang, and Lingming Zhang.",
+              "author": "Liu Jiawei",
+              "year": "2023",
+              "unstructured": "Jiawei Liu , Chunqiu Steven Xia , Yuyao Wang, and Lingming Zhang. 2023 . Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation. arXiv preprint arXiv:2305.01210. Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. 2023. Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation. arXiv preprint arXiv:2305.01210."
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3560815"
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "volume-title": "Proceedings of the AAAI Conference on Artificial Intelligence. 33",
+              "author": "Liu Xiao",
+              "year": "2019",
+              "unstructured": "Xiao Liu , Xiaoting Li , Rupesh Prajapati , and Dinghao Wu . 2019 . Deepfuzz: Automatic generation of syntax valid c programs for fuzz testing . In Proceedings of the AAAI Conference on Artificial Intelligence. 33 , 1044–1051. Xiao Liu, Xiaoting Li, Rupesh Prajapati, and Dinghao Wu. 2019. Deepfuzz: Automatic generation of syntax valid c programs for fuzz testing. In Proceedings of the AAAI Conference on Artificial Intelligence. 33, 1044–1051."
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "unstructured": "Yang Liu. 2019. Fine-tune BERT for Extractive Summarization. arXiv:1903.10318 \t\t\t\t  Yang Liu. 2019. Fine-tune BERT for Extractive Summarization. arXiv:1903.10318"
+            },
+            {
+              "key": "e_1_3_2_1_50_1",
+              "unstructured": "2016. American Fuzzy Lop - Whitepaper.  https://lcamtuf.coredump.cx/afl/technical_details.txt \t\t\t\t  2016. American Fuzzy Lop - Whitepaper.  https://lcamtuf.coredump.cx/afl/technical_details.txt"
+            },
+            {
+              "key": "e_1_3_2_1_51_1",
+              "volume-title": "Waldinger",
+              "author": "Manna Zohar",
+              "year": "1971",
+              "unstructured": "Zohar Manna and Richard J . Waldinger . 1971 . Toward Automatic Program Synthesis. Commun. ACM , 14, 3 (1971), mar, 151–165. Zohar Manna and Richard J. Waldinger. 1971. Toward Automatic Program Synthesis. Commun. ACM, 14, 3 (1971), mar, 151–165."
+            },
+            {
+              "key": "e_1_3_2_1_52_1",
+              "volume-title": "Learning Deep Semantics for Test Completion. In 45th International Conference on Software Engineering.",
+              "author": "Nie Pengyu",
+              "year": "2023",
+              "unstructured": "Pengyu Nie , Rahul Banerjee , Junyi Jessy Li , Raymond J. Mooney , and Milos Gligoric . 2023 . Learning Deep Semantics for Test Completion. In 45th International Conference on Software Engineering. Pengyu Nie, Rahul Banerjee, Junyi Jessy Li, Raymond J. Mooney, and Milos Gligoric. 2023. Learning Deep Semantics for Test Completion. In 45th International Conference on Software Engineering."
+            },
+            {
+              "key": "e_1_3_2_1_53_1",
+              "volume-title": "Guy Gur-Ari, Henryk Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David Luan, Charles Sutton, and Augustus Odena.",
+              "author": "Nye Maxwell",
+              "year": "2021",
+              "unstructured": "Maxwell Nye , Anders Johan Andreassen , Guy Gur-Ari, Henryk Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David Luan, Charles Sutton, and Augustus Odena. 2021 . Show Your Work: Scratchpads for Intermediate Computation with Language Models . https://doi.org/10.48550/ARXIV.2112.00114 10.48550/ARXIV.2112.00114 Maxwell Nye, Anders Johan Andreassen, Guy Gur-Ari, Henryk Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten Bosma, David Luan, Charles Sutton, and Augustus Odena. 2021. Show Your Work: Scratchpads for Intermediate Computation with Language Models. https://doi.org/10.48550/ARXIV.2112.00114"
+            },
+            {
+              "key": "e_1_3_2_1_54_1",
+              "volume-title": "BUSTLE: Bottom-Up program synthesis through learning-guided exploration. arXiv preprint arXiv:2007.14381.",
+              "author": "Odena Augustus",
+              "year": "2020",
+              "unstructured": "Augustus Odena , Kensen Shi , David Bieber , Rishabh Singh , Charles Sutton , and Hanjun Dai . 2020 . BUSTLE: Bottom-Up program synthesis through learning-guided exploration. arXiv preprint arXiv:2007.14381. Augustus Odena, Kensen Shi, David Bieber, Rishabh Singh, Charles Sutton, and Hanjun Dai. 2020. BUSTLE: Bottom-Up program synthesis through learning-guided exploration. arXiv preprint arXiv:2007.14381."
+            },
+            {
+              "key": "e_1_3_2_1_55_1",
+              "volume-title": "Proceedings of the ACM on Programming Languages, 5, OOPSLA",
+              "author": "Park Jiwon",
+              "year": "2021",
+              "unstructured": "Jiwon Park , Dominik Winterer , Chengyu Zhang , and Zhendong Su . 2021 . Generative type-aware mutation for testing SMT solvers . Proceedings of the ACM on Programming Languages, 5, OOPSLA (2021), 1–19. Jiwon Park, Dominik Winterer, Chengyu Zhang, and Zhendong Su. 2021. Generative type-aware mutation for testing SMT solvers. Proceedings of the ACM on Programming Languages, 5, OOPSLA (2021), 1–19."
+            },
+            {
+              "key": "e_1_3_2_1_56_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00107"
+            },
+            {
+              "key": "e_1_3_2_1_57_1",
+              "unstructured": "2018. PyTorch.  http://pytorch.org \t\t\t\t  2018. PyTorch.  http://pytorch.org"
+            },
+            {
+              "key": "e_1_3_2_1_58_1",
+              "volume-title": "Language models are unsupervised multitask learners. OpenAI blog, 1, 8",
+              "author": "Radford Alec",
+              "year": "2019",
+              "unstructured": "Alec Radford , Jeffrey Wu , Rewon Child , David Luan , Dario Amodei , and Ilya Sutskever . 2019. Language models are unsupervised multitask learners. OpenAI blog, 1, 8 ( 2019 ), 9. Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners. OpenAI blog, 1, 8 (2019), 9."
+            },
+            {
+              "key": "e_1_3_2_1_59_1",
+              "volume-title": "Liu",
+              "author": "Raffel Colin",
+              "year": "2020",
+              "unstructured": "Colin Raffel , Noam Shazeer , Adam Roberts , Katherine Lee , Sharan Narang , Michael Matena , Yanqi Zhou , Wei Li , and Peter J . Liu . 2020 . Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer. J. Mach. Learn. Res ., jan. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2020. Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer. J. Mach. Learn. Res., jan."
+            },
+            {
+              "key": "e_1_3_2_1_60_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Laria Reynolds and Kyle McDonell. 2021. Prompt Programming for Large Language Models: Beyond the Few-Shot Paradigm. arXiv:2102.07350 \t\t\t\t  Laria Reynolds and Kyle McDonell. 2021. Prompt Programming for Large Language Models: Beyond the Few-Shot Paradigm. arXiv:2102.07350",
+              "DOI": "10.1145/3411763.3451760"
+            },
+            {
+              "key": "e_1_3_2_1_61_1",
+              "volume-title": "Abbas Kazerouni, Ian Osband, and Zheng Wen.",
+              "author": "Russo Daniel J",
+              "year": "2018",
+              "unstructured": "Daniel J Russo , Benjamin Van Roy , Abbas Kazerouni, Ian Osband, and Zheng Wen. 2018 . A tutorial on thompson sampling. Foundations and Trends® in Machine Learning , 11, 1 (2018), 1–96. Daniel J Russo, Benjamin Van Roy, Abbas Kazerouni, Ian Osband, and Zheng Wen. 2018. A tutorial on thompson sampling. Foundations and Trends® in Machine Learning, 11, 1 (2018), 1–96."
+            },
+            {
+              "key": "e_1_3_2_1_62_1",
+              "unstructured": "John Schulman Barret Zoph Jacob Hilton Christina Kim Jacob Menick Jiayi Weng Juan Felipe Ceron Uribe Liam Fedus Luke Metz Michael Pokorny Rapha Gontijo Lopes Shengjia Zhao Arun Vijayvergiya Eric Sigler Adam Perelman Chelsea Voss Mike Heaton Joel Parish Dave Cummings Rajeev Nayak Valerie Balcom David Schnurr Tomer Kaftan Chris Hallacy Nicholas Turley Noah Deutsch Vik Goel Jonathan Ward Aris Konstantinidis Wojciech Zaremba Long Ouyang Leonard Bogdonoff Joshua Gross David Medina Sarah Yoo Teddy Lee Ryan Lowe Dan Mossing Joost Huizinga Roger Jiang Carroll Wainwright Diogo Almeida Steph Lin Marvin Zhang Kai Xiao Katarina Slama Steven Bills Alex Gray Jan Leike Jakub Pachocki Phil Tillet Shantanu Jain Greg Brockman and Nick Ryder. 2022. ChatGPT: Optimizing Language Models for Dialogue.  https://openai.com/blog/chatgpt/ \t\t\t\t  John Schulman Barret Zoph Jacob Hilton Christina Kim Jacob Menick Jiayi Weng Juan Felipe Ceron Uribe Liam Fedus Luke Metz Michael Pokorny Rapha Gontijo Lopes Shengjia Zhao Arun Vijayvergiya Eric Sigler Adam Perelman Chelsea Voss Mike Heaton Joel Parish Dave Cummings Rajeev Nayak Valerie Balcom David Schnurr Tomer Kaftan Chris Hallacy Nicholas Turley Noah Deutsch Vik Goel Jonathan Ward Aris Konstantinidis Wojciech Zaremba Long Ouyang Leonard Bogdonoff Joshua Gross David Medina Sarah Yoo Teddy Lee Ryan Lowe Dan Mossing Joost Huizinga Roger Jiang Carroll Wainwright Diogo Almeida Steph Lin Marvin Zhang Kai Xiao Katarina Slama Steven Bills Alex Gray Jan Leike Jakub Pachocki Phil Tillet Shantanu Jain Greg Brockman and Nick Ryder. 2022. ChatGPT: Optimizing Language Models for Dialogue.  https://openai.com/blog/chatgpt/"
+            },
+            {
+              "key": "e_1_3_2_1_63_1",
+              "unstructured": "Max Schäfer Sarah Nadi Aryaz Eghbali and Frank Tip. 2023. Adaptive Test Generation Using a Large Language Model. arxiv:2302.06527. \t\t\t\t  Max Schäfer Sarah Nadi Aryaz Eghbali and Frank Tip. 2023. Adaptive Test Generation Using a Large Language Model. arxiv:2302.06527."
+            },
+            {
+              "key": "e_1_3_2_1_64_1",
+              "volume-title": "Program synthesis by sketching",
+              "author": "Solar-Lezama Armando",
+              "unstructured": "Armando Solar-Lezama . 2008. Program synthesis by sketching . University of California , Berkeley. Armando Solar-Lezama. 2008. Program synthesis by sketching. University of California, Berkeley."
+            },
+            {
+              "key": "e_1_3_2_1_65_1",
+              "volume-title": "Fuzzing: Brute Force Vulnerability Discovery",
+              "author": "Sutton Michael",
+              "year": "2007",
+              "unstructured": "Michael Sutton , Adam Greene , and Pedram Amini . 2007 . Fuzzing: Brute Force Vulnerability Discovery . Addison-Wesley Professional . Michael Sutton, Adam Greene, and Pedram Amini. 2007. Fuzzing: Brute Force Vulnerability Discovery. Addison-Wesley Professional."
+            },
+            {
+              "key": "e_1_3_2_1_66_1",
+              "unstructured": "2020. TensorFlow.  https://www.tensorflow.org \t\t\t\t  2020. TensorFlow.  https://www.tensorflow.org"
+            },
+            {
+              "key": "e_1_3_2_1_67_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1093/biomet/25.3-4.285"
+            },
+            {
+              "key": "e_1_3_2_1_68_1",
+              "unstructured": "Alina Tugend. 2021. A Smarter App Is Watching Your Wallet. The New York Times https://www.nytimes.com/2021/03/09/business/apps-personal-finance-budget.html \t\t\t\t  Alina Tugend. 2021. A Smarter App Is Watching Your Wallet. The New York Times https://www.nytimes.com/2021/03/09/business/apps-personal-finance-budget.html"
+            },
+            {
+              "key": "e_1_3_2_1_69_1",
+              "unstructured": "Ashish Vaswani Noam Shazeer Niki Parmar Jakob Uszkoreit Llion Jones Aidan N. Gomez Lukasz Kaiser and Illia Polosukhin. 2017. Attention Is All You Need. arXiv:1706.03762 \t\t\t\t  Ashish Vaswani Noam Shazeer Niki Parmar Jakob Uszkoreit Llion Jones Aidan N. Gomez Lukasz Kaiser and Illia Polosukhin. 2017. Attention Is All You Need. arXiv:1706.03762"
+            },
+            {
+              "key": "e_1_3_2_1_70_1",
+              "volume-title": "Hung Viet Pham, and Lin Tan",
+              "author": "Wang Jiannan",
+              "year": "2022",
+              "unstructured": "Jiannan Wang , Thibaud Lutellier , Shangshu Qian , Hung Viet Pham, and Lin Tan . 2022 . EAGLE : Creating Equivalent Graphs to Test Deep Learning Libraries . Jiannan Wang, Thibaud Lutellier, Shangshu Qian, Hung Viet Pham, and Lin Tan. 2022. EAGLE: Creating Equivalent Graphs to Test Deep Learning Libraries."
+            },
+            {
+              "key": "e_1_3_2_1_71_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409761"
+            },
+            {
+              "key": "e_1_3_2_1_72_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510041"
+            },
+            {
+              "key": "e_1_3_2_1_73_1",
+              "volume-title": "Chi, Quoc Le, and Denny Zhou",
+              "author": "Wei Jason",
+              "year": "2022",
+              "unstructured": "Jason Wei , Xuezhi Wang , Dale Schuurmans , Maarten Bosma , Ed Chi, Quoc Le, and Denny Zhou . 2022 . Chain of thought prompting elicits reasoning in large language models. arXiv preprint arXiv:2201.11903. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Ed Chi, Quoc Le, and Denny Zhou. 2022. Chain of thought prompting elicits reasoning in large language models. arXiv preprint arXiv:2201.11903."
+            },
+            {
+              "key": "e_1_3_2_1_74_1",
+              "volume-title": "Proceedings of the 45th International Conference on Software Engineering (ICSE",
+              "author": "Xia Chunqiu Steven",
+              "year": "2023",
+              "unstructured": "Chunqiu Steven Xia , Yuxiang Wei , and Lingming Zhang . 2023 . Automated program repair in the era of large pre-trained language models . In Proceedings of the 45th International Conference on Software Engineering (ICSE 2023). Chunqiu Steven Xia, Yuxiang Wei, and Lingming Zhang. 2023. Automated program repair in the era of large pre-trained language models. In Proceedings of the 45th International Conference on Software Engineering (ICSE 2023)."
+            },
+            {
+              "key": "e_1_3_2_1_75_1",
+              "unstructured": "Chunqiu Steven Xia and Lingming Zhang. 2022. Less Training More Repairing Please: Revisiting Automated Program Repair via Zero-shot Learning. arXiv:2207.08281 \t\t\t\t  Chunqiu Steven Xia and Lingming Zhang. 2022. Less Training More Repairing Please: Revisiting Automated Program Repair via Zero-shot Learning. arXiv:2207.08281"
+            },
+            {
+              "key": "e_1_3_2_1_76_1",
+              "unstructured": "Chunqiu Steven Xia and Lingming Zhang. 2023. Keep the Conversation Going: Fixing 162 out of 337 bugs for $0.42 each using ChatGPT. arXiv preprint arXiv:2304.00385. \t\t\t\t  Chunqiu Steven Xia and Lingming Zhang. 2023. Keep the Conversation Going: Fixing 162 out of 337 bugs for $0.42 each using ChatGPT. arXiv preprint arXiv:2304.00385."
+            },
+            {
+              "key": "e_1_3_2_1_77_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534220"
+            },
+            {
+              "key": "e_1_3_2_1_78_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3520312.3534862"
+            },
+            {
+              "key": "e_1_3_2_1_79_1",
+              "volume-title": "Fuzzing Automatic Differentiation in Deep-Learning Libraries. In International Conference on Software Engineering (ICSE).",
+              "author": "Yang Chenyuan",
+              "year": "2023",
+              "unstructured": "Chenyuan Yang , Yinlin Deng , Jiayi Yao , Yuxing Tu , Hanchi Li , and Lingming Zhang . 2023 . Fuzzing Automatic Differentiation in Deep-Learning Libraries. In International Conference on Software Engineering (ICSE). to appear Chenyuan Yang, Yinlin Deng, Jiayi Yao, Yuxing Tu, Hanchi Li, and Lingming Zhang. 2023. Fuzzing Automatic Differentiation in Deep-Learning Libraries. In International Conference on Software Engineering (ICSE). to appear"
+            },
+            {
+              "key": "e_1_3_2_1_80_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1993498.1993532"
+            },
+            {
+              "key": "e_1_3_2_1_81_1",
+              "volume-title": "Le",
+              "author": "Yang Zhilin",
+              "year": "2020",
+              "unstructured": "Zhilin Yang , Zihang Dai , Yiming Yang , Jaime Carbonell , Ruslan Salakhutdinov , and Quoc V . Le . 2020 . XLNet: Generalized Autoregressive Pretraining for Language Understanding . arXiv:1906.08237 Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Carbonell, Ruslan Salakhutdinov, and Quoc V. Le. 2020. XLNet: Generalized Autoregressive Pretraining for Language Understanding. arXiv:1906.08237"
+            },
+            {
+              "key": "e_1_3_2_1_82_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3453483.3454054"
+            },
+            {
+              "key": "e_1_3_2_1_83_1",
+              "volume-title": "Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021.",
+              "author": "Yue Wang Shafiq Joty",
+              "unstructured": "Shafiq Joty Yue Wang , Weishi Wang and Steven C.H. Hoi . 2021. CodeT5: Identifier-aware Unified Pre-trained Encoder-Decoder Models for Code Understanding and Generation . In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021. Shafiq Joty Yue Wang, Weishi Wang and Steven C.H. Hoi. 2021. CodeT5: Identifier-aware Unified Pre-trained Encoder-Decoder Models for Code Understanding and Generation. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021."
+            },
+            {
+              "key": "e_1_3_2_1_84_1",
+              "unstructured": "Andreas Zeller Rahul Gopinath Marcel Böhme Gordon Fraser and Christian Holler. 2019. The fuzzing book. \t\t\t\t  Andreas Zeller Rahul Gopinath Marcel Böhme Gordon Fraser and Christian Holler. 2019. The fuzzing book."
+            },
+            {
+              "key": "e_1_3_2_1_85_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238187"
+            },
+            {
+              "key": "e_1_3_2_1_86_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST.2019.00016"
+            }
+          ],
+          "event": {
+            "name": "ISSTA '23: 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis",
+            "location": "Seattle WA USA",
+            "acronym": "ISSTA '23",
+            "sponsor": [
+              "SIGSOFT ACM Special Interest Group on Software Engineering",
+              "AITO"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3597926.3598067",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3597926.3598067",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T13:48:42Z",
+            "timestamp": 1750168122000
+          },
+          "score": 45.957718,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3597926.3598067"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "references-count": 86,
+          "alternative-id": [
+            "10.1145/3597926.3598067",
+            "10.1145/3597926"
+          ],
+          "URL": "https://doi.org/10.1145/3597926.3598067",
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                7,
+                12
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2023-07-13",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                18
+              ]
+            ],
+            "date-time": "2026-08-18T01:43:09Z",
+            "timestamp": 1787017389881,
+            "version": "build-2736575974"
+          },
+          "reference-count": 66,
+          "publisher": "Association for Computing Machinery (ACM)",
+          "issue": "1",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    12,
+                    28
+                  ]
+                ],
+                "date-time": "2024-12-28T00:00:00Z",
+                "timestamp": 1735344000000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "short-container-title": [
+            "ACM Trans. Softw. Eng. Methodol."
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2025,
+                1,
+                31
+              ]
+            ]
+          },
+          "abstract": "<jats:p>Recently, many Deep Learning (DL) fuzzers have been proposed for API-level testing of DL libraries. However, they either perform unguided input generation (e.g., not considering the relationship between API arguments when generating inputs) or only support a limited set of corner-case test inputs. Furthermore, many developer APIs crucial for library development remain untested, as they are typically not well documented and lack clear usage guidelines, unlike end-user APIs. This makes them a more challenging target for automated testing. To fill this gap, we propose a novel fuzzer named Orion, which combines guided test input generation and corner-case test input generation based on a set of fuzzing heuristic rules constructed from historical data known to trigger critical issues in the underlying implementation of DL APIs. To extract the fuzzing heuristic rules, we first conduct an empirical study on the root cause analysis of 376 vulnerabilities in two of the most popular DL libraries, PyTorch and TensorFlow. We then construct the fuzzing heuristic rules based on the root causes of the extracted historical vulnerabilities. Using these fuzzing heuristic rules, Orion generates corner-case test inputs for API-level fuzzing. In addition, we extend the seed collection of existing studies to include test inputs for developer APIs. Our evaluation shows that Orion reports 135 vulnerabilities in the latest releases of TensorFlow and PyTorch, 76 of which were confirmed by the library developers. Among the 76 confirmed vulnerabilities, 69 were previously unknown, and 7 have already been fixed. The rest are awaiting further confirmation. For end-user APIs, Orion detected 45.58% and 90% more vulnerabilities in TensorFlow and PyTorch, respectively, compared to the state-of-the-art conventional fuzzer, DeepRel. When compared to the state-of-the-art LLM-based DL fuzzer, AtlasFuz, and Orion detected 13.63% more vulnerabilities in TensorFlow and 18.42% more vulnerabilities in PyTorch. Regarding developer APIs, Orion stands out by detecting 117% more vulnerabilities in TensorFlow and 100% more vulnerabilities in PyTorch compared to the most relevant fuzzer designed for developer APIs, such as FreeFuzz.</jats:p>",
+          "DOI": "10.1145/3688838",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                8,
+                16
+              ]
+            ],
+            "date-time": "2024-08-16T11:45:14Z",
+            "timestamp": 1723808714000
+          },
+          "page": "1-29",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 9,
+          "title": [
+            "History-Driven Fuzzing for Deep Learning Libraries"
+          ],
+          "prefix": "10.1145",
+          "volume": "34",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0003-0484-3972",
+              "authenticated-orcid": false,
+              "given": "Nima",
+              "family": "Shiri Harzevili",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "York University, North York, Ontario, Canada"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0000-8192-0164",
+              "authenticated-orcid": false,
+              "given": "Mohammad Mahdi",
+              "family": "Mohajer",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "York University, North York, Ontario, Canada"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-1659-1960",
+              "authenticated-orcid": false,
+              "given": "Moshi",
+              "family": "Wei",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "York University, North York, Ontario, Canada"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-0861-8326",
+              "authenticated-orcid": false,
+              "given": "Hung Viet",
+              "family": "Pham",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "York University, North York, Ontario, Canada"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0003-0617-2877",
+              "authenticated-orcid": false,
+              "given": "Song",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "York University, North York, Ontario, Canada"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                28
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_2_2",
+              "unstructured": "GitHub. 2023. History-driven Fuzzing for Deep Learning Libraries. Retrieved from https://github.com/dmc1778/Orion"
+            },
+            {
+              "key": "e_1_3_2_3_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/CVPRW56347.2022.00030"
+            },
+            {
+              "key": "e_1_3_2_4_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.knosys.2021.106771"
+            },
+            {
+              "key": "e_1_3_2_5_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1561/3300000041"
+            },
+            {
+              "key": "e_1_3_2_6_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3220134.3220135"
+            },
+            {
+              "key": "e_1_3_2_7_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.3390/app13010329"
+            },
+            {
+              "key": "e_1_3_2_8_2",
+              "first-page": "8921",
+              "article-title": "Adversarial example games",
+              "volume": "33",
+              "author": "Bose Joey",
+              "year": "2020",
+              "unstructured": "Joey Bose, Gauthier Gidel, Hugo Berard, Andre Cianflone, Pascal Vincent, Simon Lacoste-Julien, and Will Hamilton. 2020. Adversarial example games. In Proceedings of the Advances in Neural Information Processing Systems, Vol. 33, 8921–8934.",
+              "journal-title": "Proceedings of the Advances in Neural Information Processing Systems"
+            },
+            {
+              "key": "e_1_3_2_9_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3377816.3381734"
+            },
+            {
+              "key": "e_1_3_2_10_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/AITest.2019.000-6"
+            },
+            {
+              "key": "e_1_3_2_11_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/AICCSA.2018.8612873"
+            },
+            {
+              "key": "e_1_3_2_12_2",
+              "unstructured": "Nicholas Carlini. 2023. A LLM assisted exploitation of AI-Guardian. arXiv preprint arXiv:2307.15008 (2023)."
+            },
+            {
+              "key": "e_1_3_2_13_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/CVPR52688.2022.01750"
+            },
+            {
+              "key": "e_1_3_2_14_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ASE.2019.00037"
+            },
+            {
+              "key": "e_1_3_2_15_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Mark Chen Jerry Tworek Heewoo Jun Qiming Yuan Henrique Ponde de Oliveira Pinto Jared Kaplan Harri Edwards Yuri Burda Nicholas Joseph Greg Brockman Alex Ray Raul Puri Gretchen Krueger Michael Petrov Heidy Khlaaf Girish Sastry Pamela Mishkin Brooke Chan Scott Gray Nick Ryder Mikhail Pavlov Alethea Power Lukasz Kaiser Mohammad Bavarian Clemens Winter Philippe Tillet Felipe Petroski Such Dave Cummings Matthias Plappert Fotios Chantzis Elizabeth Barnes Ariel Herbert-Voss William Hebgen Guss Alex Nichol Alex Paino Nikolas Tezak Jie Tang Igor Babuschkin Suchir Balaji Shantanu Jain William Saunders Christopher Hesse Andrew N. Carr Jan Leike Josh Achiam Vedant Misra Evan Morikawa Alec Radford Matthew Knight Miles Brundage Mira Murati Katie Mayer Peter Welinder Bob McGrew Dario Amodei Sam McCandlish Ilya Sutskever and Wojciech Zaremba. 2021. Evaluating large language models trained on code. DOI: 10.48550/arXiv.2107.03374",
+              "DOI": "10.48550/arXiv.2107.03374"
+            },
+            {
+              "key": "e_1_3_2_16_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ACCESS.2022.3160283"
+            },
+            {
+              "key": "e_1_3_2_17_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-030-55754-6_21"
+            },
+            {
+              "key": "e_1_3_2_18_2",
+              "first-page": "3079",
+              "volume-title": "Proceedings of the 28th International Conference on Neural Information Processing Systems",
+              "volume": "2",
+              "author": "Dai Andrew M.",
+              "year": "2015",
+              "unstructured": "Andrew M. Dai and Quoc V. Le. 2015. Semi-supervised sequence learning. In Proceedings of the 28th International Conference on Neural Information Processing Systems, Vol. 2 (NIPS’15), MIT Press, Cambridge, MA, 3079–3087."
+            },
+            {
+              "key": "e_1_3_2_19_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.patcog.2021.108249"
+            },
+            {
+              "key": "e_1_3_2_20_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3597926.3598067"
+            },
+            {
+              "key": "e_1_3_2_21_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Yinlin Deng Chunqiu Steven Xia Chenyuan Yang Shizhuo Dylan Zhang Shujing Yang and Lingming Zhang. 2024. Large language models are edge-case generators: crafting unusual programs for fuzzing deep learning libraries. In Proceedings of the IEEE/ACM 46th International Conference on Software Engineering (ICSE ’24). Association for Computing Machinery New York NY Article 70 1–13. DOI: 10.1145/3597503.3623343",
+              "DOI": "10.1145/3597503.3623343"
+            },
+            {
+              "key": "e_1_3_2_22_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3540250.3549085"
+            },
+            {
+              "key": "e_1_3_2_23_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.eswa.2022.119207"
+            },
+            {
+              "key": "e_1_3_2_24_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3611643.3616243"
+            },
+            {
+              "key": "e_1_3_2_25_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1201/9780429289651"
+            },
+            {
+              "key": "e_1_3_2_26_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3377811.3380397"
+            },
+            {
+              "key": "e_1_3_2_27_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Luke Gessler and Amir Zeldes. 2022. MicroBERT: Effective training of low-resource monolingual BERTs through parameter reduction and multitask learning. DOI: 10.48550/arXiv.2212.12510",
+              "DOI": "10.48550/arXiv.2212.12510"
+            },
+            {
+              "key": "e_1_3_2_28_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/s10710-017-9314-z"
+            },
+            {
+              "key": "e_1_3_2_29_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICMLA.2016.0020"
+            },
+            {
+              "key": "e_1_3_2_30_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MSR59073.2023.00018"
+            },
+            {
+              "key": "e_1_3_2_31_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1080/10447318.2020.1785693"
+            },
+            {
+              "key": "e_1_3_2_32_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Jeremy Howard and Sebastian Ruder. 2018. Universal language model fine-tuning for text classification. DOI: 10.48550/arXiv.1801.06146",
+              "DOI": "10.48550/arXiv.1801.06146"
+            },
+            {
+              "key": "e_1_3_2_33_2",
+              "first-page": "17980",
+              "volume-title": "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition",
+              "author": "Hu Xiaowei",
+              "year": "2022",
+              "unstructured": "Xiaowei Hu, Zhe Gan, Jianfeng Wang, Zhengyuan Yang, Zicheng Liu, Yumao Lu, and Lijuan Wang. 2022. Scaling up vision-language pre-training for image captioning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, 17980–17989."
+            },
+            {
+              "key": "e_1_3_2_34_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243757"
+            },
+            {
+              "key": "e_1_3_2_35_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Hong Jin Kang Pattarakrit Rattanukul Stefanus Agus Haryono Truong Giang Nguyen Chaiyong Ragkhitwetsagul Corina Pasareanu and David Lo. 2022. SkipFuzz: Active learning-based input selection for fuzzing deep learning libraries. DOI: 10.48550/arXiv.2212.04038",
+              "DOI": "10.48550/arXiv.2212.04038"
+            },
+            {
+              "key": "e_1_3_2_36_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Hanxiao Liu Karen Simonyan and Yiming Yang. 2018. Darts: Differentiable architecture search. DOI: 10.48550/arXiv.1806.09055",
+              "DOI": "10.48550/arXiv.1806.09055"
+            },
+            {
+              "key": "e_1_3_2_37_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3575693.3575707"
+            },
+            {
+              "key": "e_1_3_2_38_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3527317"
+            },
+            {
+              "key": "e_1_3_2_39_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Yinhan Liu Myle Ott Naman Goyal Jingfei Du Mandar Joshi Danqi Chen Omer Levy Mike Lewis Luke Zettlemoyer and Veselin Stoyanov. 2019. Roberta: A robustly optimized bert pretraining approach. DOI: 10.48550/arXiv.1907.11692",
+              "DOI": "10.48550/arXiv.1907.11692"
+            },
+            {
+              "key": "e_1_3_2_40_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3395363.3397369"
+            },
+            {
+              "key": "e_1_3_2_41_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2022.23162"
+            },
+            {
+              "key": "e_1_3_2_42_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/GlobalSIP.2017.8309095"
+            },
+            {
+              "key": "e_1_3_2_43_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Byung-Doh Oh and William Schuler. 2022. Entropy-and distance-based predictors from GPT-2 attention patterns predict reading times over and above GPT-2 surprisal. DOI: 10.48550/arXiv.2212.11185",
+              "DOI": "10.48550/arXiv.2212.11185"
+            },
+            {
+              "key": "e_1_3_2_44_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3132747.3132785"
+            },
+            {
+              "key": "e_1_3_2_45_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00107"
+            },
+            {
+              "key": "e_1_3_2_46_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-030-58598-3_10"
+            },
+            {
+              "key": "e_1_3_2_47_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3468591"
+            },
+            {
+              "key": "e_1_3_2_48_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3377811.3380420"
+            },
+            {
+              "key": "e_1_3_2_49_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Yechun Tang Xiaoxia Cheng and Weiming Lu. 2022. Improving complex knowledge base question answering via question-to-action and question-to-question alignment. DOI: 10.48550/arXiv.2212.13036",
+              "DOI": "10.48550/arXiv.2212.13036"
+            },
+            {
+              "key": "e_1_3_2_50_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2012.6227176"
+            },
+            {
+              "key": "e_1_3_2_51_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Jianfeng Wang Zhengyuan Yang Xiaowei Hu Linjie Li Kevin Lin Zhe Gan Zicheng Liu Ce Liu and Lijuan Wang. 2022. Git: A generative image-to-text transformer for vision and language. DOI: 10.48550/arXiv.2205.14100",
+              "DOI": "10.48550/arXiv.2205.14100"
+            },
+            {
+              "key": "e_1_3_2_52_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ISSRE52982.2021.00061.keywords"
+            },
+            {
+              "key": "e_1_3_2_53_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3368089.3409761"
+            },
+            {
+              "key": "e_1_3_2_54_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510041"
+            },
+            {
+              "key": "e_1_3_2_55_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3611643.3616271"
+            },
+            {
+              "key": "e_1_3_2_56_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534220"
+            },
+            {
+              "key": "e_1_3_2_57_2",
+              "first-page": "10799",
+              "volume-title": "Proceedings of the International Conference on Machine Learning",
+              "author": "Yasunaga Michihiro",
+              "year": "2020",
+              "unstructured": "Michihiro Yasunaga and Percy Liang. 2020. Graph-based, self-supervised program repair from diagnostic feedback. In Proceedings of the International Conference on Machine Learning. PMLR, 10799–10808."
+            },
+            {
+              "key": "e_1_3_2_58_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Pengcheng Yin and Graham Neubig. 2018. TRANX: A transition-based neural abstract syntax parser for semantic parsing and code generation. DOI: 10.48550/arXiv.1810.02720",
+              "DOI": "10.48550/arXiv.1810.02720"
+            },
+            {
+              "key": "e_1_3_2_59_2",
+              "doi-asserted-by": "publisher",
+              "unstructured": "Jiahui Yu Zirui Wang Vijay Vasudevan Legg Yeung Mojtaba Seyedhosseini and Yonghui Wu. 2022. CoCa: Contrastive captioners are image-text foundation models. DOI: 10.48550/arXiv.2205.01917",
+              "DOI": "10.48550/arXiv.2205.01917"
+            },
+            {
+              "issue": "7",
+              "key": "e_1_3_2_60_2",
+              "first-page": "2578",
+              "article-title": "Adversarial examples: Opportunities and challenges",
+              "volume": "31",
+              "author": "Zhang Jiliang",
+              "year": "2019",
+              "unstructured": "Jiliang Zhang and Chen Li. 2019. Adversarial examples: Opportunities and challenges. IEEE Transactions on Neural Networks and Learning Systems 31, 7 (2019), 2578–2593.",
+              "journal-title": "IEEE Transactions on Neural Networks and Learning Systems"
+            },
+            {
+              "key": "e_1_3_2_61_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3611643.3616350"
+            },
+            {
+              "key": "e_1_3_2_62_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1016/j.compbiomed.2022.106516"
+            },
+            {
+              "key": "e_1_3_2_63_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/s11390-021-1663-7"
+            },
+            {
+              "key": "e_1_3_2_64_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238187"
+            },
+            {
+              "key": "e_1_3_2_65_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510059"
+            },
+            {
+              "key": "e_1_3_2_66_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3377811.3380422"
+            },
+            {
+              "key": "e_1_3_2_67_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3106237.3117771"
+            }
+          ],
+          "container-title": [
+            "ACM Transactions on Software Engineering and Methodology"
+          ],
+          "language": "en",
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3688838",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3688838",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                18
+              ]
+            ],
+            "date-time": "2025-06-18T20:04:10Z",
+            "timestamp": 1750277050000
+          },
+          "score": 34.587513,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3688838"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                28
+              ]
+            ]
+          },
+          "references-count": 66,
+          "journal-issue": {
+            "issue": "1",
+            "published-print": {
+              "date-parts": [
+                [
+                  2025,
+                  1,
+                  31
+                ]
+              ]
+            }
+          },
+          "alternative-id": [
+            "10.1145/3688838"
+          ],
+          "URL": "https://doi.org/10.1145/3688838",
+          "ISSN": [
+            "1049-331X",
+            "1557-7392"
+          ],
+          "issn-type": [
+            {
+              "value": "1049-331X",
+              "type": "print"
+            },
+            {
+              "value": "1557-7392",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                28
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2023-12-09",
+              "order": 0,
+              "name": "received",
+              "label": "Received",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2024-07-06",
+              "order": 2,
+              "name": "accepted",
+              "label": "Accepted",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            },
+            {
+              "value": "2024-12-28",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

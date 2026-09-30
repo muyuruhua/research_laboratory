@@ -1,0 +1,1307 @@
+                    Stateful Greybox Fuzzing
+Jinsheng Ba, National University of Singapore; Marcel Böhme, Monash University
+   and MPI-SP; Zahra Mirzamomen, Monash University; Abhik Roychoudhury,
+                       National University of Singapore
+         https://www.usenix.org/conference/usenixsecurity22/presentation/ba
+
+
+
+
+        This paper is included in the Proceedings of the
+               31st USENIX Security Symposium.
+                    August 10–12, 2022 • Boston, MA, USA
+                                 978-1-939133-31-1
+
+
+
+
+                                        Open access to the Proceedings of the
+                                         31st USENIX Security Symposium is
+                                               sponsored by USENIX.
+                                              Stateful Greybox Fuzzing
+
+               Jinsheng Ba1 , Marcel Böhme2,3 , Zahra Mirzamomen2 , and Abhik Roychoudhury1
+                         1 National   University of Singapore, 2 Monash University, 3 MPI-SP
+
+
+
+                          Abstract                                                    IDLE
+
+
+
+    Many protocol implementations are reactive systems,                  END_STREAM            RECV_HEADERS
+
+where the protocol process is in continuous interaction with
+                                                                              END_STREAM         RECV_BODY         REQ_PENDING
+other processes and the environment. If a bug can be exposed
+only in a certain state, a fuzzer needs to provide a specific                 END_STREAM          REQ_PENDING     SEND_HEADERS
+
+sequence of events as inputs that would take protocol into
+                                                                                                 SEND_HEADERS      SEND_BODY
+this state before the bug is manifested. We call these bugs as
+"stateful" bugs. Usually, when we are testing a protocol imple-                                   SEND_BODY       BODY_IS_FINAL
+
+mentation, we do not have a detailed formal specification of                                     BODY_IS_FINAL      END_STREAM
+the protocol to rely upon. Without knowledge of the protocol,
+                                                                                                  END_STREAM
+it is inherently difficult for a fuzzer to discover such stateful
+bugs. A key challenge then is to cover the state space with-
+out an explicit specification of the protocol. Finding stateful
+bugs in protocol implementations would thus involve partially       Figure 1: Dynamically constructed state transition tree (STT)
+uncovering the state space of the protocol. Fuzzing stateful        for an HTTP2 protocol implementation (H2O).
+software systems would need to incorporate strategies for
+state identification. Such state identification may follow from
+manual guidance, or from automatic analysis.                        1   Introduction
+    In this work, we posit that manual annotations for state
+identification can be avoided for stateful protocol fuzzing.        Protocol implementations are stateful software systems that
+Specifically, we rely on a programmatic intuition that the          require input messages to be sent in a certain expected order.
+state variables used in protocol implementations often ap-          Conventional greybox fuzzing approaches consider structured
+pear in enum type variables whose values (the state names)          program inputs, which are subject to random mutations for ex-
+come from named constants. In our analysis of the Top-50            ploring the space of program inputs. However, for protocols,
+most widely used open-source protocol implementations, we           the input needed to trigger a behavior is a sequence of mes-
+found that every implementation uses state variables that are       sages, events, or actions. Thus for exposing corner cases or
+assigned named constants (with easy to comprehend names             bugs in such systems, which we call stateful bugs, the fuzzing
+such as INIT, READY) to represent the current state. In this        technique needs to explore an unknown state space by con-
+work, we propose to automatically identify such state vari-         structing and navigating suitable event sequences. We design,
+ables and track the sequence of values assigned to them during      implement and evaluate such a fuzzer in this paper.
+fuzzing to produce a "map" of the explored state space.                Existing coverage-guided greybox fuzzers (CGF) [1, 23]
+    Our experiments confirm that our stateful fuzzer discovers      have been very successful at finding bugs, but they cannot ef-
+stateful bugs twice as fast as the baseline greybox fuzzer that     fectively deal with a state space. For instance, the HTTP2 pro-
+we extended. Starting from the initial state, our fuzzer exer-      tocol requires a HEADER frame to be sent before the DATA
+cises one order of magnitude more state/transition sequences        frame. In the H2O implementation (Figure 1), a state variable
+and covers code two times faster than the baseline fuzzer.          is set to a certain value when the HEADER frame is received.
+Several zero-day bugs in prominent protocol implementations         The same state variable is checked when the DATA frame is
+were found by our fuzzer, and 8 CVEs have been assigned.            received. Suppose, there is a bug in the response to a correctly
+
+
+
+USENIX Association                                                                         31st USENIX Security Symposium         3255
+processed DATA frame. As there is a specific sequence of                      that discover a new node in the STT facilitates a better cov-
+input messages needed to reveal the bug, we call this a stateful              erage of the state space. Secondly, we propose to focus on
+bug. Suppose also that the first generated input sends a DATA                 the seeds which traverse the rarely visited nodes of the STT
+frame and then a HEADER frame. Clearly, the DATA frame                        or whose offsprings are more likely to take a different path
+cannot be processed; yet the code for the HEADER frame                        through the STT. We hypothesize that these heuristics will
+handler is already covered. A coverage-guided fuzzer has no                   help the fuzzer to explore the state space. Finally, we pro-
+information on the traversed state space. It is oblivious to the              pose an approach to focus particularly on the bytes in the
+fact that the correct processing of the DATA frame is "un-                    seed, whose mutations trigger new nodes in the STT. The
+locked" only when the requisite state is visited first (during                state space corresponding to the newly added nodes can be
+the processing of the HEADER frame).                                          efficiently explored by mutating these bytes.
+    The main objective of a stateful greybox fuzzer should be                    Results. We implemented our stateful greybox fuzzing ap-
+to chart out and efficiently explore an unknown state space to                proach into L IB F UZZER [1] and call our tool SGF UZZ (State-
+discover stateful bugs. To this end, a stateful fuzzer (i) con-               ful Greybox Fuzzer). We evaluated SGF UZZ against L IB -
+structs a lightweight abstraction of the observed state space                 F UZZER and AFLN ET on eight widely used protocol imple-
+from the state feedback—in our case from the sequence of ob-                  mentations. The state sequence for an input is determined by
+served state variable values, and (ii) navigates this state space             the sequence of values assigned to the state variables during
+abstraction to maximize the probability of visiting unobserved                the execution of the protocol implementation. In our experi-
+states. In line with most existing efforts in greybox fuzzing,                ments, starting from the initial state, our stateful fuzzer exer-
+we assume that no external information is available, neither in               cises 33x more state sequences than L IB F UZZER 15x more
+the form of protocol specifications nor in the form of human                  than IJON, and 260x more than AFLN ET. Observing that
+annotations [2]. A stateful greybox fuzzer is pointed to the                  some code can be covered only in certain states, we found
+protocol implementation, fuzzes it, and reports any bugs that                 that SGF UZZ achieves the same branch coverage more than
+it finds. So, how can we enable a greybox fuzzer to effectively               2x faster than L IB F UZZER. By reproducing existing stateful
+navigate an unknown state space?                                              bugs, we also found SGF UZZ exposes stateful bugs about
+    Identifying state space. In this paper, we argue that proto-              twice as fast as L IB F UZZER and IJON, more than 155x faster
+cols are often explicitly encoded using state variables that                  than AFLN ET. Most of all, SGF UZZ found 12 new bugs in
+are assigned and compared to named constants.1 State vari-                    widely used stateful systems, 8 of which were assigned CVEs.
+ables allow developers to implement state transitions by as-                  Our analysis further shows that stateful bugs are prevalent: ev-
+signing the corresponding named constant, and to implement                    ery four in five bugs reported among our subjects are stateful.
+state-based program logic as if- or switch-statements. More                   We have made our data set publicly available for review and
+specifically, using pattern matching, we identify state vari-                 will make an open-source release of our fuzzer to researchers
+ables using enumerated types (enums). An enumerated type                      and practitioners upon publication of the work.
+is a group of named constants that specifies all possible val-
+                                                                              In summary, we make the four key contributions:
+ues for a variable of that type. Our instrumentation injects a
+call to our runtime at every program location where a state                       • We propose an automatic method to identify and capture
+variable is assigned to a new value. Our runtime efficiently                        the explored state space of a protocol implementation.
+constructs the state transition tree (STT). The STT captures
+the sequence of values assigned to state variables across all                     • We present the design and implementation of SGF UZZ, a
+fuzzer-generated input sequences, and as a global data struc-                       stateful greybox fuzzer that found 12 new bugs in widely-
+ture, it is shared with the fuzzer. An example of the STT                           used and well-fuzzed programs.
+constructed for the H2O implementation of the HTTP2 proto-                        • We conduct and present a comprehensive evaluation of
+col is shown in Figure 1. Our in-memory fuzzer uses the STT                         SGF UZZ against the state-of-the-art and the baseline
+to steer the generated input sequences towards under-explored                       stateful greybox fuzzers.
+parts of the state space.
+                                                                                  • We make all data, scripts, and tools publicly available to
+    Stateful greybox fuzzing. We discuss several heuristics to
+                                                                                    facilitate reproducibility.
+increase the coverage of the state space via greybox fuzzing.
+First, we propose to add generated inputs to the seed corpus
+that exercise new nodes in the STT. As we will demonstrate,                   2    Motivating Example
+code coverage alone is insufficient to capture the order across
+different requests. Instead, we should capture the states in                  We believe that current greybox or stateful fuzzers are inef-
+which the code is covered. Hence we argue, adding inputs                      fective in detecting stateful bugs. We use the stream state
+   1 We found that this observation holds for all of the top-50 most widely   machine of HTTP2 protocol and the H2O implementation to
+used protocol implementations as well as for every stateful protocol in the   explain the main reasons for their inefficiency to motivate our
+ProFuzzbench protocol testing benchmark [19].                                 approach for stateful greybox fuzzing.
+
+
+
+3256     31st USENIX Security Symposium                                                                                 USENIX Association
+                                                                      frames are received and responses are sent. H2O uses a dedi-
+                                                                      cated variable to store the current protocol state (i.e., a state
+                                                                      variable; here the enumeration variable stream->state).
+                                                                      The eight implemented HTTP2 stream states are defined as
+                                                                      enumerated type with the following named constants:
+                                                                      • State (0). H2O_HTTP2_STREAM_STATE_IDLE
+                                                                      • State (1). H2O_HTTP2_STREAM_STATE_RECV_HEADERS
+                                                                      • State (2). H2O_HTTP2_STREAM_STATE_RECV_BODY
+                                                                      • State (3). H2O_HTTP2_STREAM_STATE_REQ_PENDING
+                                                                      • State (4). H2O_HTTP2_STREAM_STATE_SEND_HEADERS
+                                                                      • State (5). H2O_HTTP2_STREAM_STATE_SEND_BODY
+                                                                      • State (6). H2O_HTTP2_STREAM_STATE_SEND_BODY_IS_FINAL
+                                                                      • State (7). H2O_HTTP2_STREAM_STATE_END_STREAM
+
+Figure 2: The HTTP2 stream state machine as per RFC 7540.                At the start, the server is in the idle State (0) and waits for
+                                                                      incoming requests. Depending on the frames received within
+                                                                      the stream, the following states are visited: receiving request
+2.1    The HTTP2 Protocol                                             header (1), request body (2), sending response header (4),
+HTTP2 is a multiplexing protocol, in which each HTTP re-              response body (5), and end of stream (7). State (3) is an
+quest is split into several frames corresponding to the HTTP          intermediate state in which an incoming frame has not been
+header, HTTP body, and so on. A frame is the minimal data             assigned a handler, yet. State (6) is reached only when the
+unit that is passed along the HTTP2 protocol. For instance,           client has indicated the end of the stream but there are still
+an HTTP2 request message may be split into a header frame             pending frames to be sent from the server.
+and a few data frames. All frames belonging to the same
+HTTP request constitute a stream, having to be processed by            H2O uses named constants to keep track of the current
+the server in order. The HTTP2 protocol defines the stream             HTTP2 protocol state. We use this insight to identify
+state machine, which regulates the processing order of frames.         states.
+When different frames are being processed, the server visits
+different states, e.g., the “receiving header” state when it re-
+ceives the header frame and the “receiving body” state when           2.3    Challenges of Fuzzing Stateful Software
+receiving data frames.                                                If the protocol specification is unavailable, how can we au-
+   Figure 2 shows the HTTP2 stream state machine as per               tomatically figure out the conditions required to exercise the
+the official specification (RFC 7540)2 . In the initial idle state,   state-dependent code? We make the following observations.
+the current or remote participant can send / receive a push              Uninformative Response Codes. The observable response
+promise frame (PP) or a header frame (H). A push promise              code is unrelated to the current HTTP2 stream state. This ren-
+frame simply marks a stream as reserved while a header frame          ders ineffective the state-of-the-art fuzzer AFLNet [20] which
+marks the stream as open. In the open state, all frames are           depends on the response code to identify the current state.
+processed including data frames. An end stream (ES) frame
+                                                                         Coverage is insufficient. In Figure 3, the function handle-
+will mark an open stream as half-closed and a half-closed
+                                                                      _request_body_chunk ⃝        4 is executed only if the current
+stream as closed. In any state, if a reset (R) frame is sent /
+                                                                      value of stream->state is ..RECV_BODY when the data
+received, the stream is marked as closed.
+                                                                      frame is handled ⃝.   3 However, stream->state is set to
+                                                                      ..RECV_BODY ⃝    2 only when the handler for the header frame
+2.2    The H2O Implementation                                         is called beforehand with a valid header frame ⃝.   1 Code cov-
+                                                                      erage does not capture the required ordering. It is possible to
+H2O is a new generation HTTP server that is very fast. H2O            cover both handler functions (⃝    1 and ⃝)3 by sending a data
+supports the HTTP, HTTP2, and HTTP3 protocols and is                  frame first and a header frame next. However, this sequence
+written in C programming language. We focus on HTTP2                  of frames cannot be easily modified to cover the function
+implementation.                                                       handle_request_body_chunk ⃝.         4 On the contrary, if the
+  State Variables. H2O implementation uses a much finer-
+                                                                      header frame is sent first and the data frame next, the same han-
+grained HTTP2 stream state machine than specified in Fig-
+ure 2. Specifically, H2O tracks the different stages in which         dler functions would be covered, but this latter sequence can
+                                                                      be modified much more easily to cover the function handle-
+   2 https://datatracker.ietf.org/doc/html/rfc7540                    _request_body_chunk ⃝       4 (if it was not already). For exist-
+
+
+
+USENIX Association                                                                       31st USENIX Security Symposium           3257
+      static void handle_request_body_chunk(
+                                                                            4   (cf. Section A.4)4 of stateful protocols as indicated in a search
+         ...
+         if (stream->req.write_req.cb(stream->req.write_req.ctx, payload,
+                                                                                on Shodan5 or by Github stars. We found that all of them
+             is_end_stream) != 0) {                                             use named constants assigned to special state variables to
+             ...
+      }                                                                         keep track of the current state. Of those, 44 use enum type
+      static int handle_data_frame(...h2o_http2_stream_t *stream...){
+                                                                                while 6 use #define statements to define the named constants.
+          ...
+                                                                            3   Unlike the state-of-the-art [20], which requires manual effort
+          if (stream->state != H2O_HTTP2_STREAM_STATE_RECV_BODY && ...) {
+            ...                                                                 to write protocol-specific drivers that extract state information
+          }
+            return 0;
+                                                                                from the server responses, our state variable identification is
+          handle_request_body_chunk(...);                                       entirely automatic.
+          ...
+      }                                                                            An example of a state variable is given in Section 2. Using
+                                                                                state variables, developers of protocol implementations can
+      static int handle_incoming_request(...h2o_http2_stream_t *stream...){
+          ...                                                               2   maintain a direct mapping between protocol states given in
+          h2o_http2_stream_set_state(conn, stream,
+                                      H2O_HTTP2_STREAM_STATE_RECV_BODY);        the protocol specification (cf. Figure 2) and the protocol states
+          ...
+      }                                                                         in the implementation (cf. Section 2.2). State transitions are
+      static int handle_headers_frame(...h2o_http2_frame_t *frame...)
+                                                                                implemented by assigning another named constant to the state
+      {                                                                     1   variable. Protocol logic that is based on the current state can
+          ...
+          if ((frame->flags & H2O_HTTP2_FRAME_FLAG_END_HEADERS) != 0) {
+              /* request headers are complete, handle it */
+                                                                                be implemented as switch-statements or if-conditions where
+          }
+              return handle_incoming_request(conn, stream, ...);                the current state variable value guards the corresponding state-
+          ...                                                                   based protocol logic (c.f. Figure 3).
+          return 0;
+      }                                                                            To identify state variables, we look for all variables of
+                                                                                enumerated type (enum in C/C++). An enumerated type is a
+Figure 3: H2O handlers for header and data frames. A handler                    list of named constants used in computer programming to map
+processes inputs as they arrive. Depending on the sequence                      a set of names to numeric values. Variables of enumerated
+in which header and data frames arrive, the value of the state                  type can only be assigned constants from the specified list of
+variable is set and checked. Certain code is reachable only if                  named constants. In our case, this list represents all states that
+the state variable carries a certain value.                                     the state variable can represent (e.g., IDLE to END_STREAM
+                                                                                in Section 2.2). Specifically, we use regular expressions to
+                                                                                automatically extract all definitions of enumerated types and
+ing coverage-guided fuzzers, there would be no distinction                      then use the definitions to return the list of all enum variables
+between these two scenarios in terms of coverage3 .                             that have been assigned at least once.
+                                                                                   As we can see in Table 1, not all variables of enumerated
+    By adding generated message sequences to the corpus that                    type need to be state variables. The second category is enu-
+    exercise a new sequence of states (i.e., add a new node to                  merated types that represent all possible response or error
+    the state transition tree), we can capture both scenarios.                  codes. The third category is enumerated types that represent
+                                                                                all possible configuration options for a configuration variable.
+                                                                                However, in practice, our heuristic remains very effective. Re-
+3      Methodology                                                              sponse and error code variables are already indirectly used
+                                                                                for state identification by the state-of-the-art AFLN ET. Con-
+Our main objective is to capture the protocol state space                       figuration variables are usually assigned once and only when
+without any knowledge of the protocol. Our key observation is                   the server starts (i.e., before we start recording the state tran-
+that the current protocol states are often explicitly represented               sitions for each message sequence), or at the beginning of the
+using so-called state variables.                                                session. If we record configuration variables at the beginning
+                                                                                of the sessions, they appear at the beginning of each state tran-
+3.1         Offline State Variable Identification                               sition sequence and will never be identified as “rare” states
+                                                                                (which we focus on in Section 4.2).
+Our first step is to automatically identify state variables in the
+program code. If the reader is tasked to implement a stateful
+protocol that contains explicitly named protocol states and                     3.2     State Transition Tree Data Structure
+a well-specified protocol logic that proceeds based on the                      To capture the protocol state transitions exercised by gener-
+current protocol state, how would the reader keep track of the                  ated sequences of inputs, we monitor the sequences of values
+current protocol state in his implementation? We examined
+                                                                                    4 We also confirmed our observation for all stateful protocol implementa-
+the top-50 most widely used open-source implementations
+                                                                                tions in the ProFuzzBench protocol fuzzing benchmark [19].
+     3 As
+       both handlers are called in a loop, there does not exist a direct edge       5 Shodan is a search engine for various types of servers connected to the
+
+between both handlers that could be covered.                                    internet: https://www.shodan.io/.
+
+
+
+
+3258        31st USENIX Security Symposium                                                                                        USENIX Association
+ Enum. Type            Example(s)       Explanation
+ State variables       stream->state,   Explicit representation of the protocol states. These are the enum-type variables, the values of which we aim to
+                       sender_state     record in the state transition tree. In H20, 22 of 43 enum-type variables are actual state variables.
+ Error or response     error, status    Response codes or error codes are explicitly defined in the protocol and provide quick information to the client
+ codes                                  about the processing of the last message. These enum-type variables correspond to the existing response-code-based
+                                        state identification in AFLN ET. In H2O, 2 of 43 enum-type variables are response or error codes.
+ Configuration         priority,        These variables represent the concrete choices from a set of configuration options. Those options are read either
+ variables             run_mode         from a configuration file or the command line. In H2O, 19 of 43 enum-type variables are configuration variables.
+
+                     Table 1: Kinds of variables with enumerated types and their impact on the state transition tree.
+
+
+assigned to state variables. All observed sequences of values                                               IDLE
+across all state variables in all threads are stored in the same
+state transition tree, a data structure that represents the entire                                                       RECV_HEADERS
+state space that has been explored by the fuzzer. An example
+is shown in Figure 1.                                                                                                        RECV_BODY
+
+   State Transition Tree. A node in the state transition tree
+represents the value of a state variable during program execu-                                                               REQ_PENDING
+                                                                                              END_STREAM
+tion. Each node has only one parent node and zero or more                                                                   SEND_HEADERS
+children nodes. If there is only one state variable, the parent
+and the children nodes of a specific node respectively repre-                                                                 SEND_BODY
+sent the state variable’s value before and after the creation of
+                                                                                                                            BODY_IS_FINAL
+that node. If there are multiple state variables, a node’s par-
+ent or children nodes can represent values of different state
+variables. Each edge from a node to its children represents
+a value change of any state variable, indicating a state tran-                  Figure 4: The state machine extracted from the State Transi-
+sition. From a global perspective, the tree has only one root                   tion Tree of H2O (node name prefixes omitted).
+node which represents the initial state, and each path from the
+root node to a leaf node represents a unique state transition                   to close, our extracted state machine transitions to State (6)
+sequence during program execution on an input.                                  and State (7) which corresponds to the half-closed (local) and
+   We use the motivating example from Section 2 to explain                      closed states in the official state machine, respectively. There-
+the state transition tree (STT). Figure 1 shows the STT for                     fore, we not only accurately recover parts of the official state
+the stream->state state variable after getting five execution                   machine, using a simple but highly effective approach, but
+traces. The root node is the idle State (0). After getting valid                we also get a more fine-grained state machine as it is actually
+requests in stipulated order, the following nodes are recorded:                 implemented. Together with our greybox fuzzing algorithm,
+receiving request header State (1), request body State (2),                     we aim to gradually recover more and more states on the fly.
+sending response header State (4), response body State (5),
+and end of stream State (7). If any request has malformed data,
+the state directly transitions to the end of stream State (7) as                3.3      State Transition Tree Construction
+shown in the left three branches. Another situation is that the                 To construct the state transition tree (STT), we automatically
+request body is empty. In this situation, it will go through the                inject a runtime into the program binary during compilation.
+right branch, bypassing the receiving request body State (2).                   The runtime gradually constructs the STT along with program
+   Figure 4 shows a compact representation of the automati-                     executions on the inputs generated during fuzzing campaign.
+cally constructed STT as a directed graph. Visual comparison                       Compile-time instrumentation. We developed a Python
+to the official state machine in Figure 2 reveals a striking sim-               script that injects a call to our runtime before every assign-
+ilarity with the specified protocol. Specifically, to construct                 ment of a named constant to a state variable in the protocol
+the directed graph, we merge all nodes with the same val-                       implementation. Given the list of state variables extracted
+ues of enumeration variables, such as merging all leaf nodes                    during our offline state variable identification, we use regu-
+which have the same State (7). Like the official state machine,                 lar expressions to find all instructions in the code where the
+our extracted state machine also starts at the idle state. After                state variables are assigned new values. The injected function
+receiving a valid header frame, our extracted state machine                     calls pass the state variable names and the value of the named
+transitions to the receiving request header State (1) while the                 constant to our runtime. To make the instrumentation more
+official state machine transitions to the open state. Next, when                flexible and accurate, we also provide an option to allow users
+traversing States (2)(3)(4)(5), the official state machine is still             to block some variables extracted from offline state variable
+in the same open state. Finally, when the connection is ready                   identification. We did not choose LLVM to instrument the pro-
+
+
+
+USENIX Association                                                                                     31st USENIX Security Symposium                 3259
+tocol implementation because enum-values will be replaced             minimal list triggers this crash. This minimal list can be used
+by integer-type constant values in the LLVM intermediate              for further manual analysis.
+language (LLVM-IR).
+   Runtime derivation of State Transition Tree. Across all
+executions of a protocol implementation during a fuzzing              4     Stateful Greybox Fuzzing Algorithm
+campaign, the runtime uses the information passed by the
+                                                                      To efficiently explore the state space, we propose to use the
+injected calls, to gradually construct the STT. The STT data
+                                                                      State Transition Tree (STT), described in section (3.2), as a
+structure is implemented in the runtime component with a
+                                                                      guide for the stateful greybox fuzzer. SGF UZZ incrementally
+pointer that points to the last visited node (initially root). Each
+                                                                      constructs the STT at runtime and employs it as follows:
+node in the STT is distinguished by the variable name and
+its corresponding value, passed from the instrumented calls               1. Generated inputs that increase coverage of the STT are
+to the runtime. Once called, the runtime checks whether a                    added to the seed corpus.
+matching node already exists among the child nodes of the
+last visited node. If not found, a new child node is created              2. Within the seed corpus, SGF UZZ prioritizes the seeds
+for it. Then the last-visited-node pointer is set to point to the            that have a greater potential to increase the coverage of
+already existing or the newly created child node, whichever                  the STT.
+applies. After execution of the program on each input, the last-          3. Within the chosen seed, SGF UZZ prioritizes bytes asso-
+visited-node pointer is reset to the root node waiting for the               ciated with newly added STT nodes which have more
+next execution. To support multi-threading, which is common                  potential to increase the coverage of the STT.
+for protocol implementations, we leverage a mutex to protect
+the code for updating the state transition tree from concur-
+rency issues. To avoid that the STT grows to an unreasonable          Algorithm 1 Stateful Greybox Fuzzing
+size, we provide an option to limit the maximum number of             Input: Seed Corpus T
+state repetitions along with a single execution. Whenever a             Crashing inputs Tx = 0/
+state is repeated more often than allowed (along a path in the          for each t ∈ T do
+STT), subsequent states are ignored (and that particular path             Et = 1          // initial energy
+is truncated). This allows us to efficiently manage the state           end for
+transitions as a tree, rather than a graph, during the fuzzing          State transition tree ST T = 0/
+campaign. In our experiments,we chose the same threshold                repeat
+for all subjects, generally so that the number of nodes does              t = choose_next(T, E)
+not exceed 10k nodes.                                                     t ′ = mutate(t, ST T )
+                                                                          ST T = execute(t ′ , ST T )
+3.4      Handling Implicit States                                         if t ′ crashes then
+                                                                              return t ′
+In addition to the explicit states that are captured using state          else if is_interesting(t ′ , ST T ) then
+variables, like for any software system, there exist implicit                 add t ′ to T
+states: databases and file systems are changed; some memory                   t ′ = identi f y_bytes(t ′ , ST T )
+is allocated but never freed. While explicit states are reset                 for each ti ∈ T do
+whenever the connection is closed after a message exchange,                       Eti = assign_energy(ti , ST T )
+implicit states aggregate over time and survive various con-                  end for
+nection resets.6 The STT can only keep track of explicit states           end if
+but not of such implicit states. To explore the implicit state          until timeout reached or abort-signal
+space, we let the implicit states aggregate without reset. This       Output: Crashing Input tx
+allows us to find other types of stateful bugs.
+   Our in-memory stateful greybox fuzzer lives in the same
+                                                                         Algorithm 1 shows the general workflow of our fuzzing
+process as the protocol implementation. Hence, the protocol
+                                                                      algorithm. We implemented this algorithm into L IB F UZZER
+implementation under test does not need to be restarted for
+                                                                      and call our fuzzer SGF UZZ (Stateful Greybox Fuzzer). Start-
+every message exchange. This gives a substantial performance
+                                                                      ing with an initial seed corpus T and until a timeout is reached
+boost but also allows us to aggregate implicit states across
+                                                                      or the user aborts the campaign, the following steps are re-
+message exchanges. To facilitate reproducing this type of
+                                                                      peated. Firstly, SGF UZZ samples t according to the energy
+bug, we enable an option to save the list of all the inputs on
+                                                                      distribution E which represents the likelihood of each seed in
+which the program has been executed. After getting a crash
+                                                                      T to be chosen (choose_next). The chosen seed t is then mu-
+report from the fuzzer, we gradually minimize the list until a
+                                                                      tated (mutate) to generate a new input t ′ (Section 4.3). Then
+   6A   connection includes multiple requests and responses.          we execute the protocol implementation on t ′ and update the
+
+
+
+3260      31st USENIX Security Symposium                                                                             USENIX Association
+STT (Section 3.3). If t ′ causes a crash SGF UZZ returns the           Secondly, we assign more energy to the seeds whose off-
+crashing input, else if t ′ exercises new code branch or new        spring are more likely to take a different path through the STT.
+STT nodes (is_interesting), t ′ is added to the corpus T , and      By Equation 2, all nodes in STT have similar opportunities
+otherwise t ′ is discarded (Section 4.1). Whenever new STT          to be executed. However, not all state transitions are equally
+nodes added, SGF UZZ identifies the bytes in input t ′ (iden-       important, and valid state transitions are more attractive. Our
+tify_bytes) that contributed to the coverage of the new STT         intuition is that the valid state transitions, which correspond
+nodes (Section 4.3) and updates the energy Eti of all seeds         to the expected protocol behaviors, are usually easy to be
+ti ∈ T in the current corpus (assign_energy) (Section 4.2).         mutated to other invalid state transitions, which represent the
+The portions of L IB F UZZER we changed are highlighted in          error handling of the protocol. The change on any byte may
+red in Algorithm 1.                                                 incur error handling logic. This is also a challenge of previous
+                                                                    stateful greybox fuzzing techniques. Thus, we identify this
+4.1    State Coverage Feedback                                      type of seed and assign more energy to it. Given an input t
+                                                                    and a set of inputs tm that are mutated from t, we calculate the
+Our first heuristic is to add generated inputs to the seed cor-     inverse proportion of its offspring that traverse the same paths
+pus that exercise new nodes in the STT (is_interesting in           as path(t). We extend our power schedule e2 (t) as follows:
+Alg. 1) as the augmentation of the original branch coverage
+feedback. The rationale is to maximize the coverage of the                                                    |tm |
+                                                                              e2 (t) = e1 (t) ·                                        (3)
+STT data structure to maximize the coverage of the state                                          ∑c∈tm (path(c)  == path(t))
+space. Each new node in the STT represents a new value in
+the current sequence of state variable values indicating a new         Finally, to avoid assigning too much energy, we limit our
+state under the current sequence of state transitions. Like in      power schedule e(t) to no more than ten times (empirically
+code-coverage-guided greybox fuzzing, inputs that increase          works best than other numbers) the original energy e′ (t).
+coverage are added to the seed corpus, as well.                     Given the seed input t ∈ T in seed corpus T , our power sched-
+                                                                    ule assigns the new energy e(t) to t.
+
+4.2    Energy Schedule                                                                 e(t) = min(e2 (t), 10 · e′ (t))                 (4)
+Our second heuristic is to assign more energy to seeds that
+have a greater potential to lead to new states (assign_energy       4.3     Fuzzing Individual Bytes
+in Alg. 1). Compared to existing works[5, 31] that prioritize
+                                                                    We define a simple heuristic to fuzz parts of the seed first that
+inputs that execute rarely executed code blocks, our algorithm
+                                                                    might have more impact on increasing state (STT) coverage.
+additionally assigns more energy to the seeds that execute the
+                                                                    When an input seed is chosen to be mutated, its individual
+valid state transitions which correspond to the valid protocol
+                                                                    bytes to be mutated are selected based on the bytes’ priorities.
+behaviors.
+                                                                    Bytes have higher priority if they are deemed to have more
+    Firstly, we assign more energy to the seeds that traverse the
+                                                                    impact on the STT’s coverage (mutate and identify_bytes in
+rarely visited nodes in the STT. We set up an attribute called
+                                                                    Alg. 1). Recent works on input probing [3, 11, 29] establish
+hit count for each node in the STT to record the number of
+                                                                    the information flow from particular input bytes to a given
+inputs that traverse that node. We expect that STT nodes with
+                                                                    sink in a very lightweight manner. We leverage these ideas
+low hit count have more unexplored states in their "neighbor-
+                                                                    to explore state space. If program execution on a mutated
+hood". Given the STT, we consider a node n ∈ ST T to be rare
+                                                                    input triggers new nodes in the STT and hence, that input
+if it has a below-average hit count.
+                                                                    is causing new unexplored nodes to be visited for the first
+                                                 hits(n′ )          time, it may have a great potential to increase the coverage of
+                      (
+                                         ∑ ′
+                        1 if hits(n) < n ∈ST|STT T |
+           rare(n) =                                          (1)   the state space. The idea is to identify the individual bytes in
+                        0 otherwise                                 such an input whose mutation has contributed to the increase
+                                                                    in the STT’s coverage. Once identified, those bytes will be
+where hits(n) returns the hit count of node n.
+                                                                    assigned higher priority to be chosen for mutation. It makes
+   Let path(t) represent the set of nodes that are traversed
+                                                                    fuzzing more efficient by enabling earlier exploration of the
+by input t in STT. Given an input t in corpus T , our power
+                                                                    "neighbor" states around the newly created nodes that have
+schedule assigns energy e1 (t) of t as the proportion of rare
+                                                                    not been visited, yet.
+nodes that are visited during program execution on t added to
+                                                                       Given an input t and a mutated input t ′ derived from t, if
+the original energy of t:
+                                                                    the program execution on input t ′ creates new nodes in STT, t ′
+                                       ∑n∈path(t) rare(n)           is saved by SGF UZZ. Then SGF UZZ computes the set differ-
+            e1 (t) = e′ (t) + e′ (t)                         (2)    ence of bytes di f f (t,t ′ ) between t and t ′ and records the set
+                                          |path(t)|
+                                                                    of newly added STT nodes N exercised by t ′ . We annotate the
+where e′ (t) is the existing power schedule.                        mutation range as Rt ′ = di f f (t,t ′ ) if |N| > 0, or set Rt ′ to the
+
+
+
+USENIX Association                                                                       31st USENIX Security Symposium             3261
+   Subject Protocol  Fuzz Driver Commit            Size   Share          stateful fuzzer). P RO F UZZ B ENCH includes a suite of repre-
+      H2O    HTTP h2o-fuzzer-http2     1e7344 337k LoC 12k IPs
+ MbedTLS SSL/TLS         dtlsserver    e483a7 138k LoC   8m IPs
+                                                                         sentative open-source network servers for popular protocols.
+      Curl  Several    curl_fuzzer     aab3a7 202k LoC         -         OSS-F UZZ7 is an open-source continuous fuzzing framework
+ Gstreamer Custom   gst-discoverer     44bdad 235k LoC 15k IPs           that builds more than 500 open source projects for fuzzing.
+ OpenSSL SSL/TLS          netdriver    1e08f3 673k LoC >10m IPs          F UZZ B ENCH [18] is an open-source fuzzer evaluation infras-
+  Live555     RTSP        netdriver 21.Aug’08 17k LoC 12k IPs
+ OwnTone     DAAP         netdriver    774d7c 37k LoC 10k IPs            tructure that automatically conducts fuzzing experiments and
+  DCMTK DICOM             netdriver    24ebf4 38k LoC     3k IPs         produces coverage graphs. F UZZ B ENCH supports integrating
+                                                                         benchmarks from the OSS-F UZZ.
+    Table 2: Protocol implementations used for comparison.                  Selection Criteria. We selected 8 real-world target pro-
+                                                                         grams as subjects for our experiments as shown in Table 2.
+                                                                         We opted for the programs that 1) work on distinct and well-
+entire seed t ′ (Rt ′ = ⟨t ′ ⟩), otherwise (identify_bytes in Alg. 1).   known protocols aiming to provide diverse state machines, 2)
+Later, when t ′ is chosen to be mutated for fuzzing (mutate              are widely used (as indicated by a search on the Shodan), 3)
+in Alg. 1), we only mutate the bytes under the range Rt ′ . If           are used in security-critical industries, such as medical and
+it does not bring any interesting behavior (is_interesting in            finance, in which any bug can have serious consequences. At
+Alg. 1), we gradually enlarge Rt ′ until it spans the entire seed        the time of writing, they represent the most recent version
+t ′ . This helps us build an efficient fuzz campaign.                    (cf. commit column) of eight programs implementing more
+                                                                         than 30 different well-known protocols (curl includes multiple
+                                                                         protocol implementations). These programs are widely used
+5     Experimental Setup
+                                                                         across many machines on the internet (cf. #IPs in the Share
+                                                                         column). P RO F UZZ B ENCH needs socket communication and
+5.1     Research Questions                                               we use netdriver8 to enable it for in-memory fuzzers. Un-
+Our main hypothesis is that stateful greybox fuzzing allows              fortunately, netdriver does not support the UDP protocol or
+for more effective fuzzing of stateful programs, such as proto-          the fork system call because a fork will spawn a new process
+col implementations. We investigated this hypothesis along               that prevents fuzzers from measuring branch coverage. We
+with the following research questions.                                   selected all programs in P RO F UZZ B ENCH which are compat-
+                                                                         ible with in-memory fuzzers.
+RQ.1 (State Transition Coverage) How many more differ-                      Selected Subjects. H2O is a popular web server; MbedTLS
+    ent sequences of state transitions does SGF UZZ exer-                and OpenSSL are security-critical encryption libraries; Curl9
+    cise? By mapping out the state space, SGF UZZ aims                   is a utility to communicate via multiple protocols and im-
+    to penetrate deeper into the program’s state space. The              plements many state machines; Gstreamer implements a
+    number of different sequences of states exercised by a               real-time streaming protocol;10 Live555 and OwnTone are li-
+    fuzzer indicates how deep the fuzzer reaches into the                braries for streaming media; and DCMTK is used for the medical
+    state space.                                                         data exchange between hospitals (where bugs can be literally
+RQ.2 (Branch Coverage) How much more branch coverage                     fatal). Three quarter of those protocol implementations are
+    does SGF UZZ achieve? We cannot find bugs in code that               running on more than 10 thousand different machines (IPs),
+    is not covered.                                                      according to a recent query of the Shodan search engine.
+
+RQ.3 (State Identification Effectiveness) Identifying state
+   variables, what is the false positive / false negative rate?          5.3     Fuzzers
+    How does it affect the mapping of the state space (STT)?
+                                                                         We implemented our stateful greybox fuzzing approach into
+RQ.4 (Bug Finding Effectiveness) How much faster does                    L IB F UZZER (the most recent version at the time of our exper-
+    SGF UZZ expose stateful bugs in our benchmark?                       iment) and call it Stateful Greybox Fuzzer (SGF UZZ). In our
+                                                                         experiments, SGF UZZ is compared against L IB F UZZER as
+RQ.5 (New Bugs) How many previously unknown bugs can                     the baseline and AFLN ET and IJON as the state-of-the-art.
+    SGF UZZ find in widely used stateful programs? How                      Stateful greybox fuzzer (SGF UZZ). To implement our al-
+    many are stateful?                                                   gorithm into L IB F UZZER, we extended the Fuzzer::RunOne
+                                                                         function with the heuristic described in Section 4.1, changed
+5.2     Subject Programs Studied                                            7 https://google.github.io/oss-fuzz/
+                                                                             8 https://github.com/google/honggfuzz/tree/master/
+Benchmarks. We constructed our set of subjects from two
+                                                                         libhfnetdriver
+mature benchmarks. P RO F UZZ B ENCH [19] is a benchmark                     9 Curl implements 26 client-side protocols which Shodan cannot identify.
+for stateful fuzzing of network protocols and facilitates com-              10 However, the OSS-Fuzz fuzz driver targets the custom protocol which
+
+parison to AFLN ET [20] (i.e., the current state-of-the-art              retrieves information about a remote media file.
+
+
+
+
+3262     31st USENIX Security Symposium                                                                                    USENIX Association
+                                                                    Subject AFLN ET L IB F UZZER     IJON     SGF UZZ    Â12     U Factor
+the InputCorpus::UpdateCorpusDistribution function to im-                        -       70.80        91.85    1849.30
+plement the heuristics discussed in Section 4.2, and added             H2O                                               1.00 <0.01    26.1
+                                                                                 -     (3.61%)      (4.68%)   (94.26%)
+a filter to the MutationDispatcher::Mutate function for the                      -       22.80        32.45     50.80
+                                                                  MbedTLS                                                1.00 <0.01     2.2
+                                                                                 -    (39.31%)     (55.95%)   (87.59%)
+heuristics discussed in Section 4.3. As for the construction                     -      150.25       375.75   14630.80
+                                                                       Curl                                              1.00 <0.01    97.3
+of the STT discussed in Section 3.3, we implemented a stan-                      -     (0.98%)      (2.45%)   (95.55%)
+                                                                                 -       49.40       134.20    4067.30
+dalone python script for the instrumentation component which      Gstreamer                                              1.00 <0.01    82.3
+                                                                                 -     (1.08%)      (2.94%)   (88.96%)
+is static and does not rely on any compiler infrastructure. The   OpenSSL
+                                                                              13.25      23.95        29.60     33.10
+                                                                                                                         0.81 <0.01     1.4
+                                                                            (33.97%)  (61.41%)     (75.90%)   (84.87%)
+runtime component is embedded in the fuzzer.                                  138.27    184.15        405.3    1162.30
+                                                                   Live555                                               1.00 <0.01     6.3
+    Baseline. L IB F UZZER is in-memory, coverage-guided, evo-              (11.42%)  (15.21%)     (33.75%)   (95.98%)
+                                                                               1.00      46.40       426.00    930.15
+lutionary fuzzer and serves as the baseline fuzzer we used to     OwnTone
+                                                                             (0.10%)   (4.82%)     (44.28%)   (96.69%)
+                                                                                                                         0.71   0.03   20.0
+implement SGF UZZ.                                                 DCMTK
+                                                                              68.10     189.25       267.50    6737.05
+                                                                                                                         1.00 <0.01    35.6
+                                                                             (0.92%)   (2.55%)      (3.93%)   (90.87%)
+    State-of-the-art. AFLN ET is the current state-of-the-art                                                                    Avg: 33.9x
+stateful fuzzer for protocol implementations that uses the
+concept of state-feedback. IJON is another state-of-the-art       Table 3: Average state transition coverage for 20 campaigns
+stateful fuzzer which needs manual annotation for states. We      of 23 hours. The percentage shows this number as a propor-
+used both to evaluate if SGF UZZ gains an advantage over          tion of distinct transition sequences exercised by any run of
+the state-of-the-art stateful fuzzer. Because IJON does not       any fuzzer. Vargha-Delaney (Â12 ) measures the magnitude
+support F UZZ B ENCH or P RO F UZZ B ENCH and to facilitate a     of the difference in transition coverage at 23 hours between
+fair comparison to our baseline and our implementation, we        SGF UZZ and L IB F UZZER (effect size) while Wilcoxon rank-
+re-implemented IJON in L IB F UZZER and ported its anno-          sum test (U) measures the degree to which these results may
+tation function ijon_push_state11 for IJON-based state-           be explained by randomness (statistical significance). Factor
+feedback. To maximize the benefit for IJON, we assume a hu-       shows the factor improvement compared to L IB F UZZER.
+man annotator would annotate the same state variables as iden-
+tified by SGF UZZ. AFLN ET does not support FuzzBench.
+    Benchmark Integration. All fuzzers were integrated into       hours timeout is the default for the FuzzBench team. To make
+F UZZ B ENCH or P RO F UZZBENCH using equivalent setups           the results consistent, we use the same time budget.
+and build processes. All fuzzers are provided the same setup,
+environment, seeds, and resources. For all fuzzers, Address-
+                                                                  6   Evaluation Results
+Sanitizer was enabled to detect memory corruption bugs.
+While P RO F UZZBENCH uses the gcov tool, F UZZ B ENCH
+uses the llvm-cov tool to measure the number of branches
+                                                                  RQ.1 State Transition Coverage
+covered in a fuzzing campaign in 15-minute intervals.             For all fuzzers, subjects, and campaigns, we measured state
+                                                                  transition coverage as the number of paths in the STT which
+                                                                  is constructed across the execution of the subject on all seeds
+5.4    Experimental Infrastructure                                generated throughout the campaign and from the initial corpus.
+                                                                  Each path represents a unique sequence of state transitions
+Computational Resources. After the integration of SGF UZZ
+                                                                  during the execution of the subject on an input. If a fuzzer
+and our benchmarks into FuzzBench, we received assistance
+                                                                  exercises more such succinct sequences, it penetrates deeper
+from the FuzzBench team to run the branch and state transi-
+                                                                  into the protocol’s state space.
+tion coverage experiments on the Google Cloud Service [18].
+                                                                     Presentation. Table 3 shows the average number of state
+For the other four subjects in the ProFuzzBench, we ran the
+                                                                  transition sequences for 20 campaigns of 23 hours experi-
+branch and state transition coverage experiments on our local
+                                                                  ments. To assess the "completeness" of the state space cov-
+machine with an Intel Xeon Gold 6258R CPU that has 128
+                                                                  erage, we counted the number of distinct sequences for any
+logical cores running at 2.70GHz. The machine runs Ubuntu
+                                                                  run of any fuzzer and consider this as 100% for all fuzzers
+20.04.2 LTS and has access to 128GB of main memory.
+                                                                  and the average percentage of state transitions exercised by
+   Experiment configurations. As for the initial seed corpus,
+                                                                  each fuzzer is shown in the brackets. Factor represents the
+we selected one valid input for each subject as the initial
+                                                                  factor improvement of SGF UZZ to L IB F UZZER in terms of
+seed for RQ1, RQ2, and RQ3, and selected all seeds provided
+                                                                  average #state sequences. Vargha Delaney Â12 measures the
+FuzzBench or ProFuzzBench as the initial seed for RQ4 and
+                                                                  effect size and gives the probability that a random fuzzing
+RQ5. In order to mitigate the impact of randomness, we re-
+                                                                  campaign of SGF UZZ achieves more state transition cover-
+peated every 23 hours fuzzing campaign 20 times. The 23
+                                                                  age than a random fuzzing campaign of L IB F UZZER (i.e.,
+  11 https://github.com/RUB-SysSec/ijon/blob/                     Â12 > 0.5 means SGF UZZ is better). The Wilcoxon rank sum
+56ebfe34709dd93f5da7871624ce6eadacc3ae4c/llvm_mode/               test U is a non-parametric statistical hypothesis test to assess
+afl-llvm-rt.o.c#L75                                               whether the coverage differs across both fuzzers. We reject
+
+
+
+USENIX Association                                                                   31st USENIX Security Symposium                    3263
+the null hypothesis if U < 0.05, i.e., SGF UZZ outperforms          On average, SGF UZZ covers 33x more sequences of state
+L IB F UZZER with statistical significance. AFLN ET does not        transitions than L IB F UZZER, 15x more than IJON, and
+support FuzzBench. We annotated the same states as in SG-           260x more than AFLN ET. By tracking the state space via
+F UZZ to IJON which needs manual state annotations.                 the STT, SGF UZZ is able to cover more of the state space.
+   Results. For all subjects, SGF UZZ covers substantially
+more state transitions than AFLN ET, L IB F UZZER, and IJON.
+Compared to baseline L IB F UZZER, SGF UZZ exercises 34x           RQ.2 Branch Coverage
+more state transitions on average (20x median) across all
+eight subjects, owing to the STT guided fuzzing approach.          Presentation. Table 4 shows the branch coverage result af-
+Especially for Curl, Gstreamer, and DCMTK, SGF UZZ in-             ter 23 hours. Improvement represents the percentage im-
+creases the state transition coverage significantly. Those have    provement of SGF UZZ to L IB F UZZER based on the average
+much more state variables than others. SGF UZZ even exe-           branch coverage. time-to-coverage measures the time it takes
+cutes 97x more state transitions than L IB F UZZER on Curl         AFLN ET, IJON, and SGF UZZ, respectively to achieve the
+and 930x more state transitions than AFLN ET on OwnTone.           same coverage that L IB F UZZER achieves in 23 hours. Factor
+An extended discussion about about the contribution of the         represents the factor improvement of SGF UZZ to L IB F UZZER
+individual heuristics in SGF UZZ can be found in Section A.1.      based on time-to-coverage. Â12 represents the Vargha Delaney
+                                                                   effect size while U represents Wilcoxon signed rank statistical
+   AFLN ET vastly underperforms. We believe the reasons are        significance.
+1) AFLN ET identifies state by a different method (using the          Results. Although AFLN ET also aims to explore the state
+response code) and 2) AFLN ET restarts the tested program          space of the program, there are substantial inefficiencies that
+after each generated message sequence which incurs a big           prevent AFLN ET from achieving good coverage on most
+performance loss. In contrast, other fuzzers leverage the same     subjects. IJON performs slightly worse than L IB F UZZER
+in-memory architecture for high throughput.                        because it introduces performance cost for state tracing. How-
+   IJON exercises 2.75x more state transitions than L IB -         ever, with our algorithm, in general, SGF UZZ overcomes the
+F UZZER on average as it adds state feedback, but SGF UZZ          performance cost caused by the STT and outperforms both
+still exercises 15.29x more state transitions than IJON. As a      L IB F UZZER and IJON to reach more state-dependent code.
+proportion of all sequences exercised in any run of any fuzzer,    The seeds are valid but only execute few state transition se-
+SGF UZZ covers 92% of state transitions, on average (99%           quences. L IB F UZZER seems to be stuck in "shallow" states,
+on the sum of 20 campaigns). This shows that SGF UZZ can           and IJON explores more state space with state tracing, while
+cover almost all state transitions covered by other fuzzers        SGF UZZ explores much more states that reach much "deeper"
+and more. 1% sequences are executed by L IB F UZZER only           by both state tracing and heuristic algorithms. More discus-
+because of the randomness of fuzzing.                              sions about our algorithm’s contribution to the branch cov-
+                                                                   erage can be found in Section A.1 and the growth trend of
+   L IB F UZZER, as the only stateless fuzzer, performs well
+                                                                   branch coverage can be found in Section A.2.
+only on OpenSSL where the total number of distinct state
+                                                                      One exception is the Gstreamer. We explain the rea-
+transition sequence is relatively low (39). We found that L IB -
+                                                                   son with the huge state space in Gstreamer which cor-
+F UZZER explores states mostly near the initial states or end
+                                                                   responds to a small code space. The enum-type variable
+states (cf. Section A.3).
+                                                                   best_probability, which ranges from 1 to 100, represents
+   For subjects MbedTLS and OpenSSL, we found that SG-             the certainty about the media type of that stream. When
+F UZZ has smaller state transition increase than for the other     Gstreamer receives a stream, it gradually updates the value of
+subjects. For those subjects, the number of distinct sequences     best_probability as more information becomes available.
+explored by any fuzzer is relatively low. For instance, in         This state variable has 100 states and is updated frequently
+OpenSSL, st->hand_state variable is an enum-type vari-             to seemingly random values, so SGF UZZ generates much
+able used for tracking handshake states of TLS protocol.           more inputs to explore the state space despite not achieving
+From state TLS_ST_SR_CLNT_HELLO12 , it needs at least              much more branch coverage. To confirm our hypothesis, we
+four more conditions to reach state DTLS_ST_SW_HELLO-              removed best_probability, repeated this experiment, and
+_VERIFY_REQUEST, and at least two more conditions to               saw a good improvement in the coverage results for SGF UZZ.
+reach state TLS_ST_OK. Some of the conditions need a spe-          L IB F UZZER would take 23 hours to achieve about the same
+cific external state. For instance, SSL_IS_DTLS(s) is true when    coverage as SGF UZZ achieves in 12 hours.
+the traffic comes via UDP protocol rather than TCP.                   Table 4 (left) shows that, on average, SGF UZZ achieves
+                                                                   2.20% more branch coverage than L IB F UZZER, 4.41% more
+                                                                   than IJON, and 38.73% more than AFLN ET. Table 4 (right)
+  12 https://github.com/openssl/openssl/blob/c74188e/ssl/          shows that SGF UZZ achieves the same branch coverage 2.3x
+statem/statem_srvr.c#L585                                          faster than L IB F UZZER in the 23 hours, on average. For state-
+
+
+
+3264   31st USENIX Security Symposium                                                                       USENIX Association
+                                     Branch Coverage                                           Time-to-Coverage
+     Subject
+               AFLN ET L IB F UZZER   IJON SGF UZZ Â12      U Improvement AFLN ET L IB F UZZER    IJON SGF UZZ        Â12      U Factor
+        H2O           -     2879.20 2820.25 3050.68 0.84 <0.01       5.96%       -        23.00h 14.04h     6.69h     0.98    <0.01    3.4
+   MbedTLS            -   11929.60 11885.65 12057.68 0.58 0.43       1.07%       -        23.00h >23.00h 17.86h       0.75    <0.01    1.3
+        Curl          -   19262.16 16892.55 19942.39 0.71 0.03       3.53%       -        23.00h 21.89h 12.23h        0.95    <0.01    1.9
+   Gstreamer          -   63280.06 60993.58 61698.56 0.11 <0.01     -2.50%       -        23.00h >23.00h >23.00h          -       -      -
+   OpenSSL     11342.00   12463.14 12456.00 12610.50 0.72 0.02       1.18% >23.00h        23.00h >23.00h 10.08h           1   <0.01    2.3
+    Live555     2179.87     2244.63 2214.38 2278.10 0.73 0.02        1.49% >23.00h        23.00h >23.00h 15.86h       0.95    <0.01    1.5
+   OwnTone       991.00     2184.64 2299.20 2312.60 0.65 0.15        5.86% >23.00h        23.00h   6.14h    5.04h         1   <0.01    4.6
+    DCMTK       5763.00     6042.15 5997.05 6100.50 0.77 <0.01       0.97% >23.00h        23.00h >23.00h 14.40h       0.93    <0.01    1.6
+                                                                Avg: 2.20%                                                       Avg: 2.3x
+
+Table 4: Average branch coverage (left) and average time to coverage (right) for 20 campaigns of 23 hours. The time to coverage
+measures the time it takes AFLN ET, IJON, and SGF UZZ to achieve the same coverage that L IB F UZZER achieves in 23 hours
+(0.25h accuracy). Vargha-Delaney (Â12 ) measures the magnitude of the difference (effect size) while Wilcoxon rank-sum test (U)
+measures the degree to which these results may be explained by randomness (statistical significance). Factor shows the factor
+improvement compared to L IB F UZZER.
+
+dependent code, this is either because SGF UZZ takes much                                   Enum                       STT
+                                                                         Subject
+                                                                                   All   State Percentage     All    State Percentage RFC
+shorter time than L IB F UZZER to reach the same coverage,                  H2O     43     22     51.16%     6418    6417     99.98%    ✓
+(Time-to-coverage), or SGF UZZ reaches parts of the code that          MbedTLS      36     33     91.67%      167     167    100.00%    ✓
+L IB F UZZER has been unable to reach (Branch coverage and                  Curl    81     44     54.32%    35690   35629     99.83%    ✓
+RQ2 demonstrated in Figure 3). Looking at RQ1 and RQ2                  Gstreamer   218    151     69.27%    11240   11224     99.86% NA
+                                                                       OpenSSL      64     40     62.50%      817     789     96.57%    ✓
+together, there is a greater increase in transition coverage            Live555     11     10     90.91%    17446   17446    100.00%    ✗
+than in branch coverage. This further supports our hypothesis          OwnTone      51     37     72.55%     3671    3671    100.00% NA
+that conventional branch coverage feedback is insufficient to           DCMTK      145     80     55.17%    27178   27109     99.75% NA
+measure the state space coverage of programs.                                            Avg:     68.44%             Avg:     99.50%
+
+   We recall our example at Section 2 to explain the branch
+coverage gap between SGF UZZ and L IB F UZZER. The func-              Table 5: [Left] The number of identified (All) and actual state
+tion sequences ⃝  1⃝2⃝ 3 and ⃝3⃝ 1⃝2 would result in the same         variables (State) among enum-type variables. [Right] The
+branch coverage, but they are different regarding the value of        number of nodes (All) and state-related nodes (State) in the
+the state variable (stream->state). This difference is cap-           STT constructed in 23 hours.
+tured by the STT in SGF UZZ and hence, both two correspond-
+ing seeds are saved for further exploration, while L IB F UZZER
+is unable to distinguish between these function call sequences        ing Request for Comments (RFC) documents, which contain
+and hence only the first input seed that result in one of these       technical specifications and organizational notes for the In-
+function calls will be saved. Consequently, as the function           ternet. To evaluate false positives, we classified the identified
+⃝4 is easier to be explored from mutating the seed resulting          variables into 1) configuration variables if their values
+to ⃝1⃝ 2⃝3 than from the other seed, L IB F UZZER has a high          are got from static sources (configuration files, command-
+chance of missing the corresponding precious seed and be-             line parameters), 2) state variables if their values are got
+coming unable to cover the function ⃝.  4 In our experiments,         from inputs and affect the program execution by the if- or
+the function ⃝ 4 is always explored by SGF UZZ faster than            switch-statements, 3) error or response codes if their
+L IB F UZZER, or is unexplored for L IB F UZZER in 23 hours.          values are assigned as the return value of functions. To evalu-
+There are more state-dependent code that produces the branch          ate the impact on state space exploration, we measured the
+coverage gap.                                                         percentage of nodes in the STT that are actually state vari-
+                                                                      ables. To evaluate false negatives, we checked if the STT
+ On average, SGF UZZ achieves 2.20% more branch cover-                covers the protocol states as discussed in the corresponding
+ age than L IB F UZZER, 4.41% more than IJON, and 38.73%              RFCs. Specifically, we checked a) if an RFC exists, b) if the
+ more than AFLN ET. SGF UZZ achieves the same branch                  specified state machine is represented as enumeration type
+ coverage about 2x faster than L IB F UZZER.                          in the protocol implementation, and c) if STT covers these
+                                                                      variables.
+                                                                          Presentation. Table 5 shows the results of the state iden-
+RQ.3 State Identification Effectiveness                               tification analysis. All represents the number of enum-type
+                                                                      variables or of nodes in STT. State represents the number of
+To evaluate how well our heuristic is able to identify true state     state variables in enum-type variables or state nodes in STT.
+variables, we manually examined the valid identified variables        RFC represents that if the protocol state machines stipulated
+of enumerated type for all subjects as well as the correspond-        in the Request for Comments(RFC) documents are covered
+
+
+
+USENIX Association                                                                          31st USENIX Security Symposium              3265
+by the STT. NA represents Not Applicable.                                           Subject AFLN ET L IB F UZZER IJON SGF UZZ    Improvement
+                                                                                       H2O        -           12    12     12         +0.00%
+    Results. On average, 68.44% of variables that were iden-                      MbedTLS         -           14    17     21        +50.00%
+tified using our enum-based heuristic are actually state vari-                         Curl       -           55    67     75        +36.36%
+ables. However, the 32% false positive rate has a low impact                      Gstreamer       -           23    31    113       +391.30%
+                                                                                  OpenSSL        40           40    44     47        +17.50%
+on the State Transition Tree (STT) construction. On average,
+                                                                                   Live555       15           15    17     19        +26.67%
+99.5% of nodes in the STT are state variable values. The                          OwnTone        10           18    23     27        +50.00%
+value of state variables change several times during the exe-                      DCMTK          6            5     7     12       +140.00%
+cution which is reflected in the growing STT. The remaining                                                             Avg:         +88.98%
+0.5% of nodes are related to non-state variables. For instance,
+                                                                                Table 6: The average number of distinct state variable values
+configuration variables are usually assigned once and often
+                                                                                observed in campaigns of length 23 hours (for enumeration
+appear at the beginning of an execution (e.g., when the pro-
+                                                                                variables that we know for sure represent states).
+tocol exchange is configured). Error or response codes are
+usually written to log files or returned back to users once per
+execution and without any change in value. This means non-                      RQ2). For H2O, which has least improvement, we found that
+state-variables rarely appear in the STT and thus do not affect                 the RFC-related variable stream->state only has eight pos-
+our algorithm in Section 4 or the achieved branch coverage.                     sible values and all eight values are covered by all the fuzzers
+                                                                                in 23 hours, and hence, there has been less room for state
+  While an average of 32% of identified variables are not                       coverage improvement. In general, exercising new states is
+  actually state variables, an average 99.5% of nodes in                        more challenging because specific inputs or external environ-
+  the STT constructed in 23 hours are referring to values                       ment are usually needed, but SGF UZZ still outperforms other
+  of actual state variables. This is explained by the STT                       fuzzers in state coverage.
+  tracking changes in variable values.                                             We should also note that our automatic state identifica-
+                                                                                tion is much more complete than a manual annotation, as
+   We also investigated whether protocol states specified in                    in IJON [2]. For the protocol-implementation-related
+the Request for Comments (RFC), if any, are reflected as                        example15 in the paper, the authors annotated the message
+enumeration-type state variables, and whether they appear                       type in TPM to represent state (Listing.D&Section.V.D).
+in the STT. In other words, we investigated false negatives.                    IJON can generate more “distinct sequences” of message
+There is one false negative among our eight subjects. As                        types. SGF UZZ would identify the state variables 16 of each
+we can see in the last column of Table 5, three of the eight                    TPM subsystem and track the state 17 of these subsystems. We
+protocol implementations are proprietary protocols and no                       examined the experiment data of IJON and found that the mes-
+RFC exists, and the implementation (using state variables)                      sage sequences with the same message types may correspond
+already provides the ground-truth.13 Four of the remaining                      to different subsystem states. For example, for the same mes-
+five protocols implement the specified states as enumeration-                   sage type sequence 32 and 34 (integers used in TPM to mark
+type state variables.14 . For the Live555 implementation of the                 message type), the subsystem’s state may be SU_RESTART or
+RTSP protocol, the corresponding RFC-2326 does specify the                      SU_RESET. It is because the subsystem’s states are affected
+RTSP protocol state machine but it is implicitly represented                    by previous execution results, not the message type. This
+by state variables related to data transport or parsing, which                  shows how SGF UZZ can automatically annotate state in a
+imply the protocol state machine. For instance, the enum-type                   more fine-grained manner than human.
+variable fCurrentParseState maintains the states of the media
+file parser, which must be the initial state under the READY
+state of RTSP protocol and must not be the initial states under                 RQ.4 Bug Finding Effectiveness
+the PLAY state of the RTSP protocol. However, as there is no
+                                                                                Among known bugs from OSS-Fuzz and ProFuzzBench, we
+explicit state variable, we count this as a false positive.
+                                                                                selected seven stateful bugs to evaluate if SGF UZZ exposes
+   To evaluate state coverage regarding true state variables,
+                                                                                stateful bugs faster, and three stateless bugs to evaluate if SG-
+we recorded the number of distinct values of true state vari-
+                                                                                F UZZ hinders the finding of stateless bugs. In ProFuzzBench,
+ables in our experiments, as shown in Table 6. On average,
+                                                                                we selected the stateful bug CVE-2019-7314 in Live555
+SGF UZZ covers 88.98% more states than L IB F UZZER in 23
+                                                                                which was found by AFLN ET. In OSS-Fuzz, we used the bug
+hours. For Gstreamer, which has the best improvement, there
+                                                                                tracker that contains fuzzer-generated bug reports to chose
+is a huge state space in which some states are easier to be
+explored, such as best_probability variable (explained in                         15 https://github.com/RUB-SysSec/ijon-data/blob/master/
+
+                                                                                tpm_fuzzing/src/CommandDispatcher.c#L396
+   13 It is interesting to point out that these protocols cannot be tested by     16 https://github.com/RUB-SysSec/ijon-data/blob/master/
+
+traditional specification-guided protocol testing tools.                        tpm_fuzzing/src/CommandAudit.c#L100
+   14 H2O(rfc7540), MbedTLS (rfc8446), Curl (rfc959, rfc3501, etc.), and          17 https://github.com/RUB-SysSec/ijon-data/blob/master/
+
+OpenSSL (rfc8446)                                                               tpm_fuzzing/src/Global.h#L369-L374
+
+
+
+
+3266     31st USENIX Security Symposium                                                                                   USENIX Association
+                    AFLN ET L IB F UZZER      IJON   SGF UZZ
+  Subject     Bug
+                    Avg Num Avg Num          Avg Num Avg Num
+                                                             Factor               applying for CVEs for the remaining 4 bugs). Out of the 12
+ Stateful:                                                                        new bugs we found, 10 are stateful. Of those, 7 exist in the
+     H2O     12096  -      -   4.17h   12   4.89h    18   2.20h   19       1.9    states represented by explicit state variables of enumerated
+OpenSSL       4528  -      -   >23h    0    14.28h    6   7.09h   10         ∞
+     Curl    16907  -      -   6.29h   19   4.92h    11   1.98h   19       3.2    type, while the other 3 stateful bugs result from aggregated
+Gstreamer    20912  -      -   0.07h   20   0.07h    20   0.03h   20       2.3    implicit states (cf Section 3.4). Two stateful bugs (the first and
+ Live555      CVE 7.78h   20   0.05h   20   0.05h    20   0.05h   20       1.0
+     H2O      3303  -      -   >23h    0     >23h     0   >23h     0          -   tenth line in Table 7) can also be triggered by L IB F UZZER
+     Curl    22874  -      -   >23h    0     >23h     0   >23h     0          -   because they depend on implicit states. One stateless bug
+                                                                     Avg: 2.1x
+ Stateless:                                                                       (the eighth line in Table 7) can also be triggered by L IB -
+      H2O    554     -    -    4.69h   20   4.48h    16   3.86h   20       1.2    F UZZER. With the same state variables identified by SGF UZZ,
+      Curl 17954     -    -    0.18h   20   0.21h    20   0.15h   20       1.2
+ OpenSSL 3122        -    -    >23h    0    >23h      0   >23h     0         -    IJON additionally expose two bugs (the second and third line
+                                                                     Avg: 1.2x    in Table 7). All 12 new-found bugs cannot be triggered by
+                                                                                  AFLN ET in 23 hours.
+Table 7: Time to expose existing bugs: 20 campaigns, 23 hr.                          Case study: CVE-2021-3928318 in Live555 (stateful bug
+                                                                                  in explicit state). This bug is exposed with the following
+                                                                                  minimal prefix of RTSP states ⟨INIT =⇒ READY =⇒
+the other seven bugs. Among stateful bugs, we take the bugs                       PLAY =⇒ READY =⇒ PLAY ⟩ and requires the following
+that require at least two state transitions to be exercised before                state transition in the MPEG parser (i.e., enum-type state vari-
+they can be exposed. Stateless bugs are the bugs that can be                      able MPEGParseState) ⟨PARSING_PACK_HEADER =⇒
+executed without any state transition.                                            PARSING_PACK_HEADER⟩, all of which are tracked in the
+   Presentation. Table 7 shows the average time to expose                         STT. After the first SETUP command, the first PLAY com-
+all bugs in 20 campaigns of 23 hours. Num is the number of                        mand starts the parsing process and sets the parser state for
+campaigns in which the bugs were exposed. Factor represents                       the media file header to PARSING_PACK_HEADER. The
+the factor improvement of SGF UZZ to L IB F UZZER based on                        second set of SETUP and PLAY commands stops and restarts
+the average time-to-bug. Bug shows the bug identifier in the                      the parsing process, setting the parser state again to PARS-
+OSS-Fuzz issue tracker (for Live555, CVE-2019-7314).                              ING_PACK_HEADER. However, the number of bytes read
+   Results. For stateful bugs, SGF UZZ is never slower than the                   in the first round is not reset properly, such that in the second
+competition in exposing the bugs. For OpenSSL, which has                          round the media file header is parsed incorrectly which incurs
+a more complicated state machine than others, L IB F UZZER                        an assertion error.
+cannot trigger the bug in 23 hours, while IJON and SGF UZZ
+trigger it in 6 and 10 out of 20 fuzzing campaigns of 23 hours,                       SGF UZZ found 12 new bugs in three widely-used and
+respectively. For Live555, L IB F UZZER, IJON, and SGF UZZ                            well-fuzzed stateful programs within 23 hours fuzzing. 10
+expose the bug much faster than AFLN ET because of the                                of 12 bugs are stateful bugs.
+high throughput. In general, IJON outperforms L IB F UZZER,
+but it is worse than SGF UZZ. These known stateful bugs were
+originally found by L IB F UZZER because few state transitions                    7       Related Work
+are needed (cf. Section A.3).
+   For stateless bugs, SGF UZZ shows a slight advantage over                      State Space Inference. The most closely related works em-
+L IB F UZZER and IJON. We found that these stateless bugs                         ploy learning algorithms to infer state machines. There are
+are usually in the functions which are executed together with,                    two different ways to infer the state machine from a protocol
+but do not depend on state transitions, such as message pars-                     implementation. Passive learning based approaches [8, 12,
+ing functions must be executed before state transitions (bug                      13, 14, 22, 30] infer a state machine by analyzing a corpus
+#554). Our algorithms explore the state space more efficiently,                   of protocol messages observed from network traffic. A fun-
+facilitating the stateless bug finding as well.                                   damental restriction to this kind of approach is the inability
+                                                                                  to learn protocols that communicate over an encrypted chan-
+ On average, SGF UZZ exposes stateful bugs about twice                            nel. Active learning based approaches [7, 9] actively query a
+ (2x) as fast as L IB F UZZER and IJON, and about 155x                            protocol implementation with generated message sequences
+ faster than AFLN ET.                                                             and inference a state machine using Angluin’s L∗ algorithm.
+                                                                                  HVlearn [21] infers DFA-models of SSL/TLS hostname veri-
+                                                                                  fication implementations via learning algorithms. In contrast,
+RQ.5 New Bugs Found                                                               we do not infer the state machine from a protocol implemen-
+                                                                                  tation but derive the STT structure from execution traces to
+We found 12 unique bugs in three of four subjects from Pro-
+                                                                                  identify the state space (Sec 3.2). The construction of the
+FuzzBench. All new bugs are listed in Table 8. All of these
+                                                                                  STT requires no analysis of protocol messages or learning
+bugs can be exploited remotely and have serious safety risks.
+So far, we have received 8 CVE IDs (we are in the process of                          18 fifth   line in Table 8.
+
+
+
+
+USENIX Association                                                                                             31st USENIX Security Symposium   3267
+   Subject   version                                      Type                               Stateful   State Variable        CVE
+   Live555    1.08             Stack-based overflow in liveMedia/MP3FileSource.cpp             True        Implicit      CVE-2021-38380
+   Live555    1.08               Heap use after free in liveMedia/MatroskaFile.cpp             True        Explicit      CVE-2021-38381
+   Live555    1.08             Heap use after free in liveMedia/MPEG1or2Demux.cpp              True        Explicit      CVE-2021-38382
+   Live555    1.08            Memory leak in liveMedia/AC3AudioStreamFramer.cpp                True        Explicit      CVE-2021-39282
+   Live555    1.08             Assertion in UsageEnvironment/UsageEnvironment.cpp              True        Explicit      CVE-2021-39283
+   Live555    1.08     Heap-based overflow in BasicUsageEnvironment/BasicTaskScheduler.cpp     True        Explicit      CVE-2021-41396
+   Live555    1.08               Memory leak in liveMedia/MPEG1or2Demux.cpp                    True        Implicit      CVE-2021-41397
+  OwnTone     28.2                         Heap use after free in src/misc.c                  False            -         CVE-2021-38383
+  DCMTK       3.6.6                   Memory leak in dcmnet/libsrc/dulparse.cc                False            -          CVE Requested
+  DCMTK       3.6.6                   Memory leak in dcmnet/libsrc/dulparse.cc                 True        Implicit       CVE Requested
+  DCMTK       3.6.6              Heap use after free in dcmqrdb/libsrc/dcmqrsrv.cc             True        Explicit       CVE Requested
+  DCMTK       3.6.6                Heap-based overflow in dcmnet/libsrc/diutil.cc              True        Explicit       CVE Requested
+
+Table 8: The 0–day security vulnerabilities found by SGF UZZ. Eight CVEs were assigned. Four CVEs are under application.
+
+
+algorithms. We provide a new perspective of stateful system             8    Discussion
+testing, in which protocol state transitions can be identified
+by changes on state variables.                                          The contribution of our work is in fuzzing reactive and state-
+                                                                        ful software systems. We propose to capture the exercised
+                                                                        state space using a highly efficient dynamic construction of
+   Blackbox and Whitebox Protocol Fuzzing. Blackbox
+                                                                        a state transition tree (STT). We developed a greybox fuzzer
+fuzzers [4, 15, 16, 17, 24, 25, 26, 27, 28] take the protocol
+                                                                        SGF UZZ for stateful systems. Our experimental results show
+server under test as a black box and keep generating mes-
+                                                                        that SGF UZZ discovered stateful bugs about twice as fast
+sage sequences to the server for discovering bugs or security
+                                                                        as L IB F UZZER, the baseline greybox fuzzer that SGF UZZ
+flaws. Despite being simple and easy to be deployed, black-
+                                                                        was implemented into. SGF UZZ covers 33x more sequences
+box fuzzers are completely unaware of the internal structure
+                                                                        of state transitions than L IB F UZZER, 15x more than IJON,
+of the program, perform random testing, and are thus ineffec-
+                                                                        and 260x more than AFLN ET. At the same time, SGF UZZ
+tive. Whitebox fuzzers use program analysis and constraint
+                                                                        achieves the same branch coverage about 2x faster than L IB -
+solving to synthesize inputs that exercise different program
+                                                                        F UZZER. Finally, SGF UZZ found 12 new bugs. Our tool
+paths. MACE [7] combines concolic execution and active
+                                                                        SGF UZZ has been released open source.
+state machine learning for protocol fuzzing. MACE uses con-
+crete execution and symbolic execution to iteratively infer and                 https://github.com/bajinsheng/SGFuzz
+refine an abstract model of a protocol so as to explore the pro-
+gram states more effectively. However, these techniques suffer          We followed a responsible disclosure policy for the bugs we
+from scalability issues arising from the heavy machinery of             found, and all reported bugs in this paper have now been
+symbolic execution.                                                     fixed by developers. We feel that tools like SGF UZZ have
+                                                                        significant practical usage since the security of the internet-
+   Greybox fuzzers for protocols. These fuzzers observe pro-            facing protocol implementations is of paramount importance.
+gram states in the execution and use coverage- and state-                  Acknowledgements. This work was partially supported by
+feedback to guide input generation for discovering program              the National Research Foundation Singapore (National Satel-
+states. IJON [2] uses human code annotations to annotate                lite of Excellence in Trustworthy Software Systems)
+states. INVSCOV [10] uses the likely invariants to partition
+program states. AFLNet [20] uses response codes as states
+                                                                        References
+and evolves a corpus of protocol message sequences based
+on coverage- and state-feedback from executed sequences.                  [1] libfuzzer-a ibrary for coverage-guided fuzz testing.
+For each run, AFLNet selects one of the states and fuzzes                     https://llvm.org/docs/LibFuzzer.html, 2020.
+the entire sequence of messages which reach the state. To im-
+prove performance, [6] uses fork mechanism to snapshot the                [2] Cornelius Aschermann, Sergej Schumilo, Ali Abbasi,
+states which are under fuzzing to avoid executing the whole                   and Thorsten Holz. Ijon: Exploring deep state spaces via
+protocol messages from the start. However, the fork points                    fuzzing. In IEEE Symposium on Security and Privacy,
+need to be specified manually in the code which demands the                   2020.
+knowledge of the protocol state machine. Our approach comes
+under greybox fuzzing. SGF UZZ does not require knowledge                 [3] Cornelius Aschermann, Sergej Schumilo, Tim Blazytko,
+of the protocol state machine. Instead, we use state variables                Robert Gawlik, and Thorsten Holz. Redqueen: Fuzzing
+to identify the explored state space. In contrast to AFLNet,                  with input-to-state correspondence. In NDSS, volume 19,
+SGF UZZ does not identify states by response codes.                           pages 1–15, 2019.
+
+
+
+3268   31st USENIX Security Symposium                                                                                USENIX Association
+ [4] Vaggelis Atlidakis, Patrice Godefroid, and Marina Pol-     [15] W. Johansson, M. Svensson, U. E. Larson, M. Almgren,
+     ishchuk. Restler: Stateful rest api fuzzing. In Proceed-        and V. Gulisano. T-fuzz: Model-based fuzzing for ro-
+     ings of the 41st International Conference on Software           bustness testing of telecommunication protocols. In
+     Engineering, pages 748–758, 2019.                               IEEE Seventh International Conference on Software
+                                                                     Testing, Verification and Validation, pages 323–332,
+ [5] Marcel Böhme, Van-Thuan Pham, and Abhik Roychoud-               2014.
+     hury. Coverage-based greybox fuzzing as markov chain.
+     In Proceedings of the 2016 ACM SIGSAC Conference on        [16] Rauli Kaksonen, Marko Laakso, and Ari Takanen. Soft-
+     Computer and Communications Security, pages 1032–               ware security assessment through specification muta-
+     1043, 2016.                                                     tions and fault injection. In Communications and Multi-
+                                                                     media Security Issues of the New Century, pages 173–
+ [6] Yurong Chen, Tian lan, and Guru Venkataramani. Ex-              183, 2001.
+     ploring effective fuzzing strategies to analyze commu-
+     nication protocols. In Proceedings of the 3rd ACM          [17] T. Kitagawa, M. Hanaoka, and K. Kono. Aspfuzz: A
+     Workshop on Forming an Ecosystem Around Software                state-aware protocol fuzzer based on application-layer
+     Transformation, FEAST’19, page 17–23, New York, NY,             protocols. In The IEEE symposium on Computers and
+     USA, 2019. Association for Computing Machinery.                 Communications, 2010.
+ [7] Chia Yuan Cho, Domagoj Babic, Pongsin Poosankam,           [18] Jonathan Metzman, László Szekeres, Laurent Simon,
+     Kevin Zhijie Chen, Edward XueJun Wu, and Dawn                   Read Sprabery, and Abhishek Arya. Fuzzbench: an
+     Song. Mace: Model-inference-assisted concolic explo-            open fuzzer benchmarking platform and service. In Pro-
+     ration for protocol and vulnerability discovery. In 20th        ceedings of the 29th ACM Joint Meeting on European
+     USENIX Security Symposium, 2011.                                Software Engineering Conference and Symposium on
+                                                                     the Foundations of Software Engineering, pages 1393–
+ [8] P. M. Comparetti, G. Wondracek, C. Kruegel, and
+                                                                     1403, 2021.
+     E. Kirda. Prospex: Protocol specification extraction. In
+     30th IEEE Symposium on Security and Privacy, pages         [19] Roberto Natella and Van-Thuan Pham. Profuzzbench: A
+     110–125, 2009.                                                  benchmark for stateful protocol fuzzing. In Proceedings
+ [9] Joeri De Ruiter and Erik Poll. Protocol state fuzzing of        of the 30th ACM SIGSOFT International Symposium on
+     tls implementations. In 24th USENIX Security Sympo-             Software Testing and Analysis, 2021.
+     sium, pages 193–206, 2015.
+                                                                [20] Van-Thuan Pham, Marcel Boehme, and Abhik Roy-
+[10] Andrea Fioraldi, Daniele Cono D’Elia, and Davide                choudhury. Aflnet: A greybox fuzzer for network proto-
+     Balzarotti. The use of likely invariants as feedback for        cols. In IEEE International Conf. on Software Testing
+     fuzzers. In 30th USENIX Security Symposium (USENIX              Verification and Validation, 2020.
+     Security 21), pages 2829–2846. USENIX Association,
+     August 2021.                                               [21] S. Sivakorn, G. Argyros, K. Pei, A. D. Keromytis, and
+                                                                     S. Jana. Hvlearn: Automated black-box analysis of
+[11] Shuitao Gan, Chao Zhang, Peng Chen, Bodong Zhao,                hostname verification in ssl/tls implementations. In
+     Xiaojun Qin, Dong Wu, and Zuoning Chen. Greyone:                IEEE Symposium on Security and Privacy, 2017.
+     Data flow sensitive fuzzing. In 29th USENIX Security
+     Symposium, pages 2577–2594, 2020.                          [22] Yipeng Wang, Zhibin Zhang, and L. Guo. Inferring
+                                                                     protocol state machine from real-world trace. In Pro-
+[12] Hugo Gascon, Christian Wressnegger, Fabian Yam-                 ceedings of the 13th International Conference on Recent
+     aguchi, Daniel Arp, and Konrad Rieck. Pulsar: State-            Advances in Intrusion Detection, 2010.
+     ful black-box fuzzing of proprietary network protocols.
+     In Security and Privacy in Communication Networks,         [23] Website.     American fuzzy lop (afl) fuzzer.
+     pages 330–347, 2015.                                            http://lcamtuf.coredump.cx/afl/technical_
+                                                                     details.txt, 2017. Accessed: 2017-05-13.
+[13] Serge Gorbunov and Arnold Rosenbloom. Autofuzz:
+     Automated network protocol fuzzing framework. 2010.        [24] Website. beSTORM Black Box Testing. https://www.
+                                                                     beyondsecurity.com/bestorm.html, 2017.
+[14] Y. Hsu, G. Shu, and D. Lee. A model-based approach
+     to security flaw detection of network protocol imple-      [25] Website.    Boofuzz: A fork and successor of the
+     mentations. In 2008 IEEE International Conference on            sulley fuzzing framework. https://github.com/
+     Network Protocols, 2008.                                        jtpereyda/boofuzz, 2017. Accessed: 2019-08-12.
+
+
+
+USENIX Association                                                                31st USENIX Security Symposium      3269
+                                                                         Subject H ONGGFUZZ L IB F UZZER SGF UZZx    SGF UZZy   SGF UZZ
+[26] Website. Codenomicon Intelligent Fuzz Testing. http:                   H2O      82.65      70.80      114.50     1693.45    1849.30
+     //www.codenomicon.com/index.html, 2017. Ac-                       MbedTLS       18.95      22.80       32.55       49.40      50.80
+                                                                            Curl    144.60     150.25      456.70     8899.00   14630.80
+     cessed: 2017-05-13.                                               Gstreamer     48.70      49.40      186.50     2399.10    4067.30
+                                                                       OpenSSL       25.34      23.95       30.00       31.03      33.10
+[27] Website.   Peach Fuzzer Platform. http://www.                      Live555     179.65     184.15      594.33      825.25    1162.30
+                                                                       OwnTone       49.71      46.40      675.45      748.32     930.15
+     peachfuzzer.com/products/peach-platform/,                          DCMTK       183.22     189.25     1233.45     3755.05    6737.05
+     2017. Accessed: 2017-05-13.
+                                                                      Table 9: Average state transition coverage for 20 campaigns
+[28] Website. Sulley: A pure-python fully automated and               of 23 hours.
+     unattended fuzzing framework. https://github.
+     com/OpenRCE/sulley, 2017. Accessed: 2019-08-12.                      Subject H ONGGFUZZ L IB F UZZER SGF UZZx   SGF UZZy   SGF UZZ
+                                                                       B RANCH C OVERAGE :
+[29] Wei You, Xueqiang Wang, Shiqing Ma, Jianjun Huang,                      H2O        3207.90  2879.20   2885.50    3042.70    3050.68
+                                                                       MbedTLS         11735.15 11929.60  11890.35   11902.05   12057.68
+     Xiangyu Zhang, XiaoFeng Wang, and Bin Liang. Pro-                       Curl      19987.30 19262.16  16665.80   19619.77   19942.39
+     fuzzer: On-the-fly input type probing for better zero-day         Gstreamer       63235.45 63280.06  61807.94   62551.20   61698.56
+                                                                       OpenSSL         13003.46 12463.14  12598.24   12596.10   12610.50
+     vulnerability discovery. In 2019 IEEE Symposium on                   Live555       2197.85  2244.63   2223.15    2270.00    2278.10
+     Security and Privacy (SP), pages 769–786. IEEE, 2019.             OwnTone          2104.13  2184.64   2124.75    2292.00    2312.60
+                                                                        DCMTK           6087.33  6042.15   5992.25    6033.70    6100.50
+                                                                       T IME - TO -C OVERAGE :
+[30] Yingchao Yu, Zuoning Chen, Shuitao Gan, and Xiaofeng                    H2O         3.60h   23.00h     12.41h     7.16h      6.69h
+     Wang. Sgpfuzzer: A state-driven smart graybox protocol            MbedTLS         >23.00h   23.00h    >23.00h   >23.00h     17.86h
+     fuzzer for network protocol implementations. IEEE                       Curl       14.25h   23.00h     22.58h    13.88h     12.23h
+                                                                       Gstreamer       >23.00h   23.00h    >23.00h   >23.00h    >23.00h
+     Access, 8:198668–198678, 2020.                                    OpenSSL           5.54h   23.00h     15.44h    16.32h     10.08h
+                                                                          Live555      >23.00h   23.00h    >23,00h    19.33h     15.86h
+[31] Tai Yue, Pengfei Wang, Yong Tang, Enze Wang, Bo Yu,               OwnTone         >23.00h   23.00h    >23.00h     8.18h      5.04h
+                                                                        DCMTK           20.11h   23.00h    >23,00h   >23.00h     14.40h
+     Kai Lu, and Xu Zhou. EcoFuzz: Adaptive Energy-
+     Saving greybox fuzzing as a variant of the adversarial           Table 10: Average branch coverage for 20 campaigns of 23
+     Multi-Armed bandit. In 29th USENIX Security Sympo-               hours (top), and the time it takes each fuzzer to achieve the
+     sium (USENIX Security 20), pages 2307–2324. USENIX               same coverage that L IB F UZZER achieves in 23 hours (0.25h
+     Association, August 2020.                                        accuracy; bottom)
+
+
+A      Appendix                                                       contributions of each algorithm in Section 4.1, Section 4.2,
+                                                                      and Section 4.3, respectively. It demonstrates that our heuris-
+Due to the space limit, we present some of the evaluation             tic algorithms (Section 4.2 and Section 4.3) promote around
+results here.                                                         33x state transition coverage. Looking together with Table 3,
+                                                                      SGF UZZx , which only has STT feedback, still slightly out-
+                                                                      performs IJON. We explain that IJON only records the last
+A.1     Sensitivity Analysis                                          four states in a state sequence for high throughput, while we
+We conducted sensitivity analysis to evaluate the effectiveness       capture all states of a sequence in the STT.
+of each heuristic in Section 4. To do this, we configured three          Table 10 shows the average branch coverage in 23 hours
+new fuzzers at the F UZZ B ENCH framework: a) SGF UZZx ,              and the time it takes H ONGGFUZZ, SGF UZZx , SGF UZZy , and
+a specific configuration of SGF UZZ that does not have the            SGF UZZ, respectively to achieve the same coverage that L IB -
+algorithms of energy schedule in Section 4.2 and prioritizing         F UZZER achieves in 23 hours. H ONGGFUZZ excels at subjects
+input bytes in Section 4.3. b) SGF UZZy , another configuration       H2O, Curl, and OpenSSL and fails miserably at MbedTLS and
+of the SGF UZZ that does not have prioritizing input bytes            OwnTone. The reason for this is that SGF UZZx , SGF UZZy ,
+in Section 4.3. c) H ONGGFUZZ, a stateless fuzzers similar            and SGF UZZ are all based on L IB F UZZER, while H ONGG -
+to L IB F UZZER. The experiments were carried out with the            FUZZ is an entirely different fuzzer. In general, SGF UZZ x
+identical configurations as our main experiments: 23 hours            slightly performs worse than L IB F UZZER as it introduces per-
+and 20 runs.                                                          formance cost for state tracing, and our heuristic algorithms
+    Table 9 shows the average state transition coverage. Similar      overcome the performance cost as in SGF UZZy and SGF UZZ.
+to L IB F UZZER, H ONGGFUZZ is a stateless fuzzer, so its state       For Gstreamer which has a big state space in small code space,
+transition coverage is little and close to L IB F UZZER. This         SGF UZZy performs better than SGF UZZ as the latter puts too
+demonstrates that other stateless fuzzers are inefficient in state-   much effort on the state space exploration. Time-to-coverage
+space exploration as well. From SGF UZZx , to SGF UZZy , un-          improvement is substantially greater than branch coverage
+til SGF UZZ, the state transition increase factor to L IB F UZZER     improvement, which is consistent with our major results in
+are 4.43x, 21.95x, and 33.92x on average which represent the          Table 4.
+
+
+
+3270    31st USENIX Security Symposium                                                                           USENIX Association
+                  H2O                                    MbedTLS                                     Curl               Subject Total Stateful      Subject Total    Stateful
+3250                                                                            20000
+                                      12000                                                                                H2O      9        6    Gstreamer   34           28
+3000                                                                                                                   OpenSSL      4        3         Curl   26           20
+                                      11500                                     17500
+2750                                                                                                                   MBedTLS      0        0
+                                                                                15000
+                                                                                                                                                      Total:   73         57 (78.08%)
+2500                                  11000
+
+2250
+                                      10500                                     12500                                 Table 11: Prevalence of stateful bugs in OSS-Fuzz as of
+2000
+                                                                                                                      Sep’21.
+                Gstreamer                                OpenSSL                                  Live555
+
+63000                                 13000
+
+                                      12500                                      2200
+60000                                                                                                                 crashes and to determine whether these bugs are stateful. Ta-
+                                      12000
+57000                                                                            2100                                 ble 11 illustrates the prevalence of stateful bugs. We classify
+                                      11500
+
+54000                                                                            2000
+                                                                                                                      a bug as stateful if the crash location is reached after at least
+                                      11000
+                                                                                                                      one state transition. We find that 57 (78.08%) of all 73 bugs
+51000                                 10500
+
+                OwnTone                                  DCMTK
+                                                                                        0     6       12    18   23   are stateful.
+                                       6000
+2000                                                                                                                   Every four in five bugs that are reported in OSS-Fuzz for
+                                       5750
+                                                                                                                       protocol implementations among our subjects are stateful.
+1600                                   5500
+
+                                       5250
+1200                                                                                                                     To understand the nature of bugs in protocol implemen-
+                                       5000
+                                                                                                                      tations, let us discuss all the bugs in H2O, our motivating
+        0   6      12       18   23            0     6         12    18    23
+                                                    Time (in hours)                                                   example in Section 2.
+                        fuzzer        AFLNet       Honggfuzz        IJON    LibFuzzer       SGFuzz
+                                                                                                                         Stateful bugs in H2O. All 6 stateful bugs in H2O happen af-
+                                                                                                                      ter specific state transitions on the state variable stream->state
+                                                                                                                      explained in Section 2. Each stream in HTTP2 protocol has
+Figure 5: Average branch coverage over time for SGF UZZ                                                               a weight value to represent the priority of the stream to be
+and L IB F UZZER across all eight subjects in 23 hours.                                                               handled and H2O defines a scheduling component to main-
+                                                                                                                      tain it. Bugs #12093, #12096, #12127, and #12100 have the
+                                                                                                                      same root reason that they happen in the END_STREAM state
+A.2         Growth Trend of Branch Coverage                                                                           of stream->state within the scheduling component, so we
+                                                                                                                      only explain bug #12096 here. To trigger it, the H2O firstly
+Figure 5 shows the average branch coverage with time for all                                                          needs to set a higher priority for the current stream, (e.g.,
+fuzzers in Table 4 and H ONGGFUZZ in Table 10. All fuzzers’                                                           via the header frame or a dedicated priority frame), and then
+branch coverage is nearly saturated after the 12 hours, al-                                                           close the stream (e.g., via a "reset stream" or an "end stream"
+though their state transition coverage is vastly varied. The                                                          frame to trigger a scheduler relocation). At the same time,
+slowing growth rate of branch coverage further explains why                                                           the value of stream->state will be changed from IDLE until
+the time-to-coverage improvement is more significant than                                                             END_STREAM representing a sequence of state transitions.
+branch coverage improvement and branch coverage alone                                                                 The scheduling component only works for active streams, not
+isn’t enough to examine program state space. AFLN ET is                                                               closed streams. Lastly, when we assign a new priority to the
+substantially slower than other fuzzers, especially on Own-                                                           closed stream, the bug 12096 is triggered because it does not
+Tone. On OwnTone, AFLN ET ’s throughput is less than 10                                                               check if the stream is closed. Bug #2623 and #3303 have the
+inputs/second, while SGF UZZ ’s throughput is above 1000 in-                                                          same root reason that they happen under the END_STREAM
+puts/second. Therefore AFLN ET achieves much fewer branch                                                             state of stream->state, but not within the scheduling com-
+coverage than others.                                                                                                 ponent. We explain the bug #2623 here. To trigger it, H2O
+                                                                                                                      firstly receives a header frame with the end-of-stream attribute
+A.3         Prevalence of Stateful Bugs                                                                               which indicates that no more frames for the stream. Then the
+                                                                                                                      stream will be closed as the corresponding stream->state is
+To investigate the prevalence of stateful bugs, we stud-
+                                                                                                                      changed to END_STREAM. Lastly, when receiving another
+ied the bugs that were reported in OSS-Fuzz against
+                                                                                                                      frame called trailing header for the closed stream, H2O may
+our subjects. We use the keyword subject/fuzz_driver
+                                                                                                                      trigger the bug #2623 because of incomplete checking.
+status:Verified -Type=Build-Failure to search avail-
+                                                                                                                         Stateless bugs in H2O. The 3 stateless bugs in H2O are ob-
+able bugs on the OSS-Fuzz platform19 . These bugs were
+                                                                                                                      served before processing requests where no state transitions
+reported against previous versions, and these reports are pub-
+                                                                                                                      execute. Bug #2695 #2923 happens in the response genera-
+licly available. A bug report links the bug fix and a crash-
+                                                                                                                      tion component. H2O defines an object called generator to
+reproducing test case. We used this test case to debug these
+                                                                                                                      maintain related operations of response generation, but the
+  19 https://bugs.chromium.org/p/oss-fuzz/issues/list                                                                 generator is used without checking if it is NULL incurring
+
+
+
+USENIX Association                                                                                                                       31st USENIX Security Symposium           3271
+unexpected behaviors. Bug #37023 happens in the socket con-            sends other optional messages one by one in
+nection functions which is also executed before processing             States      (DTLS_ST_SW_HELLO_VERIFY_REQUEST
+inputs without state transitions.                                      to     TLS_ST_SW_CERT_REQ), and indicates       it
+   Totally, 6 out of 9 bugs in H2O are stateful. Although              is done by State (TLS_ST_SW_SRVR_DONE).
+existing fuzzer can find stateful bugs, the stateful bugs they         Then when the client is ready and sends back op-
+found only happen at the END_STREAM state of the stream-               tional messages, the server checks them in these
+>state which represents the endpoint of the stream state. No           States (TLS_ST_SR_CERT to TLS_ST_SR_FINISHED,
+bug is found during the state transitions except for the start         TLS_ST_SW_CERT_VRFY). At last, it sends final mes-
+and end states. It provides further evidence to support that the       sages in States (TLS_ST_SW_SESSION_TICKET to
+existing fuzzer cannot efficiently explore the state space of          TLS_ST_SW_ENCRYPTED_EXTENSIONS) to confirm the
+the protocol programs. On the other hand, even if the state            server is ready too. States (TLS_ST_SW_KEY_UPDATE,
+space of the protocol program has not been explored enough,            TLS_ST_SR_KEY_UPDATE) are used for updating keys
+the number of stateful bugs is still greater than stateless bugs.      after establishing the connection.
+Therefore, we claim that the stateful bugs are prevalent in
+                                                                        Protocols       Subjects           Variables Types/ Values Examples
+protocol implementations.                                                                  Bftpd              enum / STATE_CONNECTED
+                                                                          FTP          LightFTP       macro / FTP_ACCESS_NOT_LOGGED_IN
+                                                                                           vsftpd             macro / PRIV_SOCK_LOGIN
+A.4 Top-50 most widely used open-source pro-                             SFTP           ProFTPd       macro / SFTP_SESS_STATE_HAVE_AUTH
+                                                                                      BoringSSL          enum / state13_send_hello_retry_request
+    tocol implementations.                                                                libssh2             enum / libssh2_NB_state_idle
+                                                                                       MbedTLS       enum / MBEDTLS_SSL_HELLO_REQUEST
+                                                                        TLS/SSL
+To investigate how states are tracked in the programs, We                              OpenSSL                   enum / TLS_ST_BEFORE
+                                                                                       WolfSSL        enum / SERVER_HELLOVERIFYREQUE..
+reviewed the code of top-50 widely used protocol implemen-                                 Botan                enum / HELLO_REQUEST
+tations that are open-sourced. We used the same criterion                SMTP
+                                                                                           Exim                   enum / FF_DELIVERED
+                                                                                     OpenSMTPD                      enum / STATE_HELO
+as in Section 6 to examine the state variables: the values of                           aolserver                 enum / SOCK_ACCEPT
+state variables are got from the input and affect the program                               H2O     enum / H2O_HTTP2_STREAM_STATE_IDLE
+                                                                                            httpd                    enum / H2_SS_IDLE
+execution by the switch or if statements. We only show the                          LiteSpeed httpd          enum / STREAM_FIN_RECVD
+first state variables if several state variables exist in a subject.    HTTP/2
+                                                                                        NgHttp2          enum / NGHTTP2_STREAM_INITIAL
+                                                                                           Nginx      enum / NGX_HTTP_INITING_REQUEST...
+   Table 12 shows the results. It includes more than 16 pro-                             Tengine      enum / NGX_HTTP_TFS_STATE_WRITE...
+tocols and 50 corresponding subjects. We marked the cor-                                   thttpd             macro / CHST_FIRSTWORD
+                                                                                     WebSocket++            enum / READ_HTTP_REQUEST
+responding protocol of the state variable in the Protocols                              Lighttpd             enum / LI_CON_STATE_DEAD
+column or noted Customized if the state variables are used                RDP
+                                                                                       FreeRDP            enum / DRDYNVC_STATE_INITIAL
+                                                                                            xrdp                   enum / WMLS_RESET
+for customized states, such as connection and data processing             NTP               NTP                   macro / EVNT_UNSPEC
+states, not protocol states. Although some subjects (Sendmail,           IMAP           Dovecot         enum / AUTH_REQUEST_STATE_NEW
+Postfix, e.g.,) are protocol implementations, the state variables         IRC        UnreadIRCd         enum / CLIENT_STATUS_TLS_STAR...
+                                                                          SMB              Squid                enum / SMB_State_NoState
+we found in them are about customized states, not protocol               DAAP          OwnTone                    enum / PLAY_STOPPED
+states. This result explains that developers usually design                SIP         Kamailio                   enum / H_SKIP_EMPTY
+                                                                        DICOM           DCMTK                   enum / DIMSE_StoreBegin
+many customized states in programs, and these states can not                         libvncserver      enum / RFB_INITIALISATION_SHARED
+                                                                          VNC
+be found by protocol documents. The column of Variable                                 TigerVNC           enum / RFBSTATE_UNINITIALISED
+                                                                                          ffmpeg               enum / RTSP_STATE_IDLE
+Types/Values Examples represent the state variable types: enu-           RTSP
+                                                                                      VideoLAN         enum / VLC_PLAYER_STATE_STOPPED
+merated type or macro definition (#define), and an example               MQTT          Mosquitto                  enum / mosq_ms_invalid
+                                                                                            aria2                   enum / STATUS_ALL
+of state variable values. All 50 subjects implement their states                         inetutils                     marco / TS_DATA
+by named constants, of which 44 subjects use enum-type vari-                           Gstreamer              enum / GST_STATE_READY
+                                                                                       OpenSSH                        enum / MA_START
+ables.                                                                                Pure-FTPd             enum / FTPWHO_STATE_IDLE
+   Case study. We used OpenSSL to explain how the program                               libgcrypt               enum / STATE_POWERON
+                                                                                          Postfix              enum / STRIP_CR_DUNNO
+states are manipulated by the corresponding state variables.           Customized
+                                                                                       Sendmail                  enum / SM_EH_PUSHED
+Openssl has a handshake state machine to maintain                                     Boa HTTPd                   enum / READ_HEADER
+                                                                                      WebServer                enum / STATE_PARSE_URI
+the state during the negotiation process between the two                                   tevent              enum / TEVENT_REQ_INIT
+parties to establish a connection. OpenSSL defines fifty                                 Live555       enum / PARSING_VIDEO_SEQUENCE...
+                                                                                  OpenMQTTGateway                        enum / OFF
+state values20 , partially ordered, to implement it. We focus                               Curl                   enum / MSTATE_INIT
+on the states on the server-side. At first, it is in the idle
+State (TLS_ST_BEFORE). When receiving HELLO message                    Table 12: The top-50 most widely used open-source protocol
+from the client, it enters State (TLS_ST_SR_CLNT_HELLO),               implementations and their state variables.
+  20 https://github.com/openssl/openssl/blob/
+
+5811387bac39cdb6d009dc0139b56e6896259cbd/include/openssl/
+ssl.h.in#L1026
+
+
+
+
+3272    31st USENIX Security Symposium                                                                                USENIX Association
+

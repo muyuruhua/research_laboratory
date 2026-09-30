@@ -1,0 +1,61 @@
+{
+  "build_and_document_integrity": "PASS",
+  "all_50_final_publication_fulltexts_verified": false,
+  "scope": "Full-text-based verification of cited sentences, with explicit inaccessible-source and version limitations; not validation of empirical data or every statement in the source papers.",
+  "original_references": 50,
+  "current_references": 51,
+  "original_citation_groups": 49,
+  "original_citation_uses": 57,
+  "current_citation_groups": 54,
+  "current_citation_uses": 59,
+  "original_source_status_counts": {
+    "fulltext_downloaded": 41,
+    "unavailable": 5,
+    "fulltext_web_reviewed": 2,
+    "fulltext_preprint_version_limited": 2
+  },
+  "supplemental_reference": "tscheduler2024",
+  "unresolved_fulltexts": [
+    "nsfuzz",
+    "ssgfuzz2026",
+    "brier1950",
+    "zhang2026thompson",
+    "wingmuzz2025"
+  ],
+  "version_limited": [
+    "fuzzgpt2024",
+    "hgfuzzer2026"
+  ],
+  "web_fulltexts_without_local_pdf": [
+    "mann1947",
+    "cliff1993"
+  ],
+  "abstract_words": 183,
+  "keywords": 5,
+  "pages": 23,
+  "internal_links": 110,
+  "citation_links": 59,
+  "linked_citation_targets": 51,
+  "dangling_links": 0,
+  "critical_latex_messages": [],
+  "bibtex_warnings": [
+    "Warning--empty pages in distfuzz2025",
+    "Warning--empty pages in protocolguard2026",
+    "Warning--empty pages in bsfuzzer2026",
+    "Warning--empty pages in mercuriuzz2026"
+  ],
+  "underfull_notices": 7,
+  "experimental_results_unchanged_except_AP_label": true,
+  "protected_inputs_unchanged": [
+    "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/observed_tables.updated_20260930.tex",
+    "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/figures_updated_20260930/logged_calibration_table.tex",
+    "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/observed_costs.updated_20260930.tex",
+    "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/archive_arm_results.updated_20260930.tex",
+    "/home/ckt/Documents/000_2026_test_dev/C_two_papers/first_paper.md"
+  ],
+  "file_hashes": {
+    "main.revised.tex": "257888143bf97ae7f564ecdeb2c5f275de4700631034a57641388df40f2d7e08",
+    "main.revised.pdf": "c9043bcd1c7b5254ad493407e478cdb79539cecfa98cc66b662b8b7c12078d95",
+    "references.expanded.bib": "a261943e54a4d5be64aa1140ac9cc1076490471819fce279ac4d04f871603ecf"
+  }
+}

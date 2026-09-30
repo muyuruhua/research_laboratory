@@ -1,0 +1,14 @@
+[
+  {
+    "pdf_page": 2,
+    "excerpt": "    contains dozens of such chunk definitions, all formalized within the PNG binary template; these also\n    include executable code that computes context-sensitive information such as checksums (whose\n    inference is a major roadblock for format-agnostic fuzzers).\n        FormatFuzzer takes as input one of these binary templates—say, a PNG template. It then compiles\n    it into:\n        (1) A highly efficient generator that produces outputs in the format specified (i.e., a PNG fuzzer);\n            and\n        (2) A parser that reads in existing inputs in the format specified (i.e., a PNG parser)."
+  },
+  {
+    "pdf_page": 3,
+    "excerpt": "\n\n                                          8                                        15\n                                                Parser                                  Execution\n                                               C++ Code                                 Feedback\n\n\n                    10                    9                  11\n                         Sample Input            Parser           Decision Seed\n\n"
+  },
+  {
+    "pdf_page": 4,
+    "excerpt": "\n    Nevertheless, some manual effort is still required. The hundreds of existing binary templates work\nwell for parsing; but to make effective generators, one has to further refine them. These refinements,\nhowever, are easy to write and the feature-full language of binary templates is rich enough to\nexpress virtually all needed features of binary file formats, including length fields, checksums,\ncomplex structures and constraints between variables. Extending a binary template and compiling\nit is a one-time effort for each format; and once one has, say, a full-fledged PNG specification, one\ngets a PNG fuzzer, a PNG parser, a PNG mutator, and a variant of your favorite format-agnostic,\nfeedback-directed fuzzer that produces thousands of valid PNG files per second—with only a fraction\nof the effort it would take to build such a fuzzer from scratch.\n    In the remainder of the paper, we detail the techniques behind FormatFuzzer and how they"
+  }
+]

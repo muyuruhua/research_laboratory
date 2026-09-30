@@ -1,0 +1,1358 @@
+         Systematic Assessment of Fuzzers
+              using Mutation Analysis
+ Philipp Görz, Björn Mathis, and Keno Hassler, CISPA Helmholtz Center for
+Information Security; Emre Güler, Ruhr-Universität Bochum; Thorsten Holz
+   and Andreas Zeller, CISPA Helmholtz Center for Information Security;
+                   Rahul Gopinath, University of Sydney
+      https://www.usenix.org/conference/usenixsecurity23/presentation/gorz
+
+
+
+
+     This paper is included in the Proceedings of the
+           32nd USENIX Security Symposium.
+                  August 9–11, 2023 • Anaheim, CA, USA
+                               978-1-939133-37-3
+
+
+
+
+                                      Open access to the Proceedings of the
+                                       32nd USENIX Security Symposium
+                                            is sponsored by USENIX.
+                    Systematic Assessment of Fuzzers using Mutation Analysis
+
+                              Philipp Görz1 , Björn Mathis1 , Keno Hassler1 , Emre Güler2 ,
+                                Thorsten Holz1 , Andreas Zeller1 , and Rahul Gopinath3
+                            1 CISPA     Helmholtz Center for Information Security, Germany
+                                           2 Ruhr-Universität Bochum, Germany
+                                              3 University of Sydney, Australia
+
+
+
+                           Abstract                                   effective. In a recent survey, 63% of fuzzing practitioners [1]
+                                                                      named measures for fuzzer comparison as one of the top three
+Fuzzing is an important method to discover vulnerabilities
+                                                                      challenges that need to be solved.
+in programs. Despite considerable progress in this area in
+the past years, measuring and comparing the effectiveness of             Testing techniques, including fuzzers, are often assessed by
+fuzzers is still an open research question. In software testing,      obtained code coverage [2]. Code coverage refers to the num-
+the gold standard for evaluating test quality is mutation anal-       ber of program elements that were exercised by the fuzzer (we
+ysis, which evaluates a test’s ability to detect synthetic bugs:      treat code coverage in detail in Section 2). This is reasonable
+If a set of tests fails to detect such mutations, it is expected to   because in order to find a bug at some location, the test must
+also fail to detect real bugs. Mutation analysis subsumes vari-       cover this very location in the first place. But code coverage
+ous coverage measures and provides a large and diverse set            alone is not sufficient to actually find bugs. Coverage on its
+of faults that can be arbitrarily hard to trigger and detect, thus    own cannot evaluate the quality of sanitizers (used as bug ora-
+preventing the problems of saturation and overfitting. Unfor-         cles in fuzzing) or fuzzers set up to produce inputs specifically
+tunately, the cost of traditional mutation analysis is exorbitant     crafted to induce bugs [3, 4]. Furthermore, there is only a
+for fuzzing, as mutations need independent evaluation.                moderate association between bugs and coverage when using
+   In this paper, we apply modern mutation analysis tech-             test generators: Previous research shows a correlation coef-
+niques that pool multiple mutations and allow us—for the              ficient R2 = 0.72 between Randoop generated test cases and
+first time—to evaluate and compare fuzzers with mutation              mutation score [5]. Another alternative to evaluate fuzzers is
+analysis. We introduce an evaluation bench for fuzzers and            to run them on a benchmark of programs with known faults
+apply it to a number of popular fuzzers and subjects. In a            and compare fuzzers by bugs found [2, 6, 7]. A general con-
+comprehensive evaluation, we show how we can use it to as-            cern with such approaches is that the distribution of available
+sess fuzzer performance and measure the impact of improved            faults may not be uniform or related to the actual possible
+techniques. The required CPU time remains manageable:                 fault distribution in the program [8]. Furthermore, when the
+4.09 CPU years are needed to analyze a fuzzer on seven sub-           faults are known in advance, we run the risk of fuzzer parame-
+jects and a total of 141,278 mutations. We find that today’s          ters or even the technique itself being fine-tuned to find these
+fuzzers can detect only a small percentage of mutations, which        faults [9, 10, 11, 1].
+should be seen as a challenge for future research—notably in
+improving (1) detecting failures beyond generic crashes and              In software testing, the technique of mutation analysis has
+(2) triggering mutations (and thus faults).                           established itself as the gold standard to evaluate tests and
+                                                                      test generators [12]. In mutation analysis, synthetic faults
+                                                                      (mutations) are injected into the program code by creating
+1    Introduction                                                     random variations (so-called mutants). The assumption is
+                                                                      that a test set should be able to detect (“kill”) these mutations,
+Fuzzing is the key method to test the robustness of programs          just as it should be able to detect real faults. As an example,
+against malformed inputs. Since it reveals inputs that crash or       Listing 1 shows a number of possible mutations for a C code
+hang programs, and as these failures can often be turned into         fragment. We see that mutations such as changing the type
+actual exploits, fuzzing is also the prime method to discover         of a variable (①) or manipulating a comparison (②, ③) may
+security vulnerabilities. However, fuzzing is computationally         all impact the ability of a program to handle invalid inputs.
+expensive. Hence, researchers and practitioners must be able          A good test set should be able to trigger these faults; and the
+to determine which fuzzing tools and techniques are the most          more mutants a test set detects (“kills”), the higher its quality.
+
+
+
+USENIX Association                                                                       32nd USENIX Security Symposium           4535
+1 ① unsigned int len = message_length(msg);                          including, but not limited to, software vulnerabilities. Our
+2 if (len ② < >= MAX_BUF_LEN ③ + 16) {                               approach is implemented and available as a large-scale eval-
+3     copy_message(msg);                                             uation bench for fuzzers. We demonstrate the usefulness of
+4 } else {                                                           the evaluation bench by applying it on a number of popu-
+5     // Invalid length, handle error                                lar fuzzers (AFL, AFL++, libFuzzer, and Honggfuzz) and
+6 }                                                                  test subjects (cares, vorbis, woff2_new, libevent, guetzli,
+                                                                     re2, and curl). We show that it is possible to conduct a full-
+  Listing 1: Mutations in C code. Mutation ① deletes unsigned;       scale evaluation and comparison of these fuzzers using 16.36
+  mutation ② replaces < with >=; mutation ③ adds +16.                CPU years of computation time, just under a month with our
+                                                                     available hardware—a nontrivial, yet affordable amount of
+    In contrast to coverage metrics, mutation analysis also as-      resources and a first step toward making mutation analysis a
+ sesses the ability of the tests to detect the (injected) faults.    feasible solution for comparing fuzzers. To the best of our
+ Indeed, a test can have 100% coverage, but if it does not           knowledge, the present work thus
+ check any computation result, it will fail to detect errors. In a       • is the first study to apply mutation analysis to fuzzers,
+ fuzzing context, mutation analysis thus also assesses whether             using traditional mutation operators as well as operators
+ the fuzzer can detect issues beyond generic errors. And in                from a security context (a total of 31 operators);
+ contrast to curated faults, tests cannot overfit, as the actual         • identifies the limitations of traditional mutation analysis
+ mutations being applied are many, diverse, and randomly dis-              optimizations when used for fuzzer comparison;
+ tributed. This lack of bias in mutations (i.e., anything can            • develops novel optimization strategies for mutation anal-
+ happen, anywhere) is often touted as a big advantage of muta-             ysis when mutation analysis is used for fuzzer compari-
+ tion analysis. However, while it may be tempting to model                 son (we show that these optimizations can make muta-
+ mutants after past fixes [13, 6], this biases test assessment             tion analysis usable for fuzzer comparison);
+ towards past issues, which in turn puts less weight on the              • demonstrates that fuzzers indeed differ in their ability to
+ ability of tests to find yet unknown issues. (We are not aware            detect mutations, and consequently, faults;
+ how the Heartbleed [14], “goto fail;” [15], or log4shell [16]           • shows that improvements in failure detection—notably
+ vulnerabilities could have been predicted from past issues.)              the use of sanitizers—result in a better mutation detec-
+    Several studies have confirmed the correlation between the             tion.
+ ability to detect (mostly simple) mutations and the ability to      These results demonstrate that our evaluation bench can be
+ detect (possibly complex) real faults [17, 18, 19]; and several     used to compare fuzzer performance and evaluate improve-
+ works have explored how mutation analysis can be applied            ments of different tools.
+ to security testing [20, 21, 22, 23, 24, 25]. Yet, mutation test-      In our study, we also found that only a small percentage
+ ing has a significant drawback: It is expensive. Every single       of mutants is detected by at least one of the fuzzers. The
+ mutation induces a code change that needs to be evaluated           best fuzzer in our evaluation, AFL++, covers 30.9% of all
+ by an entire run of all tests to assess whether they detect the     mutations and detects 28.3% of these covered mutants—that
+ mutation—and this must be done for thousands of mutations.          is, 8.8% of all mutations. These numbers may seem low on
+ Multiplied with the dynamic tests produced by fuzzers, this         an absolute scale. However, note that mutation analysis pro-
+ makes mutation analysis prohibitively expensive for evaluat-        duces shallow mutants that are easy to find, but also deep
+ ing fuzzers. Furthermore, fuzzers can react to faults [4, 3,        mutants that are very hard to trigger, as well as subtle mutants
+ 26], limiting traditional avenues for optimizations in muta-        whose effects can be hard to detect. There even are mutants
+ tion analysis that assume static test suites. Recent advances       that, although altering the syntax of code or output, leave their
+ in mutation analysis, however, can significantly reduce this        semantics untouched, and hence cannot be detected by any
+ complexity. Notably, the concept of a supermutant [27] en-          approach in the first place. While a mutation detection rate of
+ ables us to evaluate multiple mutants together in a single test     100% is thus unlikely to ever be achieved, the detection rate
+ run. The idea is to group together mutations that are unlikely      is very useful as a relative measure to compare approaches
+ to interact and fuzz them in parallel. Also, we can proceed         and measure progress. In our study, for instance, using an en-
+ in multiple phases, first having the fuzzer quickly achieve         hanced oracle such as Address Sanitizer (ASAN) [28] results
+ maximum coverage, producing a seed corpus for the next              in a moderate improvement in detection to 34.2% of covered
+ phase. This seed corpus is then used as a static test suite to      mutants (9.1% of total mutants).
+ kill trivial mutants, leaving the few remaining (“stubborn”)           We find that our results reveal important directions for
+ ones as potential fuzzing targets.                                  research in fuzzing:
+    In this paper, we show that such optimizations actually              • First, fuzzers can profit from better oracles—that is, pred-
+ allow us to apply full mutation analysis to evaluate and com-             icates that check for the presence of failures. Right now,
+ pare fuzzers at scale, using a myriad of unbiased mutations               fuzzers that use generic oracles, such as crashes or hangs,
+ that assess the ability of a fuzzer to find any kind of bugs,             are quite limited because not every vulnerability (and
+
+
+
+  4536   32nd USENIX Security Symposium                                                                         USENIX Association
+      not every mutation) manifests itself this way. Our man-      coverage achieved in target programs can be seen as a rea-
+      ual analysis shows that out of the mutants that were not     sonable criterion for comparing fuzzers. The main problem
+      detected, few could have been found by a crash oracle,       with using code coverage, however, is that it is insufficient on
+      see Section 5.2.1. However, a majority of these mutants      its own for evaluating fuzzers. In particular, code coverage
+      would still produce a behavioral divergence from the         is unable to judge the quality of oracles such as sanitizers.
+      original program and hence can represent a vulnerability     They make bugs detectable (e.g., ASAN detects many kinds
+      in a security context.                                       of memory handling errors), which is critical to ensure effec-
+   • Second, fuzzers can profit from more targeted intelli-        tive fuzzing. Another limitation is coverage saturation. That
+      gence—that is, generating inputs based on possible bug       is, once a program element is saturated, there is little extra
+      locations. Out of all mutants killed by AFL++ (28.3%         information available [30]. Many fuzzers [4, 31, 3] include
+      of covered mutants), 94.4% were found with inputs gen-       intelligence to craft inputs (e.g., calling an API with invalid
+      erated on an unmutated binary. That is, at most 5.6% of      values), which, while important, is invisible if coverage is
+      the mutants were killed because of targeted intelligence     used for fuzzer comparison.
+      such as crafted inputs [3] or directing fuzzers towards
+      potential problems [4, 26]. This is significant because,
+                                                                   2.2     Benchmarks Using Curated Faults
+      according to an analysis of our syntactic fault patterns,
+      we find that 71 of 100 recent CVEs were coupled to           Fuzzers can be evaluated using curated fault benchmarks [2,
+      a mutation. Hence, fuzzers could significantly benefit       32, 7, 33]. However, such benchmarks are inherently limited
+      from better targeting.                                       to known faults. As specific benchmarks are used to measure
+   In summary, mutation analysis provides ambitious and un-        the effectiveness of a technique, the published improvements
+biased goals for fuzzing and testing that are not susceptible to   in the technique can become influenced by the benchmark
+saturation or potential overfitting—and thus pose great chal-      in non-obvious ways. For example, if faults are mined from
+lenges for future research. Our optimizations of mutation          existing ones, the result might be numerous faults or types of
+analysis, as introduced in this paper, provide researchers and     faults that are easy to detect. Further, if a given tool (such as
+practitioners with the means to determine whether and which        AFL) was used to find and eliminate faults during develop-
+fuzzers meet these challenges. Our evaluation bench is avail-      ment, these faults are no longer in the set mined from released
+able at https://github.com/CISPA-SysSec/mua_fuzzer_bench           versions—which does not mean that the effectiveness of the
+to help assess future progress in the field.                       tool has reduced. For example, exchanging AFL for another
+                                                                   tool that does well on such mined faults (but not necessarily
+                                                                   on the faults already removed during development) may not
+2   Technical Background                                           produce the improvement a practitioner was hoping for.
+                                                                      That is, both bug-based and coverage-based techniques
+We use the IEEE 1044 [29] nomenclature: A fault is a code          have inherent limitations. Next, we discuss how mutation
+artifact causing a failure. A failure (aka bug) is an incorrect    analysis can overcome these.
+program behavior. An error is a human action that led to the
+fault. An error model defines the kinds of faults expected.
+   Given a limited computing budget, a fuzzing practitioner        2.3     Mutation Analysis
+needs to choose a fuzzer that is most likely to find the most      Mutation analysis is a key technique for evaluating the fault-
+bugs, which is typically accomplished using coverage criteria      revealing power of test suites on a given program. It is the
+or a set of curated bugs [8], which we discuss next.               premier method of test suite evaluation in both the indus-
+                                                                   try [34, 35, 36] and the research community [12]. It is a
+                                                                   white-box technique that can be used to evaluate test suites
+2.1 Coverage Criteria for Fuzzer Comparison
+                                                                   when the source code of the program under test is available.
+Coverage, or code coverage, refers to the number of program           For mutation analysis, we start with the following error
+elements in the program under test (PUT) that were exercised       model: Any token in a program is a possible location for a
+by the input or set of inputs. Some program elements typically     fault to exist, and faults are likely caused during transcrip-
+considered are statements, basic blocks, branches, and unique      tion of the concept in the developer’s mind to the code arti-
+acyclic paths through the program. The idea is that code           fact. Further, we assume that the developer uses automatic
+coverage provides an indication of the amount of program           tools such as compilers, which removes some categories of
+code that was explored.                                            faults. This gives us a way to generate possible faults with
+   Numerous coverage criteria exist [5] that can be used for       minimal human bias1 : Generate all instances of a fault type
+judging the effectiveness of test suites and test generators,         1 There remains an unavoidable human bias due to the selection of fault
+such as fuzzers. Most feedback-driven fuzzers, such as AFL,        types. However, generating instances of a fault type avoids bias as it is done
+use some form of code coverage for guidance. Hence, code           exhaustively.
+
+
+
+
+USENIX Association                                                                       32nd USENIX Security Symposium                   4537
+                                                                 called competent-programmer hypothesis) states that faults, if
+   We define the following mutation related terms that
+                                                                 present in the program, are within a limited edit distance away
+   we use throughout this paper:
+                                                                 from the correct formulation [39]. The coupling effect claims
+   Mutation. A small syntactic change that can be in-            that simple faults are coupled to complex faults, such that
+   duced in the program.                                         tests capable of detecting failures due to simple faults will,
+                                                                 with high probability, detect the failures due to complex faults.
+   Mutation operator. Transformation pattern that de-            Hence, the probability of fault masking is very low [40]. Both
+   scribes how mutations are induced in the program. A           axioms are well researched, with well-founded theory [41, 42,
+   mutation operator, when applied to a matching loca-           43, 44], and confirmed in real-world software [45, 44, 46, 47].
+   tion in the program, will produce a mutant.                   With these two axioms, we can limit the faults we need to test.
+   Mutant. A new program that contains differences               This allows us to focus on changes to the smallest program
+   (mutations) from the original. A first order mutant con-      elements, such as tokens and statements, and still expect that
+   tains only a single mutation. A higher order mutant           the created mutations are representative of real bugs.
+   contains multiple mutations. A supermutant contains              Given this error model, the idea of mutation analysis is to
+   all possible mutations that can be applied at once.           collect possible fault patterns (a single fault pattern is called
+                                                                 a mutation operator), identify possible faults in the program
+   Trivial mutants. Mutants that can be killed without           (called mutations), generate corresponding faulty programs
+   targeted intelligence. That is, any input whose execu-        (called mutants) each containing a single mutation, and finally
+   tion covers their location will kill them.                    evaluate each mutant separately using each fuzzer and check
+   Stubborn mutants. Mutants that remain alive even              whether the fuzzer is able to detect the changed behavior of
+   after coverage reached their mutation locations.              the mutant (called killing the mutant).
+                                                                    In summary, we can use the huge body of work on mutation
+   Intelligent mutants. Mutants killed by fuzzers on in-         analysis as an effective method to compare fuzzers by using
+   dividual evaluation (i.e., they are not killed simply by      the number of mutants killed by each fuzzer as the criterion.
+   covering their location).
+   Equivalent mutants. An equivalent mutant is a mu-             2.3.1   Computational Requirements
+   tant that, while different from the original program
+   syntactically, has the same semantics.                        Cost is a major concern with mutation analysis, as each mutant
+                                                                 needs independent evaluation. Furthermore, for fuzzing, we
+   Mutant kill matrix. A mutant kill matrix (and sim-            need to evaluate each produced input independently on each
+   ilarly mutant coverage matrix) is a matrix with test          mutant. We cannot tell if a mutant will be killed by an input
+   cases as columns and mutants as rows. A mutant that           without executing the mutant on that input. Indeed, we cannot
+   is killed by a test case is assigned 1 in the relevant cell   even assume that the fuzzer will produce the same input on
+   (else 0) [37].                                                both the original and the mutant because the fuzzer may detect
+                                                                 the mutation in the program and take steps to induce failure on
+   Minimal test suite. A minimal test suite with respect
+                                                                 a perceived fault. That is, the number of program executions
+   to a given set of mutants and a given test suite con-
+                                                                 effectively increases quadratically with program size.
+   taining simple test inputs is the smallest subset of test
+   inputs that is required to kill the exact same mutants           There are several traditional optimizations to make muta-
+   as the given test suite [37].                                 tion analysis less costly. However, these techniques assume
+                                                                 static test suites, which makes them inapplicable to fuzzers.
+   Minimal mutant set. A minimal mutant set with re-             For example, the most effective optimization is to find the
+   spect to a given set of mutants and a minimal test suite      statements in the program that are covered by the specific
+   is the smallest subset of mutants that is required to         tests in the test suite, then only run tests against mutants they
+   maintain the minimal test suite [38].                         cover (or that lead to a state infection [48]). This technique is
+                                                                 inapplicable to fuzzers because fuzzers are non-deterministic,
+                                                                 and the possibility of introspection on the source code for in-
+                                                                 put generation might result in different inputs for the original
+for each source code element that will get past the compiler.    and the mutant (violating the clean program assumption [47]).
+However, many faults in the real world can be complex, con-      The same problem affects usage of weak mutations [49], split
+taining multiple sub-faults. Modeling them with complex          stream execution [50, 51], equivalence modulo states [52],
+faults containing multiple sub-faults can lead to a combina-     and function memoization [53]. Thus, these traditional opti-
+torial explosion, which can be avoided by depending on two       mization techniques do not work well for fuzzers. We describe
+well-studied axioms—the finite neighborhood hypothesis and       in Section 3 how we still achieve a significant reduction of
+the coupling effect. The finite neighborhood hypothesis (also    computation time by using supermutants [27].
+
+
+
+4538   32nd USENIX Security Symposium                                                                      USENIX Association
+  2.3.2   Residual Defects                                            3     Approach
+ One of the main reasons for using mutation analysis is that it       We now describe how to evaluate fuzzers using mutation
+ provides the best estimate for the number of residual defects.       analysis with security-relevant mutations. This requires an-
+ The residual defects are defects that remain in a program            swers to three questions: Which mutations to apply? How
+ after testing is completed and all found defects have been           to detect if they are found? And, how to reduce the required
+ fixed [54, 55]. Undetected faults that mirror a mutation (a          computational effort?
+ single incorrect token) are accounted for with our approach,
+ as all mutations are applied to a program exhaustively. The
+ larger and more complex types of faults are also subsumed            3.1    Selecting Mutation Operators
+ by these mutations due to the coupling effect hypothesis (see
+ Section 2.3). That is, the number of mutants that remain             As fuzzers are mainly used to detect security issues, we create
+ undetected tracks the number of residual defects closely and         mutations that focus on generating vulnerable code to com-
+ can be considered a true ordinal measure [54, 56] of the             pare different fuzzers. We started with the traditional mutation
+ number of residual defects in a program.                             operators representing common programming errors as the
+    We also note that the residual defect density can be esti-        baseline. Next, we went through the list of Common Weak-
+ mated from the number of mutants found using statistical es-         ness Enumerations (CWEs) for C [65] and C++ [66], creating
+ timation tools, such as population estimation [57] and species       mutations for interesting and feasible vulnerability types. Fi-
+ richness estimation as suggested by Böhme [58].                      nally, we investigated recent CVEs for C and C++ projects
+                                                                      and added unrepresented mutations modeling vulnerabilities
+                                                                      that have been reported.
+  2.3.3   Design of Mutation Operators
+                                                                         Our set of patterns can be grouped into seven types of
+  Mutations are typically modeled on human errors such as             mutations: Compare patterns (for example, increasing the
+  exchanging a token in the source code for another or forgetting     right-hand side of a signed <= comparison), memory pat-
+  to add a statement. Some traditional mutation operators are         terns (modifying calls to allocation or de-allocation functions
+  carefully chosen so that a test suite capable of detecting the      to trigger out-of-bounds, double free, or use-after-free is-
+  resulting mutants also satisfies statement, branch [59], data-      sues), control flow patterns (deleting function calls or flipping
+  flow [60, 61], and various logic criteria [62]. That is, the        branch conditions), assignment patterns (deleting variable
+  test objective represented by a given criterion can be satisfied    assignments, changing comparisons into assignments, etc.),
+  by the detection of a subset of mutants [12]. In addition to        library call patterns (e.g., provoking a failure to test if return
+  the traditional operators, operators that reflect known fault       values are checked), synchronization patterns (removing lock-
+  patterns in specific domains [12] are also chosen.                  ing operations or making atomics non-atomic), and arithmetic
+                                                                      patterns (for example, turning a signed variable unsigned).
+  2.3.4   Equivalent Mutants                                          The full list of currently supported mutation operators can be
+                                                                      found in Table 10 in the Appendix.
+  One of the problems with traditional mutation analysis is
+  equivalent mutants. These are mutants that are semantically
+  the same as the original program. For example, in the follow-       3.2    Detecting Mutations
+  ing fragment,
+                                                                      Another essential component is the detection of true mutant
+1 if (cache.has(key)) return cache.get(key);                          kills. To make this process robust against the possibility of
+2 return compute(key);                                                targeted manipulation, it must be performed in a manner that
+                                                                      makes it challenging for fuzzers to cheat. For instance, if we
+ removing the cache check need not induce a failure. Previous         classify a mutant as killed when the fuzzer reports a crash,
+ studies show that 10% to 23% of generated mutants could              it would be trivial for a fuzzer to just report a crash in every
+ be equivalent [63, 64], which can limit the usefulness of the        run. Similarly, we cannot base this decision on a version
+ mutation score (the absolute number of mutants killed).              of the subject that has been instrumented by a fuzzer, as the
+    We do not expect equivalent mutants to be a concern (be-          fuzzer could itself introduce a crashing change during the
+ yond computational expenditure) for the following reasons:           instrumentation process. Thus, to confirm any input that
+ (1) In fuzzer comparison, only the relative mutant kills matter.     a fuzzer reports as crashing, the input is rerun on the non-
+ (2) We manually analyzed a random sample of 100 stubborn             instrumented version of the original as well as the mutant (see
+ mutants and found only 11 equivalent mutants. This is also in        Section 4 for a detailed description). A mutation is killed if
+ line with the literature [63, 64]. Our analysis (in Section 5.2.1)   the original exits with a different exit code than the mutant
+ provides statistical confidence (89 ± 6% CI at 99% CL) that          does. We require the original to exit without an error signal
+ most of the generated mutants induced faults.                        to avoid the case that there is a crashing bug in the original.
+
+
+
+  USENIX Association                                                                     32nd USENIX Security Symposium           4539
+3.3    Reducing Computational Requirements                          4   Implementation
+We reduce the computational requirements by using two tech-         Our chosen subjects are C and C++ projects to cover programs
+niques: Split Analysis and Supermutants.                            that are affected by memory corruption vulnerabilities. We
+                                                                    implemented an LLVM pass to find mutation locations (mu-
+Split Analysis The analysis of fuzzer performance is split          tation finder) and another pass to do the actual code changes
+into two phases:                                                    (mutator). See Figure 1a for an overview of the compilation
+  I. How much of the program is the fuzzer able to cover?           process. The mutation finder identifies all mutation locations
+                                                                    and possible mutations and assigns an ID to each of them. It
+ II. Does the fuzzer identify injected faults?                      also produces an executable (location executable) with log-
+   For Phase I, we are only interested in finding the maximum       ging code in place of the actual mutation that can be used to
+obtainable coverage, and for that, we use the fuzzer under          check which mutations are covered for a given input. One
+test on the original program to generate a set of seed files that   comparison executable without any mutations is compiled
+cover as much of the program as possible (called coverage           using the base compiler. Given mutation ID(s), the mutator
+seeds from now on). Since no known faults are present, the in-      produces the corresponding supermutant bitcode file. The
+centive for the fuzzer is purely to cover the maximum amount        bitcode file is then compiled with a base compiler to create a
+of source code. Next, we use the coverage seeds as a static         mutated executable for comparison, and each fuzzer compiles
+test suite, where we can apply traditional mutation analysis        its own instrumented version. To decide which mutations can
+optimizations and quickly remove any mutants that are killed        be put together into one supermutant, we run all seed inputs
+by the coverage seed files. This allows us to eliminate trivial     on the executable produced by the mutation finder.
+mutants (those that only need coverage to crash), which are            To evaluate a mutation, we need to know if the mutation
+a significant chunk of the total set of mutants, with limited       has been covered and whether it has been killed. An overview
+computational overhead.                                             of this process is shown in Figure 1b. During fuzzing, we
+   In Phase II, we use the coverage seeds as the starting point     check if a mutation is covered using the mutated executables.
+to fuzz the remaining stubborn mutants. This ensures that if        To decide if a mutation has been killed, we rerun inputs that
+the fuzzer contains “intelligence” to recognize and target the      a fuzzer reports as crashing on the unmutated and mutated
+inserted fault, it can use that intelligence to find and kill the   executables.
+mutation. This method accounts for fuzzers that go beyond
+coverage and use advanced code analysis to guide fuzzing.           5   Evaluation
+
+Supermutants. We use an approach based on supermu-                  Our evaluation seeks to answer the central question: How
+tants [27] to evaluate mutants with fewer computational re-         well can fuzzers be compared using Mutation Analysis? We
+sources than traditional analysis. The basic idea is to identify    evaluate four research questions to study mutation analysis as
+independent mutations and combine them into supermutants            a comparative metric for fuzzer evaluation.
+to allow a sound evaluation of multiple mutations without
+fault interactions for the compute cost of a single mutant.         RQ1. How do different fuzzers compare in killing mutants?
+   We identify two mutations as independent if no seed input           The question has three parts: (1) what percentage of
+covers both mutations during execution (for more context, see          mutants were killed in Phase I, (2) what percentage of
+Section 4). Depending on whether mutations were covered                the remaining mutants were killed in Phase II, and (3)
+in Phase I, we create supermutants as follows: Covered mu-             how do the killed mutant sets intersect between different
+tations are combined into supermutants if they are mutually            fuzzers?
+independent. Non-covered mutations form supermutants by             RQ2. How much can sanitizers improve the results? Inputs
+randomly choosing 100 mutations. In both cases, a function             generated by a fuzzer account for only a part of the
+contains at most one mutation (due to a technical limitation           toolchain. Detecting bugs requires some kind of oracle,
+of our mutation engine).                                               ranging from simple crash feedback to more sophisti-
+   If during Phase II, we find that a supermutant cannot be            cated sanitizers. With this question we want to assess if
+killed, we mark all mutations in this supermutant as alive.            we can measure sanitizer influence.
+Otherwise, we identify the particular input or test case that
+killed it. If more than one of the included mutants was cov-        RQ3. How many real vulnerabilities are coupled to muta-
+ered, indicating a derivation from the initial identification, we      tions? For mutation analysis to be useful, the mutations
+split up the supermutant and re-run the crashing input on the          it produces should be semantically coupled to some real
+resulting mutants. The fuzzing process is restarted for any            faults. That is, for any real fault, there should exist a
+surviving mutants, which removes the possibility of multiple           mutation such that detecting the mutation guarantees
+mutations interfering with each other.                                 detecting the real fault [45]. Hence, this question seeks
+
+
+
+4540    32nd USENIX Security Symposium                                                                      USENIX Association
+                                                                                                                                                            Benchmark Manager
+                                                                                                                                                                                  Run input to check that   Unmutated
+                                                                                                              Seeds                                                               crash does not happen
+                                                                                                                                                                                                            Executable
+                                                                                                                                                                                 in unmutated executable
+                                                                                                                               1. Check if Seeds
+                                                                                                                                 (after Phase I)                Mutation
+                                                                                                 2. Use Seeds to start
+                                                                                                Fuzzer (each Fuzzer is      already kill mutation(s)             killed?
+                                                                  Result of                          initialized with                                                             Run input to check if
+    Subject                                                                   Unmutated
+                                                    Base          Subject                       their respective seeds                                                           crash can be confirmed
+ (bitcode file)                                                               Executable
+                                                   Compiler                                          after Phase I)
+                                                                 Result of                                                              4. Check if found                                                    Mutated
+                                                                Supermutant                                                              Crashing Input                                                     Executable
+                                                                                                                                           kills Mutant
+                                                                                                                                                                                    Run input to get
+                                                                               Mutated                 Fuzzer(s)
+  Mutation                                     Supermutant                                                                                                      Mutation           covered mutations
+                                  Mutator                                     Executable
+   Finder                                      (bitcode file)                                                                                                   covered?
+                                                                                                 3. Fuzz using the fuzzer
+                        Mutation IDs                                                              respective executable               Crashing
+                     for a Supermutant                                                                                                 Input
+
+  Location                                                                Instrumented                Instrumented
+ Executable                                      Fuzzer                      Mutated                     Mutated
+                  Mutation                      Compiler                                               Exectuable
+                                                                           Exectuable
+                    IDs
+
+
+
+
+(a) The different executables created from a single subject.                                                                       (b) Steps taken to evaluate mutations.
+
+                                            Figure 1: Schematic overview of the compilation and evaluation process.
+
+
+Table 1: Overview of the subjects used for evaluation. LOC                                                    Table 2: Overview of the fuzzers used for evaluation. The
+as counted by cloc [68], taking the sum of C/C++ lines.                                                       arguments under Dictionary are additionally provided if there
+                                                                                                              is a dictionary available.
+Subject                          Description                         Version                 LOC
+cares_name                       DNS query creation               809d5e84                  62,749                    Fuzzer                           Arguments            Dictionary               Version
+cares_parse_reply                DNS reply parsing                809d5e84                  62,749
+woff2_new                        Font Format                      4721483a                  39,373
+                                                                                                                      AFL                              -d                   -x                        2.57b
+libevent                         Event Notification               5df3037d                  56,881                    AFL++                            -d -c cmplog         -x                        3.14c
+guetzli                          JPEG Encoder                     214f2bb4                   8,029                    Honggfuzz                        -n 1                 --dict                    2.4
+re2                              Regular Expressions              58141dc9                  27,545                    libFuzzer                        -fork=1              -dict                    11.1
+curl                             Data Transfer                   curl-7_83_1               151,413
+
+                                                                                                              Table 3: Actual computation times for all experiments. Ex-
+         to understand whether we have succeeded in capturing                                                 periments were run on four servers, each with 52 cores. Note
+         the characteristics of real-world vulnerabilities with our                                           that evaluating a single fuzzer takes 4.09 CPU years (“Seed
+         mutation operators.                                                                                  + Default” / #Fuzzers) with our chosen subjects.
+
+                                                                                                                                                            CPU (Years)           4 Servers (Days)
+5.1         Setup
+                                                                                                                         Seed Collection                              1.99                              3.50
+We describe our experimental setup next.                                                                                 Default                                     14.37                             25.22
+                                                                                                                         Seed + Default                              16.36                             28.72
+Subjects. For our experiments, we looked for robust sub-                                                                 ASAN                                        15.16                             26.61
+jects with no known faults. We selected OSS-Fuzz [67] sub-                                                               24 Hours Runs                                7.42                             13.02
+jects (see Table 1) that were compilable with gllvm and do                                                               Sum                                         38.95                             68.34
+not crash when fuzzed for 48 hours.
+
+Fuzzers. We chose fuzzers that are general purpose, sup-                                                      Runtime. As the required CPU time is a central concern,
+port in-process fuzzing, offer a compiler-wrapper and ASAN                                                    we employ two approaches to reduce the required CPU time,
+support, resulting in AFL, AFL++, libFuzzer, and Honggfuzz                                                    which are described in Section 3.3. One is the application
+for evaluation (see Table 2). We follow generally recom-                                                      of supermutants which, for our evaluation, results in a re-
+mended flags and use forking mode for libFuzzer to avoid                                                      duction of required runs by between 1.76× and 19.95× (a
+early stopping. If dictionaries are available for subjects, they                                              mean reduction of 3.8×), as shown in Table 4. Note that this
+are provided to the fuzzers.                                                                                  ignores supermutants that are not independent—see Table 8
+                                                                                                              for details.
+Hardware. We used four servers providing an Intel Xeon                                                           The other approach is splitting the benchmark into a cover-
+Gold 6230R CPU, each with 52 cores and 188 GB RAM. The                                                        age phase (I) and a fault-detection phase (II). A speedup is
+computation times for all experiments are shown in Table 3.                                                   achieved by using a long individual runtime for phase I (for
+
+
+
+USENIX Association                                                                                                                                 32nd USENIX Security Symposium                              4541
+Table 4: Computational Reduction by Using Supermutants             front of Honggfuzz (30.4%), followed after a large gap by
+                                                                   libFuzzer (25.9%) and AFL (24.6%). We find that coverage
+ Subject                  #Mutants #Supermutants Factor            alone accounts for most of the killed mutants. The ensemble
+ curl                       29,118             5,804 5.02          of all fuzzers in our evaluation (combined rows in Table 5)
+ guetzli                    22,961            13,040 1.76          gets 99.95% of its coverage and 97.5% of its kills in Phase I.
+ woff2_new                  40,914             5,930 6.90          Indeed, none of the evaluated fuzzers employ bug-targeted
+ cares_name                  4,822               550 8.77          feedback instrumentation, hence, this is expected.
+ cares_parse_reply           4,822             1,288 3.74
+ libevent                   17,234               864 19.95           Coverage accounts for most mutants (97.5%) detected in
+ re2                        21,407             9,670 2.21                               our evaluation.
+ Sum                       141,278            37,146    3.80
+                                                                      We found two anomalous results regarding AFL: For
+                                                                   guetzli,  the median run covers only around 7,000 muta-
+our evaluation, 13 repetitions of 48 hours each) to allow a        tions, which is caused by wildly inconsistent runs covering
+shorter runtime for phase II (1 hour per supermutant). The real    from 2,500 to 12,000 mutations, a disadvantage from which
+speedup is highly dependent on the chosen runtimes and can         AFL recovers surprisingly well in Phase II. Additionally, for
+                                                M×R
+be calculated by the following formula: RI ×S+M×R        ; where   re2, AFL crashes for most mutations.
+                                                      II
+M is the number of supermutants, R is the normal runtime, RI
+is the runtime of phase I, RII is the runtime of phase II, and S   How do these fuzzers relate to each other? See Figure 3
+is the number of repetitions for coverage seed gathering. For      for a Venn diagram of killed mutants per fuzzer. The fuzzers
+our evaluation, this results in a speedup of 25×.                  have a large intersection of killed mutations (78.6%). Con-
+                                                                   sider AFL++: It finds 94.9% of all killed mutants. Adding a
+                                                                   second fuzzer provides only a marginal improvement: Hongg-
+5.2    RQ1: How do different fuzzers compare?                      fuzz (+3.2%), AFL (+2.3%) or libFuzzer (+1.3%). For further
+Seed inputs are first created for each fuzzer and subject pair.    details, a comparison per mutation type is available in Fig-
+These are either extracted from subject repositories if avail-     ure 2.
+able or created manually. Each fuzzer is run on the unmutated
+base executable of the subject to fuzz for coverage for 48         Is an extra hour of fuzzing beyond 24 hours of fuzzing
+hours (13 instances per fuzzer). The resulting inputs are then     for coverage sufficient for targeted fuzzing? To examine
+minimized by the tools provided by the respective fuzzer. Of       this question, we sampled up to 104 (to keep a multiple of
+the 13 instances for each fuzzer, the median run based on          CPU count) stubborn mutants for each subject and fuzzed
+covered mutations is selected as the coverage seed corpus.         them for 24 hours on every fuzzer. Note that, as we do not
+The median run is used to avoid outliers in performance, as is     use supermutants for this experiment (i.e., we use only one
+recommended by previous research [2].                              mutation per mutant), this also serves as a test if supermutants
+   Next, we create supermutants (Section 3.3) and evaluate         introduce inconsistencies. As only three of the total of 690
+each on the coverage seeds from Phase I. In Phase II, each         mutants are killed, we believe that one hour runs are indeed
+fuzzer is run for an hour on each supermutant.                     sufficient for Phase II. Additionally, we feel that this result
+                                                                   confirms our choice of using supermutants. The detailed
+                                                                   results can be found in Table 7.
+Results. The results of this experiment are provided in Ta-
+ble 5. The column #Mutations represents the number of pro-
+                                                                   5.2.1   Manual Analysis of Mutations
+duced mutations. Fuzzer represents the used fuzzer. Phase I
+Covered represents the number of mutations covered by the          To assess whether mutations that we introduce result in a se-
+seeds. Phase I Killed represents the number of mutations           mantic change, we manually examine 100 randomly selected
+killed by the seeds. Phase II Covered represents the number        mutations that were not found during the 24-hour runs. Of
+of mutations that were covered in the Phase II beyond Phase I.     these, we identify 11 mutations as equivalent, 5 as potentially
+Phase II Killed represents the number of mutations that were       leading to crashes, and the remaining 84 as introducing a se-
+killed in Phase II beyond Phase I. Total Covered represents        mantic change, but unlikely to be detected by a simple crash
+the number of mutants that were covered in total, and Total        oracle.
+Killed represents the number of mutants that were killed in
+total. Summing up all subjects, we see that AFL++ kills 8.8%
+                                                                   5.3 RQ2: Evaluating the sanitizer contribution
+of all mutants, closely followed by Honggfuzz with 8.7% and
+AFL with 8.4%. libFuzzer lags behind at only 7.5%. In terms        To answer this question, we re-run the previous experiment
+of covered mutations, AFL++ (30.9%) is again narrowly in           with ASAN. To analyze the results of this experiment, we
+
+
+
+4542   32nd USENIX Security Symposium                                                                        USENIX Association
+Table 5: Results of the full benchmark run. The #Mutations column contains the number of mutations available. Phase I
+represents 24-hour runs, Phase II represents the one-hour runs, and Total represents both combined. Covered represents the
+number of covered mutants, while Killed represents the number of killed mutants. The combined rows show the total number of
+mutants that were killed by any fuzzer.
+
+         Program             #Mutations   Fuzzer      Phase I Covered   Phase I Killed   Phase II Covered   Phase II Killed   Total Covered   Total Killed
+
+                                          afl                     88               17                  0                 3              88             20
+         cares_name                4822   aflpp                   88               18                  0                 2              88             20
+                                          honggfuzz               88               17                  0                 1              88             18
+                                          libfuzzer               86               17                  0                 0              86             17
+                                          combined                88               18                                                   88             20
+                                          afl                    937              292                  0                29             937            321
+         cares_parse_reply         4822   aflpp                  941              289                  0                26             941            315
+                                          honggfuzz              940              290                  1                23             941            313
+                                          libfuzzer              932              292                  0                 5             932            297
+                                          combined               941              305                                                  941            324
+                                          afl                  9,935            2,328                 89                68          10,024          2,396
+         curl                     29118   aflpp               11,713            2,593                 69                82          11,782          2,675
+                                          honggfuzz           10,195            2,299                506               150          10,701          2,449
+                                          libfuzzer            8,895            2,099                120                39           9,015          2,138
+                                          combined            12,459            2,807                                               12,477          2,857
+                                          afl                  6,943            1,691              6,189             1,827          13,132          3,518
+         guetzli                  22961   aflpp               12,564            3,205                685               378          13,249          3,583
+                                          honggfuzz           13,586            3,698                  0                72          13,586          3,770
+                                          libfuzzer            9,923            2,816                 32                26           9,955          2,842
+                                          combined            13,610            3,810                                               13,610          3,912
+                                          afl                    425               75                  0                 6             425             81
+         libevent                 17234   aflpp                  427               78                  0                 3             427             81
+                                          honggfuzz              421               77                  1                 3             422             80
+                                          libfuzzer              417               77                  0                 2             417             79
+                                          combined               427               80                                                  427             81
+                                          afl                  4,825            4,461                  0                 1           4,825          4,462
+         re2                      21407   aflpp               11,563            4,457                 65               134          11,628          4,591
+                                          honggfuzz           11,636            4,431                  0                97          11,636          4,528
+                                          libfuzzer           11,164            4,328                  0                20          11,164          4,348
+                                          combined            11,639            4,571                                               11,639          4,627
+                                          afl                  5,386              955                  2                70           5,388          1,025
+         woff2_new                40914   aflpp                5,578            1,044                  1                69           5,579          1,113
+                                          honggfuzz            5,555            1,018                  1               111           5,556          1,129
+                                          libfuzzer            5,018              896                  2                20           5,020            916
+                                          combined             5,631            1,139                                                5,634          1,232
+
+
+
+
+compare the percentage of killed mutants out of all covered                          will provide detailed results and justifications for this manual
+mutations. This is visualized for AFL++, Honggfuzz and                               analysis along with our code.
+libFuzzer in Figure 4, omitting AFL due to its inconsistencies                          For the evaluated CVEs, the way our mutations reintroduce
+between both oracles. The full results can be seen in Table 6.                       bugs can be classified broadly as: (1) The program behavior is
+We see a clear increase of the number of killed mutants when                         modified such that the bug is reintroduced without side effects.
+using ASAN. Interestingly, enabling ASAN also results in                             (2) The mutation reintroduces the bug, but also breaks some
+some crashes in the original no longer being reported, which                         functionality. (3) No mutation that reintroduces the bug can
+indicates a surprising effect of ASAN instrumentation in some                        be found.
+cases. Overall, with ASAN, AFL++ found 9.1% (+0.3%) of
+mutations, Honggfuzz found 9.0% (+0.3%), AFL found 8.5%                          1 - if (instr[y].size < 29)
+(+0.1%), and libFuzzer found 7.9% (+0.4%).                                       2 + if (instr[y].size >= 4 && instr[y].size < 29)
+
+                                                                                                  Listing 2: Patch for CVE-2022-34927.
+         ASAN moderately increases the number of killed
+                           mutants.                                                     An example patch for the first category can be seen in
+                                                                                     Listing 2. The added check for size >=4 can be reversed by
+                                                                                     an UNSIGNED GREATER THAN EQUALTO mutation, which
+                                                                                     will change the right-hand constant to 0 here, effectively re-
+                                                                                     introducing the original bug without side effects.
+5.4       RQ3: Mutant and Vulnerability Coupling
+                                                                                 1 + if (nft_chain_is_bound(chain))
+We analyzed the 100 most recent2 CVEs referencing GitHub
+                                                                                 2 +        return -EINVAL;
+commits that patch .c, .cc, .cpp or .h files. A mutation
+is identified as coupled to a vulnerability if this mutation                                      Listing 3: Patch for CVE-2022-39190.
+reintroduces the vulnerability into the patched program. We
+                                                                                        A very common pattern among the studied patches is the
+  2 as   of September 5th, 2022                                                      introduction of a new branch checking an error condition.
+
+
+
+USENIX Association                                                                                          32nd USENIX Security Symposium                   4543
+  Table 6: Results of the benchmark run when ASAN is enabled. The #Mutations column contains the number of mutations
+  available. Phase I represents 24-hour seed gathering, Phase II represents the one-hour runs, and Total represents both combined.
+  The Covered represents the number of mutants covered, while Killed represents the number of mutants killed. The combined
+  rows show the total number of mutants killed by any fuzzer.
+
+         Program              #Mutations     Fuzzer         Phase I Covered   Phase I Killed   Phase II Covered   Phase II Killed   Total Covered   Total Killed
+
+                                             afl                        88               21                  0                 0              88             21
+         cares_name                   4822   aflpp                      88               22                  0                 0              88             22
+                                             honggfuzz                  88               21                  0                 1              88             22
+                                             libfuzzer                  87               21                  0                 1              87             22
+                                             combined                   88               22                                                   88             22
+                                             afl                       938              429                  0                 1             938            430
+         cares_parse_reply            4822   aflpp                     941              418                  0                17             941            435
+                                             honggfuzz                 940              427                  1                 7             941            434
+                                             libfuzzer                 906              427                  0                 2             906            429
+                                             combined                  941              432                                                  941            438
+                                             afl                      9,981           3,068                 87                38          10,068          3,106
+         curl                        28779   aflpp                   11,680           3,458                 68                73          11,748          3,531
+                                             honggfuzz               10,155           3,057                481               162          10,636          3,219
+                                             libfuzzer                8,833           2,728                130                80           8,963          2,808
+                                             combined                12,349           3,729                                               12,387          3,774
+                                             afl                      3,713           1,019              3,187               903           6,900          1,922
+         guetzli                     22961   aflpp                    6,704           1,903                340               212           7,044          2,115
+                                             honggfuzz                7,253           2,273                  0                52           7,253          2,325
+                                             libfuzzer                5,213           1,706                 15                15           5,228          1,721
+                                             combined                 7,261           2,330                                                7,263          2,363
+                                             afl                       423              117                  0                 7             423            124
+         libevent                    17234   aflpp                     427              119                  0                 5             427            124
+                                             honggfuzz                 421              116                  1                 7             422            123
+                                             libfuzzer                 418              122                  0                 3             418            125
+                                             combined                  427              124                                                  427            126
+                                             afl                     11,492           5,193                 18               115          11,510          5,308
+         re2                         21407   aflpp                   11,485           5,209                 68               183          11,553          5,392
+                                             honggfuzz               11,577           5,171                  3               167          11,580          5,338
+                                             libfuzzer               11,003           5,009                  4                81          11,007          5,090
+                                             combined                11,586           5,347                                               11,586          5,438
+                                             afl                      5,395           1,047                  1                53           5,396          1,100
+         woff2_new                   40914   aflpp                    5,574           1,113                  2                47           5,576          1,160
+                                             honggfuzz                5,555           1,082                  5                75           5,560          1,157
+                                             libfuzzer                4,958             990                  1                19           4,959          1,009
+                                             combined                 5,631           1,193                                                5,637          1,247
+
+
+
+  Table 7: Mutants killed during 24 hour runs on 104 stubborn                              for the code in Listing 4. In other cases, patches may be
+  mutants for each subject (using ASAN).                                                   impossible to revert due to information being lost (e.g., a
+                                                                                           deleted function call cannot be re-inserted).
+  Prog                       Total     afl   aflpp       libfuzzer    honggfuzz
+                                                                                             For this analysis, we count vulnerabilities in categories (1)
+  re2                         104       0        0               0               0         and (2) as coupled to a mutation, as per definition, the vulner-
+  cares_parse_reply           104       0        0               0               0
+  woff2_new                   104       0        0               0               1         ability is reintroduced. As a result, 71 out of 100 analyzed
+  curl                        104       0        0               1               0         CVEs are covered by our mutations.
+  guetzli                     104       0        0               0               1
+  libevent                    104       0        0               0               0
+  cares_name                   66       0        0               0               0               The mutations induced by our mutation operators
+                                                                                                            are coupled to real faults.
+
+
+  These mostly fall into the second category because the buggy
+  behavior can be triggered by inverting the branch condition                              6    Discussion
+  (REDIRECT BRANCH), although this will result in the rejection
+  of valid inputs. Listing 3 shows an example for this situation:                          Our paper demonstrates how to perform a principled, yet
+  After applying the mutation, only invalid chains are accepted,                           practical comparison of two fuzzers to determine whether (1)
+  and valid input is discarded.                                                            using one is better than using the other or (2) using both com-
+                                                                                           bined is better than using each in isolation (Figure 3). Further-
+                                                                                           more, we can measure the improvement in a fuzzer compared
+1 - length = dir->length;
+                                                                                           to an older version without biasing the results on previously
+2 + length += dir->length;
+                                                                                           discovered faults. Additionally, our approach can account for
+                   Listing 4: Patch for CVE-2022-29379.                                    sanitizers and other strong oracles, enabling a more principled
+                                                                                           comparison of oracles. In summary, with this paper, we hope
+    Patches in the third category sometimes require a more                                 to encourage fuzzing researchers to develop better fuzzers
+  specialized mutation, such as the replacement of += with =                               without being unduly influenced by benchmarks.
+
+
+
+  4544      32nd USENIX Security Symposium                                                                                                    USENIX Association
+                                     CALLOC
+                                                                     COMPARE EQUAL
+                                                                                                            DELETE CALL
+                                                                                                            INSTRUCTION
+                                                                                                                                                    DELETE
+                                                                                                                                                   FUNCTION
+                                                                                                                                                                                       DELETE LOCAL
+                                                                                                                                                                                                                                       Overlap of Killed Mutants between Fuzzers
+                                                                          TO                                                                                                              STORE
+                                                                                                              PATTERN                              ARGUMENT
+                        100%                                                                                                                                                                                                                   aflpp                              afl
+                         75%
+                         50%
+                         25%
+                          0%                                                                                                                                                                                                                       310                      137
+                                DELETE STORE                         FREE FUNCTION
+                                                                                                                                                                                                                                                 (2.4%)                   (1.0%)
+                                  PATTERN                              ARGUMENT
+                                                                                                                 MALLOC                            NEW ARRAY                           PTHREAD MUTEX                                                             108
+                                                                                                                                                                                                                                               382                                  24
+                        100%                                                                                                                                                                                                                                   (0.8%)
+                         75%                                                                                                                                                                                                                 (2.9%)                               (0.2%)
+                         50%                                                                                                                                                                                                          262                                                    87
+                         25%                                                                                                                                                                                                        (2.0%)             1095                59              (0.7%)
+                          0%
+                                                                                                                                                                                                                                                      (8.4%)             (0.5%)
+Percentage of Mutants
+
+
+
+
+                               REASSIGN STORE                          REDIRECT                            SIGNED GREATER                        SIGNED GREATER                         SIGNED LESS
+                                INSTRUCTION                             BRANCH                                  THAN                              THAN EQUALTO                             THAN
+
+                        100%                                                                                                                                                                                                                                    10254
+                         75%                                                                                                                                                                                                                    122            (78.6%)      41
+                         50%
+                         25%                                                                                                                                                                                                                  (0.9%)       24         129 (0.3%)
+                          0%                                                                                                                                                                                                                             (0.2%)     (1.0%)
+                                SIGNED LESS                            SIGNED TO                                                                  SWITCH PLUS                                                                 honggfuzz                          19                           libfuzzer
+                                                                                                              SNPRINTF                                                                  SWITCH SHIFT
+                               THAN EQUALTO                            UNSIGNED                                                                      MINUS
+                                                                                                                                                                                                                                                               (0.1%)
+                        100%
+                         75%
+                         50%
+                                                                                                                                                                                                                                                 Total Mutants Killed: 13053
+                         25%
+                          0%
+                                                                       UNSIGNED
+                                 UNSIGNED
+                               GREATER THAN
+                                                                     GREATER THAN
+                                                                       EQUALTO
+                                                                                                           UNSIGNED LESS
+                                                                                                               THAN
+                                                                                                                                                 UNSIGNED LESS
+                                                                                                                                                 THAN EQUALTO
+                                                                                                                                                                                        UNSIGNED TO
+                                                                                                                                                                                          SIGNED
+                                                                                                                                                                                                                              Figure 3: Venn diagram of killed mutants for each fuzzer.
+                        100%
+                         75%
+                         50%
+                         25%                                                                                                                                                                                                 the second phase. The re-evaluation with ASAN demonstrates
+                          0%
+                                                                                                                                                                                                                             the importance of improved oracles, as the number of killed
+                               afl
+                                     aflpp
+                                             honggfuzz
+                                                         libfuzzer
+
+                                                                     afl
+                                                                           aflpp
+                                                                                   honggfuzz
+                                                                                               libfuzzer
+
+                                                                                                           afl
+                                                                                                                 aflpp
+                                                                                                                         honggfuzz
+                                                                                                                                     libfuzzer
+
+                                                                                                                                                 afl
+                                                                                                                                                       aflpp
+                                                                                                                                                               honggfuzz
+                                                                                                                                                                           libfuzzer
+
+                                                                                                                                                                                       afl
+                                                                                                                                                                                             aflpp
+                                                                                                                                                                                                     honggfuzz
+                                                                                                                                                                                                                 libfuzzer
+
+
+
+
+                                                                                                                                                                                                                             mutants increases. It also shows that our approach is indeed
+                                                                                                                                                                                                                             capable of evaluating the complete tool chain.
+
+                                                                           Result                                Covered                            Found
+                                                                                                                                                                                                                             Implications. Why should we trust mutation analysis any
+                                                                                                                                                                                                                             more than the numerous metrics out there, such as coverage
+Figure 2: Percentage of covered and found mutants per mu-
+                                                                                                                                                                                                                             measures [69], defect-based benchmarks[7, 32], etc.?
+tation type and fuzzer (all found mutations are inherently
+                                                                                                                                                                                                                                As discussed in Section 2.3.2, mutants that remain alive
+covered). AFL underperforms for some mutation types due
+                                                                                                                                                                                                                             represent possible undetected faults in the program, and with
+to crashes caused by instrumentation bugs. This can also be
+                                                                                                                                                                                                                             the detection of each new mutant, that possibility decreases
+seen in Table 5 and Table 6.
+                                                                                                                                                                                                                             monotonically. That is, unlike coverage, alive mutations
+                                                                                                                                                                                                                             are a good proxy measure for residual defects in a program.
+                                                                                                                                                                                                                             Compared to defect-based benchmarks, mutation analysis
+   Mutation analysis is the gold standard of measuring test                                                                                                                                                                  minimizes bias and manual effort. Finally, the mutations
+suite effectiveness in software testing and comes with solid                                                                                                                                                                 themselves can be studied to provide examples to improve
+theory and empirical support. The only restriction in using it                                                                                                                                                               fuzzers, without the limitations of coverage or the bias of
+for fuzzing so far has been the computational cost associated                                                                                                                                                                defect-based benchmarks.
+with it. We have taken the first step in solving this issue,                                                                                                                                                                    Our results call for a reorientation of priorities in security
+making mutation analysis practical for fuzzing. As proof                                                                                                                                                                     testing. We have focused mostly on improving coverage dur-
+that our approach indeed works in the real world, we have                                                                                                                                                                    ing fuzzing. However, it seems that there is a lot more to
+compared four popular fuzzers on seven programs provided                                                                                                                                                                     be gained by improving oracles instead. This is not simple,
+by the OSS-Fuzz benchmark, the results of which we now                                                                                                                                                                       however, and is known as the oracle problem in software
+present.                                                                                                                                                                                                                     testing [70]. The difficulty is that there is no general way to
+   Our experiments largely confirm the fuzzer ranking estab-                                                                                                                                                                 identify and extract the intended logic of a given program.
+lished in previous literature [7, 33, 6]. AFL++ leads the board,                                                                                                                                                             Some promising approaches exist that can help: (1) metamor-
+clearly outperforming AFL and libFuzzer (Honggfuzz was                                                                                                                                                                       phic relations [71, 72] and equivalence modulo inputs [73];
+not part of the evaluation in [6]). Furthermore, our evalua-                                                                                                                                                                 (2) differential oracles [74, 75]; and (3) invariants such as
+tion shows again that the fuzzers are very similar and either                                                                                                                                                                those mined by Daikon [76] and the like. We believe that
+AFL++ or Honggfuzz represent a solid choice. As expected,                                                                                                                                                                    future research should also be spent on improving the effec-
+the fuzzers in our evaluation have very limited targeted bug                                                                                                                                                                 tiveness of these techniques rather than just pursuing the ever
+finding capabilities, since there is nearly no improvement in                                                                                                                                                                shrinking returns on improving coverage.
+
+
+
+USENIX Association                                                                                                                                                                                                                             32nd USENIX Security Symposium                       4545
+Percentage of Covered Mutations that are Killed
+
+                                                          cares_name   cares_parse_reply        curl              guetzli             libevent            re2           woff2_new
+
+
+                                                  40%                           16.2%                                                                       10.4%
+                                                                                                                                                   1.7%
+                                                  30%                  1.8%
+                                                                                                                       6.7%
+
+
+
+
+                                                                                                                                                                                    aflpp
+                                                        0.0%    2.7%                                   7.0%   3.0%                     12.4%
+                                                  20%                                      0.6%
+                                                                       32.3% 32.3%                                                0.6%             35.8% 35.8%        2.9% 3.7%
+                                                  10%   24.7% 24.7%                        22.2% 22.2%        23.3% 23.3%        18.4% 18.4%                          17.1% 17.1%
+                                                   0%
+
+                                                  40%                           16.3%                                                                       10.4%
+                                                                       1.8%                                                                        1.8%
+
+
+
+
+                                                                                                                                                                                    honggfuzz
+                                                  30%                                                                  7.4%
+                                                                5.5%                                   7.5%   2.5%                     12.6%
+                                                  20%   0.0%                               0.5%
+                                                                       32.1% 32.1%                                                0.6%             35.0% 35.0%        3.0% 3.6%
+                                                  10%   21.9% 21.9%                        21.9% 21.9%        25.0% 25.0%        18.3% 18.3%                          17.2% 17.2%
+                                                   0%
+
+                                                  40%                           18.0%                                                                       10.0%
+                                                                                                                                                   1.2%
+                                                                       0.9%
+
+
+
+
+                                                                                                                                                                                    libfuzzer
+                                                  30%                                                                  7.3%
+                                                                5.6%                                   7.5%   2.0%                     12.1%
+                                                  20%   0.0%                               0.6%
+                                                                       31.5% 31.5%                                                0.6%             35.4% 35.4%         1.1% 3.0%
+                                                  10%   21.1% 21.1%                        22.4% 22.4%        25.4% 25.4%
+                                                                                                                                 18.5% 18.5%                          16.8% 16.8%
+                                                   0%
+                                                        default asan   default asan        default asan       default asan       default asan      default asan      default asan
+
+
+                                                                                            Found By           asan         default         both
+
+
+
+Figure 4: Percentage of covered mutants (in both experiments) that are killed with and without ASAN. “Both” shows mutations
+killed with or without ASAN, “default” those only found without ASAN, and “asan” shows kills only found using ASAN.
+
+
+7                                                 Limitations and Future Work                                         Allocated Time for Phases. Some fuzzers may not attempt
+                                                                                                                          to expand the coverage front and instead scan for possi-
+Our work is subject to the following important limitations.                                                               ble vulnerability patterns, using static analysis. In such
+                                                                                                                          a case, the time provided for developing the coverage
+Missing patterns and faults. We rely on a set of mutation
+                                                                                                                          seed may not be useful to the fuzzer and may lead to
+    operators that we mined from real faults, which are un-
+                                                                                                                          unfair comparison. How to fairly compare such fuzzers
+    likely to be exhaustive. This can be mitigated by future
+                                                                                                                          without the overhead of full mutation analysis is an open
+    adaption of the supported mutations.
+                                                                                                                          question. (We note that while the coverage optimiza-
+Cost of mutation analysis. While we reduced the cost of ap-                                                               tion may not work, the supermutant optimization will
+    plying mutation analysis to fuzzers, a further reduction                                                              work even in such cases.) A possible solution is to use
+    would still improve the practicality of this approach. One                                                            the state-of-the-art coverage maximizing fuzzer on the
+    such approach could involve sampling mutations, reduc-                                                                original program and extract the coverage mutants from
+    ing computation time at the cost of accuracy.                                                                         the given program. Next, use random sampling [78] to
+                                                                                                                          identify a small set of coverage mutants, which when
+Coupling effect. We rely on the coupling effect hypothesis in                                                             combined with the (complete set of) stubborn and other
+   mutation analysis to ensure that the mutants we generate                                                               live mutants can serve to limit the overhead of full muta-
+   are similar to real faults. The coupling effect is well at-                                                            tion analysis. Another option is to use the state-of-the-art
+   tested in literature [44, 45]. However, relying on the cou-                                                            coverage maximizing fuzzer and extract a mutant kill
+   pling effect ignores subtle faults due to fault-interactions                                                           matrix. Then, identify the minimal test suite and the
+   (between faults). While there is some evidence that                                                                    corresponding minimal mutant set, and use that minimal
+   such interactions are rare [77], they are still important                                                              mutant set for evaluation of coverage mutants. We note
+   to address. One direction is exploring a larger neigh-                                                                 that the relative merits of random sampling and mini-
+   borhood, with multiple mutations in a mutant. Unlike                                                                   mal mutant set still needs to be calibrated [78, 79]. For
+   supermutants, however, we need mutations that inter-                                                                   random sampling, we note that a smaller sample size
+   act, and callability that we used for supermutants can                                                                 may suffice in theory [80]. However, the actual practical
+   provide a first level approximation. Indeed, given that                                                                reduction in mutants is yet to be established (it is likely
+   mutation analysis is a form of fuzz-testing the software                                                               to be program-specific).
+   test suite, the fuzzing community may be able to make
+   better progress here.                                                                                              Supermutants. We use supermutants to check whether any
+
+
+
+4546                                                32nd USENIX Security Symposium                                                                                  USENIX Association
+     fuzzer can find mutations that were not covered in the        While our approach is not as targeted, mutation testing will
+     initial seed files. In doing this, we run the risk of fault   not only generate similar bugs but also a wider range of bugs.
+     masking. Hence, future work is to investigate the preva-         The challenge binaries of the Cyber Grand Challenge
+     lence of fault masking and techniques to avoid fault          (CGC) [85] are also sometimes used for comparison of fuzzers
+     masking. We, however, note that fault masking is likely       [2]. The binaries were especially created for the CGC. Hence,
+     to be rare. For one fault (say A) to mask the other (say      challenge binaries necessarily have a bias to be used in the
+     B), the following conditions have to be fulfilled: (1)        CGC and consist mostly of command line tools.
+     there should be no input that covers both in the coverage-       A recent benchmarking approach is Magma [7]. It uses real-
+     maximizing phase, (2) fault A should never cause a crash      world vulnerabilities and re-inserts them into newer versions
+     independently (if it does, fault A would be removed and       of the projects. Additionally, it provides an assertion that tests
+     the remaining faults would be fuzzed separately), (3)         if an input results in a state that would trigger the bug. This
+     there should be some inputs that cover both fault A and       assertion is used to measure bug detection capability. As in
+     fault B, and on these inputs, fault A should induce just      other benchmarks, the number of bugs is limited because of
+     sufficient behavioral change such that, while the input       the manual effort to port them to the current version and has
+     may have caused a crash without fault A, the crash is         a necessary bias towards bugs that can be re-inserted.
+     removed when both are present. We believe that these             Another project is Fuzzbench [33], using Google infrastruc-
+     constraints make fault masking due to supermutants rare.      ture. Fuzzbench already provides coverage-based benchmarks
+                                                                   and is working on supporting bug-based benchmarks [86].
+Comparing Fuzzers without Sanitizers. We find that san-               F IX R EVERTER [6] mines a restricted set of syntactic pat-
+   itizers can significantly improve the effectiveness of          terns from bug fixes that were associated with vulnerabilities
+   fuzzers. However, mutation analysis can allow us to             and injects these bugs where the bug inducibility can be guar-
+   go beyond merely accounting for the impact of sanitiz-          anteed, but has several limitations. First, the researchers could
+   ers. We can compare the behavior (even coverage) of a           identify only three general patterns accounting for 170 CVEs
+   mutant against the original using differential fuzzing and      from a study of 814 CVEs (20.9%). Second, using patterns
+   identify whether a fuzzer was able to induce a change in        with semantic analysis to guarantee bug inducibility restricts
+   behavior compared to the original even in the absence of        the number of fixes that can be reverted. Such a guarantee
+   a suitable sanitizer. This will allow us to develop effec-      also limits what kinds of bugs can be simulated, as the spe-
+   tive fuzzers that focus on input generation independent         cific bug patterns and corresponding bug semantics that were
+   of sanitizer development. Indeed, differential fuzzing          mined represent only a small fraction of the possible bugs that
+   by keeping track of coverage or behavior divergence be-         can be present in a given program (in contrast to mutation
+   tween original and mutants can provide strong hints on          analysis). This might also open the door to fine-tuning fuzzers
+   which inputs hold promise in fuzzer guidance [81, 82].          for specifically identifying such behavior. These drawbacks
+                                                                   reduce the diversity of bugs and thus the effectiveness of the
+8   Related Work                                                   benchmark [78, 79]. Finally, F IX R EVERTER does not address
+                                                                   the issue of fault-interactions and fault-masking.
+The comparison and evaluation of fuzzers is an important              Böhme et al. suggest that coverage-based benchmarking
+foundation for meaningfully improving fuzzers. Several             can be unreliable based on a comparison with curated bugs [8].
+fuzzing platforms exist [32, 7, 33] that seek to provide a         The paper illustrates the difficulty we face when we rely on
+way to compare fuzzers under a common framework.                   an external source of bugs. In particular, because the bugs
+   One such approach is LAVA [32], a tool to inject crash          that the researchers rely on are external, the distribution of
+bugs that can be triggered by finding specific values in unused    such bugs is not related to the actual possibility of bugs in
+parts of user-controlled input. Later analysis showed that         the tested program. To illustrate this, consider the following
+the introduced bugs are dissimilar to real-world vulnerabili-      thought experiment: Given a benchmark program that accepts
+ties [2], are not coupled to real faults (reported CVEs) [11],     inputs as JSON and a black-box random fuzzer. The fuzzer
+tend to overfit [9], and are “solved” by modern fuzzers [83].      will find lots of crashing bugs in the JSON parser itself but
+In comparison, bugs from mutation analysis are not guaran-         few in the program logic. Any ranking using this source of
+teed to be triggerable. However, this is a trade-off making        bugs will favor fuzzers that find bugs in the JSON parser when
+it possible to create a comprehensive set of bugs, spanning        compared to, say, a grammar fuzzer that reaches the program
+from trivially detectable to subtle and hard-to-detect ones.       internals. Hence, the ranking based on finding such bugs is
+A similar approach that can insert bugs into subjects is Evil      not a reliable indicator of fuzzer quality. This is precisely
+Coder [84]. Potentially vulnerable source code locations are       what (unbiased) mutation analysis aims to correct.
+detected using data flow analysis, focusing on user-controlled
+inputs that lead to sensitive functions. A bug is introduced by    Beyond Fuzzing. Mutation analysis can also be applied for
+removing security-relevant checks, such as input sanitization.     software verification tasks beyond fuzzing. It can be used
+
+
+
+USENIX Association                                                                    32nd USENIX Security Symposium           4547
+to evaluate the quality of static analysis tools [87], of type              [3]   Tielei Wang et al. “TaintScope: A Checksum-Aware Directed
+systems [88] (good type systems can make whole classes                            Fuzzing Tool for Automatic Software Vulnerability Detection”. IEEE
+                                                                                  Symposium on Security and Privacy (S&P). 2010.
+of errors non-representable), contracts [89], and even the
+effectiveness of program proofs [90].                                       [4]   Sebastian Österlund et al. “ParmeSan: Sanitizer-guided Greybox
+                                                                                  Fuzzing”. USENIX Security Symposium. 2020.
+                                                                            [5]   Rahul Gopinath, Carlos Jensen, and Alex Groce. “Code coverage
+9      Conclusion                                                                 for suite evaluation by developers”. International Conference on
+                                                                                  Software Engineering (ICSE). 2014.
+As fuzzing budget is limited, it is important to use fuzzers                [6]   Zenong Zhang et al. “F IX R EVERTER: A Realistic Bug Injection
+that are better at finding faults. The available benchmarks                       Methodology for Benchmarking Fuzz Testing”. USENIX Security
+                                                                                  Symposium. 2022.
+are, however, limited or biased towards known bugs and are
+susceptible to overfitting and fine-tuning.                                 [7]   Ahmad Hazimeh, Adrian Herrera, and Mathias Payer. “Magma: A
+                                                                                  Ground-Truth Fuzzing Benchmark”. Proceedings of the ACM on
+    This paper demonstrates how the gold standard for measur-                     Measurement and Analysis of Computing Systems 4 (2020).
+ing test suite quality—mutation analysis—can be adapted for
+                                                                            [8]   Marcel Böhme, László Szekeres, and Jonathan Metzman. “On the
+fuzzing. We show that two techniques, eliminating coverage                        Reliability of Coverage-Based Fuzzer Benchmarking”. International
+mutants using static seed files and using supermutants for                        Conference on Software Engineering (ICSE). 2022.
+the remaining evaluation, can significantly reduce the com-                 [9]   Andreas Zeller, Sascha Just, and Kai Greshake. When Results Are
+putational expenditure necessary for mutation analysis and                        All That Matters: The Case of the Angora Fuzzer. 2019. URL:
+can make mutation analysis feasible for fuzzing. We inves-                        https://andreas-zeller.info/2019/10/10/when-results-are-
+                                                                                  all-that-matters-case.html (visited on 10/12/2022).
+tigated security faults and converted the identified patterns
+                                                                           [10]   Andreas Zeller, Sascha Just, and Kai Greshake. When Results Are All
+into security-specific mutation operators, which were used
+                                                                                  That Matters: Consequences. 2019. URL: https : / / andreas -
+for evaluation. Using mutation analysis, practitioners are no                     zeller . info / 2019 / 10 / 17 / when - results - are - all - that -
+longer limited to specific curated benchmarks. Instead, prac-                     matters.html (visited on 10/12/2022).
+titioners can evaluate fuzzers on the programs from a specific             [11]   Joshua Bundt et al. “Evaluating Synthetic Bugs”. ACM Symposium
+domain before allocating resources for fuzzing.                                   on Information, Computer and Communications Security (ASIACCS).
+    Our evaluation demonstrates that with our technique, mu-                      2021.
+tation analysis can now be used for comparing fuzzers in                   [12]   Mike Papadakis et al. “Mutation Testing Advances: An Analysis and
+                                                                                  Survey”. Advances in Computers. Ed. by Atif M. Memon. Vol. 112.
+real-world programs. Using mutation analysis ensures that
+                                                                                  Elsevier, 2019.
+the practitioners can rely on the solid theory and decades of
+                                                                           [13]   Michele Tufano et al. “Learning How to Mutate Source Code from
+empirical research, leading to better fuzzers and sanitizers.                     Bug-Fixes”. IEEE International Conference on Software Mainte-
+The fine-grained results from mutation analysis can directly                      nance and Evolution (ICSME). 2019.
+help fuzzing practitioners to understand the deficiencies in               [14]   Zakir Durumeric et al. “The Matter of Heartbleed”. Internet Mea-
+current approaches and take steps to correct them.                                surement Conference (IMC). 2014.
+                                                                           [15]   Synopsis Editorial Team. Understanding the Apple ‘goto fail;’
+                                                                                  vulnerability. 2014. URL: https : / / www . synopsys . com /
+Acknowledgements                                                                  blogs/software- security/understanding- apple- goto- fail-
+                                                                                  vulnerability-2/ (visited on 10/12/2022).
+This work was funded by the European Research Council                      [16]   Tatum Hunter and Gerrit De Vynck. “The ‘most serious’ security
+(ERC) under the consolidator grant RS3 (101045669) and                            breach ever is unfolding right now. Here’s what you need to know.”
+the German Federal Ministry of Education and Research un-                         The Washington Post (2021). URL: https://www.washingtonpost.
+der the grant KMU-Fuzz (16KIS1523). This work was par-                            com/technology/2021/12/20/log4j-hack-vulnerability-java/
+                                                                                  (visited on 10/12/2022).
+tially supported with funds from the Bosch Research Founda-
+tion in the Stifterverband (Reference: T113/33825/19). This                [17]   J. H. Andrews, L. C. Briand, and Y. Labiche. “Is mutation an ap-
+                                                                                  propriate tool for testing experiments?” International Conference on
+work was supported by the Deutsche Forschungsgemeinschaft                         Software Engineering (ICSE). 2005.
+(DFG, German Research Foundation) under Germany’s Ex-                      [18]   René Just et al. “Are mutants a valid substitute for real faults in
+cellence Strategy – EXC-2092 CASA – 390781972. We also                            software testing?” ACM SIGSOFT International Symposium on Foun-
+thank the following colleagues and researchers for their help:                    dations of Software Engineering (FSE). 2014.
+Addison Crump, Joschua Schilling, Marcel Böhme, and Ab-                    [19]   Mike Papadakis et al. “Are mutation scores correlated with real
+hilash Gupta.                                                                     fault detection?: a large scale empirical study on the relationship be-
+                                                                                  tween mutants and real faults”. International Conference on Software
+                                                                                  Engineering (ICSE). 2018.
+References                                                                 [20]   Tejeddine Mouelhi, Yves Le Traon, and Benoit Baudry. “Mutation
+                                                                                  Analysis for Security Tests Qualification”. Testing: Academic and In-
+ [1]    Marcel Böhme, Cristian Cadar, and Abhik Roychoudhury. “Fuzzing:           dustrial Conference Practice and Research Techniques - MUTATION
+        Challenges and Reflections”. IEEE Software 38 (2021).                     (TAICPART-MUTATION). 2007.
+ [2]    George Klees et al. “Evaluating Fuzz Testing”. ACM Conference on
+        Computer and Communications Security (CCS). 2018.
+
+
+
+
+4548     32nd USENIX Security Symposium                                                                                      USENIX Association
+[21]   Frédéric Dadeau, Pierre-Cyrille Héam, and Rafik Kheddam.                 [39]   Rahul Gopinath, Carlos Jensen, and Alex Groce. “Mutations: How
+       “Mutation-Based Test Generation from Security Protocols in                      Close are they to Real Faults?” IEEE International Symposium on
+       HLPSL”. IEEE International Conference on Software Testing, Verifi-              Software Reliability Engineering (ISSRE). 2014.
+       cation and Validation (ICST). 2011.                                      [40]   A. Jefferson Offutt. “Investigations of the software testing coupling
+[22]   Daniel Woodraska, Michael Sanford, and Dianxiang Xu. “Security                  effect”. ACM Transactions on Software Engineering and Methodol-
+       mutation testing of the FileZilla FTP server”. ACM Symposium on                 ogy 1 (1992).
+       Applied Computing (SAC). 2011.                                           [41]   K. S. How Tai Wah. “A theoretical study of fault coupling”. Software
+[23]   Yves Le Traon, Tejeddine Mouelhi, and Benoit Baudry. “Testing                   Testing, Verification and Reliability 10 (2000).
+       Security Policies: Going Beyond Functional Testing”. IEEE Inter-         [42]   K. S. How Tai Wah. “Theoretical Insights into the Coupling Ef-
+       national Symposium on Software Reliability Engineering (ISSRE).                 fect”. Mutation Testing for the New Century. Ed. by W. Eric Wong.
+       2007.                                                                           Springer US, 2001.
+[24]   Thomas Loise et al. “Towards Security-Aware Mutation Testing”.           [43]   K. S. How Tai Wah. “An analysis of the coupling effect I: single test
+       IEEE International Conference on Software Testing, Verification and             data”. Science of Computer Programming 48 (2003).
+       Validation Workshops (ICSTW). 2017.
+                                                                                [44]   Rahul Gopinath, Carlos Jensen, and Alex Groce. “The Theory of
+[25]   Amit Seal Ami et al. “µSE: Mutation-Based Evaluation of Security-               Composite Faults”. IEEE International Conference on Software
+       Focused Static Analysis Tools for Android”. International Con-                  Testing, Verification and Validation (ICST). 2017.
+       ference on Software Engineering: Companion (ICSE-Companion).
+                                                                                [45]   René Just et al. “Are mutants a valid substitute for real faults in
+       2021.
+                                                                                       software testing?” ACM SIGSOFT International Symposium on Foun-
+[26]   Lu Yu et al. “Vulnerability-oriented directed fuzzing for binary                dations of Software Engineering (FSE). 2014.
+       programs”. Scientific Reports 12 (2022).
+                                                                                [46]   Goran Petrovic et al. “Does Mutation Testing Improve Testing Prac-
+[27]   Rahul Gopinath, Bjorn Mathis, and Andreas Zeller. “If You Can’t                 tices?” International Conference on Software Engineering (ICSE).
+       Kill a Supermutant, You Have a Problem”. IEEE International Con-                2021.
+       ference on Software Testing, Verification and Validation Workshops
+                                                                                [47]   Thierry Titcheu Chekam et al. “An Empirical Study on Mutation,
+       (ICSTW). 2018.
+                                                                                       Statement and Branch Coverage Fault Revelation That Avoids the
+[28]   Konstantin Serebryany et al. “AddressSanitizer: A Fast Address                  Unreliable Clean Program Assumption”. International Conference
+       Sanity Checker”. USENIX Annual Technical Conference. 2012.                      on Software Engineering (ICSE). 2017.
+[29]   IEEE. “IEEE Standard Classification for Software Anomalies”. IEEE        [48]   René Just, Michael D. Ernst, and Gordon Fraser. “Efficient mutation
+       Std 1044-2009 (Revision of IEEE Std 1044-1993) 0 (2010).                        analysis by propagating and partitioning infected execution states”.
+                                                                                       International Symposium on Software Testing and Analysis (ISSTA).
+[30]   Yiqun T. Chen et al. “Revisiting the relationship between fault
+                                                                                       2014.
+       detection, test adequacy criteria, and test set size”. IEEE/ACM In-
+       ternational Conference on Automated Software Engineering (ASE).          [49]   W.E. Howden. “Weak Mutation Testing and Completeness of Test
+       2020.                                                                           Sets”. IEEE Transactions on Software Engineering 8 (1982).
+[31]   Alessandro Mantovani, Andrea Fioraldi, and Davide Balzarotti.            [50]   Susumu Tokumoto et al. “MuVM: Higher Order Mutation Analysis
+       “Fuzzing with Data Dependency Information”. IEEE European Sym-                  Virtual Machine for C”. IEEE International Conference on Software
+       posium on Security and Privacy (EuroS&P). 2022.                                 Testing, Verification and Validation (ICST). 2016.
+[32]   Brendan Dolan-Gavitt et al. “LAVA: Large-Scale Automated Vulner-         [51]   Rahul Gopinath, Carlos Jensen, and Alex Groce. “Topsy-Turvy: a
+       ability Addition”. IEEE Symposium on Security and Privacy (S&P).                smarter and faster parallelization of mutation analysis”. International
+       2016.                                                                           Conference on Software Engineering (ICSE). 2016.
+[33]   Jonathan Metzman et al. “FuzzBench: an open fuzzer benchmarking          [52]   Bo Wang et al. “Faster mutation analysis via equivalence modulo
+       platform and service”. European Software Engineering Conference                 states”. International Symposium on Software Testing and Analysis
+       and Symposium on the Foundations of Software Engineering (ES-                   (ISSTA). 2017.
+       EC/FSE). 2021.                                                           [53]   Ali Ghanbari and Andrian Marcus. “Toward Speeding up Mutation
+[34]   Goran Petrović and Marko Ivanković. “State of mutation testing                Analysis by Memoizing Expensive Methods”. International Con-
+       at google”. Proceedings of the 40th international conference on                 ference on Software Engineering: New Ideas and Emerging Results
+       software engineering: Software engineering in practice. 2018.                   (ICSE-NIER). 2021.
+
+[35]   Moritz Beller et al. “What it would take to use mutation testing         [54]   Rahul Gopinath, Philipp Görz, and Alex Groce. Mutation Analysis:
+       in industry—a study at facebook”. 2021 IEEE/ACM 43rd Interna-                   Answering the Fuzzing Challenge. 2022. arXiv: 2201.11303[cs].
+       tional Conference on Software Engineering: Software Engineering          [55]   Iftekhar Ahmed et al. “Can testedness be effectively measured?”
+       in Practice (ICSE-SEIP). 2021.                                                  ACM SIGSOFT International Symposium on Foundations of Software
+[36]   Goran Petrovic et al. “An industrial application of mutation testing:           Engineering (FSE). 2016.
+       Lessons, challenges, and research directions”. 2018 IEEE Interna-        [56]   Terence Tao. An introduction to measure theory. Vol. 126. American
+       tional Conference on Software Testing, Verification and Validation              Mathematical Society Providence, RI, 2011.
+       Workshops (ICSTW). 2018.                                                 [57]   Mauro Pezze and Michal Young. Software testing and analysis:
+[37]   Paul Ammann, Marcio Eduardo Delamaro, and Jeff Offutt. “Estab-                  process, principles, and techniques. John Wiley & Sons, 2008.
+       lishing theoretical minimal sets of mutants”. 2014 IEEE seventh          [58]   Marcel Böhme. “Assurances in Software Testing: A Roadmap”.
+       international conference on software testing, verification and valida-          International Conference on Software Engineering: New Ideas and
+       tion. 2014.                                                                     Emerging Results (ICSE-NIER). 2019.
+[38]   Rahul Gopinath et al. “Measuring effectiveness of mutant sets”. 2016     [59]   Nan Li, Upsorn Praphamontripong, and Jeff Offutt. “An experi-
+       IEEE Ninth International Conference on Software Testing, Verifica-              mental comparison of four unit test criteria: Mutation, edge-pair,
+       tion and Validation Workshops (ICSTW). 2016.                                    all-uses and prime path coverage”. IEEE International Conference
+                                                                                       on Software Testing, Verification and Validation (ICST). 2009.
+
+
+
+
+USENIX Association                                                                                   32nd USENIX Security Symposium                    4549
+[60]   Phyllis G. Frankl, Stewart N. Weiss, and Cang Hu. “All-uses vs            [83]   Cornelius Aschermann et al. “R ED Q UEEN: Fuzzing with Input-to-
+       mutation testing: An experimental comparison of effectiveness”.                  State Correspondence”. Symposium on Network and Distributed
+       Journal of Systems and Software 38 (1997).                                       System Security (NDSS). 2019.
+[61]   Sahitya Kakarla, Selina Momotaz, and Akbar Siami Namin. “An               [84]   Jannik Pewny and Thorsten Holz. “EvilCoder: Automated Bug Inser-
+       evaluation of mutation and data-flow testing: A meta-analysis”. IEEE             tion”. Annual Computer Security Applications Conference (ACSAC).
+       International Conference on Software Testing, Verification and Vali-             2016.
+       dation (ICST). 2011.
+                                                                                 [85]   DARPA. Cyber Grand Challenge. 2016. URL: https : / / www .
+[62]   Gary Kaminski, Paul Ammann, and Jeff Offutt. “Improving logic-                   ll . mit . edu / research - and - development / cyber - security -
+       based testing”. Journal of Systems and Software 86 (2013).                       and - information - sciences / cyber - grand - challenge (visited
+[63]   Yue Jia and Mark Harman. “An Analysis and Survey of the De-                      on 10/12/2022).
+       velopment of Mutation Testing”. IEEE Transactions on Software             [86]   Various Authors. “Use bugs to measure fuzzer performance”.
+       Engineering 37 (2011).                                                           github.com/google/fuzzbench (2023). URL: https://github.com/
+[64]   Xiangjuan Yao, Mark Harman, and Yue Jia. “A study of equivalent                  google/fuzzbench/issues/165 (visited on 02/10/2023).
+       and stubborn mutation operators using human analysis of equiva-           [87]   Sajeda Parveen and Manar H Alalfi. “A mutation framework for
+       lence”. International Conference on Software Engineering (ICSE).                 evaluating security analysis tools in IoT applications”. 2020 IEEE
+       2014.                                                                            27th International Conference on Software Analysis, Evolution and
+[65]   CWE VIEW: Weaknesses in Software Written in C. 2021. URL:                        Reengineering (SANER). 2020.
+       https://cwe.mitre.org/data/definitions/658.html (visited on               [88]   Rahul Gopinath and Eric Walkingshaw. “How Good Are Your Types?
+       10/12/2021).                                                                     Using Mutation Analysis to Evaluate the Effectiveness of Type An-
+[66]   CWE VIEW: Weaknesses in Software Written in C++. 2021. URL:                      notations”. IEEE International Conference on Software Testing,
+       https://cwe.mitre.org/data/definitions/659.html (visited on                      Verification and Validation Workshops (ICSTW). 2017.
+       10/12/2021).                                                              [89]   Alexander Knüppel, Leon Schaer, and Ina Schaefer. “How much
+[67]   OSS-Fuzz. 2021. URL: https://google.github.io/oss- fuzz/                         specification is enough? Mutation analysis for software contracts”.
+       (visited on 10/12/2022).                                                         2021 IEEE/ACM 9th International Conference on Formal Methods
+                                                                                        in Software Engineering (FormaliSE). 2021.
+[68]   cloc. 2023. URL: https://github.com/AlDanial/cloc (visited on
+       02/10/2023).                                                              [90]   Kush Jain et al. “mCoq: mutation analysis for Coq verification
+                                                                                        projects”. Proceedings of the ACM/IEEE 42nd International Confer-
+[69]   Alex Groce, Mohammad Amin Alipour, and Rahul Gopinath. “Cov-
+                                                                                        ence on Software Engineering: Companion Proceedings. 2020.
+       erage and Its Discontents”. Conference on Systems, Programming,
+       and Applications: Software for Humanity (SPLASH). 2014.
+[70]   Earl T. Barr et al. “The Oracle Problem in Software Testing: A            A      Appendix
+       Survey”. IEEE Transactions on Software Engineering 41 (2015).
+[71]   Sergio Segura et al. “A Survey on Metamorphic Testing”. IEEE
+       Transactions on Software Engineering 42 (2016).
+                                                                                 A.1     Supplements for Evaluation
+[72]   Tsong Yueh Chen et al. “Metamorphic Testing for Cybersecurity”.           Additional results as mentioned in the Section 5.
+       Computer 49 (2016).
+[73]   Vu Le, Mehrdad Afshari, and Zhendong Su. “Compiler validation             Table 8: Number of mutants that were covered together with
+       via equivalence modulo inputs”. ACM SIGPLAN Notices 49 (2014).            other mutants (i.e., mutants wrongly thought independent).
+[74]   William M McKeeman. “Differential testing for software”. Digital
+       Technical Journal 10 (1998).                                                Program                   afl     aflpp    honggfuzz      libfuzzer
+[75]   Muhammad Ali Gulzar, Yongkang Zhu, and Xiaofeng Han. “Percep-               cares_name                 4         0              0             0
+       tion and Practices of Differential Testing”. International Conference       cares_parse_reply          2         4              4             0
+       on Software Engineering: Software Engineering in Practice (ICSE-            curl                   4,850     5,836          4,851         3,852
+       SEIP). 2019.                                                                guetzli                   10        24             16             0
+                                                                                   libevent                   0         2              0             0
+[76]   Michael D. Ernst et al. “The Daikon system for dynamic detection            re2                       39        66             37            47
+       of likely invariants”. Science of Computer Programming 69 (2007).           woff2_new                 26        46             56            48
+[77]   D.R. Kuhn, D.R. Wallace, and A.M. Gallo. “Software fault interac-
+       tions and implications for software testing”. IEEE Transactions on
+       Software Engineering 30 (2004).
+[78]   Rahul Gopinath et al. “On the limits of mutation reduction strategies”.
+       International Conference on Software Engineering (ICSE). 2016.            Supplementary Information for Table 8 Any non-inde-
+[79]   Rahul Gopinath et al. “Mutation Reduction Strategies Considered           pendent mutants recorded during Phase II are given in Table 8.
+       Harmful”. IEEE Transactions on Reliability 66 (2017).                     We find that except for curl, the number of multi-covered mu-
+[80]   R. Gopinath et al. “How hard does mutation analysis have to be            tants is minimal. For curl the interaction between mutations
+       anyway?” Software Reliability Engineering (ISSRE), 2014 IEEE              is caused by mutations that result in an error when handling
+       26th International Symposium on. 2015.                                    http, these are then retried with the http2 protocol, covering
+[81]   Alex Groce et al. “Registered report: First, fuzz the mutants”. Inter-    functions and mutations there. This kind of interactions can
+       national Fuzzing Workshop, ser. FUZZING. Vol. 22. 2022.                   also occur in utility functions.
+[82]   Vasudev Vikram et al. “Guiding Greybox Fuzzing with Mutation
+       Testing”. International Symposium on Software Testing and Analysis
+       (ISSTA). 2023.
+
+
+
+
+4550    32nd USENIX Security Symposium                                                                                           USENIX Association
+  Table 9: The number of mutants Covered or Killed for Default and ASAN experiments, for each mutation type and fuzzer.
+Mutation Type    Fuzzer      Cov Def   Cov Asan   Kill Def   Kill Asan   Mutation Type   Fuzzer      Cov Def   Cov Asan   Kill Def   Kill Asan
+                 afl             41         34         21          21                    afl            447        543        104          95
+                 aflpp           41         34         21          21    SIGNED LESS     aflpp          670        556        116         103
+MALLOC
+                 honggfuzz       41         34         20          21    THAN            honggfuzz      672        555        111         100
+                 libfuzzer       40         34         14          21                    libfuzzer      571        471        100          91
+                 afl            434        590         33          34                    afl              2          2          0           0
+SIGNED           aflpp          719        603         38          36    SIGNED LESS     aflpp            2          2          0           0
+GREATER THAN     honggfuzz      725        604         42          35    THAN EQUALTO    honggfuzz        2          2          0           0
+                 libfuzzer      614        526         28          29                    libfuzzer        2          2          0           0
+                 afl              4          4          0           0                    afl            923        887        918         879
+SIGNED           aflpp            4          4          0           0    FREE FUNCTION   aflpp          981        945        976         939
+GREATER THAN
+                 honggfuzz        4          4          0           0    ARGUMENT        honggfuzz      944        909        940         905
+EQUALTO
+                 libfuzzer        3          3          0           0                    libfuzzer      876        843        870         837
+                 afl              3          3          0           0                    afl             825      1,172        32          30
+PTHREAD          aflpp            3          3          0           0    SIGNED TO       aflpp         1,393      1,197        38          35
+MUTEX            honggfuzz        3          3          0           0    UNSIGNED        honggfuzz     1,407      1,209        35          34
+                 libfuzzer        3          2          0           0                    libfuzzer     1,201      1,060        32          29
+                 afl           1,470      1,617        46          49                    afl            568        692          6           9
+UNSIGNED TO      aflpp         1,984      1,682        53          51                    aflpp          903        785          5          13
+                                                                         SWITCH SHIFT
+SIGNED           honggfuzz     1,981      1,666        52          55                    honggfuzz      825        711          2           9
+                 libfuzzer     1,736      1,489        40          48                    libfuzzer      718        635          3           9
+                 afl              1          1          1           1                    afl            203        236         96          89
+                 aflpp            1          1          1           1    DELETE LOCAL    aflpp          277        254        108          98
+CALLOC
+                 honggfuzz        1          1          1           1    STORE           honggfuzz      273        252        107          96
+                 libfuzzer        1          1          1           1                    libfuzzer      244        227        100          89
+                 afl             885       940        167         140                    afl            625        664         71          76
+UNSIGNED LESS    aflpp         1,121       970        182         145    UNSIGNED        aflpp          825        686         68          79
+THAN             honggfuzz     1,125       968        180         148    GREATER THAN    honggfuzz      819        679         77          86
+                 libfuzzer       960       829        145         117                    libfuzzer      728        600         54          56
+                 afl             12         11          0           0                    afl             23         17          0           0
+                                                                         UNSIGNED
+UNSIGNED LESS    aflpp           15         13          0           0    GREATER THAN    aflpp           25         17          0           0
+THAN EQUALTO     honggfuzz       15         13          0           0                    honggfuzz       25         17          0           0
+                                                                         EQUALTO
+                 libfuzzer       13         11          0           0                    libfuzzer       25         17          0           0
+                 afl           2,367      2,643     1,055       1,164                    afl             14          9          0           0
+COMPARE EQUAL    aflpp         3,060      2,816     1,103       1,243                    aflpp           14          9          0           0
+                                                                         SNPRINTF
+TO               honggfuzz     2,992      2,741     1,074       1,209                    honggfuzz       14          9          0           0
+                 libfuzzer     2,620      2,390       974       1,088                    libfuzzer       13          9          0           0
+                 afl              2         21          2          13                    afl           5,001      4,089     1,845       1,484
+                 aflpp           21         21          2          13    SWITCH PLUS     aflpp         5,928      4,489     1,884       1,543
+NEW ARRAY
+                 honggfuzz       21         21          2          13    MINUS           honggfuzz     5,692      4,240     1,916       1,589
+                 libfuzzer       21         21          2          13                    libfuzzer     4,716      3,544     1,495       1,321
+                 afl           8,120      8,539     3,192       3,233                    afl            466        433        465         432
+                                                                         DELETE
+REDIRECT         aflpp        10,061      8,967     3,335       3,472                    aflpp          469        436        468         435
+                                                                         FUNCTION
+BRANCH           honggfuzz     9,963      8,806     3,311       3,432                    honggfuzz      469        436        468         435
+                                                                         ARGUMENT
+                 libfuzzer     8,534      7,578     2,819       3,038                    libfuzzer      447        415        445         414
+                 afl           6,935      7,006     1,885       2,003                    afl           1,545      1,607       184         741
+                                                                         DELETE CALL
+DELETE STORE     aflpp         8,560      7,381     1,995       2,117                    aflpp         2,122      1,757       193         838
+                                                                         INSTRUCTION
+PATTERN          honggfuzz     8,471      7,256     2,002       2,088                    honggfuzz     2,022      1,666       192         800
+                                                                         PATTERN
+                 libfuzzer     7,060      6,253     1,752       1,881                    libfuzzer     1,699      1,436       166         708
+                 afl           2,421      2,241       368         372
+REASSIGN STORE   aflpp         2,878      2,354       400         388
+INSTRUCTION      honggfuzz     2,854      2,331       404         395
+                 libfuzzer     2,300      1,940       354         345
+
+
+
+
+USENIX Association                                                                        32nd USENIX Security Symposium              4551
+A.2       Supplements for Approach
+The full list of mutation operators as mentioned in Section 3.
+                                                       Table 10: List of all mutations used in our study.
+Pattern Name                      Description                                                                             Procedure
+
+MALLOC                            Mutating all malloc calls to achieve buffer overflow/out of bounds errors.              We decrease allocated memory byte_size in the malloc call by 16.
+FGETS MATCH BUFFER SIZE           Mutating all fgets calls to achieve buffer overflow errors.                             We increase the size (n) parameter in the fgets call by increasing the value by 1
+                                                                                                                          and then multiplying it by 5. E.g. 4->5->25.
+SIGNED LESS THAN                  Mutating all ’<’ comparisons either between two integer pointers or between 1           For pointer comparison, 8*4=32 is added to the right hand side pointer in the
+                                  signed integer variable and an integer to achieve overflow errors.                      comparison. For integer comparison, the integer on the right hand side is squared
+                                                                                                                          if larger than 1024 or smaller than 2, else 32 is added.
+SIGNED GREATER THAN               Mutating all ’>’ comparisons either between two integer pointers or between 1           For pointer comparison, 8*4=32 is subtracted from the right hand side pointer
+                                  signed integer variable and an integer to achieve underflow errors.                     in the comparison. For integer comparison, either the sqrt is taken for integers >
+                                                                                                                          1024*1024, halved for integers > 1024 and either 0 is returned or 32 is substracted,
+                                                                                                                          whatever gives the largest result.
+SIGNED LESS THAN EQUALTO          Mutating all ’<=’ comparisons either between two integer pointers or between 1          For pointer comparison, 8*4=32 is added to the right hand side pointer in the
+                                  signed integer variable and an integer to achieve overflow errors.                      comparison. For integer comparison, the integer on the right hand side is squared
+                                                                                                                          if larger than 1024 or smaller than 2, else 32 is added.
+SIGNED         GREATER    THAN    Mutating all ’>=’ comparisons either between two integer pointers or between 1          For pointer comparison, 8*4=32 is subtracted from the right hand side pointer
+EQUALTO                           signed integer variable and an integer to achieve underflow errors.                     in the comparison. For integer comparison, either the sqrt is taken for integers >
+                                                                                                                          1024*1024, halved for integers > 1024 and either 0 is returned or 32 is substracted,
+                                                                                                                          whatever gives the largest result.
+FREE FUNCTION ARGUMENT            Mutating all functions that receive a pointer type function argument to achieve         We check for functions that receive a pointer type argument. Before returning at
+                                  double free and possibly illegal memory access errors.                                  the end of the function, one argument per mutant is freed.
+PTHREAD MUTEX                     Mutating all pthread_lock and pthread_unlock calls to achieve data races errors.        We remove all pthread_lock and pthread_unlock calls in a function per mutant.
+ATOMIC CMP XCHG                   Mutating all atomic compare exchanges to achieve data races.                            If we have at least one atomic cmpxchg instruction, we replace all atomic cmpxchg
+                                                                                                                          return success values (the element with index 1 in the result array) by 1 per
+                                                                                                                          function.
+ATOMICRMW REPLACE                 Mutating all atomicrmw instructions to achieve data races.                              Takes the given atomic instruction and replaces it with its non-atomic counterpart
+                                                                                                                          for the following instructions: ADD, SUB, AND, OR, XOR, FADD, FSUB. For
+                                                                                                                          other operators no mutation is done, the mutant is equivalent.
+SIGNED TO UNSIGNED                Mutating all signed integer comparisons to achieve overflow and out of bound            Each of the four integer comparison predicates - ICMP_SGT, ICMP_SGE,
+                                  errors.                                                                                 ICMP_SLT, ICMP_SLE are transformed into the corresponding unsigned predi-
+                                                                                                                          cates - ICMP_UGT, ICMP_UGE, ICMP_ULT, ICMP_ULE respectively.
+UNSIGNED TO SIGNED                Mutating all unsigned integer comparisons to achieve overflow and out of bounds         Each of the four integer comparison predicates - ICMP_UGT, ICMP_UGE,
+                                  errors.                                                                                 ICMP_ULT, ICMP_ULE are transformed into the corresponding unsigned predi-
+                                                                                                                          cates - ICMP_SGT, ICMP_SGE, ICMP_SLT, ICMP_SLE respectively.
+SWITCH SHIFT                      Mutating all shift calls to achieve overflow and out of bounds errors.                  Replaces an arithmetic shift with a logical shift and vice versa.
+CALLOC                            Mutating all calloc calls to achieve overflow and out of bounds errors.                 The size parameter’s value is decreased by 16.
+DELETE LOCAL STORE                Mutating all stores on a local variable in one function to achieve uninitialization     The store call is removed.
+                                  errors.
+UNSIGNED LESS THAN                Mutating all ’<’ comparisons either between two integer pointers or between 1           For pointer comparison, 8*4=32 is added to the right hand side pointer in the
+                                  unsigned integer variable and an integer to achieve overflow errors.                    comparison. For integer comparison, the integer on the right hand side is squared
+                                                                                                                          if larger than 1024 or smaller than 2, else 32 is added.
+UNSIGNED GREATER THAN             Mutating all ’>’ comparisons either between two integer pointers or between 1           For pointer comparison, 8*4=32 is subtracted from the right hand side pointer
+                                  unsigned integer variable and an integer to achieve underflow errors.                   in the comparison. For integer comparison, either the sqrt is taken for integers >
+                                                                                                                          1024*1024, halved for integers > 1024 and either 0 is returned or 32 is substracted,
+                                                                                                                          whatever gives the largest result.
+UNSIGNED LESS THAN EQUALTO        Mutating all ’<=’ comparisons either between two integer pointers or between 1          For pointer comparison, 8*4=32 is added to the right hand side pointer in the
+                                  unsigned integer variable and an integer to achieve overflow errors.                    comparison. For integer comparison, the integer on the right hand side is squared
+                                                                                                                          if larger than 1024 or smaller than 2, else 32 is added.
+UNSIGNED        GREATER   THAN    Mutating all ’>=’ comparisons either between two integer pointers or between 1          For pointer comparison, 8*4=32 is subtracted from the right hand side pointer
+EQUALTO                           unsigned integer variable and an integer to achieve underflow errors.                   in the comparison. For integer comparison, either the sqrt is taken for integers >
+                                                                                                                          1024*1024, halved for integers > 1024 and either 0 is returned or 32 is substracted,
+                                                                                                                          whatever gives the largest result.
+INET  ADDR         FAIL   WITH-   Mutating all calls to the libc function inet_addr to achieve unhandled non-             Replaces all uses of the function return value to the failure value. Also removes
+OUTCHECK                          established connection errors.                                                          the function call from the corpus as a fail of the function call should be simulated.
+                                                                                                                          Furthermore, the comparison instructions are flipped, s.t. on failure the ’correct’
+                                                                                                                          path is taken, i.e. we simulate a missing check for the error return value.
+COMPARE EQUAL TO                  Mutating all ’==’ comparisons between two integers to ’=’.                              The value of integer on the right hand side is assigned to the variable on the left.
+                                                                                                                          The condition passes and the inside block is executed as long as the value on the
+                                                                                                                          RHS is not equal to 0.
+PRINTF                            Mutating printf such that the format string gets already filled and then plainly        Mutating printf such that the format string is already filled on printing, so instead
+                                  printed.                                                                                of calling printf(’%d %s’, 10, string); we simulate the call printf(’10 <string-
+                                                                                                                          value>’);. This might cause illegal memory accesses and printing of secrets if the
+                                                                                                                          string argument is user controlled.
+SPRINTF                           Mutating sprintf such that the format string gets already filled and then plainly       Mutating sprintf such that the format string is already filled on printing, so instead
+                                  printed.                                                                                of calling sprintf(’%d %s’, buffer, 10, string); we simulate the call sprintf(’10
+                                                                                                                          <string-value>’, buffer);. This might cause illegal memory accesses and printing
+                                                                                                                          of secrets if the string argument is user controlled.
+SNPRINTF                          Mutating snprintf such that the format string gets already filled and then plainly      Mutating snprintf such that the format string is already filled on printing, so
+                                  printed.                                                                                instead of calling snprintf(’%d %s’, size, buffer, 10, string); we simulate the
+                                                                                                                          call snprintf(’10 <string-value>’, size, buffer);. This might cause illegal memory
+                                                                                                                          accesses and printing of secrets if the string argument is user controlled.
+NEW ARRAY                         Mutating new[] in (only) cpp files such that the array is allocated lesser memory       We decrease allocated memory size in the ’new’ call by 5 units.
+SWITCH PLUS MINUS                 Changing a ’+’ operator to a ’-’ operator and vice versa.                               Changing a ’+’ operator to a ’-’ operator regardless for integer and floating point
+                                                                                                                          numbers.
+REDIRECT BRANCH                   Negate the result of the branching condition before branching.                          Redirecting the control flow by negating the result of the condition before branch-
+                                                                                                                          ing.
+DELETE FUNCTION ARGUMENT           Mutating all functions in (only) cpp files that receive a pointer type function        We check for functions that receive a pointer type argument. Before returning at
+                                   argument to achieve double delete and possibly illegal memory access errors. N.B.      the end of the function, one argument per mutant is deleted.
+                                  - Can possibly lead to a memory leak when delete is called for arrays instantiated
+                                  with new[]
+DELETE STORE PATTERN               Deletes all store instructions one by one to simulate a forgotten variable assign-     Find a store instruction and delete it. As there are no further dependencies on the
+                                   ment.                                                                                  store, there is nothing else to do.
+DELETE CALL INSTRUCTION PAT-       Deletes all call instructions without return value assignment one by one to simulate   Find a call instruction without return value assignment and delete it. As there are
+TERN                               a forgotten call to a function.                                                        no further dependencies on the call instruction, there is nothing else to do.
+REASSIGN STORE INSTRUCTION         Reassigns the value of a previous store with the same type in this store.              Checks if in this basic block is another store with the same types used and assigns
+                                                                                                                          the first operand of the previous store to the memory location denoted by the
+                                                                                                                          second operand of the store we are currently at.
+
+
+
+
+4552      32nd USENIX Security Symposium                                                                                                                                    USENIX Association
+

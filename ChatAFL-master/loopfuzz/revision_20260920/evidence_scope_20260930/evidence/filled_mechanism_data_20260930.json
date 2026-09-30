@@ -1,0 +1,64 @@
+{
+  "C": {
+    "candidates": 1326,
+    "trials": 1326,
+    "episodes": 56164,
+    "episode_rewards": 19574,
+    "dispositions": {
+      "durable": 1326
+    },
+    "first_failed_logged_predicate": {
+      "u_pass": 1208,
+      "pass_all": 118
+    },
+    "unmatched_candidates": 0,
+    "orphan_trials": 0,
+    "trial_latency_ms": {
+      "n_runs_with_trials": 67,
+      "mean": 439.1984991141767,
+      "sd": 405.8560794738815
+    }
+  },
+  "D": {
+    "candidates": 2227,
+    "trials": 2226,
+    "episodes": 77593,
+    "episode_rewards": 23030,
+    "dispositions": {
+      "reject": 2203,
+      "durable": 23
+    },
+    "first_failed_logged_predicate": {
+      "u_pass": 2071,
+      "pass_all": 155
+    },
+    "unmatched_candidates": 1,
+    "orphan_trials": 0,
+    "trial_latency_ms": {
+      "n_runs_with_trials": 81,
+      "mean": 403.6022345752195,
+      "sd": 574.5793810128785
+    }
+  },
+  "E": {
+    "candidates": 746,
+    "trials": 745,
+    "episodes": 32946,
+    "episode_rewards": 14531,
+    "dispositions": {
+      "reject": 736,
+      "durable": 9
+    },
+    "first_failed_logged_predicate": {
+      "u_pass": 698,
+      "pass_all": 47
+    },
+    "unmatched_candidates": 1,
+    "orphan_trials": 0,
+    "trial_latency_ms": {
+      "n_runs_with_trials": 62,
+      "mean": 806.4619483874471,
+      "sd": 554.0431336032559
+    }
+  }
+}

@@ -1,0 +1,1307 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=AFLNet+Five+Years+Later+On+Coverage-Guided+Protocol+Fuzzing&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 1228674,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                25
+              ]
+            ],
+            "date-time": "2026-08-25T02:04:49Z",
+            "timestamp": 1787623489543,
+            "version": "build-2736575974"
+          },
+          "reference-count": 50,
+          "publisher": "Institute of Electrical and Electronics Engineers (IEEE)",
+          "issue": "4",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    1
+                  ]
+                ],
+                "date-time": "2025-04-01T00:00:00Z",
+                "timestamp": 1743465600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/legalcode"
+            }
+          ],
+          "funder": [
+            {
+              "name": "National Research Foundation, Singapore, in part by the Cyber Security Agency of Singapore under its National Cybersecurity R&#x0026;D Programme",
+              "award": [
+                "Fuzz Testing NRF-NCR25-Fuzz-0001"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "Fuzz Testing NRF-NCR25-Fuzz-0001"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "European Union and ERC grant",
+              "award": [
+                "Project AT SCALE101179366"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "Project AT SCALE101179366"
+                  ]
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "short-container-title": [
+            "IIEEE Trans. Software Eng."
+          ],
+          "published-print": {
+            "date-parts": [
+              [
+                2025,
+                4
+              ]
+            ]
+          },
+          "DOI": "10.1109/tse.2025.3535925",
+          "type": "journal-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                1,
+                30
+              ]
+            ],
+            "date-time": "2025-01-30T19:17:11Z",
+            "timestamp": 1738264631000
+          },
+          "page": "960-974",
+          "source": "Crossref",
+          "is-referenced-by-count": 12,
+          "title": [
+            "AFLNet Five Years Later: On Coverage-Guided Protocol Fuzzing"
+          ],
+          "prefix": "10.1109",
+          "volume": "51",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0008-4323-6271",
+              "authenticated-orcid": false,
+              "given": "Ruijie",
+              "family": "Meng",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "National University of Singapore, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-9871-3695",
+              "authenticated-orcid": false,
+              "given": "Van-Thuan",
+              "family": "Pham",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "University of Melbourne, Melbourne, VIC, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-4470-1824",
+              "authenticated-orcid": false,
+              "given": "Marcel",
+              "family": "Böhme",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Max Planck Institute for Security and Privacy, Bochum, Germany"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-7127-1137",
+              "authenticated-orcid": false,
+              "given": "Abhik",
+              "family": "Roychoudhury",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Singapore, Singapore"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "key": "ref1",
+              "article-title": "Peach Fuzzer Platform"
+            },
+            {
+              "key": "ref2",
+              "article-title": "SPIKE Fuzzer Platform"
+            },
+            {
+              "key": "ref3",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2019.2941681"
+            },
+            {
+              "key": "ref4",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134020"
+            },
+            {
+              "key": "ref5",
+              "first-page": "2019",
+              "article-title": "AFL user group",
+              "year": "2019"
+            },
+            {
+              "key": "ref6",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICST46399.2020.00062"
+            },
+            {
+              "key": "ref7",
+              "article-title": "The challenges of fuzzing 5G protocols",
+              "author": "Group",
+              "year": "2021"
+            },
+            {
+              "key": "ref8",
+              "article-title": "A use-after-free vulnerability discovered by AFLNet",
+              "author": "Alliance",
+              "year": "2024"
+            },
+            {
+              "key": "ref9",
+              "article-title": "A critical memory (heap) leak vulnerability discovered by AFLNet",
+              "author": "Alliance",
+              "year": "2024"
+            },
+            {
+              "key": "ref10",
+              "article-title": "How to hack medical imaging applications via DICOM",
+              "volume-title": "Proc. Hack In Box Secur. Conf.",
+              "author": "Nedyak",
+              "year": "2020"
+            },
+            {
+              "key": "ref11",
+              "article-title": "Demystifying a current trend—Security fuzz testing in the context of ISO/SAE 21434",
+              "author": "GmbH",
+              "year": "2024"
+            },
+            {
+              "key": "ref12",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3469077"
+            },
+            {
+              "key": "ref13",
+              "article-title": "AFL",
+              "author": "Zalewski"
+            },
+            {
+              "key": "ref14",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "ref15",
+              "article-title": "libFuzzer—A library for coverage-guided fuzz testing"
+            },
+            {
+              "key": "ref16",
+              "article-title": "beSTORM black box testing"
+            },
+            {
+              "key": "ref17",
+              "article-title": "Boofuzz: A fork and successor of the sulley fuzzing framework"
+            },
+            {
+              "key": "ref18",
+              "article-title": "Sulley: A pure-python fully automated and unattended fuzzing framework"
+            },
+            {
+              "key": "ref19",
+              "article-title": "LightFTP Server"
+            },
+            {
+              "key": "ref20",
+              "article-title": "File Transfer Protocol",
+              "year": "1985"
+            },
+            {
+              "key": "ref21",
+              "article-title": "AFL vulnerability trophy case"
+            },
+            {
+              "key": "ref22",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "ref23",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3510003.3510230"
+            },
+            {
+              "key": "ref24",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2024.24556"
+            },
+            {
+              "key": "ref25",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3492321.3519591"
+            },
+            {
+              "key": "ref26",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3580599"
+            },
+            {
+              "key": "ref27",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/s10664-022-10233-3"
+            },
+            {
+              "key": "ref28",
+              "first-page": "3255",
+              "article-title": "Stateful greybox fuzzing",
+              "volume-title": "Proc. 31st USENIX Secur. Symp.",
+              "author": "Ba",
+              "year": "2022"
+            },
+            {
+              "key": "ref29",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SANER53432.2022.00089"
+            },
+            {
+              "key": "ref30",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/EuroSPW59978.2023.00043"
+            },
+            {
+              "key": "ref31",
+              "first-page": "54",
+              "article-title": "Legion: Best-first concolic testing",
+              "volume-title": "Proc. 35th IEEE/ACM Int. Conf. Automated Softw. Eng.",
+              "author": "Liu",
+              "year": "2020"
+            },
+            {
+              "key": "ref32",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3238147.3238176"
+            },
+            {
+              "key": "ref33",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-031-57537-2_16"
+            },
+            {
+              "key": "ref34",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3533767.3534376"
+            },
+            {
+              "key": "ref35",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23412"
+            },
+            {
+              "key": "ref36",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1315245.1315286"
+            },
+            {
+              "key": "ref37",
+              "first-page": "1985",
+              "article-title": "GRIMOIRE: Synthesizing structure while fuzzing",
+              "volume-title": "Proc. 28th USENIX Secur. Symp.",
+              "author": "Blazytko",
+              "year": "2019"
+            },
+            {
+              "key": "ref38",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00081"
+            },
+            {
+              "key": "ref39",
+              "article-title": "Learning to fuzz: Application-independent fuzz testing with probabilistic, generative models of input data",
+              "author": "Patra",
+              "year": "2016"
+            },
+            {
+              "key": "ref40",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/978-3-319-89500-0_53"
+            },
+            {
+              "key": "ref41",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1455770.1455820"
+            },
+            {
+              "key": "ref42",
+              "article-title": "Finding bug-inducing program environments",
+              "author": "Mirzamomen",
+              "year": "2023"
+            },
+            {
+              "key": "ref43",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3658644.3690229"
+            },
+            {
+              "key": "ref44",
+              "article-title": "Matter—The foundation for connected things",
+              "author": "Alliance",
+              "year": "2024"
+            },
+            {
+              "key": "ref45",
+              "first-page": "2024",
+              "article-title": "Security and software testing",
+              "year": "2023"
+            },
+            {
+              "key": "ref46",
+              "article-title": "Fantastic bugs and how to find them",
+              "author": "University",
+              "year": "2023"
+            },
+            {
+              "key": "ref47",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3634737.3661141"
+            },
+            {
+              "key": "ref48",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/3-540-45139-0_7"
+            },
+            {
+              "key": "ref49",
+              "first-page": "234",
+              "article-title": "Greybox fuzzing of disrtibuted systems",
+              "volume-title": "Proc. 30th ACM Conf. Comput. Commun. Secur. (CCS)",
+              "author": "Meng",
+              "year": "2023"
+            },
+            {
+              "key": "ref50",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3620665.3640389"
+            }
+          ],
+          "container-title": [
+            "IEEE Transactions on Software Engineering"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/32/10969500/10858174.pdf?arnumber=10858174",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                18
+              ]
+            ],
+            "date-time": "2025-04-18T17:38:01Z",
+            "timestamp": 1744997881000
+          },
+          "score": 73.98129,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/10858174/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2025,
+                4
+              ]
+            ]
+          },
+          "references-count": 50,
+          "journal-issue": {
+            "issue": "4"
+          },
+          "URL": "https://doi.org/10.1109/tse.2025.3535925",
+          "ISSN": [
+            "0098-5589",
+            "1939-3520",
+            "2326-3881"
+          ],
+          "issn-type": [
+            {
+              "value": "0098-5589",
+              "type": "print"
+            },
+            {
+              "value": "1939-3520",
+              "type": "electronic"
+            },
+            {
+              "value": "2326-3881",
+              "type": "electronic"
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                4
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                10
+              ]
+            ],
+            "date-time": "2026-09-10T10:08:17Z",
+            "timestamp": 1789034897212,
+            "version": "build-2803163510"
+          },
+          "reference-count": 23,
+          "publisher": "IEEE",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2020,
+                    7,
+                    1
+                  ]
+                ],
+                "date-time": "2020-07-01T00:00:00Z",
+                "timestamp": 1593561600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/IEEE.html"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2020,
+                    7,
+                    1
+                  ]
+                ],
+                "date-time": "2020-07-01T00:00:00Z",
+                "timestamp": 1593561600000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-029"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2020,
+                    7,
+                    1
+                  ]
+                ],
+                "date-time": "2020-07-01T00:00:00Z",
+                "timestamp": 1593561600000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-037"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2020,
+                7
+              ]
+            ]
+          },
+          "DOI": "10.1109/dac18072.2020.9218603",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2020,
+                10,
+                9
+              ]
+            ],
+            "date-time": "2020-10-09T19:57:03Z",
+            "timestamp": 1602273423000
+          },
+          "page": "1-6",
+          "source": "Crossref",
+          "is-referenced-by-count": 65,
+          "title": [
+            "ICS Protocol Fuzzing: Coverage Guided Packet Crack and Generation"
+          ],
+          "prefix": "10.1109",
+          "author": [
+            {
+              "given": "Zhengxiong",
+              "family": "Luo",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Feilong",
+              "family": "Zuo",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Yuheng",
+              "family": "Shen",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Xun",
+              "family": "Jiao",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Wanli",
+              "family": "Chang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Yu",
+              "family": "Jiang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "key": "ref1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/MSP.2011.67"
+            },
+            {
+              "key": "ref2",
+              "article-title": "The impact of dragonfly malware on industrial control systems",
+              "author": "Nelson",
+              "year": "2016"
+            },
+            {
+              "key": "ref3",
+              "article-title": "American fuzzy lop",
+              "author": "Zalewski",
+              "year": "2015"
+            },
+            {
+              "key": "ref4",
+              "article-title": "Peach fuzzing platform",
+              "volume-title": "Website"
+            },
+            {
+              "key": "ref5",
+              "article-title": "Sulley",
+              "author": "Amini"
+            },
+            {
+              "key": "ref6",
+              "article-title": "libmodbus",
+              "author": "Raimbault"
+            },
+            {
+              "key": "ref7",
+              "article-title": "opendnp3",
+              "volume-title": "Website",
+              "author": "Crain"
+            },
+            {
+              "key": "ref8",
+              "article-title": "Defensics fuzz testing",
+              "volume-title": "Website"
+            },
+            {
+              "key": "ref9",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3358227"
+            },
+            {
+              "key": "ref10",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2685612"
+            },
+            {
+              "key": "ref11",
+              "article-title": "Iec104",
+              "volume-title": "Website",
+              "author": "chen"
+            },
+            {
+              "key": "ref12",
+              "article-title": "libiccp",
+              "author": "Covatti"
+            },
+            {
+              "key": "ref13",
+              "article-title": "libiec61850"
+            },
+            {
+              "key": "ref14",
+              "article-title": "lib60870",
+              "author": "Automation"
+            },
+            {
+              "key": "ref15",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2568225.2568293"
+            },
+            {
+              "key": "ref16",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1375581.1375607"
+            },
+            {
+              "key": "ref17",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1993498.1993532"
+            },
+            {
+              "key": "ref18",
+              "article-title": "Skyfire: Data-driven seed generation for fuzzing",
+              "author": "Wang",
+              "year": "2017",
+              "journal-title": "IEEE Security & Privacy"
+            },
+            {
+              "key": "ref19",
+              "article-title": "Klee: Unassisted and automatic generation of high-coverage tests for complex systems programs",
+              "volume-title": "OSDI",
+              "author": "Cadar"
+            },
+            {
+              "key": "ref20",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2970276.2970316"
+            },
+            {
+              "key": "ref21",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2408776.2408795"
+            },
+            {
+              "key": "ref22",
+              "article-title": "Enfuzz: Ensemble fuzzing with seed synchronization among diverse fuzzers",
+              "author": "Chen",
+              "year": "2019",
+              "journal-title": "{USENIX} Security"
+            },
+            {
+              "key": "ref23",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1065010.1065034"
+            }
+          ],
+          "event": {
+            "name": "2020 57th ACM/IEEE Design Automation Conference (DAC)",
+            "location": "San Francisco, CA, USA",
+            "start": {
+              "date-parts": [
+                [
+                  2020,
+                  7,
+                  20
+                ]
+              ]
+            },
+            "end": {
+              "date-parts": [
+                [
+                  2020,
+                  7,
+                  24
+                ]
+              ]
+            }
+          },
+          "container-title": [
+            "2020 57th ACM/IEEE Design Automation Conference (DAC)"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx7/9211868/9218488/09218603.pdf?arnumber=9218603",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2024,
+                1,
+                24
+              ]
+            ],
+            "date-time": "2024-01-24T00:56:06Z",
+            "timestamp": 1706057766000
+          },
+          "score": 34.957462,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/9218603/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2020,
+                7
+              ]
+            ]
+          },
+          "references-count": 23,
+          "URL": "https://doi.org/10.1109/dac18072.2020.9218603",
+          "published": {
+            "date-parts": [
+              [
+                2020,
+                7
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                29
+              ]
+            ],
+            "date-time": "2025-06-29T04:04:20Z",
+            "timestamp": 1751169860076,
+            "version": "3.41.0"
+          },
+          "reference-count": 19,
+          "publisher": "IEEE",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    28
+                  ]
+                ],
+                "date-time": "2025-04-28T00:00:00Z",
+                "timestamp": 1745798400000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-029"
+            },
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    28
+                  ]
+                ],
+                "date-time": "2025-04-28T00:00:00Z",
+                "timestamp": 1745798400000
+              },
+              "content-version": "stm-asf",
+              "delay-in-days": 0,
+              "URL": "https://doi.org/10.15223/policy-037"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                28
+              ]
+            ]
+          },
+          "DOI": "10.1109/ict65093.2025.11046294",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                26
+              ]
+            ],
+            "date-time": "2025-06-26T17:40:25Z",
+            "timestamp": 1750959625000
+          },
+          "page": "1-7",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "A Coverage-Guided Fuzzing Method for Non-Access Stratum Protocol"
+          ],
+          "prefix": "10.1109",
+          "author": [
+            {
+              "given": "Binghong",
+              "family": "Liu",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences, School of Cyber Security, University of Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Wei",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yiming",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Xingyu",
+              "family": "Huang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Xiu",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yang",
+              "family": "Xiao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yanyan",
+              "family": "Zou",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yuejin",
+              "family": "Du",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Guizhou Big Data Protection Engineering,Research Center,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Wei",
+              "family": "Huo",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Institute of Information Engineering, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "263",
+          "reference": [
+            {
+              "key": "ref1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460120.3485388"
+            },
+            {
+              "key": "ref2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/sp40001.2021.00104"
+            },
+            {
+              "key": "ref3",
+              "first-page": "1325",
+              "article-title": "Doltest: In-depth downlink negative testing framework for LTE devices",
+              "volume-title": "31st USENIX Security Symposium, USENIX Security 2022",
+              "author": "Park",
+              "year": "2022"
+            },
+            {
+              "key": "ref4",
+              "article-title": "Hermes: Unlocking security analysis of cellular network protocols by synthesizing finite state machines from natural language specifications",
+              "volume-title": "33rd USENIX Security Symposium, USENIX Security 2024, Philadelphia, PA, USA, August 14–16, 2024",
+              "author": "Ishtiaq",
+              "year": "2024"
+            },
+            {
+              "key": "ref5",
+              "article-title": "Logic gone astray: A security analysis framework for the control plane protocols of 5 g basebands",
+              "volume-title": "33rd USENIX Security Symposium, USENIX Security 2024, Philadelphia, PA, USA, August 14–16, 2024",
+              "author": "Tu",
+              "year": "2024"
+            },
+            {
+              "key": "ref6",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3658644.3690312"
+            },
+            {
+              "key": "ref7",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3658644.3670320"
+            },
+            {
+              "key": "ref8",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3643833.3656141"
+            },
+            {
+              "key": "ref9",
+              "doi-asserted-by": "crossref",
+              "DOI": "10.14722/ndss.2024.24527",
+              "article-title": "5 g -spector: An O-RAN compliant layer-3 cellular attack detection service",
+              "volume-title": "31st Annual Network and Distributed System Security Symposium, NDSS 2024, San Diego, California, USA, February 26 - March 1, 2024. The Internet Society",
+              "author": "Wen",
+              "year": "2024"
+            },
+            {
+              "key": "ref10",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/icst46399.2020.00062"
+            },
+            {
+              "key": "ref11",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/bar.2022.23008"
+            },
+            {
+              "key": "ref12",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3358227"
+            },
+            {
+              "volume-title": "Peach",
+              "year": "2007",
+              "author": "Sutton",
+              "key": "ref13"
+            },
+            {
+              "key": "ref14",
+              "first-page": "3255",
+              "article-title": "Stateful greybox fuzzing",
+              "volume-title": "31st USENIX Security Symposium, USENIX Security 2022, Boston, MA, USA, August 1012, 2022",
+              "author": "Ba",
+              "year": "2022"
+            },
+            {
+              "key": "ref15",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1007/s10664-022-10233-3"
+            },
+            {
+              "key": "ref16",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/tifs.2022.3192991"
+            },
+            {
+              "key": "ref17",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/dac18074.2021.9586321"
+            },
+            {
+              "key": "ref18",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3492321.3519591"
+            },
+            {
+              "key": "ref19",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3580599"
+            }
+          ],
+          "event": {
+            "name": "2025 31st International Conference on Telecommunications (ICT)",
+            "start": {
+              "date-parts": [
+                [
+                  2025,
+                  4,
+                  28
+                ]
+              ]
+            },
+            "location": "Budva, Montenegro",
+            "end": {
+              "date-parts": [
+                [
+                  2025,
+                  4,
+                  29
+                ]
+              ]
+            }
+          },
+          "container-title": [
+            "2025 31st International Conference on Telecommunications (ICT)"
+          ],
+          "link": [
+            {
+              "URL": "http://xplorestaging.ieee.org/ielx8/11046192/11045962/11046294.pdf?arnumber=11046294",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                28
+              ]
+            ],
+            "date-time": "2025-06-28T06:27:02Z",
+            "timestamp": 1751092022000
+          },
+          "score": 33.808773,
+          "resource": {
+            "primary": {
+              "URL": "https://ieeexplore.ieee.org/document/11046294/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                28
+              ]
+            ]
+          },
+          "references-count": 19,
+          "URL": "https://doi.org/10.1109/ict65093.2025.11046294",
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                4,
+                28
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

@@ -1,0 +1,1558 @@
+{
+  "endpoint": "https://api.crossref.org/works?query.title=Nyx-Net+Network+Fuzzing+with+Incremental+Snapshots&rows=3&filter=until-pub-date%3A2026-09-29",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 1254764,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                9,
+                29
+              ]
+            ],
+            "date-time": "2026-09-29T17:07:11Z",
+            "timestamp": 1790701631908,
+            "version": "4.1.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 73,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2022,
+                    3,
+                    28
+                  ]
+                ],
+                "date-time": "2022-03-28T00:00:00Z",
+                "timestamp": 1648425600000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/"
+            }
+          ],
+          "funder": [
+            {
+              "name": "German Federal Ministry of Education and Research (BMBF)",
+              "award": [
+                "16KIS1523 KMU-Fuzz"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "16KIS1523 KMU-Fuzz"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "German Research Foundation (DFG)",
+              "award": [
+                "EXC-2092 CaSa - 390781972"
+              ],
+              "award-info": [
+                {
+                  "award-number": [
+                    "EXC-2092 CaSa - 390781972"
+                  ]
+                }
+              ]
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022,
+                3,
+                28
+              ]
+            ]
+          },
+          "DOI": "10.1145/3492321.3519591",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2022,
+                3,
+                28
+              ]
+            ],
+            "date-time": "2022-03-28T14:28:18Z",
+            "timestamp": 1648477698000
+          },
+          "page": "166-180",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 77,
+          "title": [
+            "Nyx-net"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "given": "Sergej",
+              "family": "Schumilo",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Ruhr-Universität Bochum"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Cornelius",
+              "family": "Aschermann",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Ruhr-Universität Bochum"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Andrea",
+              "family": "Jemmett",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Vrije Universiteit Amsterdam"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Ali",
+              "family": "Abbasi",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Ruhr-Universität Bochum"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Thorsten",
+              "family": "Holz",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CISPA Helmholtz Center for Information Security"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2022,
+                3,
+                28
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "volume-title": "Accessed",
+              "author": "CRIU",
+              "year": "2022",
+              "unstructured": "CRIU : Checkpoint/Rollback in User Space. https://www.criu.org . Accessed : March 16, 2022 . CRIU: Checkpoint/Rollback in User Space. https://www.criu.org. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "volume-title": "Daniel Teuchert. Nautilus: Fishing for Deep Bugs with Grammars. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann , Tommaso Frassetto , Thorsten Holz , Patrick Jauernig , Ahmad-Reza Sadeghi , and Daniel Teuchert. Nautilus: Fishing for Deep Bugs with Grammars. In Symposium on Network and Distributed System Security (NDSS) , 2019 . Cornelius Aschermann, Tommaso Frassetto, Thorsten Holz, Patrick Jauernig, Ahmad-Reza Sadeghi, and Daniel Teuchert. Nautilus: Fishing for Deep Bugs with Grammars. In Symposium on Network and Distributed System Security (NDSS), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40000.2020.00117"
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "volume-title": "Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Aschermann Cornelius",
+              "year": "2019",
+              "unstructured": "Cornelius Aschermann , Sergej Schumilo , Tim Blazytko , Robert Gawlik , and Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In Symposium on Network and Distributed System Security (NDSS) , 2019 . Cornelius Aschermann, Sergej Schumilo, Tim Blazytko, Robert Gawlik, and Thorsten Holz. REDQUEEN: Fuzzing with Input-to-State Correspondence. In Symposium on Network and Distributed System Security (NDSS), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "volume-title": "ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE)",
+              "author": "Babić Domagoj",
+              "year": "2019",
+              "unstructured": "Domagoj Babić , Stefan Bucur , Yaohui Chen , Franjo Ivančić , Tim King , Markus Kusano , Caroline Lemieux , László Szekeres , and Wei Wang . Fudge : fuzz driver generation at scale . In ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE) , 2019 . Domagoj Babić, Stefan Bucur, Yaohui Chen, Franjo Ivančić, Tim King, Markus Kusano, Caroline Lemieux, László Szekeres, and Wei Wang. Fudge: fuzz driver generation at scale. In ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_6_1",
+              "volume-title": "Manuel Egele. HotFuzz: Discovering Algorithmic Denial-of-Service Vulnerabilities Through Guided Micro-Fuzzing. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Blair William",
+              "year": "2020",
+              "unstructured": "William Blair , Andrea Mambretti , Sajjad Arshad , Michael Weissbacher , William Robertson , Engin Kirda , and Manuel Egele. HotFuzz: Discovering Algorithmic Denial-of-Service Vulnerabilities Through Guided Micro-Fuzzing. In Symposium on Network and Distributed System Security (NDSS) , 2020 . William Blair, Andrea Mambretti, Sajjad Arshad, Michael Weissbacher, William Robertson, Engin Kirda, and Manuel Egele. HotFuzz: Discovering Algorithmic Denial-of-Service Vulnerabilities Through Guided Micro-Fuzzing. In Symposium on Network and Distributed System Security (NDSS), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE)",
+              "author": "Böhme Marcel",
+              "year": "2020",
+              "unstructured": "Marcel Böhme and Brandon Falk . Fuzzing : On the exponential cost of vulnerability discovery . In ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE) , 2020 . Marcel Böhme and Brandon Falk. Fuzzing: On the exponential cost of vulnerability discovery. In ACM SIGSOFT Symposium on the Foundations of Software Engineering (FSE), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "volume-title": "Sang Kil Cha. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In Joint Meeting on Foundations of Software Engineering",
+              "author": "Böhme Marcel",
+              "year": "2020",
+              "unstructured": "Marcel Böhme , Valentin JM Manès , and Sang Kil Cha. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In Joint Meeting on Foundations of Software Engineering , 2020 . Marcel Böhme, Valentin JM Manès, and Sang Kil Cha. Boosting Fuzzer Efficiency: An Information Theoretic Perspective. In Joint Meeting on Foundations of Software Engineering, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134020"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2976749.2978428"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2015.50"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "volume-title": "Mathias Payer. HALucinator: Firmware Re-hosting Through Abstraction Layer Emulation. In USENIX Security Symposium",
+              "author": "Clements Abraham A",
+              "year": "2020",
+              "unstructured": "Abraham A Clements , Eric Gustafson , Tobias Scharnowski , Paul Grosen , David Fritz , Christopher Kruegel , Giovanni Vigna , Saurabh Bagchi , and Mathias Payer. HALucinator: Firmware Re-hosting Through Abstraction Layer Emulation. In USENIX Security Symposium , 2020 . Abraham A Clements, Eric Gustafson, Tobias Scharnowski, Paul Grosen, David Fritz, Christopher Kruegel, Giovanni Vigna, Saurabh Bagchi, and Mathias Payer. HALucinator: Firmware Re-hosting Through Abstraction Layer Emulation. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "volume-title": "Mathias Payer. RetroWrite: Statically Instrumenting COTS Binaries for Fuzzing and Sanitization. In IEEE Symposium on Security and Privacy",
+              "author": "Dinesh S. Dinesh S.",
+              "year": "2020",
+              "unstructured": "S. Dinesh S. Dinesh , Nathan Burow , Dongyan Xu , and Mathias Payer. RetroWrite: Statically Instrumenting COTS Binaries for Fuzzing and Sanitization. In IEEE Symposium on Security and Privacy , 2020 . S. Dinesh S. Dinesh, Nathan Burow, Dongyan Xu, and Mathias Payer. RetroWrite: Statically Instrumenting COTS Binaries for Fuzzing and Sanitization. In IEEE Symposium on Security and Privacy, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "volume-title": "Abhik Roychoudhury. Time-travel Testing of Android Apps. In International Conference on Software Engineering (ICSE)",
+              "author": "Dong Zhen",
+              "year": "2020",
+              "unstructured": "Zhen Dong , Marcel Böhme , Lucia Cojocaru , and Abhik Roychoudhury. Time-travel Testing of Android Apps. In International Conference on Software Engineering (ICSE) , 2020 . Zhen Dong, Marcel Böhme, Lucia Cojocaru, and Abhik Roychoudhury. Time-travel Testing of Android Apps. In International Conference on Software Engineering (ICSE), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "https://github.com/gamozolabs/chocolate_milk. Accessed",
+              "author": "Falk Brandon",
+              "year": "2022",
+              "unstructured": "Brandon Falk . Chocolate Milk . https://github.com/gamozolabs/chocolate_milk. Accessed : March 16, 2022 . Brandon Falk. Chocolate Milk. https://github.com/gamozolabs/chocolate_milk. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3395363.3397372"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "Combining incremental steps of fuzzing research. In usenixwoot",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eißfeldt , and Marc Heuse . AFL++ : Combining incremental steps of fuzzing research. In usenixwoot , 2020 . Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. AFL++: Combining incremental steps of fuzzing research. In usenixwoot, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "volume-title": "Zuoning Chen. CollAFL: Path Sensitive Fuzzing. In IEEE Symposium on Security and Privacy",
+              "author": "Gan Shuitao",
+              "year": "2018",
+              "unstructured": "Shuitao Gan , Chao Zhang , Xiaojun Qin , Xuwen Tu , Kang Li , Zhongyu Pei , and Zuoning Chen. CollAFL: Path Sensitive Fuzzing. In IEEE Symposium on Security and Privacy , 2018 . Shuitao Gan, Chao Zhang, Xiaojun Qin, Xuwen Tu, Kang Li, Zhongyu Pei, and Zuoning Chen. CollAFL: Path Sensitive Fuzzing. In IEEE Symposium on Security and Privacy, 2018."
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/1375581.1375607"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "volume-title": "Koushik Sen. DART: Directed Automated Random Testing. In ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)",
+              "author": "Godefroid Patrice",
+              "year": "2005",
+              "unstructured": "Patrice Godefroid , Nils Klarlund , and Koushik Sen. DART: Directed Automated Random Testing. In ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI) , 2005 . Patrice Godefroid, Nils Klarlund, and Koushik Sen. DART: Directed Automated Random Testing. In ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI), 2005."
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "volume-title": "Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Godefroid Patrice",
+              "year": "2008",
+              "unstructured": "Patrice Godefroid , Michael Y Levin , David A Molnar , Automated whitebox fuzz testing . In Symposium on Network and Distributed System Security (NDSS) , 2008 . Patrice Godefroid, Michael Y Levin, David A Molnar, et al. Automated whitebox fuzz testing. In Symposium on Network and Distributed System Security (NDSS), 2008."
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Haller Istvan",
+              "year": "2013",
+              "unstructured": "Istvan Haller , Asia Slowinska , Matthias Neugschwandtner , and Herbert Bos . Dowsing for Overflows: A Guided Fuzzer to Find Buffer Boundary Violations . In USENIX Security Symposium , 2013 . Istvan Haller, Asia Slowinska, Matthias Neugschwandtner, and Herbert Bos. Dowsing for Overflows: A Guided Fuzzer to Find Buffer Boundary Violations. In USENIX Security Symposium, 2013."
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23263"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "volume-title": "Hongmei Deng. VDF: Targeted Evolutionary Fuzz Testing of Virtual Devices. In Symposium on Recent Advances in Intrusion Detection (RAID)",
+              "author": "Henderson Andrew",
+              "year": "2017",
+              "unstructured": "Andrew Henderson , Heng Yin , Guang Jin , Hao Han , and Hongmei Deng. VDF: Targeted Evolutionary Fuzz Testing of Virtual Devices. In Symposium on Recent Advances in Intrusion Detection (RAID) , 2017 . Andrew Henderson, Heng Yin, Guang Jin, Hao Han, and Hongmei Deng. VDF: Targeted Evolutionary Fuzz Testing of Virtual Devices. In Symposium on Recent Advances in Intrusion Detection (RAID), 2017."
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "author": "Hertz Jesse",
+              "year": "2016",
+              "unstructured": "Jesse Hertz and Tim Newsham. Project Triforce: Run AFL on Everything! https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/ 2016 /june/project-triforce-run-afl-on-everything/. Accessed: March 16, 2022. Jesse Hertz and Tim Newsham. Project Triforce: Run AFL on Everything! https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/2016/june/project-triforce-run-afl-on-everything/. Accessed: March 16, 2022.",
+              "journal-title": "Newsham. Project Triforce: Run AFL on Everything! https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "volume-title": "Shih-Kun Huang. INSTRIM: Lightweight Instrumentation for Coverage-guided Fuzzing. In Symposium on Network and Distributed System Security (NDSS), Workshop on Binary Analysis Research",
+              "author": "Hsu Chin-Chia",
+              "year": "2018",
+              "unstructured": "Chin-Chia Hsu , Che-Yu Wu , Hsu-Chun Hsiao , and Shih-Kun Huang. INSTRIM: Lightweight Instrumentation for Coverage-guided Fuzzing. In Symposium on Network and Distributed System Security (NDSS), Workshop on Binary Analysis Research , 2018 . Chin-Chia Hsu, Che-Yu Wu, Hsu-Chun Hsiao, and Shih-Kun Huang. INSTRIM: Lightweight Instrumentation for Coverage-guided Fuzzing. In Symposium on Network and Distributed System Security (NDSS), Workshop on Binary Analysis Research, 2018."
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40000.2020.00063"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Ispoglou Kyriakos",
+              "year": "2020",
+              "unstructured": "Kyriakos Ispoglou , Daniel Austin , Vishwath Mohan , and Mathias Payer . Fuzzgen : Automatic fuzzer generation . In USENIX Security Symposium , 2020 . Kyriakos Ispoglou, Daniel Austin, Vishwath Mohan, and Mathias Payer. Fuzzgen: Automatic fuzzer generation. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "volume-title": "Mathias Payer. FuZZan: Efficient Sanitizer Metadata Design for Fuzzing. In USENIX Annual Technical Conference",
+              "author": "Jeon Yuseok",
+              "year": "2020",
+              "unstructured": "Yuseok Jeon , Wookhyun Han , Nathan Burow , and Mathias Payer. FuZZan: Efficient Sanitizer Metadata Design for Fuzzing. In USENIX Annual Technical Conference , 2020 . Yuseok Jeon, Wookhyun Han, Nathan Burow, and Mathias Payer. FuZZan: Efficient Sanitizer Metadata Design for Fuzzing. In USENIX Annual Technical Conference, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "volume-title": "Taesoo Kim. WINNIE: Fuzzing Windows Applications with Harness Synthesis and Fast Cloning. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Jung Jinho",
+              "year": "2021",
+              "unstructured": "Jinho Jung , Stephen Tong , Hong Hu , Jungwon Lim , Yonghwi Jin , and Taesoo Kim. WINNIE: Fuzzing Windows Applications with Harness Synthesis and Fast Cloning. In Symposium on Network and Distributed System Security (NDSS) , 2021 . Jinho Jung, Stephen Tong, Hong Hu, Jungwon Lim, Yonghwi Jin, and Taesoo Kim. WINNIE: Fuzzing Windows Applications with Harness Synthesis and Fast Cloning. In Symposium on Network and Distributed System Security (NDSS), 2021."
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "Accessed",
+              "author": "Kerschbaumer Christoph",
+              "year": "2022",
+              "unstructured": "Christoph Kerschbaumer and Christian Holler . Effectively Fuzzing the IPC Layer in Firefox. https://blog.mozilla.org/attack-and-defense/2021/01/27/effectively-fuzzing-the-ipc-layer-in-firefox/ . Accessed : March 16, 2022 . Christoph Kerschbaumer and Christian Holler. Effectively Fuzzing the IPC Layer in Firefox. https://blog.mozilla.org/attack-and-defense/2021/01/27/effectively-fuzzing-the-ipc-layer-in-firefox/. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "volume-title": "Michael Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and Communications Security (CCS)",
+              "author": "Klees George",
+              "year": "2018",
+              "unstructured": "George Klees , Andrew Ruef , Benji Cooper , Shiyi Wei , and Michael Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and Communications Security (CCS) , 2018 . George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, and Michael Hicks. Evaluating Fuzz Testing. In ACM Conference on Computer and Communications Security (CCS), 2018."
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "volume-title": "Circumventing fuzzing roadblocks with compiler transformations. https://lafintel.wordpress.com/",
+              "year": "2022",
+              "unstructured": "Lafintel. Circumventing fuzzing roadblocks with compiler transformations. https://lafintel.wordpress.com/ . March 16, 2022 . Lafintel. Circumventing fuzzing roadblocks with compiler transformations. https://lafintel.wordpress.com/. March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "volume-title": "Alwen. Steelix: Program-state Based Binary Fuzzing. In Joint Meeting on Foundations of Software Engineering",
+              "author": "Chen Yuekang",
+              "year": "2017",
+              "unstructured": "Li, Yuekang and Chen , Bihuan and Chandramohan , Mahinthan and Lin , Shang-Wei and Liu , Yang and Tiu , Alwen. Steelix: Program-state Based Binary Fuzzing. In Joint Meeting on Foundations of Software Engineering , 2017 . Li, Yuekang and Chen, Bihuan and Chandramohan, Mahinthan and Lin, Shang-Wei and Liu, Yang and Tiu, Alwen. Steelix: Program-state Based Binary Fuzzing. In Joint Meeting on Foundations of Software Engineering, 2017."
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "volume-title": "ACM Conference on Security and Privacy in Wireless and Mobile Networks",
+              "author": "Maier Dominik",
+              "year": "2020",
+              "unstructured": "Dominik Maier , Lukas Seidel , and Shinjo Park . Basesafe : Baseband sanitized fuzzing through emulation . In ACM Conference on Security and Privacy in Wireless and Mobile Networks , 2020 . Dominik Maier, Lukas Seidel, and Shinjo Park. Basesafe: Baseband sanitized fuzzing through emulation. In ACM Conference on Security and Privacy in Wireless and Mobile Networks, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "volume-title": "Manuel Egele, Edward J Schwartz, and Maverick Woo. The art, science, and engineering of fuzzing: A survey",
+              "author": "Marie Manès Valentin Jean",
+              "year": "2019",
+              "unstructured": "Valentin Jean Marie Manès , HyungSeok Han , Choongwoo Han , Sang Kil Cha , Manuel Egele, Edward J Schwartz, and Maverick Woo. The art, science, and engineering of fuzzing: A survey . In IEEE Transactions on Software Engineering , 2019 . Valentin Jean Marie Manès, HyungSeok Han, Choongwoo Han, Sang Kil Cha, Manuel Egele, Edward J Schwartz, and Maverick Woo. The art, science, and engineering of fuzzing: A survey. In IEEE Transactions on Software Engineering, 2019."
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Molnar David",
+              "year": "2009",
+              "unstructured": "David Molnar , Xue Cong Li , and David Wagner . Dynamic Test Generation to Find Integer Bugs in x86 Binary Linux Programs . In USENIX Security Symposium , 2009 . David Molnar, Xue Cong Li, and David Wagner. Dynamic Test Generation to Find Integer Bugs in x86 Binary Linux Programs. In USENIX Security Symposium, 2009."
+            },
+            {
+              "key": "e_1_3_2_1_39_1",
+              "volume-title": "IEEE Symposium on Security and Privacy",
+              "author": "Nagy Stefan",
+              "year": "2019",
+              "unstructured": "Stefan Nagy and Matthew Hicks . Full-speed fuzzing : Reducing fuzzing overhead through coverage-guided tracing . In IEEE Symposium on Security and Privacy , 2019 . Stefan Nagy and Matthew Hicks. Full-speed fuzzing: Reducing fuzzing overhead through coverage-guided tracing. In IEEE Symposium on Security and Privacy, 2019."
+            },
+            {
+              "key": "e_1_3_2_1_40_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3469077"
+            },
+            {
+              "key": "e_1_3_2_1_41_1",
+              "first-page": "47",
+              "volume-title": "23rd International Symposium on Research in Attacks, Intrusions and Defenses ({RAID} 2020",
+              "author": "Nguyen Manh-Dung",
+              "year": "2020",
+              "unstructured": "Manh-Dung Nguyen , Sébastien Bardin , Richard Bonichon , Roland Groz , and Matthieu Lemerre . Binary-level directed fuzzing for use-after-free vulnerabilities . In 23rd International Symposium on Research in Attacks, Intrusions and Defenses ({RAID} 2020 ), pages 47 -- 62 , 2020 . Manh-Dung Nguyen, Sébastien Bardin, Richard Bonichon, Roland Groz, and Matthieu Lemerre. Binary-level directed fuzzing for use-after-free vulnerabilities. In 23rd International Symposium on Research in Attacks, Intrusions and Defenses ({RAID} 2020), pages 47--62, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_42_1",
+              "volume-title": "Cristiano Giuffrida. ParmeSan: Sanitizer-guided Greybox Fuzzing. In USENIX Security Symposium",
+              "author": "Österlund Sebastian",
+              "year": "2020",
+              "unstructured": "Sebastian Österlund , Kaveh Razavi , Herbert Bos , and Cristiano Giuffrida. ParmeSan: Sanitizer-guided Greybox Fuzzing. In USENIX Security Symposium , 2020 . Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. ParmeSan: Sanitizer-guided Greybox Fuzzing. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_43_1",
+              "volume-title": "Yves Le Traon. Validity Fuzzing and Parametric Generators for Effective Random Testing. In International Conference on Software Engineering (ICSE)",
+              "author": "Padhye Rohan",
+              "year": "2019",
+              "unstructured": "Rohan Padhye , Caroline Lemieux , Koushik Sen , Mike Papadakis , and Yves Le Traon. Validity Fuzzing and Parametric Generators for Effective Random Testing. In International Conference on Software Engineering (ICSE) , 2019 . Rohan Padhye, Caroline Lemieux, Koushik Sen, Mike Papadakis, and Yves Le Traon. Validity Fuzzing and Parametric Generators for Effective Random Testing. In International Conference on Software Engineering (ICSE), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_44_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Peng Hui",
+              "year": "2020",
+              "unstructured": "Hui Peng and Mathias Payer . USBFuzz : A Framework for Fuzzing USB Drivers by Device Emulation . In USENIX Security Symposium , 2020 . Hui Peng and Mathias Payer. USBFuzz: A Framework for Fuzzing USB Drivers by Device Emulation. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_45_1",
+              "volume-title": "IEEE Symposium on Security and Privacy",
+              "author": "Peng Hui",
+              "year": "2018",
+              "unstructured": "Hui Peng , Yan Shoshitaishvili , and Mathias Payer . T-Fuzz : Fuzzing by Program Transformation . In IEEE Symposium on Security and Privacy , 2018 . Hui Peng, Yan Shoshitaishvili, and Mathias Payer. T-Fuzz: Fuzzing by Program Transformation. In IEEE Symposium on Security and Privacy, 2018."
+            },
+            {
+              "issue": "09",
+              "key": "e_1_3_2_1_46_1",
+              "volume": "47",
+              "author": "Pham V.",
+              "year": "2021",
+              "unstructured": "V. Pham , M. Bohme , A. E. Santosa , A. Caciulescu , and A. Roychoudhury . Smart greybox fuzzing. IEEE Transactions on Software Engineering , 47 ( 09 ), 2021 . V. Pham, M. Bohme, A. E. Santosa, A. Caciulescu, and A. Roychoudhury. Smart greybox fuzzing. IEEE Transactions on Software Engineering, 47(09), 2021.",
+              "journal-title": "Smart greybox fuzzing. IEEE Transactions on Software Engineering"
+            },
+            {
+              "key": "e_1_3_2_1_47_1",
+              "volume-title": "Abhik Roychoudhury. AFLNET: A Greybox Fuzzer for Network Protocols. In IEEE International Conference on Software Testing",
+              "author": "Pham Van-Thuan",
+              "year": "2020",
+              "unstructured": "Van-Thuan Pham , Marcel Böhme , and Abhik Roychoudhury. AFLNET: A Greybox Fuzzer for Network Protocols. In IEEE International Conference on Software Testing , 2020 . Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. AFLNET: A Greybox Fuzzer for Network Protocols. In IEEE International Conference on Software Testing, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_48_1",
+              "volume-title": "libfuzzer. https://llvm.org/docs/LibFuzzer.html",
+              "author": "Project LLVM",
+              "year": "2022",
+              "unstructured": "LLVM Project . libfuzzer. https://llvm.org/docs/LibFuzzer.html . March 16, 2022 . LLVM Project. libfuzzer. https://llvm.org/docs/LibFuzzer.html. March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_49_1",
+              "volume-title": "Herbert Bos. VUzzer: Application-aware Evolutionary Fuzzing. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Rawat Sanjay",
+              "year": "2017",
+              "unstructured": "Sanjay Rawat , Vivek Jain , Ashish Kumar , Lucian Cojocar , Cristiano Giuffrida , and Herbert Bos. VUzzer: Application-aware Evolutionary Fuzzing. In Symposium on Network and Distributed System Security (NDSS) , 2017 . Sanjay Rawat, Vivek Jain, Ashish Kumar, Lucian Cojocar, Cristiano Giuffrida, and Herbert Bos. VUzzer: Application-aware Evolutionary Fuzzing. In Symposium on Network and Distributed System Security (NDSS), 2017."
+            },
+            {
+              "key": "e_1_3_2_1_50_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Rebert Alexandre",
+              "year": "2014",
+              "unstructured": "Alexandre Rebert , Sang Kil Cha , Thanassis Avgerinos , Jonathan M Foote , David Warren , Gustavo Grieco , and David Brumley . Optimizing seed selection for fuzzing . In USENIX Security Symposium , 2014 . Alexandre Rebert, Sang Kil Cha, Thanassis Avgerinos, Jonathan M Foote, David Warren, Gustavo Grieco, and David Brumley. Optimizing seed selection for fuzzing. In USENIX Security Symposium, 2014."
+            },
+            {
+              "key": "e_1_3_2_1_51_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Ruge Jan",
+              "year": "2020",
+              "unstructured": "Jan Ruge , Jiska Classen , Francesco Gringoli , and Matthias Hollick . Frankenstein : Advanced wireless fuzzing to exploit new bluetooth escalation targets . In USENIX Security Symposium , 2020 . Jan Ruge, Jiska Classen, Francesco Gringoli, and Matthias Hollick. Frankenstein: Advanced wireless fuzzing to exploit new bluetooth escalation targets. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_52_1",
+              "volume-title": "Thorsten Holz. HYPER-CUBE: High-Dimensional Hypervisor Fuzzing. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Schumilo Sergej",
+              "year": "2020",
+              "unstructured": "Sergej Schumilo , Cornelius Aschermann , Ali Abbasi , Simon Wörner , and Thorsten Holz. HYPER-CUBE: High-Dimensional Hypervisor Fuzzing. In Symposium on Network and Distributed System Security (NDSS) , 2020 . Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner, and Thorsten Holz. HYPER-CUBE: High-Dimensional Hypervisor Fuzzing. In Symposium on Network and Distributed System Security (NDSS), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_53_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Schumilo Sergej",
+              "year": "2021",
+              "unstructured": "Sergej Schumilo , Cornelius Aschermann , Ali Abbasi , Simon Wörner , and Thorsten Holz . Nyx : Greybox hypervisor fuzzing using fast snapshots and affine types . In USENIX Security Symposium , 2021 . Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner, and Thorsten Holz. Nyx: Greybox hypervisor fuzzing using fast snapshots and affine types. In USENIX Security Symposium, 2021."
+            },
+            {
+              "key": "e_1_3_2_1_54_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Schumilo Sergej",
+              "year": "2017",
+              "unstructured": "Sergej Schumilo , Cornelius Aschermann , Robert Gawlik , Sebastian Schinzel , and Thorsten Holz . kAFL : Hardware-Assisted Feedback Fuzzing for OS Kernels . In USENIX Security Symposium , 2017 . Sergej Schumilo, Cornelius Aschermann, Robert Gawlik, Sebastian Schinzel, and Thorsten Holz. kAFL: Hardware-Assisted Feedback Fuzzing for OS Kernels. In USENIX Security Symposium, 2017."
+            },
+            {
+              "key": "e_1_3_2_1_55_1",
+              "volume-title": "https://github.com/zardus/preeny",
+              "author": "Shoshitaishvili Yan",
+              "year": "2022",
+              "unstructured": "Yan Shoshitaishvili . Preeny. https://github.com/zardus/preeny . March 16, 2022 . Yan Shoshitaishvili. Preeny. https://github.com/zardus/preeny. March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_56_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Song Dokyung",
+              "year": "2020",
+              "unstructured": "Dokyung Song , Felicitas Hetzelt , Jonghwan Kim , Brent Byunghoon Kang , Jean-Pierre Seifert , and Michael Franz . Agamotto : Accelerating kernel driver fuzzing with lightweight virtual machine checkpoints . In USENIX Security Symposium , 2020 . Dokyung Song, Felicitas Hetzelt, Jonghwan Kim, Brent Byunghoon Kang, Jean-Pierre Seifert, and Michael Franz. Agamotto: Accelerating kernel driver fuzzing with lightweight virtual machine checkpoints. In USENIX Security Symposium, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_57_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2016.23368"
+            },
+            {
+              "key": "e_1_3_2_1_58_1",
+              "volume-title": "http://www.peachfuzzer.com/. Accessed",
+              "author": "Tech Peach",
+              "year": "2022",
+              "unstructured": "Peach Tech . Peach. http://www.peachfuzzer.com/. Accessed : March 16, 2022 . Peach Tech. Peach. http://www.peachfuzzer.com/. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_59_1",
+              "volume-title": "Accessed",
+              "author": "Vyukov Dmitry",
+              "year": "2022",
+              "unstructured": "Dmitry Vyukov . syzkaller : Linux syscall fuzzer. https://github.com/google/syzkaller . Accessed : March 16, 2022 . Dmitry Vyukov. syzkaller: Linux syscall fuzzer. https://github.com/google/syzkaller. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_60_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            },
+            {
+              "key": "e_1_3_2_1_61_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2020.24422"
+            },
+            {
+              "key": "e_1_3_2_1_62_1",
+              "volume-title": "International Conference on Software Engineering (ICSE)",
+              "author": "Wen Cheng",
+              "year": "2020",
+              "unstructured": "Cheng Wen , Haijun Wang , Yuekang Li , Shengchao Qin , Yang Liu , Zhiwu Xu , Hongxu Chen , Xiaofei Xie , Geguang Pu , and Ting Liu . Memlock : Memory usage guided fuzzing . In International Conference on Software Engineering (ICSE) , 2020 . Cheng Wen, Haijun Wang, Yuekang Li, Shengchao Qin, Yang Liu, Zhiwu Xu, Hongxu Chen, Xiaofei Xie, Geguang Pu, and Ting Liu. Memlock: Memory usage guided fuzzing. In International Conference on Software Engineering (ICSE), 2020."
+            },
+            {
+              "key": "e_1_3_2_1_63_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/2508859.2516736"
+            },
+            {
+              "key": "e_1_3_2_1_64_1",
+              "volume-title": "Taesoo Kim. Krace: Data Race Fuzzing for Kernel File Systems. In IEEE Symposium on Security and Privacy",
+              "author": "Xu Meng",
+              "year": "2020",
+              "unstructured": "Meng Xu , Sanidhya Kashyap , Hanqing Zhao , and Taesoo Kim. Krace: Data Race Fuzzing for Kernel File Systems. In IEEE Symposium on Security and Privacy , 2020 . Meng Xu, Sanidhya Kashyap, Hanqing Zhao, and Taesoo Kim. Krace: Data Race Fuzzing for Kernel File Systems. In IEEE Symposium on Security and Privacy, 2020."
+            },
+            {
+              "key": "e_1_3_2_1_65_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134046"
+            },
+            {
+              "key": "e_1_3_2_1_66_1",
+              "volume-title": "The 6th USENIX Symposium on Networked Systems Design and Implementation (NSDI'09)",
+              "author": "Yabandeh Maysam",
+              "year": "2009",
+              "unstructured": "Maysam Yabandeh , Nikola Knezevic , Dejan Kostic , and Viktor Kuncak . Crystalball : Predicting and preventing inconsistencies in deployed distributed systems . In The 6th USENIX Symposium on Networked Systems Design and Implementation (NSDI'09) , 2009 . Maysam Yabandeh, Nikola Knezevic, Dejan Kostic, and Viktor Kuncak. Crystalball: Predicting and preventing inconsistencies in deployed distributed systems. In The 6th USENIX Symposium on Networked Systems Design and Implementation (NSDI'09), 2009."
+            },
+            {
+              "key": "e_1_3_2_1_67_1",
+              "first-page": "213",
+              "volume-title": "NSDI'09",
+              "author": "Yang Junfeng",
+              "year": "2009",
+              "unstructured": "Junfeng Yang , Tisheng Chen , Ming Wu , Zhilei Xu , Xuezheng Liu , Haoxiang Lin , Mao Yang , Fan Long , Lintao Zhang , and Lidong Zhou . Modist : Transparent model checking of unmodified distributed systems . In NSDI'09 , pages 213 -- 228 , 2009 . Junfeng Yang, Tisheng Chen, Ming Wu, Zhilei Xu, Xuezheng Liu, Haoxiang Lin, Mao Yang, Fan Long, Lintao Zhang, and Lidong Zhou. Modist: Transparent model checking of unmodified distributed systems. In NSDI'09, pages 213--228, 2009."
+            },
+            {
+              "key": "e_1_3_2_1_68_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ICSE.2019.00080"
+            },
+            {
+              "key": "e_1_3_2_1_69_1",
+              "volume-title": "Taesoo Kim. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX Security Symposium",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun , Sangho Lee , Meng Xu , Yeongjin Jang , and Taesoo Kim. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX Security Symposium , 2018 . Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In USENIX Security Symposium, 2018."
+            },
+            {
+              "key": "e_1_3_2_1_70_1",
+              "volume-title": "Accessed",
+              "author": "Zalewski Michał",
+              "year": "2022",
+              "unstructured": "Michał Zalewski . american fuzzy lop. http://lcamtuf.coredump.cx/afl/ . Accessed : March 16, 2022 . Michał Zalewski. american fuzzy lop. http://lcamtuf.coredump.cx/afl/. Accessed: March 16, 2022."
+            },
+            {
+              "key": "e_1_3_2_1_71_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40001.2021.00109"
+            },
+            {
+              "key": "e_1_3_2_1_72_1",
+              "volume-title": "Jifeng Xuan. Send Hardest Problems My Way: Probabilistic Path Prioritization for Hybrid Fuzzing. In Symposium on Network and Distributed System Security (NDSS)",
+              "author": "Zhao Lei",
+              "year": "2019",
+              "unstructured": "Lei Zhao , Yue Duan , Heng Yin , and Jifeng Xuan. Send Hardest Problems My Way: Probabilistic Path Prioritization for Hybrid Fuzzing. In Symposium on Network and Distributed System Security (NDSS) , 2019 . Lei Zhao, Yue Duan, Heng Yin, and Jifeng Xuan. Send Hardest Problems My Way: Probabilistic Path Prioritization for Hybrid Fuzzing. In Symposium on Network and Distributed System Security (NDSS), 2019."
+            },
+            {
+              "key": "e_1_3_2_1_73_1",
+              "volume-title": "USENIX Security Symposium",
+              "author": "Zheng Yaowen",
+              "year": "2019",
+              "unstructured": "Yaowen Zheng , Ali Davanian , Heng Yin , Chengyu Song , Hongsong Zhu , and Limin Sun . Firm-afl : High-throughput greybox fuzzing of iot firmware via augmented process emulation . In USENIX Security Symposium , 2019 . Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, and Limin Sun. Firm-afl: High-throughput greybox fuzzing of iot firmware via augmented process emulation. In USENIX Security Symposium, 2019."
+            }
+          ],
+          "event": {
+            "name": "EuroSys '22: Seventeenth European Conference on Computer Systems",
+            "location": "Rennes France",
+            "acronym": "EuroSys '22",
+            "sponsor": [
+              "SIGOPS ACM Special Interest Group on Operating Systems"
+            ]
+          },
+          "container-title": [
+            "Proceedings of the Seventeenth European Conference on Computer Systems"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3492321.3519591",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3492321.3519591",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T19:31:08Z",
+            "timestamp": 1750188668000
+          },
+          "score": 31.91932,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3492321.3519591"
+            }
+          },
+          "subtitle": [
+            "network fuzzing with incremental snapshots"
+          ],
+          "issued": {
+            "date-parts": [
+              [
+                2022,
+                3,
+                28
+              ]
+            ]
+          },
+          "references-count": 73,
+          "alternative-id": [
+            "10.1145/3492321.3519591",
+            "10.1145/3492321"
+          ],
+          "URL": "https://doi.org/10.1145/3492321.3519591",
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                3,
+                28
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2022-03-28",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                19
+              ]
+            ],
+            "date-time": "2025-06-19T05:04:56Z",
+            "timestamp": 1750309496676,
+            "version": "3.41.0"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 15,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2024,
+                    9,
+                    15
+                  ]
+                ],
+                "date-time": "2024-09-15T00:00:00Z",
+                "timestamp": 1726358400000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                15
+              ]
+            ]
+          },
+          "DOI": "10.1145/3689236.3689258",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                4
+              ]
+            ],
+            "date-time": "2024-12-04T08:04:45Z",
+            "timestamp": 1733299485000
+          },
+          "page": "22-26",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "SymFL-Net: Branch Information Enhanced Network Protocol Fuzzing"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0009-0004-0191-2375",
+              "authenticated-orcid": false,
+              "given": "Yeqi",
+              "family": "Mou",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "National University of Defense Technology, Changsha, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0008-0583-6399",
+              "authenticated-orcid": false,
+              "given": "Baosheng",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Defense Technology, Changsha, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-6576-5555",
+              "authenticated-orcid": false,
+              "given": "Bo",
+              "family": "Yu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Defense Technology, Changsha, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-1032-9323",
+              "authenticated-orcid": false,
+              "given": "Qiang",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Defense Technology, Changsha, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0009-0003-8368-2819",
+              "authenticated-orcid": false,
+              "given": "Chengnuo",
+              "family": "Cai",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "National University of Defense Technology, Changsha, China"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2024,
+                12,
+                3
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_3_1_1_2",
+              "first-page": "460",
+              "volume-title": "Validation and Verification (ICST)",
+              "author": "Pham V. -T.",
+              "year": "2020",
+              "unstructured": "V. -T. Pham, M. Böhme and A. Roychoudhury, \"AFLNET: A Greybox Fuzzer for Network Protocols,\" 2020 IEEE 13th International Conference on Software Testing, Validation and Verification (ICST), Porto, Portugal, 2020: 460-465"
+            },
+            {
+              "issue": "7",
+              "key": "e_1_3_3_1_2_2",
+              "first-page": "1269",
+              "article-title": "Greybox fuzzing for stateful network servers",
+              "volume": "27",
+              "author": "Roberto",
+              "year": "2022",
+              "unstructured": "Roberto Natella1CA1.StateAFL: Greybox fuzzing for stateful network servers. Empirical Software Engineering, 2022, Vol. 27(7): 1269-1299",
+              "journal-title": "Empirical Software Engineering"
+            },
+            {
+              "key": "e_1_3_3_1_3_2",
+              "first-page": "3272",
+              "volume-title": "31st USENIX Security Symposium (USENIX Security 22)",
+              "author": "Ba J.",
+              "year": "2022",
+              "unstructured": "J. Ba, M. B ̈ohme, Z. Mirzamomen, and A. Roychoudhury, “Stateful greybox fuzzing,” in 31st USENIX Security Symposium (USENIX Security 22). Boston, MA: USENIX Association, Aug. 2022, pp. 3255–3272."
+            },
+            {
+              "key": "e_1_3_3_1_4_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TIFS.2022.3192991"
+            },
+            {
+              "volume-title": "Wuxi",
+              "author": "Tang X.",
+              "key": "e_1_3_3_1_5_2",
+              "unstructured": "X. Tang, Y. Wang and F. Xu, \"AFLNETGO: A Directed Fuzzer for Stateful Network Protocol Implementation,\" 2023 8th International Conference on Signal and Image Processing (ICSIP), Wuxi, China, 2023: 882-886"
+            },
+            {
+              "key": "e_1_3_3_1_6_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TDSC.2023.3318571"
+            },
+            {
+              "key": "e_1_3_3_1_7_2",
+              "volume-title": "Proceedings of the 6th Asia-Pacific Workshop on Networking (APNet '22)",
+              "author": "Lu Jianjun",
+              "year": "2023",
+              "unstructured": "Jianjun Lu and Bo Yu. 2023. WThreadAFL: Deterministic Greybox Fuzzing for Multi-thread Network Servers. In Proceedings of the 6th Asia-Pacific Workshop on Networking (APNet '22). Association for Computing Machinery, New York, NY, USA, 107–108."
+            },
+            {
+              "key": "e_1_3_3_1_8_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3492321.3519591"
+            },
+            {
+              "volume-title": "2022 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER). IEEE",
+              "author": "Liu",
+              "key": "e_1_3_3_1_9_2",
+              "unstructured": "Liu D, Pham V T, Ernst G, et al. State selection algorithms and their impact on the performance of stateful network protocol fuzzing. 2022 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER). IEEE, 2022: 720-730."
+            },
+            {
+              "volume-title": "2021 IEEE Sixth International Conference on Data Science in Cyberspace (DSC). IEEE",
+              "author": "Qin",
+              "key": "e_1_3_3_1_10_2",
+              "unstructured": "Qin Y, Li X, Tian J, et al. Gradient-oriented gray-box protocol fuzzing. 2021 IEEE Sixth International Conference on Data Science in Cyberspace (DSC). IEEE, 2021: 353-360."
+            },
+            {
+              "key": "e_1_3_3_1_11_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3580599"
+            },
+            {
+              "key": "e_1_3_3_1_12_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.3390/app12157459"
+            },
+            {
+              "key": "e_1_3_3_1_13_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/ACCESS.2019.2895025"
+            },
+            {
+              "key": "e_1_3_3_1_14_2",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3460319.3469077"
+            },
+            {
+              "key": "e_1_3_3_1_15_2",
+              "first-page": "1",
+              "volume-title": "NDSS 2021, Network and Distributed System Security Symposium",
+              "author": "Aurélien Francillon Sebastian",
+              "year": "2021",
+              "unstructured": "Sebastian Poeplau; Aurélien Francillon. SymQEMU: Compilation-based symbolic execution for binaries. NDSS 2021, Network and Distributed System Security Symposium, 2021, 1-16"
+            }
+          ],
+          "event": {
+            "name": "ICCSIE 2024: 9th International Conference on Cyber Security and Information Engineering",
+            "acronym": "ICCSIE 2024",
+            "location": "Kuala Lumpur Malaysia"
+          },
+          "container-title": [
+            "Proceedings of the 2024 9th International Conference on Cyber Security and Information Engineering"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3689236.3689258",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3689236.3689258",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                19
+              ]
+            ],
+            "date-time": "2025-06-19T01:17:45Z",
+            "timestamp": 1750295865000
+          },
+          "score": 26.559368,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3689236.3689258"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                15
+              ]
+            ]
+          },
+          "references-count": 15,
+          "alternative-id": [
+            "10.1145/3689236.3689258",
+            "10.1145/3689236"
+          ],
+          "URL": "https://doi.org/10.1145/3689236.3689258",
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                15
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2024-12-03",
+              "order": 3,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                8,
+                23
+              ]
+            ],
+            "date-time": "2026-08-23T22:36:35Z",
+            "timestamp": 1787524595099,
+            "version": "build-2736575974"
+          },
+          "publisher-location": "New York, NY, USA",
+          "reference-count": 37,
+          "publisher": "ACM",
+          "license": [
+            {
+              "start": {
+                "date-parts": [
+                  [
+                    2022,
+                    12,
+                    5
+                  ]
+                ],
+                "date-time": "2022-12-05T00:00:00Z",
+                "timestamp": 1670198400000
+              },
+              "content-version": "vor",
+              "delay-in-days": 0,
+              "URL": "https://creativecommons.org/licenses/by/4.0/"
+            }
+          ],
+          "content-domain": {
+            "domain": [
+              "dl.acm.org"
+            ],
+            "crossmark-restriction": true
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                5
+              ]
+            ]
+          },
+          "DOI": "10.1145/3564625.3564639",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                3
+              ]
+            ],
+            "date-time": "2022-12-03T01:01:29Z",
+            "timestamp": 1670029289000
+          },
+          "page": "375-387",
+          "update-policy": "https://doi.org/10.1145/crossmark-policy",
+          "source": "Crossref",
+          "is-referenced-by-count": 7,
+          "title": [
+            "Snappy: Efficient Fuzzing with Adaptive and Mutable Snapshots"
+          ],
+          "prefix": "10.1145",
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-3748-5369",
+              "authenticated-orcid": false,
+              "given": "Elia",
+              "family": "Geretto",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Vrije Universiteit Amsterdam, Netherlands"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-8329-5929",
+              "authenticated-orcid": false,
+              "given": "Cristiano",
+              "family": "Giuffrida",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Vrije Universiteit Amsterdam, Netherlands"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0001-6179-1510",
+              "authenticated-orcid": false,
+              "given": "Herbert",
+              "family": "Bos",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Vrije Universiteit Amsterdam, Netherlands"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "ORCID": "https://orcid.org/0000-0002-0312-9913",
+              "authenticated-orcid": false,
+              "given": "Erik",
+              "family": "Van Der Kouwe",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Vrije Universiteit Amsterdam, Netherlands"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "member": "320",
+          "published-online": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                5
+              ]
+            ]
+          },
+          "reference": [
+            {
+              "key": "e_1_3_2_1_1_1",
+              "unstructured": "[n.d.]. DataFlowSanitizer. https://clang.llvm.org/docs/DataFlowSanitizer.html.  [n.d.]. DataFlowSanitizer. https://clang.llvm.org/docs/DataFlowSanitizer.html."
+            },
+            {
+              "key": "e_1_3_2_1_2_1",
+              "unstructured": "[n.d.]. libFuzzer. https://llvm.org/docs/LibFuzzer.html.  [n.d.]. libFuzzer. https://llvm.org/docs/LibFuzzer.html."
+            },
+            {
+              "key": "e_1_3_2_1_3_1",
+              "volume-title": "SnapFuzz: High-Throughput Fuzzing of Network Applications. In ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2022)",
+              "author": "Andronidis Anastasios",
+              "year": "2022",
+              "unstructured": "Anastasios Andronidis and Cristian Cadar . 2022 . SnapFuzz: High-Throughput Fuzzing of Network Applications. In ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2022) (Virtual Event). Anastasios Andronidis and Cristian Cadar. 2022. SnapFuzz: High-Throughput Fuzzing of Network Applications. In ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2022) (Virtual Event)."
+            },
+            {
+              "key": "e_1_3_2_1_4_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23412"
+            },
+            {
+              "key": "e_1_3_2_1_5_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2019.23371"
+            },
+            {
+              "key": "e_1_3_2_1_7_1",
+              "volume-title": "28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Blazytko Tim",
+              "year": "2019",
+              "unstructured": "Tim Blazytko , Cornelius Aschermann , Moritz Schlögel , Ali Abbasi , Sergej Schumilo , Simon Wörner , and Thorsten Holz . 2019 . GRIMOIRE: Synthesizing Structure while Fuzzing . In 28th USENIX Security Symposium (USENIX Security 19) . USENIX Association, Santa Clara, CA , 1985–2002. https://www.usenix.org/conference/usenixsecurity19/presentation/blazytko Tim Blazytko, Cornelius Aschermann, Moritz Schlögel, Ali Abbasi, Sergej Schumilo, Simon Wörner, and Thorsten Holz. 2019. GRIMOIRE: Synthesizing Structure while Fuzzing. In 28th USENIX Security Symposium (USENIX Security 19). USENIX Association, Santa Clara, CA, 1985–2002. https://www.usenix.org/conference/usenixsecurity19/presentation/blazytko"
+            },
+            {
+              "key": "e_1_3_2_1_8_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134020"
+            },
+            {
+              "key": "e_1_3_2_1_9_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/TSE.2017.2785841"
+            },
+            {
+              "key": "e_1_3_2_1_10_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243849"
+            },
+            {
+              "key": "e_1_3_2_1_11_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00046"
+            },
+            {
+              "key": "e_1_3_2_1_12_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3319535.3363225"
+            },
+            {
+              "key": "e_1_3_2_1_13_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP40000.2020.00002"
+            },
+            {
+              "key": "e_1_3_2_1_14_1",
+              "volume-title": "14th USENIX Workshop on Offensive Technologies (WOOT 20)",
+              "author": "Fioraldi Andrea",
+              "year": "2020",
+              "unstructured": "Andrea Fioraldi , Dominik Maier , Heiko Eißfeldt , and Marc Heuse . 2020 . AFL++ : Combining Incremental Steps of Fuzzing Research . In 14th USENIX Workshop on Offensive Technologies (WOOT 20) . USENIX Association. https://www.usenix.org/conference/woot20/presentation/fioraldi Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++ : Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on Offensive Technologies (WOOT 20). USENIX Association. https://www.usenix.org/conference/woot20/presentation/fioraldi"
+            },
+            {
+              "key": "e_1_3_2_1_15_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00040"
+            },
+            {
+              "key": "e_1_3_2_1_16_1",
+              "volume-title": "BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning. In 2022 IEEE Symposium on Security and Privacy (SP). IEEE.",
+              "author": "Huang Heqing",
+              "year": "2022",
+              "unstructured": "Heqing Huang , Yiyuan Guo , Qingkai Shi , Peisen Yao , Rongxin Wu , and Charles Zhang . 2022 . BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning. In 2022 IEEE Symposium on Security and Privacy (SP). IEEE. Heqing Huang, Yiyuan Guo, Qingkai Shi, Peisen Yao, Rongxin Wu, and Charles Zhang. 2022. BEACON: Directed Grey-Box Fuzzing with Provable Path Pruning. In 2022 IEEE Symposium on Security and Privacy (SP). IEEE."
+            },
+            {
+              "key": "e_1_3_2_1_17_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3243734.3243804"
+            },
+            {
+              "key": "e_1_3_2_1_18_1",
+              "volume-title": "MOPT: Optimized Mutation Scheduling for Fuzzers. In 28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Lyu Chenyang",
+              "year": "2019",
+              "unstructured": "Chenyang Lyu , Shouling Ji , Chao Zhang , Yuwei Li , Wei-Han Lee , Yu Song , and Raheem Beyah . 2019 . MOPT: Optimized Mutation Scheduling for Fuzzers. In 28th USENIX Security Symposium (USENIX Security 19) . USENIX Association, Santa Clara, CA , 1949–1966. https://www.usenix.org/conference/usenixsecurity19/presentation/lyu Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li, Wei-Han Lee, Yu Song, and Raheem Beyah. 2019. MOPT: Optimized Mutation Scheduling for Fuzzers. In 28th USENIX Security Symposium (USENIX Security 19). USENIX Association, Santa Clara, CA, 1949–1966. https://www.usenix.org/conference/usenixsecurity19/presentation/lyu"
+            },
+            {
+              "key": "e_1_3_2_1_19_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3468264.3473932"
+            },
+            {
+              "key": "e_1_3_2_1_20_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3471621.3471852"
+            },
+            {
+              "key": "e_1_3_2_1_21_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00069"
+            },
+            {
+              "key": "e_1_3_2_1_22_1",
+              "volume-title": "ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Österlund Sebastian",
+              "year": "2020",
+              "unstructured": "Sebastian Österlund , Kaveh Razavi , Herbert Bos , and Cristiano Giuffrida . 2020 . ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20) . USENIX Association, 2289–2306. https://www.usenix.org/conference/usenixsecurity20/presentation/osterlund Sebastian Österlund, Kaveh Razavi, Herbert Bos, and Cristiano Giuffrida. 2020. ParmeSan: Sanitizer-guided Greybox Fuzzing. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 2289–2306. https://www.usenix.org/conference/usenixsecurity20/presentation/osterlund"
+            },
+            {
+              "key": "e_1_3_2_1_23_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2018.00056"
+            },
+            {
+              "key": "e_1_3_2_1_24_1",
+              "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Poeplau Sebastian",
+              "year": "2020",
+              "unstructured": "Sebastian Poeplau and Aurélien Francillon . 2020 . Symbolic execution with SymCC: Don’t interpret, compile! . In 29th USENIX Security Symposium (USENIX Security 20) . USENIX Association, 181–198. https://www.usenix.org/conference/usenixsecurity20/presentation/poeplau Sebastian Poeplau and Aurélien Francillon. 2020. Symbolic execution with SymCC: Don’t interpret, compile!. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 181–198. https://www.usenix.org/conference/usenixsecurity20/presentation/poeplau"
+            },
+            {
+              "key": "e_1_3_2_1_25_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2021.24118"
+            },
+            {
+              "key": "e_1_3_2_1_26_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2017.23404"
+            },
+            {
+              "key": "e_1_3_2_1_27_1",
+              "volume-title": "30th USENIX Security Symposium (USENIX Security 21)",
+              "author": "Schumilo Sergej",
+              "year": "2021",
+              "unstructured": "Sergej Schumilo , Cornelius Aschermann , Ali Abbasi , Simon Wörner , and Thorsten Holz . 2021 . Nyx: Greybox Hypervisor Fuzzing using Fast Snapshots and Affine Types . In 30th USENIX Security Symposium (USENIX Security 21) . USENIX Association, 2597–2614. https://www.usenix.org/conference/usenixsecurity21/presentation/schumilo Sergej Schumilo, Cornelius Aschermann, Ali Abbasi, Simon Wörner, and Thorsten Holz. 2021. Nyx: Greybox Hypervisor Fuzzing using Fast Snapshots and Affine Types. In 30th USENIX Security Symposium (USENIX Security 21). USENIX Association, 2597–2614. https://www.usenix.org/conference/usenixsecurity21/presentation/schumilo"
+            },
+            {
+              "key": "e_1_3_2_1_28_1",
+              "volume-title": "26th USENIX Security Symposium (USENIX Security 17)",
+              "author": "Schumilo Sergej",
+              "year": "2017",
+              "unstructured": "Sergej Schumilo , Cornelius Aschermann , Robert Gawlik , Sebastian Schinzel , and Thorsten Holz . 2017 . kAFL: Hardware-Assisted Feedback Fuzzing for OS Kernels . In 26th USENIX Security Symposium (USENIX Security 17) . USENIX Association, Vancouver, BC, 167–182. https://www.usenix.org/conference/usenixsecurity17/technical-sessions/presentation/schumilo Sergej Schumilo, Cornelius Aschermann, Robert Gawlik, Sebastian Schinzel, and Thorsten Holz. 2017. kAFL: Hardware-Assisted Feedback Fuzzing for OS Kernels. In 26th USENIX Security Symposium (USENIX Security 17). USENIX Association, Vancouver, BC, 167–182. https://www.usenix.org/conference/usenixsecurity17/technical-sessions/presentation/schumilo"
+            },
+            {
+              "key": "e_1_3_2_1_29_1",
+              "doi-asserted-by": "crossref",
+              "unstructured": "Sergej Schumilo Cornelius Aschermann Andrea Jemmett Ali Abbasi and Thorsten Holz. 2022. Nyx-Net: Network Fuzzing with Incremental Snapshots. In EuroSys.  Sergej Schumilo Cornelius Aschermann Andrea Jemmett Ali Abbasi and Thorsten Holz. 2022. Nyx-Net: Network Fuzzing with Incremental Snapshots. In EuroSys.",
+              "DOI": "10.1145/3492321.3519591"
+            },
+            {
+              "key": "e_1_3_2_1_30_1",
+              "volume-title": "OSS-Fuzz - Google’s continuous fuzzing service for open source software",
+              "author": "Serebryany Kostya",
+              "unstructured": "Kostya Serebryany . 2017. OSS-Fuzz - Google’s continuous fuzzing service for open source software . USENIX Association , Vancouver, BC . Kostya Serebryany. 2017. OSS-Fuzz - Google’s continuous fuzzing service for open source software. USENIX Association, Vancouver, BC."
+            },
+            {
+              "key": "e_1_3_2_1_31_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2019.00052"
+            },
+            {
+              "key": "e_1_3_2_1_32_1",
+              "volume-title": "Agamotto: Accelerating Kernel Driver Fuzzing with Lightweight Virtual Machine Checkpoints. In 29th USENIX Security Symposium (USENIX Security 20)",
+              "author": "Song Dokyung",
+              "year": "2020",
+              "unstructured": "Dokyung Song , Felicitas Hetzelt , Jonghwan Kim , Brent  ByungHoon Kang , Jean-Pierre Seifert , and Michael Franz . 2020 . Agamotto: Accelerating Kernel Driver Fuzzing with Lightweight Virtual Machine Checkpoints. In 29th USENIX Security Symposium (USENIX Security 20) . USENIX Association, 2541–2557. https://www.usenix.org/conference/usenixsecurity20/presentation/song Dokyung Song, Felicitas Hetzelt, Jonghwan Kim, Brent ByungHoon Kang, Jean-Pierre Seifert, and Michael Franz. 2020. Agamotto: Accelerating Kernel Driver Fuzzing with Lightweight Virtual Machine Checkpoints. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 2541–2557. https://www.usenix.org/conference/usenixsecurity20/presentation/song"
+            },
+            {
+              "key": "e_1_3_2_1_33_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.14722/ndss.2016.23368"
+            },
+            {
+              "key": "e_1_3_2_1_34_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1109/SP.2010.37"
+            },
+            {
+              "key": "e_1_3_2_1_35_1",
+              "doi-asserted-by": "publisher",
+              "DOI": "10.1145/3133956.3134046"
+            },
+            {
+              "key": "e_1_3_2_1_36_1",
+              "volume-title": "27th USENIX Security Symposium (USENIX Security 18)",
+              "author": "Yun Insu",
+              "year": "2018",
+              "unstructured": "Insu Yun , Sangho Lee , Meng Xu , Yeongjin Jang , and Taesoo Kim . 2018 . QSYM : A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing . In 27th USENIX Security Symposium (USENIX Security 18) . USENIX Association, Baltimore, MD, 745–761. https://www.usenix.org/conference/usenixsecurity18/presentation/yun Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. 2018. QSYM : A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In 27th USENIX Security Symposium (USENIX Security 18). USENIX Association, Baltimore, MD, 745–761. https://www.usenix.org/conference/usenixsecurity18/presentation/yun"
+            },
+            {
+              "key": "e_1_3_2_1_37_1",
+              "unstructured": "Michał Zalewski. 2013. American fuzzy lop.  Michał Zalewski. 2013. American fuzzy lop."
+            },
+            {
+              "key": "e_1_3_2_1_38_1",
+              "volume-title": "28th USENIX Security Symposium (USENIX Security 19)",
+              "author": "Zheng Yaowen",
+              "year": "2019",
+              "unstructured": "Yaowen Zheng , Ali Davanian , Heng Yin , Chengyu Song , Hongsong Zhu , and Limin Sun . 2019 . FIRM-AFL: High-Throughput Greybox Fuzzing of IoT Firmware via Augmented Process Emulation . In 28th USENIX Security Symposium (USENIX Security 19) . USENIX Association, Santa Clara, CA, 1099–1114. https://www.usenix.org/conference/usenixsecurity19/presentation/zheng Yaowen Zheng, Ali Davanian, Heng Yin, Chengyu Song, Hongsong Zhu, and Limin Sun. 2019. FIRM-AFL: High-Throughput Greybox Fuzzing of IoT Firmware via Augmented Process Emulation. In 28th USENIX Security Symposium (USENIX Security 19). USENIX Association, Santa Clara, CA, 1099–1114. https://www.usenix.org/conference/usenixsecurity19/presentation/zheng"
+            }
+          ],
+          "event": {
+            "name": "ACSAC: Annual Computer Security Applications Conference",
+            "location": "Austin TX USA",
+            "acronym": "ACSAC"
+          },
+          "container-title": [
+            "Proceedings of the 38th Annual Computer Security Applications Conference"
+          ],
+          "link": [
+            {
+              "URL": "https://dl.acm.org/doi/10.1145/3564625.3564639",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "text-mining"
+            },
+            {
+              "URL": "https://dl.acm.org/doi/pdf/10.1145/3564625.3564639",
+              "content-type": "unspecified",
+              "content-version": "vor",
+              "intended-application": "similarity-checking"
+            }
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2025,
+                6,
+                17
+              ]
+            ],
+            "date-time": "2025-06-17T18:09:11Z",
+            "timestamp": 1750183751000
+          },
+          "score": 25.07581,
+          "resource": {
+            "primary": {
+              "URL": "https://dl.acm.org/doi/10.1145/3564625.3564639"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                5
+              ]
+            ]
+          },
+          "references-count": 37,
+          "alternative-id": [
+            "10.1145/3564625.3564639",
+            "10.1145/3564625"
+          ],
+          "URL": "https://doi.org/10.1145/3564625.3564639",
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                5
+              ]
+            ]
+          },
+          "assertion": [
+            {
+              "value": "2022-12-05",
+              "order": 2,
+              "name": "published",
+              "label": "Published",
+              "group": {
+                "name": "publication_history",
+                "label": "Publication History"
+              }
+            }
+          ]
+        }
+      ],
+      "items-per-page": 3,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}
