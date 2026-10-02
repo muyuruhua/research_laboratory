@@ -1,0 +1,162 @@
+[
+  {
+    "old": "Measure IPSM state-edge/code-branch alignment, episode productivity, calibration, and boundary cases.",
+    "new": "Outcomes include IPSM state-edge/code-branch alignment, episode productivity, calibration, and boundary cases.",
+    "reason": "Replace a task instruction with the research-question scope."
+  },
+  {
+    "old": "Compare D with C.",
+    "new": "The intended contrast is D--C.",
+    "reason": "State the causal contrast without an instruction to perform it."
+  },
+  {
+    "old": "Compare E with D.",
+    "new": "The intended contrast is E--D.",
+    "reason": "State the causal contrast without implying completion."
+  },
+  {
+    "old": "Compare the BS to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate.",
+    "new": "A prequential base-rate predictor provides a BS reference because rare rewards can favor uninformative near-zero predictions.",
+    "reason": "State the statistical rationale instead of an analysis instruction."
+  },
+  {
+    "old": "Per target, report mean, median and dispersion.",
+    "new": "The confirmatory analysis specifies target-specific means, medians, and dispersion.",
+    "reason": "Preserve prospective status and remove author-facing instructions."
+  },
+  {
+    "old": "For independent run-level contrasts, report two-sided Mann--Whitney U tests",
+    "new": "Planned independent run-level contrasts use two-sided Mann--Whitney U tests",
+    "reason": "Distinguish intended statistical procedures from completed tests."
+  },
+  {
+    "old": "Apply the Benjamini--Hochberg procedure",
+    "new": "The design specifies the Benjamini--Hochberg procedure",
+    "reason": "Remove command-style prose without claiming prior registration."
+  },
+  {
+    "old": "Report adjusted values without claiming unconditional false-discovery-rate control.",
+    "new": "Adjusted values would not imply unconditional false-discovery-rate control.",
+    "reason": "Keep the inferential limitation in declarative form."
+  },
+  {
+    "old": "Primary coverage outcomes are code-branch AUC over 24 hours and final code-branch count.",
+    "new": "The confirmatory outcomes are code-branch AUC over 24 hours and final code-branch count.",
+    "reason": "Explicitly identify intended outcomes instead of implying a completed matched analysis."
+  },
+  {
+    "old": "Cross-target summaries use equal-weight target effects",
+    "new": "Confirmatory cross-target summaries would use equal-weight target effects",
+    "reason": "Preserve prospective status of the uncompleted inferential analysis."
+  },
+  {
+    "old": "Trial order is randomized within machine blocks and balanced across machines and time periods.",
+    "new": "The confirmatory design randomizes trial order within machine blocks and balances trials across machines and periods.",
+    "reason": "Do not imply verified execution of the prescribed trial-order policy."
+  },
+  {
+    "old": "Each arm initially receives 10 independent 24-hour runs per target; C/D/E receive 10 more, reaching 20 each.",
+    "new": "The design allocates 10 independent 24-hour runs per target to each arm, plus 10 for C/D/E, reaching 20 each.",
+    "reason": "Keep intended sample sizes distinct from observed sample sizes."
+  },
+  {
+    "old": "These initial settings are checked in the pilot and prespecified before formal runs.",
+    "new": "The design requires pilot assessment and parameter specification before formal runs.",
+    "reason": "State a methodological requirement without claiming completed pilot validation."
+  },
+  {
+    "old": "All attempts, retries, failures, and successful replies enter the declared call/token accounting.",
+    "new": "Call/token totals include all attempts, retries, failures, and successful replies.",
+    "reason": "Express the cost definition as a measurement rule."
+  },
+  {
+    "old": "Verify conditions throughout each run.",
+    "new": "Within-run adherence requires verification.",
+    "reason": "Replace an operational instruction with an evidential criterion."
+  },
+  {
+    "old": "call cap 64; token cap 0 (unset)",
+    "new": "call cap 64; token-limit setting 0",
+    "reason": "Preserve the recorded value without treating an implementation flag as an effective resource ceiling."
+  },
+  {
+    "old": "Match each call class.",
+    "new": "Equal temperature within each call class.",
+    "reason": "Use an experimental-control condition."
+  },
+  {
+    "old": "Count all classes and retries.",
+    "new": "All request classes and retries included.",
+    "reason": "State the scope of the required cost measurement."
+  },
+  {
+    "old": "Document support; determinism unassured.",
+    "new": "Seed-support status; determinism unassured.",
+    "reason": "Describe the required information without an author-facing instruction."
+  },
+  {
+    "old": "Final configuration records assign fixed-policy labels to",
+    "new": "Settings reported at trial completion identify fixed-policy labels for",
+    "reason": "Describe measurement timing and reported classification instead of configuration-file operations."
+  },
+  {
+    "old": "RQ1: Current alignment observations",
+    "new": "RQ1: State--code alignment",
+    "reason": "Use a research-focused heading."
+  },
+  {
+    "old": "This direction does not reproduce the older motivating claim of code regression.",
+    "new": "This direction does not support the motivating hypothesis of code regression.",
+    "reason": "Remove revision-history wording while retaining contradictory evidence."
+  },
+  {
+    "old": "unknown dependence between launches",
+    "new": "unknown dependence between trials",
+    "reason": "Use the experimental unit rather than a process-launch term."
+  },
+  {
+    "old": "These diagnostics therefore do not fill independent code-branch calibration outcomes",
+    "new": "These diagnostics do not establish calibration against independent code-branch outcomes",
+    "reason": "State the scientific evidence gap rather than data-completion status."
+  },
+  {
+    "old": "this fixed low energy selects a heavily imbalanced slice",
+    "new": "this fixed low energy yields a subset with unequal sample sizes",
+    "reason": "Replace informal data-processing jargon with the sampling limitation."
+  },
+  {
+    "old": "reports the recoverable endpoints and AUCs",
+    "new": "reports the observed endpoints and AUCs",
+    "reason": "Remove data-recovery workflow wording."
+  },
+  {
+    "old": "End-of-run configuration records verify",
+    "new": "Settings reported at trial completion specify",
+    "reason": "Preserve the distinction between reported parameters and verified runtime behavior."
+  },
+  {
+    "old": "the remaining records carry the fixed-policy configuration at",
+    "new": "the remaining observations report a fixed policy at",
+    "reason": "Use experimental-condition language without changing group membership."
+  },
+  {
+    "old": "with a deterministic record ordering resolving ties",
+    "new": "with ties resolved by a fixed ordering of observations",
+    "reason": "Describe the selection rule without data-processing jargon or an invented preregistration claim."
+  },
+  {
+    "old": "The final configuration records specify a model name",
+    "new": "Settings reported at trial completion specify a model name",
+    "reason": "Describe the provenance and timing of reported settings."
+  },
+  {
+    "old": "unresponsive service, live process (R).",
+    "new": "unresponsive service; process active (R).",
+    "reason": "Use a concise description of the observed availability failure."
+  },
+  {
+    "old": "Controlled rediscovery still to be measured",
+    "new": "Evidence limits for controlled rediscovery",
+    "reason": "Replace a to-do heading with the scope of the scientific limitation."
+  }
+]

@@ -20,7 +20,8 @@ if [[ "x$NUM_CONTAINERS" == "x" ]] || [[ "x$TIMEOUT" == "x" ]] || [[ "x$TARGET_L
 then
     echo "Usage: $0 NUM_CONTAINERS TIMEOUT TARGET FUZZER"
     echo "Example: $0 1 30 lightftp loopfuzz"
-    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all"
+    echo "         $0 1 30 proftpd stateafl"
+    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,stateafl,all"
     echo ""
     echo "Volume挂载开发模式："
     echo "  - 本地代码实时挂载到容器"
@@ -38,13 +39,14 @@ normalize_fuzzer_list() {
     for item in $(echo "$raw" | tr ',' ' '); do
         case "$item" in
             loopfuzz|LoopFuzz) canon="loopfuzz" ;;
+            stateafl|StateAFL) canon="stateafl" ;;
             aflnet|chatafl|chatafl-cl1|chatafl-cl2|all) canon="$item" ;;
             "")
                 continue
                 ;;
             *)
                 echo "[ERROR] Unknown fuzzer: $item" >&2
-                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all" >&2
+                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,stateafl,all" >&2
                 exit 2
                 ;;
         esac
@@ -83,9 +85,24 @@ export FUZZER_LIST
 # CHATAFL_NO_LLM=1：短程验证专用。跳过交互确认，直接以无 LLM 模式运行
 # （启动期富集约省 30 分钟——70 分钟级预算下 live555/forked-daapd 等慢目标
 # 的有效 fuzz 时间会 otherwise 趋近于零，见 results-live555_Sep-25_01-08-15）。
+# 无 LLM fuzzer（stateafl/aflnet）不消耗 KEY：仅当列表含 LLM fuzzer 时才检查。
+
+list_requires_llm_key() {
+    local item
+    for item in $(echo "$1" | tr ',' ' '); do
+        case "$item" in
+            loopfuzz|chatafl|chatafl-cl1|chatafl-cl2) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 if [[ "${CHATAFL_NO_LLM:-0}" == "1" ]]; then
     KEY=""
     echo "[MODE] CHATAFL_NO_LLM=1：无 LLM 模式（无富集，语法假设/种子富集/高原突破全部关闭）"
+elif ! list_requires_llm_key "$FUZZER_LIST"; then
+    KEY=""
+    echo "[MODE] fuzzer 列表（${FUZZER_LIST}）不含 LLM 组件：跳过 KEY 检查"
 elif [[ -z "${KEY}" ]]; then
     echo ""
     echo "╔══════════════════════════════════════════════════════════════╗"

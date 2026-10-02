@@ -1,0 +1,52 @@
+[
+  {
+    "old": "% Reproducible build (including BibTeX): bash build_revised.sh\n",
+    "new": "",
+    "reason": "Remove build-command commentary from manuscript source; retain original in backup."
+  },
+  {
+    "old": "% Revision 2026-09-20: C_two_papers/first_paper.md.\n",
+    "new": "",
+    "reason": "Move editorial file-path provenance entirely to the audit."
+  },
+  {
+    "old": "after the measured code surface has saturated",
+    "new": "after measured code coverage has saturated",
+    "reason": "Replace an imprecise implementation metaphor with the measured quantity."
+  },
+  {
+    "old": "message structure and live session conditions",
+    "new": "message structure and session state during execution",
+    "reason": "Describe the experimental state rather than operational availability."
+  },
+  {
+    "old": "Source-level code branches are the main evaluation surface.",
+    "new": "Source-level code branches are the primary coverage measure.",
+    "reason": "Use an explicit measurement term."
+  },
+  {
+    "old": "the proposed live provisional capacity is 64",
+    "new": "at most 64 provisional candidates may be retained simultaneously",
+    "reason": "State the capacity as a mathematical resource constraint."
+  },
+  {
+    "old": "unselected states do not automatically age in wall-clock time",
+    "new": "unselected states retain their accumulated evidence regardless of elapsed time",
+    "reason": "Describe the absence of time-based discounting precisely."
+  },
+  {
+    "old": "the inherited base weight shared by C, D, and E",
+    "new": "the common base weight of C, D, and E",
+    "reason": "Remove code-lineage wording while preserving the shared-weight definition."
+  },
+  {
+    "old": "Counterexample-guided repair is an optional feature without quantitative evaluation in this study.",
+    "new": "Counterexample-guided repair is an optional procedure without quantitative evaluation in this study.",
+    "reason": "Describe a research procedure rather than a software feature."
+  },
+  {
+    "old": "Repair remains an optional, unquantified feature.",
+    "new": "Repair remains an optional, unquantified procedure.",
+    "reason": "Use consistent methodological terminology."
+  }
+]

@@ -1,0 +1,140 @@
+FROM ubuntu:20.04
+
+# StateAFL image for forked-daapd (ProtoPair benchmark).
+# Target is compiled with StateAFL's own afl-clang-fast (stateafl/README.md),
+# without AFL_USE_ASAN, following the README build/demo convention.
+
+# Install common dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get -y update || (sleep 10 && apt-get -y update) || (sleep 15 && apt-get -y update) && \
+    apt-get -y install sudo \
+    apt-utils \
+    build-essential \
+    openssl \
+    clang \
+    graphviz-dev \
+    git \
+    autoconf \
+    libgnutls28-dev \
+    llvm \
+    python3-pip \
+    nano \
+    net-tools \
+    vim \
+    gdb \
+    netcat \
+    strace \
+    libcap-dev \
+    libpcre2-dev \
+    libpcre2-8-0 \
+    libcurl4-openssl-dev \
+    libjson-c-dev \
+    wget
+
+# Add a new user ubuntu, pass: ubuntu
+RUN groupadd ubuntu && \
+    useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+
+RUN chmod 777 /tmp
+
+RUN pip3 install gcovr==4.2
+
+# Use ubuntu as default username
+USER ubuntu
+WORKDIR /home/ubuntu
+
+# Import environment variable to pass as parameter to make (e.g., to make parallel builds with -j)
+ARG MAKE_OPT
+
+# Set up StateAFL (stateafl/README.md: core, then llvm_mode with LLVM_CONFIG)
+COPY --chown=ubuntu:ubuntu stateafl stateafl
+RUN cd stateafl && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && LLVM_CONFIG=llvm-config make $MAKE_OPT
+
+# Set up environment variables for StateAFL
+ENV WORKDIR="/home/ubuntu/experiments"
+ENV STATEAFL="/home/ubuntu/stateafl"
+# Append STATEAFL to PATH (like the aflnet images). Do NOT prepend: the AFL
+# build creates an "as -> afl-as" symlink inside $STATEAFL that would shadow
+# the system assembler and break plain gcc (gcov builds, configure probes).
+ENV PATH="${PATH}:${STATEAFL}:/home/ubuntu/.local/bin:${WORKDIR}"
+ENV AFL_PATH="${STATEAFL}"
+ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+    AFL_SKIP_CPUFREQ=1 \
+    AFL_NO_AFFINITY=1
+
+RUN mkdir $WORKDIR
+
+USER root
+RUN apt-get -y update || (sleep 10 && apt-get -y update) || (sleep 15 && apt-get -y update) && \
+    apt-get -y install \
+    bison \
+    flex \
+    autotools-dev autoconf automake libtool gettext gawk \
+    gperf antlr3 libantlr3c-dev libconfuse-dev libunistring-dev libsqlite3-dev \
+    libavcodec-dev libavformat-dev libavfilter-dev libswscale-dev libavutil-dev \
+    libasound2-dev libmxml-dev libgcrypt20-dev libavahi-client-dev zlib1g-dev \
+    libevent-dev libplist-dev libsodium-dev libjson-c-dev libwebsockets-dev \
+    libcurl4-openssl-dev avahi-daemon
+USER ubuntu
+
+COPY --chown=ubuntu:ubuntu forked-daapd.patch ${WORKDIR}/forked-daapd.patch
+COPY --chown=ubuntu:ubuntu forked-daapd-gcov.patch ${WORKDIR}/forked-daapd-gcov.patch
+
+# Download and compile forked-daapd for StateAFL fuzzing (same commit + patch as the aflnet image)
+RUN cd $WORKDIR && \
+    git clone https://github.com/ejurgensen/forked-daapd.git && \
+    cd forked-daapd && \
+    git checkout 2ca10d9 && \
+    patch -p1 < $WORKDIR/forked-daapd.patch && \
+    autoreconf -i && \
+    CC=$STATEAFL/afl-clang-fast CFLAGS="-DSQLITE_CORE" ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var  --disable-mpd --disable-itunes --disable-lastfm --disable-spotify --disable-verification  --disable-shared --enable-static && \
+    make -C src/ SMARTPL2SQL.c SMARTPL.c DAAP2SQL.c DAAPLexer.c RSPLexer.c RSP2SQL.c && \
+    make clean all $MAKE_OPT
+
+# Download and compile forked-daapd for code coverage analysis
+RUN cd $WORKDIR && \
+    git clone https://github.com/ejurgensen/forked-daapd.git forked-daapd-gcov && \
+    cd forked-daapd-gcov && \
+    git checkout 2ca10d9 && \
+    patch -p1 < $WORKDIR/forked-daapd.patch && \
+    patch -p1 < $WORKDIR/forked-daapd-gcov.patch && \
+    autoreconf -i && \
+    CFLAGS="-DSQLITE_CORE -fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var  --disable-mpd --disable-itunes --disable-lastfm --disable-spotify --disable-verification  --disable-shared --enable-static && \
+    make -C src/ SMARTPL2SQL.c SMARTPL.c DAAP2SQL.c DAAPLexer.c RSPLexer.c RSP2SQL.c && \
+    make clean all $MAKE_OPT
+
+# Setting up the environment using root account
+USER root
+
+RUN touch /home/ubuntu/experiments/forked-daapd.log && \
+    chown ubuntu.root /home/ubuntu/experiments/forked-daapd.log
+
+RUN touch /var/log/forked-daapd.log && \
+    chown ubuntu.root /var/log/forked-daapd.log
+
+RUN touch /var/run/forked-daapd.pid && \
+    chown ubuntu.root /var/run/forked-daapd.pid
+
+RUN update-rc.d avahi-daemon defaults
+
+RUN mkdir /usr/share/forked-daapd/ && \
+    cp -R $WORKDIR/forked-daapd/htdocs /usr/share/forked-daapd/htdocs
+
+RUN ln -s $WORKDIR/MP3 /tmp/MP3
+
+#The script needs to launch dbus and avahi-daemon using sudo
+RUN echo "ALL ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Switch back to ubuntu account
+USER ubuntu
+RUN mkdir ${WORKDIR}/db
+
+COPY --chown=ubuntu:ubuntu in-daap ${WORKDIR}/in-daap
+# StateAFL parses requests with the generic length-prefixed (replayable) format
+COPY --chown=ubuntu:ubuntu in-daap-replay ${WORKDIR}/in-daap-replay
+COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+COPY --chown=ubuntu:ubuntu MP3 ${WORKDIR}/MP3
+COPY --chown=ubuntu:ubuntu forked-daapd.conf ${WORKDIR}/forked-daapd.conf

@@ -1,0 +1,286 @@
+--- before/main.revised.tex
++++ after/main.revised.tex
+@@ -1,7 +1,5 @@
+ % !TEX root = main.revised.tex
+ % !TEX program = latexmk
+-% Reproducible build (including BibTeX): bash build_revised.sh
+-% Revision 2026-09-20: C_two_papers/first_paper.md.
+ % Unmeasured outcomes are discussed as evidence limits, not result placeholders.
+ % Editorial provenance is maintained outside the typeset manuscript.
+ \pdfminorversion=7
+@@ -84,13 +82,13 @@
+ \section{Introduction}
+ Stateful protocol fuzzing must discover useful interaction sequences as well as useful message contents. A server can accept a request only after earlier exchanges establish a session, authenticate a client, or create a resource. AFLNet uses responses to construct an inferred protocol state machine (IPSM), making protocol-visible feedback available without a target-specific internal-state extractor~\cite{aflnet}. Limited target-specific knowledge introduces an abstraction boundary: a response code or sequence is evidence about observable behavior, rather than an identifier of the server's complete semantic state.
+ 
+-StateAFL already identifies limitations of response-derived state abstractions and uses memory observations to infer server states~\cite{stateafl}. The fact that responses can misrepresent internal progress is therefore established background. Our question is how a fuzzer retaining a response-visible abstraction should decide, during a campaign, whether a particular state signal is useful enough to justify further exploration. A new IPSM state edge can accompany a previously unseen code branch, reproduce an already explored rejection path, or distinguish responses after the measured code surface has saturated. These outcomes should not receive identical evidential weight.
+-
+-Assistance from large language models (LLMs) makes this distinction consequential for queue management. ChatAFL demonstrates that LLMs can derive protocol structures and propose interaction sequences~\cite{chatafl}. A generated request is nevertheless a hypothesis about both message structure and live session conditions. If a proposal is retained indefinitely because it produces a new response-derived state, the fuzzer may repeatedly mutate an input whose apparent novelty has little downstream code value. Durable queue membership represents a continuing allocation of execution resources.
++StateAFL already identifies limitations of response-derived state abstractions and uses memory observations to infer server states~\cite{stateafl}. The fact that responses can misrepresent internal progress is therefore established background. Our question is how a fuzzer retaining a response-visible abstraction should decide, during a campaign, whether a particular state signal is useful enough to justify further exploration. A new IPSM state edge can accompany a previously unseen code branch, reproduce an already explored rejection path, or distinguish responses after measured code coverage has saturated. These outcomes should not receive identical evidential weight.
++
++Assistance from large language models (LLMs) makes this distinction consequential for queue management. ChatAFL demonstrates that LLMs can derive protocol structures and propose interaction sequences~\cite{chatafl}. A generated request is nevertheless a hypothesis about both message structure and session state. If a proposal is retained indefinitely because it produces a new response-derived state, the fuzzer may repeatedly mutate an input whose apparent novelty has little downstream code value. Durable queue membership represents a continuing allocation of execution resources.
+ 
+ Three target families motivate the investigation. Forked-daapd exposes DAAP/DACP behavior through HTTP status responses, so response distinctions may overstate useful code progress. Lighttpd1 can execute different code paths under the same HTTP status, so response novelty may understate code progress. LightFTP motivates examining continuing IPSM growth after code-coverage saturation. These hypotheses motivate the evaluation; they are not assumed to hold in the present observations. Section~\ref{sec:motivation} separates them from the available measurements.
+ 
+-LoopFuzz is studied here as an integrated controller design with a retrospective boundary analysis. Its intended admission sequence checks proposal structure, executes a bounded trial, and separates response acceptability, reachability, code novelty, and IPSM novelty. The design assigns code-supported candidates to durable admission and state-only candidates to provisional validation. An exploratory scheduling component uses discounted productivity estimates to relate response-state selection to subsequent code progress. The available records permit descriptive assessment of these signals, but do not establish that every run satisfied the complete decision criteria.
++LoopFuzz is studied here as an integrated controller design with a retrospective boundary analysis. Its intended admission sequence checks proposal structure, executes a bounded trial, and separates response acceptability, reachability, code novelty, and IPSM novelty. The design assigns code-supported candidates to durable admission and state-only candidates to provisional validation. An exploratory scheduling component uses discounted productivity estimates to relate response-state selection to subsequent code progress. The observations describe these signals without establishing full adherence to the decision criteria in every run.
+ 
+ The study contributes a controller specification and descriptive evidence about its validation boundaries:
+ \begin{enumerate}
+@@ -170,14 +168,14 @@
+ 
+ \section{Evidence-Calibrated Controller}
+ \label{sec:design}
+-This section defines the admission and calibration criteria. Section~\ref{sec:implementation} examines whether the available evidence establishes that these criteria were satisfied. A formal decision rule alone does not demonstrate experimental adherence.
++This section defines the admission and calibration criteria. Section~\ref{sec:implementation} examines whether the available evidence establishes that these criteria were satisfied. A decision rule alone does not establish experimental adherence.
+ 
+ \subsection{LLM-generated proposals}
+ The model receives permitted RFC fragments, seed traces, and observed interaction summaries and returns candidate requests or bounded scheduling hints. Each candidate is linked to its source state, intended target/frontier, prompt, and model response. Message-field hypotheses remain proposals rather than verified protocol grammars.
+ 
+-The information policy excludes CVE identifiers, security advisories, exploit inputs, and patch contents. It specifies the documentation and observed responses available to the model. Adaptive campaigns may produce different prompts despite identical information policies; prompts and responses must therefore remain traceable.
+-
+-Outputs that propose requests pass through admission. Outputs that only guide scheduling require structural, state-consistency, and seed-consistency checks and cannot insert durable inputs. Parsing or transport failure does not create a positive admission decision. All attempts, retries, failures, and successful replies enter the declared call/token accounting.
++The information policy specifies permitted documentation and observed responses, excluding CVE identifiers, security advisories, exploit inputs, and patch contents. Adaptive campaigns may produce different prompts despite identical information policies; prompts and responses must therefore remain traceable.
++
++Request proposals undergo admission; scheduling proposals require structural, state-consistency, and seed-consistency checks and cannot insert durable inputs. Parsing or transport failure does not create a positive admission decision. Call/token totals include all attempts, retries, failures, and successful replies.
+ 
+ \subsection{Admission predicates and evidence separation}
+ For candidate $x$, $P(x)$ checks the prescribed format, message structure, required fields, lengths, and terminators before execution. A bounded trial then evaluates response acceptability $U(x)$ and reachability $R(x)$: arrival at a declared target/frontier or escape from a recorded rejection sink. \namedref{Table}{tab:predicates} gives observable evidence and decision criteria.
+@@ -190,7 +188,7 @@
+ &\hspace{18mm}\text{code-coverage entry}\},\label{eq:gcode}\\
+ \gstate(x)&=\mathbf{1}\{\text{new IPSM node, state edge, or path}\}.\label{eq:gstate}
+ \end{align}
+-Favored status must be grounded in code coverage; merely being queued or state-novel does not qualify. Source-level code branches are the main evaluation surface. If coverage measurement observes code edges instead, that reward definition must be prespecified and reported separately. Hit-count novelty is a separate sensitivity condition. Pre-trial coverage and IPSM observations identify new gains.
++Favored status must be grounded in code coverage; merely being queued or state-novel does not qualify. Source-level code branches are the primary coverage measure. A code-edge reward requires a prespecified, separately reported definition. Hit-count novelty is a separate sensitivity condition. Pre-trial coverage and IPSM observations identify new gains.
+ 
+ \begin{table*}[!tbp]
+ \centering\small
+@@ -221,9 +219,9 @@
+ \end{equation}
+ IPSM novelty alone is never sufficient for durable promotion. These logical conditions do not assume statistical independence among predicates.
+ 
+-A provisional entry receives at most $H=64$ descendant executions and a local validation deadline of 30 seconds, whichever is exhausted first; the proposed live provisional capacity is 64. These initial settings are checked in the pilot and prespecified before formal runs. Budget checks occur before each descendant execution. Exhaustion expires the entry from active scheduling while preserving the observations supporting that decision. Campaign termination before the validation horizon is censoring, not unproductive expiration.
+-
+-A descendant supplying qualifying code evidence permits promotion of the replayable parent sequence and productive descendant, subject to the same structural, response, and reachability checks. The record identifies the first productive descendant and the candidate whose status changes. Each code discovery receives credit once, linked to its execution and candidate ancestry.
++A provisional entry receives at most $H=64$ descendant executions and a local validation deadline of 30 seconds, whichever is exhausted first; the proposed provisional capacity is 64. The design requires pilot assessment and parameter specification before formal runs. Budget checks occur before each descendant execution. Budget exhaustion removes the entry from active scheduling while preserving its supporting evidence. Campaign termination before the validation horizon is censoring, not unproductive expiration.
++
++A descendant supplying qualifying code evidence permits promotion of the replayable parent sequence and productive descendant, subject to the same structural, response, and reachability checks. The observations identify the first productive descendant and the candidate promoted. Each code discovery is attributed once to its execution and candidate ancestry.
+ 
+ Productivity estimates select where to propose and continue exploration; they do not independently relax Equation~\ref{eq:admission}. Fixed and calibrated arms use identical admission rules and provisional budgets. Calibration thus affects admission outcomes indirectly through exploration opportunities, preserving the causal scheduling comparison.
+ 
+@@ -302,9 +300,9 @@
+ \end{align}
+ The proposed discount is $\gamma=0.995$, with sensitivity values $\{0.99,0.995,1.0\}$. Parameters are prespecified after the pilot and before inspecting formal results. At $\gamma=1$, updates reduce to cumulative Beta--Bernoulli counts. For $\gamma<1$, excess prior counts are discounted to respond to changing productivity as coverage saturates.
+ 
+-The term productivity posterior denotes this discounted working model. With discounting it is not the exact posterior of a stationary Bernoulli process. Discounting occurs on completed episodes for the selected state; unselected states do not automatically age in wall-clock time. Episode-indexed updating and limited initial evidence therefore constrain applicability.
+-
+-Every calibration metric uses the pre-update mean recorded before reward. Post-update predictions would leak the outcome into their own evaluation. Thompson samples are recorded separately and are not substituted for predicted Bernoulli probabilities in reliability calculations.
++The term productivity posterior denotes this discounted working model. With discounting it is not the exact posterior of a stationary Bernoulli process. Discounting occurs on completed episodes for the selected state; elapsed time alone does not discount unselected states. Episode-indexed updating and limited initial evidence therefore constrain applicability.
++
++Every calibration metric uses the pre-update mean recorded before reward. Post-update predictions would leak the outcome. Thompson samples remain separate from the Bernoulli probabilities used for reliability assessment.
+ 
+ \subsection{Calibrated scheduling}
+ The topology term favors underexplored observed states:
+@@ -316,7 +314,7 @@
+ 1,&\deg^+(s)>3.
+ \end{cases}
+ \end{equation}
+-Only reachable states with eligible seeds participate. $\deg^+(s)$ counts outgoing IPSM state edges, not code branches. Let $B(s)$ denote the inherited base weight shared by C, D, and E. Define
++Only reachable states with eligible seeds participate. $\deg^+(s)$ counts outgoing IPSM state edges, not code branches. Let $B(s)$ denote the common base weight of C, D, and E. Define
+ \begin{equation}
+ \operatorname{Frontier}(s)=B(s)F(s).
+ \end{equation}
+@@ -380,12 +378,12 @@
+ \subsection{Intervention policy and optional repair}
+ Plateau interventions follow prespecified detection, timing, and retry rules. The baseline trigger combines IPSM state-edge growth with a sequence of unproductive selections. This dependence on the state proxy is held constant across the causal comparisons; scheduling calibration does not itself validate the intervention trigger.
+ 
+-The confirmatory C/D/E design requires repair to be disabled. Counterexample-guided repair is an optional feature without quantitative evaluation in this study. The available observations do not verify repair status in every run, and no effectiveness or cost benefit is attributed to it.
++The confirmatory C/D/E design requires repair to be disabled. Counterexample-guided repair is an optional procedure without quantitative evaluation in this study. The available observations do not verify repair status in every run, and no effectiveness or cost benefit is attributed to it.
+ 
+ 
+ \section{Experimental Fidelity and Measurement}
+ \label{sec:implementation}
+-The evaluated system can represent code and state novelty separately, provisionally retain candidates, and condition state selection on productivity estimates. The available observations do not establish that these mechanisms operated as specified in every trial. Experimental fidelity therefore depends on both effective experimental conditions and the sequence of admission decisions.
++The evaluated system can represent code and state novelty separately, provisionally retain candidates, and condition state selection on productivity estimates. The available observations do not establish that these mechanisms operated as specified in every trial. Experimental fidelity requires verified conditions and admission order.
+ 
+ Candidate retention may precede behavioral verification. A subsequent $U/R$ failure need not reverse that decision, so strict adherence to Equation~\ref{eq:admission} is not established. Coverage-based retention may also reflect execution-frequency changes rather than newly covered code branches. Similarly, evaluating provisional budgets only after an entire mutation cycle can exceed the prescribed limits.
+ 
+@@ -407,7 +405,7 @@
+ New-code reward & Execution-frequency novelty may contribute. & Distinguish branches, frequency, and retention. \\
+ Fixed-energy episodes & Variable energy; zero executions. & Unequal opportunities. \\
+ Strict provisional budget & Checks after mutation cycles. & 64-mutation/30-second limits may be exceeded. \\
+-Verified run conditions & Initial and effective settings may differ. & Verify conditions throughout each run. \\
++Verified run conditions & Initial and effective settings may differ. & Within-run adherence requires verification. \\
+ Total call/token caps & 64-call cap: plateau only; tokens unverified. & Total-budget fairness unverified. \\
+ Repair off in C/D/E & Repair status incompletely verified. & Arm labels do not prove adherence. \\
+ \bottomrule
+@@ -415,7 +413,7 @@
+ \end{table*}
+ 
+ \subsection{Measurement definitions and correspondence}
+-The measurement framework distinguishes experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \namedref{Table}{tab:events} specifies the corresponding evidence. Each observation identifies its trial, measurement definition, order, and time. CVE identities remain inaccessible during testing. Missing observations are not assigned zero values. Conditions distinguish target/fuzzer and model/service versions, sampling parameters, random seeds, and CPU/memory limits. Admission measurements retain reasons, state sequences, and separate pre/post code and IPSM counts. Episodes retain pre/post $\alpha,\beta$, the pre-update mean, Thompson sample, and frontier/selection scores.
++Measurements distinguish experimental conditions, candidate generation, admission trials, provisional outcomes, scheduling episodes, and security outcomes; optional repair adds a seventh observation class. \namedref{Table}{tab:events} specifies the corresponding evidence. Each observation identifies its trial, measurement definition, order, and time. CVE identities remain inaccessible during testing. Missing observations are not assigned zero values. Conditions distinguish target/fuzzer and model/service versions, sampling parameters, random seeds, and CPU/memory limits. Admission measurements retain reasons, state sequences, and separate pre/post code and IPSM counts. Episodes retain pre/post $\alpha,\beta$, the pre-update mean, Thompson sample, and frontier/selection scores.
+ 
+ \begin{table*}[!tbp]
+ \centering\footnotesize
+@@ -444,9 +442,9 @@
+ 
+ \subsection{Research questions}
+ \begin{enumerate}
+-\item \textbf{RQ1: State/code alignment.} How reliably does response-derived state novelty predict downstream code progress across targets and campaign phases? Measure IPSM state-edge/code-branch alignment, episode productivity, calibration, and boundary cases.
+-\item \textbf{RQ2: Admission.} Does execute-before-promote reduce durable queue pollution and improve downstream productivity under matched proposal and scheduling conditions? Compare D with C.
+-\item \textbf{RQ3: Calibration.} Does online productivity calibration improve scheduling over a fixed response-state heuristic? Compare E with D.
++\item \textbf{RQ1: State/code alignment.} How reliably does response-derived state novelty predict downstream code progress across targets and campaign phases? Outcomes include IPSM state-edge/code-branch alignment, episode productivity, calibration, and boundary cases.
++\item \textbf{RQ2: Admission.} Does execute-before-promote reduce durable queue pollution and improve downstream productivity under matched proposal and scheduling conditions? The intended contrast is D--C.
++\item \textbf{RQ3: Calibration.} Does online productivity calibration improve scheduling over a fixed response-state heuristic? The intended contrast is E--D.
+ \item \textbf{RQ4: Historical vulnerability rediscovery.} Does the controller improve reproducible rediscovery under independent reached/triggered oracles and patch validation?
+ \item \textbf{RQ5: Cost and applicability.} What execution-time, throughput, and LLM costs arise, and under which target characteristics does the method fail to help?
+ \end{enumerate}
+@@ -500,9 +498,9 @@
+ 
+ Runs use isolated execution environments, local-network communication, and AFL-based coverage measurement. \namedref{Table}{tab:targets} reports the declared source versions, seed protocols, dictionaries, communication settings, and reset evidence. These declarations do not independently establish the identity of every tested program or the effective reset conditions throughout each run.
+ 
+-Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. Trial order is randomized within machine blocks and balanced across machines and time periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost. Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\cite{greenbenchmark2023}. The proposed analysis therefore distinguishes allocated CPU-hours, measured consumption, and actual search exposure.
+-
+-Each arm initially receives 10 independent 24-hour runs per target; C/D/E receive 10 more, reaching 20 each. For nine targets and one allocated CPU per run, the stages require 10,800 and 6,480 CPU-hours, totaling 17,280 before overhead/failures. These are planned resources, not measured usage. A four-target pilot covers Forked-daapd, Lighttpd1, LightFTP, and ProFTPD or Pure-FTPd with five arms, three runs, and four to six hours each. Pilot observations are excluded from formal inference.
++Each causal comparison requires identical software versions, compilation settings, coverage instrumentation, seeds, replay procedures, and reset policies. The confirmatory design randomizes trial order within machine blocks and balances trials across machines and periods. Random seeds, resource allocations, measured CPU consumption, resource contention, and execution rates characterize each trial. Allocated resources do not establish equal consumption; initialization, model waiting, validation, mutation, and termination all contribute to experimental cost. Resource-efficient benchmarking also makes the cost of obtaining reliable comparisons an explicit concern~\cite{greenbenchmark2023}. The proposed analysis therefore distinguishes allocated CPU-hours, measured consumption, and actual search exposure.
++
++The design allocates 10 independent 24-hour runs per target to each arm, plus 10 for C/D/E, reaching 20 each. For nine targets and one allocated CPU per run, the stages require 10,800 and 6,480 CPU-hours, totaling 17,280 before overhead/failures. These are planned resources, not measured usage. A four-target pilot covers Forked-daapd, Lighttpd1, LightFTP, and ProFTPD or Pure-FTPd with five arms, three runs, and four to six hours each. Pilot observations are excluded from formal inference.
+ 
+ An intention-to-run analysis accounts for every planned and initiated trial, including completion, timeout, target or fuzzer failure, experimental environment or measurement failure, exclusion, and repetition, with reasons linking repeated attempts. Low coverage never justifies exclusion. Only prespecified experimental environment failures permit repetition. Interrupted observations are not extended to 24 hours; they contribute failure or censoring outcomes according to the estimand, with sensitivity analysis. Restriction to completed trials does not constitute intention-to-run analysis.
+ 
+@@ -518,12 +516,12 @@
+ Parameter & Recorded value & Comparison requirement \\
+ \midrule
+ Model / version / service & codex-auto-review; cctq.ai & Same resolved version; name insufficient. \\
+-Temperature by call class & grammar 0.5; plateau 1.2 & Match each call class. \\
++Temperature by call class & grammar 0.5; plateau 1.2 & Equal temperature within each call class. \\
+ Top-$p$ / presence/frequency penalties & top-$p$ 1.0; penalties unrecorded & Explicit values or defaults. \\
+ Output tokens per attempt & 4,096 & Same cap; include truncation/failures. \\
+-Attempted-call / total-token caps & call cap 64; token cap 0 (unset) & Count all classes and retries. \\
++Attempted-call / total-token caps & call cap 64; token-limit setting 0 & All request classes and retries included. \\
+ Timeout / retry policy & 120\,s request, 30\,s connect, 60\,s low-speed abort; 2--5 retries by call class, 2\,s apart; nonrecoverable service failures end further attempts & Same policy; include waits/failures. \\
+-Model seed / support & none specified in model requests & Document support; determinism unassured. \\
++Model seed / support & none specified in model requests & Seed-support status; determinism unassured. \\
+ Prompt corpus / template & no independent corpus/template version; prompts identifiable; template tied to fuzzer version & Same information policy; traceable exchanges. \\
+ Plateau cadence / threshold / reset & state-edge threshold 512; cadence unrecorded & Same intervention/state-growth criteria. \\
+ \bottomrule
+@@ -549,24 +547,24 @@
+ \begin{equation}
+ \mathrm{BS}=\frac{1}{n}\sum_{t=1}^{n}(p_t-r_t)^2.
+ \end{equation}
+-We adapt the binned expected calibration error (ECE) of Guo et al.~\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count. This evaluates event probabilities rather than predicted-class confidence. Bin counts accompany the estimate; empty bins remain unestimated. Reliability plots and precision--recall analysis~\cite{davis2006pr} accompany the BS. We report non-interpolated average precision (AP): precision at each distinct score threshold weighted by its recall increment. This quantity differs from trapezoidal precision--recall area; it is left undefined when there are no positive episodes. Compare the BS to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases.
++We adapt the binned expected calibration error (ECE) of Guo et al.~\cite{guo2017calibration} to binary episode productivity: within ten fixed equal-width bins, we compare the mean predicted reward probability with the observed reward frequency and weight each absolute gap by its episode count. This evaluates event probabilities rather than predicted-class confidence. Bin counts accompany the estimate; empty bins remain unestimated. Reliability plots and precision--recall analysis~\cite{davis2006pr} accompany the BS. We report non-interpolated average precision (AP): precision at each distinct score threshold weighted by its recall increment. This quantity differs from trapezoidal precision--recall area; it is left undefined when there are no positive episodes. A prequential base-rate predictor provides a BS reference because rare rewards can favor uninformative near-zero predictions. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases.
+ 
+ Episodes within a run are dependent, so inferential uncertainty requires run-level clustering and target-specific analysis. Posterior trajectories and state weights remain descriptive diagnostics. A state/code association would require linked measurements within target and phase; pooled counts across unlike programs cannot establish that relationship.
+ 
+ \subsection{Coverage and statistical analysis}
+-Primary coverage outcomes are code-branch AUC over 24 hours and final code-branch count. AUC uses each run's cumulative time series with a common interpolation convention and instrumentation, in branch-hours. Endpoints recorded at unequal durations are not substituted. Time to 95\% of a target-specific common reference endpoint uses a threshold prespecified before formal comparisons; unreached thresholds are censored.
+-
+-Per target, report mean, median and dispersion. Bootstrap resampling~\cite{efron1979} operates on whole runs; the percentile 95\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. For independent run-level contrasts, report two-sided Mann--Whitney U tests~\cite{mann1947} with ties accounted for, and Cliff's $\delta$~\cite{cliff1993}, oriented as $\Pr(X_{\rm treatment}>X_{\rm comparator})-\Pr(X_{\rm treatment}<X_{\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. Apply the Benjamini--Hochberg procedure~\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Report adjusted values without claiming unconditional false-discovery-rate control. A confirmatory admission-mechanism family would contain nine D--C productivity contrasts; these are not estimated here. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator.
+-
+-Cross-target summaries use equal-weight target effects and a hierarchical bootstrap resampling targets, then runs within targets. Raw branch counts from different programs or individual executions are not pooled as independent samples. Target regressions and uncertainty accompany aggregates. A future historical time-to-trigger analysis would use Kaplan--Meier estimates~\cite{kaplan1958} under non-informative right censoring, alongside CVE-specific deadline recall. Fuzzer-failure interruptions are distinguished because censoring may be informative.
++The confirmatory outcomes are code-branch AUC over 24 hours and final code-branch count. AUC uses each run's cumulative time series with a common interpolation convention and instrumentation, in branch-hours. Endpoints recorded at unequal durations are not substituted. Time to 95\% of a target-specific common reference endpoint uses a threshold prespecified before formal comparisons; unreached thresholds are censored.
++
++The confirmatory analysis specifies target-specific means, medians, and dispersion. Bootstrap resampling~\cite{efron1979} operates on whole runs; the percentile 95\% confidence intervals (CIs) and resampling hierarchy are analysis choices specified here. Planned independent run-level contrasts use two-sided Mann--Whitney U tests~\cite{mann1947} with ties accounted for, and Cliff's $\delta$~\cite{cliff1993}, oriented as $\Pr(X_{\rm treatment}>X_{\rm comparator})-\Pr(X_{\rm treatment}<X_{\rm comparator})$. The rank test is not interpreted as a test of median differences alone. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. The design specifies the Benjamini--Hochberg procedure~\cite{benjamini1995} at nominal $q=0.05$. Its original guarantee assumes independent test statistics; shared comparator runs and correlated coverage outcomes do not establish that condition here. Adjusted values would not imply unconditional false-discovery-rate control. A confirmatory admission-mechanism family would contain nine D--C productivity contrasts; these are not estimated here. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator.
++
++Confirmatory cross-target summaries would use equal-weight target effects and a hierarchical bootstrap resampling targets, then runs within targets. Raw branch counts from different programs or individual executions are not pooled as independent samples. Target regressions and uncertainty accompany aggregates. A future historical time-to-trigger analysis would use Kaplan--Meier estimates~\cite{kaplan1958} under non-informative right censoring, alongside CVE-specific deadline recall. Fuzzer-failure interruptions are distinguished because censoring may be informative.
+ 
+ 
+ \section{Available Evidence and Results}
+ \label{sec:results}
+-The evaluation analyzes recorded outcomes from the benchmark and ablation studies. Results obtained under earlier configurations do not establish the effectiveness of the proposed controller. Result tables contain observed quantities; unmeasured effects are described as evidence limitations and are not assigned zero values.
++The analysis covers benchmark and ablation outcomes. Results obtained under earlier configurations do not establish the effectiveness of the proposed controller. Tables report observed quantities; unmeasured effects remain limitations rather than zero-valued results.
+ 
+ \subsection{Sample composition and observation periods}
+-The dataset contains 94 AFLNet (A), 91 ChatAFL (B), 104 benchmark LoopFuzz (D), 90 direct-admission (C), and 91 calibrated (E) observations. The sensitivity conditions contain 81 observations at $\gamma=0.99$ and 91 at $\gamma=1.0$. Final configuration records assign fixed-policy labels to 17 of the 90 nominal C observations and 12 of the 91 nominal E observations; the $\gamma=0.99$ and $\gamma=1.0$ groups contain 15 and 12 such records. Within C, all-durable, no-rejection outcomes corroborate direct admission. Posterior observations occur in every LoopFuzz condition and therefore do not distinguish E or the sensitivity groups. Nominal arms also contain multiple program versions: D four (78/12/9/5 runs), C two (83/7), and E two (71/20); each sensitivity group uses one version. Original group assignments are retained, but correspondence to effective conditions remains uncertain. All observations are included without assuming independence. The nominal target is ten trials per condition; means and sample SDs use observed values only, with actual $n$ and no imputation.
++The dataset contains 94 AFLNet (A), 91 ChatAFL (B), 104 benchmark LoopFuzz (D), 90 direct-admission (C), and 91 calibrated (E) observations. The sensitivity conditions contain 81 observations at $\gamma=0.99$ and 91 at $\gamma=1.0$. Settings reported at trial completion identify fixed-policy labels for 17 of the 90 nominal C observations and 12 of the 91 nominal E observations; the $\gamma=0.99$ and $\gamma=1.0$ groups contain 15 and 12 such records. Within C, all-durable, no-rejection outcomes corroborate direct admission. Posterior observations occur in every LoopFuzz condition and therefore do not distinguish E or the sensitivity groups. Nominal arms also contain multiple program versions: D four (78/12/9/5 runs), C two (83/7), and E two (71/20); each sensitivity group uses one version. Original group assignments are retained, but correspondence to effective conditions remains uncertain. All observations are included without assuming independence. The nominal target is ten trials per condition; means and sample SDs use observed values only, with actual $n$ and no imputation.
+ 
+ All 104 benchmark LoopFuzz D observations are reported as completed; \namedref{Table}{tab:observed_inventory} gives target-specific counts. The interruption column identifies a reported termination category; it does not establish memory exhaustion or vulnerability activation. The reported duration measures active fuzzing rather than total CPU consumption or the entire experimental period.
+ 
+@@ -577,14 +575,14 @@
+ 
+ \namedref{Table}{tab:observed_endpoints} includes every available A and D observation. Code-branch and IPSM state-edge endpoints represent the terminal measurements from each trial. For all 642 experimental records, the final trajectory measurement agrees with the corresponding endpoint. These are descriptive observations at unequal durations, rather than matched 24-hour outcomes. Sample SDs describe variation among the available observations; no causal effect or significance claim is attached to the endpoint differences.
+ 
+-\subsection{RQ1: Current alignment observations}
+-Forked-daapd has mean code-branch endpoints of $2330.8\pm60.0$ for AFLNet and $2670.2\pm87.3$ for LoopFuzz, while IPSM state-edge endpoints are $21.6\pm2.1$ and $22.8\pm2.9$. This direction does not reproduce the older motivating claim of code regression. The difference cannot be attributed to calibration, which is not established as active.
++\subsection{RQ1: State--code alignment}
++Forked-daapd has mean code-branch endpoints of $2330.8\pm60.0$ for AFLNet and $2670.2\pm87.3$ for LoopFuzz, while IPSM state-edge endpoints are $21.6\pm2.1$ and $22.8\pm2.9$. This direction does not support the motivating hypothesis of code regression. The difference cannot be attributed to calibration, which is not established as active.
+ 
+ Lighttpd1 increases in both endpoint metrics: code branches from $1940.7\pm21.2$ to $2126.7\pm15.7$, and IPSM state edges from $17.7\pm2.5$ to $28.9\pm2.7$. These aggregate observations do not demonstrate the hypothesized small state expansion with hidden code progress. LightFTP has near-equal code endpoints, $71.0\pm0.0$ versus $71.7\pm2.3$, with larger LoopFuzz IPSM state-edge counts, $187.3\pm11.3$ versus $207.0\pm17.0$. That pattern motivates a saturation analysis but does not establish the full time course or identify individual misleading states.
+ 
+-All three cases require common experimental versions, matched observation periods, and linked state/execution measurements before supporting a mechanism claim. \namedref{Figure}{fig:reliability} instead examines a narrower estimand: agreement between pre-update probabilities and the binary reward associated with coverage-based retention, separately by target. All 32,946 E observations satisfy probability, Beta-mean, binary-response, uniqueness, temporal-order, and within-episode discounted-update consistency checks. Excluding 6,562 episodes with no mutations leaves 26,384 episodes from 91 runs. Three discontinuities between successive posterior estimates are retained; missing history is not reconstructed. These measurements alone do not verify that every run followed the intended scheduling policy.
+-
+-\namedref{Table}{tab:logged_calibration} reports the BS, ten-bin ECE, and non-interpolated AP; lower BS/ECE is better. Its prequential reference uses only past included same-run rewards with Beta(1,1) smoothing. Percentile 95\% CIs use 2,000 bootstrap resamples of whole runs within each target; they do not resolve unknown dependence between launches. Empty bins have no estimate, and bins represented by fewer than two runs have no CI. In \namedref{Figure}{fig:reliability}, points pair the bin-mean pre-update prediction with reward frequency; the diagonal denotes perfect calibration. Lower strips give positive-mutation episode counts, with actual runs $n$, episodes $m$, and nominal $N=10$. The observed reward reflects coverage-based retention, which may include execution-frequency novelty; positive mutation counts do not establish complete fixed-energy episodes. These diagnostics therefore do not fill independent code-branch calibration outcomes; the equal-energy subset rows in \namedref{Table}{tab:mechanisms} condition the same proxy reward on one fixed energy and inherit these limits.
++Mechanism claims require matched versions and observation periods, with linked state/execution measurements, for all three cases. \namedref{Figure}{fig:reliability} examines target-specific agreement between pre-update probabilities and binary rewards for coverage-based retention. All 32,946 E observations satisfy probability, Beta-mean, binary-response, uniqueness, temporal-order, and within-episode discounted-update consistency checks. Excluding 6,562 episodes with no mutations leaves 26,384 episodes from 91 runs. Three discontinuities between successive posterior estimates are retained; missing history is not reconstructed. These measurements do not establish policy adherence in every run.
++
++\namedref{Table}{tab:logged_calibration} reports the BS, ten-bin ECE, and non-interpolated AP; lower BS/ECE is better. Its prequential reference uses only past included same-run rewards with Beta(1,1) smoothing. Percentile 95\% CIs use 2,000 bootstrap resamples of runs within each target; dependence between trials remains unresolved. Empty bins are unestimated; CIs require at least two runs per bin. In \namedref{Figure}{fig:reliability}, points pair the bin-mean pre-update prediction with reward frequency; the diagonal denotes perfect calibration. Lower strips give positive-mutation episode counts, with actual runs $n$, episodes $m$, and nominal $N=10$. Rewards measure coverage-based retention, potentially including execution-frequency novelty; nonzero mutation counts do not establish complete fixed-energy episodes. These diagnostics do not establish independent code-branch calibration. The equal-energy subset in \namedref{Table}{tab:mechanisms} conditions the same proxy reward on one energy and retains these limits.
+ 
+ \input{revision_20260920/figures_updated_20260930/logged_calibration_table.tex}
+ 
+@@ -604,13 +602,13 @@
+ \subsection{RQ3: Exploratory scheduling diagnostics}
+ C, D, and E contain 56,164, 77,593, and 32,946 state-selection episodes, respectively. Mutation counts range from zero to 18,816 per episode, precluding an equal-energy interpretation of the full samples. Some coverage observations identify monitored execution locations or coverage-based retention decisions rather than independent source-level code branches. They therefore cannot be combined with terminal code-branch counts or interpreted as the primary reward in Equation~\ref{eq:reward}.
+ 
+-An exploratory equal-energy subset holds the recorded mutation count constant for the corresponding diagnostics in \namedref{Table}{tab:mechanisms}; it does not establish matched target composition, run conditions, or a causal scheduling contrast. Restricting to episodes with exactly 265 mutations, the most frequent nonzero energy value shared by all three arms, leaves 3,986, 6,604, and 1,474 episodes for C, D, and E. Within this subset, mean recorded code edges per episode are 0.009, 0.003, and 0.016, and proxy-reward base rates are 0.004, 0.001, and 0.005: outcomes steeply rise with energy across all arms (episodes above 5,000 mutations are almost always rewarded), so this fixed low energy selects a heavily imbalanced slice. Pre-update predictions are overconfident in this subset (BS 0.240, 0.192, 0.315; ten-bin ECE 0.428, 0.373, 0.516). The posteriors were updated under mixed energies; AP exceeds the recorded base rate (AP 0.012, 0.005, and 0.038 versus base rates near 0.005). These subset diagnostics are exploratory: they condition the observed proxy reward on one energy rather than measuring energy-conditioned calibration, are pooled across targets without clustered uncertainty, and do not replace the per-target full-sample diagnostics in \namedref{Table}{tab:logged_calibration}.
+-
+-The evaluation includes the calibrated condition E and two discount-factor sensitivity conditions. Heterogeneous observation periods and uncertain effective scheduling policies prevent a matched causal interpretation of E--D. \namedref{Table}{tab:mainresults} reports the recoverable endpoints and AUCs; all 45 main target--arm combinations are represented, including ten E/bftpd observations. End-of-run configuration records verify $\gamma=0.99$ in 66 of the 81 $\gamma=0.99$ observations and $\gamma=1.0$ in 79 of the 91 $\gamma=1.0$ observations; the remaining records carry the fixed-policy configuration at $\gamma=0.995$. Four $\gamma=0.99$ target groups remain below the nominal ten runs (Lighttpd1 6, Live555 7, Kamailio 9, Forked-daapd 9). A calibration benefit requires a prespecified analysis under matched observation periods.
++An exploratory equal-energy subset holds the recorded mutation count constant for the corresponding diagnostics in \namedref{Table}{tab:mechanisms}; it does not establish matched target composition, run conditions, or a causal scheduling contrast. Restricting to episodes with exactly 265 mutations, the most frequent nonzero energy value shared by all three arms, leaves 3,986, 6,604, and 1,474 episodes for C, D, and E. Within this subset, mean recorded code edges per episode are 0.009, 0.003, and 0.016, and proxy-reward base rates are 0.004, 0.001, and 0.005: outcomes steeply rise with energy across all arms (episodes above 5,000 mutations are almost always rewarded), so this fixed low energy yields a subset with unequal sample sizes. Pre-update predictions are overconfident in this subset (BS 0.240, 0.192, 0.315; ten-bin ECE 0.428, 0.373, 0.516). The posteriors were updated under mixed energies; AP exceeds the recorded base rate (AP 0.012, 0.005, and 0.038 versus base rates near 0.005). These subset diagnostics are exploratory: they condition the observed proxy reward on one energy rather than measuring energy-conditioned calibration, are pooled across targets without clustered uncertainty, and do not replace the per-target full-sample diagnostics in \namedref{Table}{tab:logged_calibration}.
++
++The evaluation includes the calibrated condition E and two discount-factor sensitivity conditions. Heterogeneous observation periods and uncertain effective scheduling policies prevent a matched causal interpretation of E--D. \namedref{Table}{tab:mainresults} reports the observed endpoints and AUCs; all 45 main target--arm combinations are represented, including ten E/bftpd observations. Settings reported at trial completion specify $\gamma=0.99$ in 66 of the 81 $\gamma=0.99$ observations and $\gamma=1.0$ in 79 of the 91 $\gamma=1.0$ observations; the remaining observations report a fixed policy at $\gamma=0.995$. Four $\gamma=0.99$ target groups remain below the nominal ten runs (Lighttpd1 6, Live555 7, Kamailio 9, Forked-daapd 9). A calibration benefit requires a prespecified analysis under matched observation periods.
+ 
+ \figref{fig:trajectories} shows code-branch medians and interquartile ranges on a five-minute grid over 0--24 hours from the start of each run; the bands are not CIs. Linear interpolation stays within recorded observations, and labels give the contributing $n$ at 24 hours. \namedref{Table}{tab:mainresults} instead integrates each full observed trajectory in branch-hours; cells show branches with actual $n$ above AUC, both as mean $\pm$ SD. Each run contributes only between its first and last observation; time-dependent denominators accompany the figure data. Changes in the set of contributing runs can change an aggregate curve even when individual histories do not decrease. In 127 of the 470 observed trajectories, at least one recorded branch count decreases. The figure preserves these observations without enforcing monotonicity or otherwise altering the recorded measurements; both within-run decreases and changing support can produce aggregate decreases.
+ 
+-\figref{fig:posterior_cases} presents three reproducibly selected state histories. For each motivating target, the E run is selected by the lower median terminal branch count, with a deterministic record ordering resolving ties; its two states with the most positive-mutation episodes are shown. Selection uses neither calibration accuracy nor effect direction. Complete histories, including zero-mutation episodes, show pre-update probabilities above the final-selection/frontier-score ratio. Time denotes episode end; lines guide the eye, and colors identify states within each target. Undefined zero-frontier ratios are omitted. These cases illustrate observed behavior without establishing a causal state/code mismatch.
++\figref{fig:posterior_cases} presents three reproducibly selected state histories. For each motivating target, the E run is selected by the lower median terminal branch count, with ties resolved by a fixed ordering of observations; its two states with the most positive-mutation episodes are shown. Selection uses neither calibration accuracy nor effect direction. Complete histories, including zero-mutation episodes, show pre-update probabilities above the final-selection/frontier-score ratio. Time denotes episode end; lines guide the eye, and colors identify states within each target. Undefined zero-frontier ratios are omitted. These cases illustrate observed behavior without establishing a causal state/code mismatch.
+ 
+ 
+ 
+@@ -686,7 +684,7 @@
+ \subsection{RQ5: Recorded costs and interpretation limits}
+ \namedref{Table}{tab:observed_costs} reports model calls and token usage for D by target; supporting results also give C/E ranges and means. Model calls range from 52 to 248 per D run, so the stated limit of 64 does not establish a campaign-wide ceiling. Usage estimates have not been independently reconciled with service charges and may omit the final observation interval.
+ 
+-The final configuration records specify a model name, grammar/plateau temperatures of 0.5/1.2, top-$p$ of 1.0, an output limit of 4096 tokens, a call cap of 64, and a token-limit setting of 0. These values are present for every C/D/E and $\gamma$-sensitivity observation and are summarized in \namedref{Table}{tab:llm}; equivalent configuration evidence is unavailable for B. A model name does not uniquely identify the inference version. Uncertainty in effective conditions and resource measurement limits interpretation, so these values do not establish the shared confirmatory settings required of B--E.
++Settings reported at trial completion specify a model name, grammar/plateau temperatures of 0.5/1.2, top-$p$ of 1.0, an output limit of 4096 tokens, a call cap of 64, and a token-limit setting of 0. These values are present for every C/D/E and $\gamma$-sensitivity observation and are summarized in \namedref{Table}{tab:llm}; equivalent configuration evidence is unavailable for B. A model name does not uniquely identify the inference version. Uncertainty in effective conditions and resource measurement limits interpretation, so these values do not establish the shared confirmatory settings required of B--E.
+ 
+ Candidate-associated token counts may exclude other request types or repeated attempts; their sum therefore need not equal total campaign cost. Low-activation targets, high-rejection targets, token outliers, saturation, and regressions must remain in the final analysis. Low activation may reflect productive mutation or a restrictive trigger; high rejection may reflect either useful gating or false negatives. Both need mechanism evidence.
+ 
+@@ -710,7 +708,7 @@
+ 
+ 
+ 
+-Repair remains an optional, unquantified feature. No repair outcomes were recorded, and the study reports no repair ablation, effectiveness estimate, or repair-specific cost comparison.
++Repair remains an optional, unquantified procedure. No repair outcomes were recorded, and the study reports no repair ablation, effectiveness estimate, or repair-specific cost comparison.
+ 
+ \section{Vulnerability Replay Evidence and Rediscovery Protocol}
+ \label{sec:cve}
+@@ -733,7 +731,7 @@
+ \addlinespace[3pt]
+ \mbox{CVE-2026-39863}\newline Kamailio / SIP over TCP & Reported vulnerable version; TCP required. & 278-byte input; parsed Content-Length $-10$ (L). & Patched: 0/253 negative-value outcomes; security check observed (L). \\
+ \addlinespace[3pt]
+-SMARTPL availability case\newline forked-daapd / HTTP & Reported version 27.2. & 148-byte input; unresponsive service, live process (R). & No patched replay/CVE; removal reported in 28.4. \\
++SMARTPL availability case\newline forked-daapd / HTTP & Reported version 27.2. & 148-byte input; unresponsive service; process active (R). & No patched replay/CVE; removal reported in 28.4. \\
+ \bottomrule
+ \end{tabularx}
+ \end{table*}
+@@ -776,7 +774,7 @@
+ 
+ Additional reported crashes and campaigns cannot be linked to the primary benchmark and ablation observations. Crash totals do not count unique vulnerabilities, and durations such as 60 or 1,540 minutes do not specify time to first trigger. Associations among reproducing inputs, verified A--E conditions, model information exposure, and independent root causes are incomplete. The replay outcomes therefore do not establish arm-specific discovery probabilities, novel CVEs, or admission/calibration gains.
+ 
+-\subsection{Controlled rediscovery still to be measured}
++\subsection{Evidence limits for controlled rediscovery}
+ Confirmatory rediscovery requires a vulnerable version and the same version with a minimal security patch, holding dependencies, instrumentation, settings, and input compatibility constant. Each case needs a network-reachable trigger, independent reached/triggered criteria, reproducible initial conditions, and a validated patch comparison. The proposed six-case pilot across at least three protocols, followed by expansion toward twelve, remains incomplete. Eligibility requires at least 95\% observed oracle repeatability in a declared validation set, no activation after patching, reproducible experimental preparation, and information separation. The four cases do not constitute six qualified version pairs; a small all-success replay batch does not establish an underlying success probability of at least 95\%.
+ 
+ Information-controlled campaigns must exclude CVE identifiers, advisories, public PoCs, and patch contents from model inputs and campaign seeds, while retaining anonymized case-to-oracle correspondence separately. The public PoC and known triggers in this collection are validation inputs; their replay is not evidence of information-controlled rediscovery. Source-level trigger conditions, sanitizer reports with patch validation, and protocol invariants distinguish reaching relevant code from actually triggering a defect. Experiments require isolated target networks and reset between trials; these are protocol requirements, not properties inferred from the reports.
+@@ -832,9 +830,9 @@
+ Benchmark properties can change the relative ranking of fuzzers: initial seed coverage and execution speed are empirically consequential covariates~\cite{benchmarkproperties}. Consequently, a favorable endpoint under unequal experimental conditions cannot isolate the admission or scheduling effect. Mutation-based assessment offers a complementary fault-oriented perspective~\cite{mutationassessment2023}; here, code coverage and IPSM growth are kept separate from independently verified vulnerability outcomes.
+ 
+ \section{Conclusion}
+-LoopFuzz is presented as an integrated controller design with a retrospective analysis of its evidence boundaries. The proposed admission rule separates code progress from IPSM novelty and gives state-only proposals a bounded provisional budget. Productivity calibration is an exploratory scheduling mechanism; it does not recover semantic protocol states.
+-
+-The available observations describe coverage, model usage, admission labels, and proxy-reward behavior under incompletely verified experimental conditions. Four vulnerability cases add replay evidence with differing patch support. These measurements do not establish reduced queue pollution, improved downstream productivity, greater cost efficiency, or improved rediscovery. The contribution is the controller specification and a documented assessment of the evidence needed to validate its intended benefits; no quantitative repair effect is claimed.
++We present a LoopFuzz controller design with retrospective boundary analysis. Admission separates code progress from IPSM novelty and bounds provisional validation for state-only proposals. Productivity calibration remains exploratory and does not recover semantic protocol states.
++
++The available observations describe coverage, model usage, admission labels, and proxy-reward behavior under incompletely verified experimental conditions. Four vulnerability cases add replay evidence with differing patch support. These measurements do not establish reduced queue pollution, improved downstream productivity, greater cost efficiency, or improved rediscovery. The contribution is a controller specification and validation assessment; repair remains unquantified.
+ 
+ \section*{CRediT authorship contribution statement}
+ Author contribution roles remain to be confirmed by all authors before submission.

@@ -1,0 +1,103 @@
+FROM ubuntu:20.04
+
+# StateAFL image for ProFTPD (ProtoPair benchmark).
+# Target is compiled with StateAFL's own afl-clang-fast (stateafl/README.md),
+# without AFL_USE_ASAN, following the README build/demo convention.
+
+# Install common dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get -y update || (sleep 10 && apt-get -y update) || (sleep 15 && apt-get -y update) && \
+    apt-get -y install sudo \
+    apt-utils \
+    build-essential \
+    openssl \
+    clang \
+    graphviz-dev \
+    git \
+    autoconf \
+    libgnutls28-dev \
+    libssl-dev \
+    llvm \
+    python3-pip \
+    nano \
+    net-tools \
+    vim \
+    gdb \
+    netcat \
+    strace \
+    libcap-dev \
+    libpcre2-dev \
+    libpcre2-8-0 \
+    libcurl4-openssl-dev \
+    libjson-c-dev \
+    wget
+
+# Add a new user ubuntu, pass: ubuntu
+RUN groupadd ubuntu && \
+    useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+
+RUN chmod 777 /tmp
+
+RUN pip3 install gcovr==4.2
+
+# Use ubuntu as default username
+USER ubuntu
+WORKDIR /home/ubuntu
+
+# Import environment variable to pass as parameter to make (e.g., to make parallel builds with -j)
+ARG MAKE_OPT
+
+# Set up StateAFL (stateafl/README.md: core, then llvm_mode with LLVM_CONFIG)
+COPY --chown=ubuntu:ubuntu stateafl stateafl
+RUN cd stateafl && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && LLVM_CONFIG=llvm-config make $MAKE_OPT
+
+# Set up environment variables for StateAFL
+ENV WORKDIR="/home/ubuntu/experiments"
+ENV STATEAFL="/home/ubuntu/stateafl"
+# Append STATEAFL to PATH (like the aflnet images). Do NOT prepend: the AFL
+# build creates an "as -> afl-as" symlink inside $STATEAFL that would shadow
+# the system assembler and break plain gcc (gcov builds, configure probes).
+ENV PATH="${PATH}:${STATEAFL}:/home/ubuntu/.local/bin:${WORKDIR}"
+ENV AFL_PATH="${STATEAFL}"
+ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+    AFL_SKIP_CPUFREQ=1 \
+    AFL_NO_AFFINITY=1
+
+RUN mkdir $WORKDIR
+
+# Set up ProFTPD for StateAFL fuzzing (same commit as the aflnet image)
+RUN cd ${WORKDIR} && \
+    git clone https://github.com/proftpd/proftpd.git && \
+    cd proftpd && \
+    git checkout 61e621e743346 && \
+    CC="$STATEAFL/afl-clang-fast" CXX="$STATEAFL/afl-clang-fast++" ./configure --enable-devel=nodaemon:nofork && \
+    make $MAKE_OPT
+
+# Set up ProFTPD for coverage analysis
+RUN cd ${WORKDIR} && \
+    git clone https://github.com/proftpd/proftpd.git proftpd-gcov && \
+    cd proftpd-gcov && \
+    git checkout 61e621e743346 && \
+    CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --enable-devel=nodaemon:nofork && \
+    make $MAKE_OPT
+
+COPY --chown=ubuntu:ubuntu basic.conf ${WORKDIR}/
+COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+# StateAFL parses requests with the generic length-prefixed (replayable) format
+COPY --chown=ubuntu:ubuntu in-ftp-replay ${WORKDIR}/in-ftp-replay
+COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
+COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+
+# Switch default user to root (same as aflnet image)
+USER root
+WORKDIR /home/ubuntu
+
+RUN mkdir /home/ubuntu/ftpshare && \
+    chown -R ubuntu:ubuntu /home/ubuntu/ftpshare
+
+# For debugging purposes
+RUN apt-get -y install ftp

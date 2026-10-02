@@ -1,0 +1,17 @@
+--- before/observed_tables.updated_20260930.tex
++++ after/observed_tables.updated_20260930.tex
+@@ -1,11 +1,11 @@
+-% Generated from current Key_Experiment archives on 2026-09-30.
++% Descriptive trial results; provenance is documented separately.
+ \begin{table*}[!tbp]
+ \centering\small
+-\caption{Observed trial counts and D-arm status ($N=10$ nominal runs).}
++\caption{Observed trial counts and reported D-arm status ($N=10$ nominal runs).}
+ \label{tab:observed_inventory}
+ \begin{tabular}{lrrrrrl}
+ \toprule
+-Target & AFLNet & ChatAFL & LoopFuzz(D) & Completed(D) & Exit 137(D) & Duration (min) \\
++Target & AFLNet & ChatAFL & LoopFuzz(D) & Completed(D) & Interrupted(D) & Duration (min) \\
+ \midrule
+ LightFTP & 13 & 11 & 15 & 15 & 0 & 1473--1522 \\
+ bftpd & 10 & 10 & 10 & 10 & 0 & 1499--1510 \\

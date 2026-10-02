@@ -1,0 +1,62 @@
+{
+  "call_cost_coverage.pdf": [
+    "B: ChatAFL           C: direct         D: gated fixed     E: calibrated",
+    "(a) LightFTP                                      (b) bftpd                                   (c) ProFTPD",
+    "Terminal code branches",
+    "(d) Pure-FTPd                                     (e) Exim                                    (f) Live555",
+    "(g) Kamailio                                      (h) Forked-daapd                            (i) Lighttpd1",
+    "Reported model calls"
+  ],
+  "candidate_dispositions.pdf": [
+    "(a) Reported candidate dispositions                           (b) First failed predicate (P → U → R)",
+    "Durable        Reject    Unmatched                                  U first fails        P/U/R all pass",
+    "1,326 durable; 0 reject; 0 unmatched                          P/U/R: 0/1,208/0; all pass: 118",
+    "23 durable; 2,203 reject; 1 unmatched                         P/U/R: 0/2,071/0; all pass: 155",
+    "9 durable; 736 reject; 1 unmatched                            P/U/R: 0/698/0; all pass: 47",
+    "Share of candidate records (%)                                   Share of matched trials (%)"
+  ],
+  "coverage_trajectories.pdf": [
+    "A: AFLNet        B: ChatAFL           C: direct           D: gated fixed        E: calibrated",
+    "(a) LightFTP                                    (b) bftpd                                         (c) ProFTPD",
+    "Observed source-level code branches",
+    "(d) Pure-FTPd                                   (e) Exim                                          (f) Live555",
+    "(g) Kamailio                                    (h) Forked-daapd                                  (i) Lighttpd1",
+    "Elapsed fuzzer time (h)"
+  ],
+  "logged_reward_reliability.pdf": [
+    "Pre-update probability and observed proxy reward",
+    "(a) LightFTP                                                              (b) bftpd                                                         (c) ProFTPD",
+    "Observed proxy-reward frequency",
+    "(d) Pure-FTPd                                                             (e) Exim                                                          (f) Live555",
+    "(g) Kamailio                                                              (h) Forked-daapd                                                  (i) Lighttpd1",
+    "Pre-update probability (lower strips: episode counts by bin)"
+  ],
+  "native_endpoints.pdf": [
+    "Observed code and IPSM endpoints",
+    "AFLNet           LoopFuzz (D)",
+    "Forked-daapd                              Lighttpd1                                LightFTP",
+    "Code branches",
+    "IPSM state edges",
+    "AFLNet   LoopFuzz (D)                 AFLNet      LoopFuzz (D)                   AFLNet   LoopFuzz (D)",
+    "Unequal observation periods; all observations retained; nominal N=10.",
+    "Dots: mean. Error bars: sample SD. Target-specific y-axis scales."
+  ],
+  "posterior_cases.pdf": [
+    "Productivity estimates and scheduling multipliers: three E cases",
+    "Selection: lower-median terminal coverage run, then two most observed states",
+    "(a) Forked-daapd: run 9                         (b) Lighttpd1: run 4                      (c) LightFTP: run 6",
+    "Pre-update probability",
+    "State 0                                         State 0                                   State 0",
+    "State 302                                       State 403                                 State 214",
+    "Final score / frontier score",
+    "Elapsed fuzzer time at episode end (h)"
+  ],
+  "token_cost_coverage.pdf": [
+    "B: ChatAFL           C: direct              D: gated fixed     E: calibrated",
+    "(a) LightFTP                                 (b) bftpd                                        (c) ProFTPD",
+    "Terminal code branches",
+    "(d) Pure-FTPd                                (e) Exim                                         (f) Live555",
+    "(g) Kamailio                                 (h) Forked-daapd                                 (i) Lighttpd1",
+    "Reported prompt + completion tokens (thousands)"
+  ]
+}

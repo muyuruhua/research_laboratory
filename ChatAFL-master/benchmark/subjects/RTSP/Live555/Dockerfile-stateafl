@@ -1,0 +1,110 @@
+FROM ubuntu:20.04
+
+# StateAFL image for Live555 (ProtoPair benchmark).
+# Target is compiled with StateAFL's own afl-clang-fast (stateafl/README.md),
+# without AFL_USE_ASAN, following the README build/demo convention.
+# fuzzing.patch sets C_COMPILER=afl-clang-fast / CPLUSPLUS_COMPILER=afl-clang-fast++,
+# which resolve to StateAFL's compilers (the only afl-clang-fast in PATH here).
+
+# Install common dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get -y update || (sleep 10 && apt-get -y update) || (sleep 15 && apt-get -y update) && \
+    apt-get -y install sudo \
+    apt-utils \
+    build-essential \
+    openssl \
+    clang \
+    graphviz-dev \
+    git \
+    autoconf \
+    libgnutls28-dev \
+    libssl-dev \
+    llvm \
+    python3-pip \
+    nano \
+    net-tools \
+    vim \
+    gdb \
+    netcat \
+    strace \
+    libcap-dev \
+    libpcre2-dev \
+    libpcre2-8-0 \
+    libcurl4-openssl-dev \
+    libjson-c-dev \
+    wget
+
+# Add a new user ubuntu, pass: ubuntu
+RUN groupadd ubuntu && \
+    useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+
+RUN chmod 777 /tmp
+
+RUN pip3 install gcovr==4.2
+
+# Use ubuntu as default username
+USER ubuntu
+WORKDIR /home/ubuntu
+
+# Import environment variable to pass as parameter to make (e.g., to make parallel builds with -j)
+ARG MAKE_OPT
+
+# Set up StateAFL (stateafl/README.md: core, then llvm_mode with LLVM_CONFIG)
+COPY --chown=ubuntu:ubuntu stateafl stateafl
+RUN cd stateafl && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && LLVM_CONFIG=llvm-config make $MAKE_OPT
+
+# Set up environment variables for StateAFL
+ENV WORKDIR="/home/ubuntu/experiments"
+ENV STATEAFL="/home/ubuntu/stateafl"
+# Append STATEAFL to PATH (like the aflnet images). Do NOT prepend: the AFL
+# build creates an "as -> afl-as" symlink inside $STATEAFL that would shadow
+# the system assembler and break plain gcc (gcov builds, configure probes).
+# The Live555 build step below scopes a prepended PATH to itself, because
+# fuzzing.patch hardcodes C_COMPILER=afl-clang-fast.
+ENV PATH="${PATH}:${STATEAFL}:/home/ubuntu/.local/bin:${WORKDIR}"
+ENV AFL_PATH="${STATEAFL}"
+ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+    AFL_SKIP_CPUFREQ=1 \
+    AFL_NO_AFFINITY=1
+
+RUN mkdir $WORKDIR
+
+COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+COPY --chown=ubuntu:ubuntu live.2023.05.10.tar.gz ${WORKDIR}/live.2023.05.10.tar.gz
+
+# Set up Live555 for StateAFL fuzzing (same tarball + patch as the aflnet image).
+# fuzzing.patch hardcodes C/CXX = afl-clang-fast(/++): they resolve to StateAFL's
+# compilers because $STATEAFL (appended) is the only afl-clang-fast in PATH.
+RUN cd $WORKDIR && \
+    tar -zxvf live.2023.05.10.tar.gz && \
+    cd live && \
+    patch -p1 < $WORKDIR/fuzzing.patch && \
+    ./genMakefiles linux && \
+    make clean all $MAKE_OPT || make all
+
+RUN cd ${WORKDIR}/live/testProgs && \
+    cp ${STATEAFL}/tutorials/live555/sample_media_sources/*.* ./
+
+# Download and compile Live555 for coverage analysis
+RUN cd $WORKDIR && \
+    mkdir ${WORKDIR}/live-gcov && \
+    tar -zxvf live.2023.05.10.tar.gz -C ${WORKDIR}/live-gcov --strip-components=1 && \
+    cd live-gcov && \
+    patch -p1 < $WORKDIR/gcov.patch && \
+    ./genMakefiles linux && \
+    make CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" clean all
+
+# Set up Live555 for coverage analysis
+RUN cd ${WORKDIR}/live-gcov/testProgs && \
+    cp ${STATEAFL}/tutorials/live555/sample_media_sources/*.* ./
+
+COPY --chown=ubuntu:ubuntu kill-server.sh ${WORKDIR}/kill-server
+COPY --chown=ubuntu:ubuntu in-rtsp ${WORKDIR}/in-rtsp
+# StateAFL parses requests with the generic length-prefixed (replayable) format
+COPY --chown=ubuntu:ubuntu in-rtsp-replay ${WORKDIR}/in-rtsp-replay
+COPY --chown=ubuntu:ubuntu rtsp.dict ${WORKDIR}/rtsp.dict
+COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run

@@ -1,0 +1,62 @@
+% Generated from current Key_Experiment archives on 2026-09-30.
+\begin{table*}[!tbp]
+\centering\small
+\caption{Observed trial counts and D-arm status ($N=10$ nominal runs).}
+\label{tab:observed_inventory}
+\begin{tabular}{lrrrrrl}
+\toprule
+Target & AFLNet & ChatAFL & LoopFuzz(D) & Completed(D) & Exit 137(D) & Duration (min) \\
+\midrule
+LightFTP & 13 & 11 & 15 & 15 & 0 & 1473--1522 \\
+bftpd & 10 & 10 & 10 & 10 & 0 & 1499--1510 \\
+ProFTPD & 10 & 10 & 12 & 12 & 0 & 1489--1518 \\
+Pure-FTPd & 11 & 10 & 10 & 10 & 0 & 1460--1472 \\
+Exim & 10 & 10 & 10 & 10 & 0 & 1477--1486 \\
+Live555 & 10 & 10 & 12 & 12 & 0 & 1489--1505 \\
+Kamailio & 10 & 10 & 12 & 12 & 0 & 1472--1518 \\
+Forked-daapd & 10 & 10 & 12 & 12 & 0 & 1474--1524 \\
+Lighttpd1 & 10 & 10 & 11 & 11 & 0 & 1469--1523 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\begin{table*}[!tbp]
+\centering\small
+\caption{A/D terminal coverage (mean $\pm$ SD); descriptive comparisons.}
+\label{tab:observed_endpoints}
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{2}{c}{Code branches} & \multicolumn{2}{c}{IPSM state edges} \\
+Target & AFLNet & LoopFuzz(D) & AFLNet & LoopFuzz(D) \\
+\midrule
+LightFTP & 71.0$\pm$0.0 & 71.7$\pm$2.3 & 187.3$\pm$11.3 & 207.0$\pm$17.0 \\
+bftpd & 486.0$\pm$8.8 & 502.7$\pm$7.5 & 163.1$\pm$15.4 & 226.7$\pm$14.0 \\
+ProFTPD & 5053.8$\pm$97.4 & 5428.1$\pm$104.0 & 190.5$\pm$27.9 & 305.3$\pm$20.3 \\
+Pure-FTPd & 1076.4$\pm$89.6 & 1223.3$\pm$29.7 & 236.5$\pm$26.7 & 321.4$\pm$11.1 \\
+Exim & 3798.8$\pm$43.3 & 3914.9$\pm$20.9 & 88.8$\pm$5.2 & 152.7$\pm$9.3 \\
+Live555 & 2893.6$\pm$14.5 & 3067.1$\pm$29.5 & 96.1$\pm$8.6 & 170.1$\pm$11.1 \\
+Kamailio & 10002.6$\pm$144.2 & 10631.2$\pm$472.9 & 109.4$\pm$9.7 & 128.2$\pm$26.6 \\
+Forked-daapd & 2330.8$\pm$60.0 & 2670.2$\pm$87.3 & 21.6$\pm$2.1 & 22.8$\pm$2.9 \\
+Lighttpd1 & 1940.7$\pm$21.2 & 2126.7$\pm$15.7 & 17.7$\pm$2.5 & 28.9$\pm$2.7 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\begin{table*}[!tbp]
+\centering\small
+\caption{D-arm candidate and episode counts; dispositions are reported labels.}
+\label{tab:observed_log_counts}
+\begin{tabular}{lrrrrrr}
+\toprule
+Target & Candidates & Trials & Reject & Provisional & Durable & Episodes \\
+\midrule
+LightFTP & 48 & 48 & 44 & 0 & 4 & 13604 \\
+bftpd & 13 & 13 & 13 & 0 & 0 & 3249 \\
+ProFTPD & 0 & 0 & 0 & 0 & 0 & 2395 \\
+Pure-FTPd & 173 & 173 & 166 & 0 & 7 & 5378 \\
+Exim & 24 & 24 & 24 & 0 & 0 & 2650 \\
+Live555 & 851 & 851 & 844 & 0 & 7 & 7687 \\
+Kamailio & 253 & 253 & 249 & 0 & 4 & 9004 \\
+Forked-daapd & 412 & 411 & 410 & 0 & 1 & 12056 \\
+Lighttpd1 & 453 & 453 & 453 & 0 & 0 & 21570 \\
+\bottomrule
+\end{tabular}
+\end{table*}

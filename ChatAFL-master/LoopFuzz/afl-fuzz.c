@@ -479,6 +479,30 @@ static u8 mqtt_fix_length_enabled;
 u32 server_wait_usecs = 10000;
 u32 poll_wait_msecs = 1;
 u32 socket_timeout_usecs = 1000;
+/* TCP-arm feedback recovery (2026-09-30, kamailio run12 diagnosis).  Both
+ * default OFF — byte-identical legacy behavior for UDP arms and every other
+ * protocol unless explicitly enabled:
+ *   CHATAFL_NET_FINAL_DRAIN_MS=N — TCP only: widen the single-fd final
+ *       drain poll to N ms.  kamailio's TCP replies travel an async
+ *       worker->tcp_main write path (measured 5-110 ms on localhost vs
+ *       <3 ms for UDP), so the 1 ms legacy window records silence for the
+ *       whole tail of a sequence; the IPSM then never sees those code
+ *       transitions (run12: 55 state edges vs 125-170 on the UDP arm).
+ *   CHATAFL_TCP_KILL_ORPHANS=1   — TCP non-MQTT only: after each exec's
+ *       network phase, SIGKILL target-binary processes that are no longer
+ *       descendants of this afl-fuzz.  Daemonizing targets (kamailio needs
+ *       fork=yes for tcp_main; its intermediate parent exits at daemonize
+ *       and the setsid()d tree is reparented to init) otherwise keep the
+ *       first exec's tree alive for the whole campaign: every later fresh
+ *       instance dies at bind() and one stale server serves all traffic,
+ *       which destroys per-exec state reset, coverage attribution and
+ *       teardown semantics. */
+u32 net_final_drain_ms = 0;
+u8  tcp_kill_orphans  = 0;
+u64 tcp_final_drain_execs = 0;
+u64 tcp_orphan_sweeps = 0;
+u64 tcp_orphan_kills  = 0;
+u64 tcp_tree_lost     = 0;
 u8 net_protocol;
 u8 *net_ip;
 u32 net_port;
@@ -3066,6 +3090,11 @@ static void run_config_log(const char *phase, const char *termination_reason) {
    * rule — without this field a run-config cannot tell whether the S2c
    * mutation operator was active. */
   json_object_object_add(j, "no_escape_amp", json_object_new_boolean(mut_no_escape_amp != 0));
+  /* TCP-arm feedback recovery (2026-09-30): arm-reconstructable per the
+   * same rule — without these fields a run-config cannot tell whether the
+   * TCP late-reply drain window or the daemon-orphan sweep was active. */
+  json_object_object_add(j, "net_final_drain_ms", json_object_new_int((int)net_final_drain_ms));
+  json_object_object_add(j, "tcp_kill_orphans", json_object_new_boolean(tcp_kill_orphans != 0));
   json_object_object_add(j, "no_lexkill", json_object_new_boolean(mut_no_lexkill != 0));
   json_object_object_add(j, "no_nestimb", json_object_new_boolean(mut_no_nestimb != 0));
   json_object_object_add(j, "no_transportsat", json_object_new_boolean(mut_no_transportsat != 0));
@@ -5660,16 +5689,42 @@ HANDLE_RESPONSES:
                            (!oracle_drain_sensitive_only ||
                             last_message_oracle_sensitive()));
       u32 e1_before     = response_buf_size;
+      u8  e1_tcp_drain  = (net_final_drain_ms > 0
+                           && net_protocol == PRO_TCP);
 
       if (e1_drain_now) e1_final_wait = oracle_drain_ms;
+
+      /* TCP late-reply capture (2026-09-30): poll() returns as soon as the
+       * first byte arrives, so the wider timeout is paid in full only on
+       * genuinely silent connections.  Only active when
+       * CHATAFL_NET_FINAL_DRAIN_MS is set — legacy 1 ms behavior otherwise.
+       * Bytes captured here land in the LAST message's cumulative boundary;
+       * extract_response_codes() works on ordered prefixes, so the recorded
+       * code sequence and its IPSM transitions stay correct even when every
+       * reply arrives late. */
+      if (e1_tcp_drain && e1_final_wait < net_final_drain_ms)
+        e1_final_wait = net_final_drain_ms;
 
       net_recv(sockfd, timeout, (int)e1_final_wait,
                &response_buf, &response_buf_size);
 
+      if (e1_tcp_drain) {
+        tcp_final_drain_execs++;
+        /* Trickled replies (kamailio flushes several responses in separate
+         * writes): keep draining in 5 ms steps while bytes keep arriving,
+         * stop at the first quiet step (bounded at 40 steps = 200 ms). */
+        int tq;
+        for (tq = 0; tq < 40; tq++) {
+          u32 e1_before_q = response_buf_size;
+          net_recv(sockfd, timeout, 5, &response_buf, &response_buf_size);
+          if (response_buf_size == e1_before_q) break;
+        }
+      }
+
       if (e1_drain_now) {
         oracle_drain_execs++;
         if (response_buf_size > e1_before)
-          oracle_drain_bytes += (response_buf_size - e1_before);
+          oracle_drain_bytes += response_buf_size - e1_before;
       }
     }
 
@@ -5856,6 +5911,104 @@ MP_MULTI_DONE:
   }
 
   return 0;
+}
+
+/* ── TCP daemon-orphan sweep (2026-09-30) ──────────────────────────
+ * Called after send_over_network() at every exec site.  Enabled only when
+ * CHATAFL_TCP_KILL_ORPHANS is set AND transport is TCP AND protocol is not
+ * MQTT (MQTT multi-broker/persistent modes intentionally keep daemonized
+ * brokers alive across execs).  A process is killed only when BOTH hold:
+ *   1. its /proc/<pid>/exe resolves to the same target binary as the fork
+ *      server (all generations of the target share that exe), and
+ *   2. it is NOT a descendant of this afl-fuzz process — a daemonizing
+ *      target's setsid()d tree is reparented to init once its intermediate
+ *      parent exits, which is precisely the orphan signature.  The fork
+ *      server and any in-flight exec children are descendants and are
+ *      never touched.
+ * Killing here (after the H3 stabilization loop has observed coverage
+ * quiescence, and after the child-termination block) guarantees the next
+ * exec's fresh instance can bind(), restoring per-exec server lifecycle. */
+static int tcp_pid_ppid(int pid)
+{
+  char path[64], buf[1024];
+  FILE *f;
+  size_t n;
+  char *cp;
+  int ppid = 0;
+
+  snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+  f = fopen(path, "r");
+  if (!f) return 0;
+  n = fread(buf, 1, sizeof(buf) - 1, f);
+  fclose(f);
+  buf[n] = 0;
+  /* stat layout: "pid (comm) state ppid ..." — comm may contain spaces,
+   * so anchor on the last ')' instead of parsing from the front. */
+  cp = strrchr(buf, ')');
+  if (!cp) return 0;
+  if (sscanf(cp + 2, "%*s %d", &ppid) != 1) return 0;
+  return ppid;
+}
+
+static int tcp_pid_is_own_descendant(int pid)
+{
+  int hops;
+  for (hops = 0; hops < 32 && pid > 1; hops++) {
+    int ppid = tcp_pid_ppid(pid);
+    if (ppid <= 0) return 0;
+    if (ppid == (int)getpid()) return 1;
+    pid = ppid;
+  }
+  return 0;
+}
+
+static void tcp_sweep_orphan_daemons(void)
+{
+  char target_exe[4096], proc_exe[4096], proc_path[64];
+  DIR *d;
+  struct dirent *de;
+  ssize_t rl;
+  int found_any = 0;
+  u32 killed = 0;
+
+  if (!tcp_kill_orphans || net_protocol != PRO_TCP) return;
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) return;
+  if (forksrv_pid <= 0) return;
+
+  tcp_orphan_sweeps++;
+
+  snprintf(proc_path, sizeof(proc_path), "/proc/%d/exe", (int)forksrv_pid);
+  rl = readlink(proc_path, target_exe, sizeof(target_exe) - 1);
+  if (rl <= 0) return;
+  target_exe[rl] = 0;
+
+  d = opendir("/proc");
+  if (!d) return;
+
+  while ((de = readdir(d)) != NULL) {
+    int pid;
+    if (!isdigit(de->d_name[0])) continue;
+    pid = atoi(de->d_name);
+    if (pid <= 1 || pid == (int)forksrv_pid) continue;
+    snprintf(proc_path, sizeof(proc_path), "/proc/%d/exe", pid);
+    rl = readlink(proc_path, proc_exe, sizeof(proc_exe) - 1);
+    if (rl <= 0) continue;
+    proc_exe[rl] = 0;
+    if (strcmp(proc_exe, target_exe) != 0) continue;
+    found_any++;
+    if (!tcp_pid_is_own_descendant(pid)) {
+      if (kill(pid, SIGKILL) == 0) killed++;
+    }
+  }
+  closedir(d);
+
+  tcp_orphan_kills += killed;
+
+  /* With the sweep enabled every exec leaves exactly one daemonized tree;
+   * finding none means it died during the exec — a crash/teardown signal
+   * for daemonizing targets whose deaths the forkserver cannot observe
+   * (their intermediate parent already exited before them). */
+  if (!found_any) tcp_tree_lost++;
 }
 /* End of AFLNet-specific variables & functions */
 
@@ -8816,6 +8969,9 @@ static u8 run_target(char **argv, u32 timeout)
         fprintf(stderr, "[H4-warn] send_over_network failed "
                 "(rc=%d, dumb_mode)\n", net_rc);
     }
+    /* Kill the daemonized tree of this exec (TCP daemonizing targets)
+     * before the next fork so the next exec's fresh instance can bind. */
+    if (use_net) tcp_sweep_orphan_daemons();
     if (waitpid(child_pid, &status, 0) <= 0)
       PFATAL("waitpid() failed");
   }
@@ -8834,6 +8990,11 @@ static u8 run_target(char **argv, u32 timeout)
         fprintf(stderr, "[H4-warn] send_over_network failed "
                 "(rc=%d, forkserver)\n", net_rc);
     }
+    /* Kill the daemonized tree of this exec (TCP daemonizing targets)
+     * before the next fork so the next exec's fresh instance can bind.
+     * Guarded internally: no-op unless CHATAFL_TCP_KILL_ORPHANS is set,
+     * transport is TCP and protocol is not MQTT (persistent brokers). */
+    if (use_net) tcp_sweep_orphan_daemons();
     mqtt_persistent_skip_kill = 0;
 
     /* MQTT Persistent: if the child survived, persist it for reuse.
@@ -10782,6 +10943,21 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
               : "default",
           orig_cmdline, slowest_exec_ms, forced_kills);
   /* ignore errors */
+
+  /* TCP-arm feedback recovery counters (2026-09-30) — see the
+   * CHATAFL_NET_FINAL_DRAIN_MS / CHATAFL_TCP_KILL_ORPHANS knobs. */
+  fprintf(f,
+          "net_final_drain_ms  : %u\n"
+          "tcp_kill_orphans    : %u\n"
+          "tcp_final_drain_execs : %llu\n"
+          "tcp_orphan_sweeps   : %llu\n"
+          "tcp_orphan_kills    : %llu\n"
+          "tcp_tree_lost       : %llu\n",
+          net_final_drain_ms, (unsigned)tcp_kill_orphans,
+          (unsigned long long)tcp_final_drain_execs,
+          (unsigned long long)tcp_orphan_sweeps,
+          (unsigned long long)tcp_orphan_kills,
+          (unsigned long long)tcp_tree_lost);
 
   /* Get rss value from the children
      We must have killed the forkserver process and called waitpid
@@ -14321,8 +14497,14 @@ AFLNET_REGIONS_SELECTION:;
                   const char *opname = json_object_get_string(jop);
                   if (!opname) continue;
 
-                  /* Work on a copy */
-                  unsigned char *buf = ck_alloc(rr + 512);
+                  /* Work on a copy.  Allocate to the insert-growth bound:
+                   * the insert path below admits growth up to a 65536-byte
+                   * total, so the original rr+512 allocation heap-overflowed
+                   * for any decoded payload > 512 bytes; the corruption
+                   * surfaced later as "free(): invalid pointer" (kamailio
+                   * TCP campaign 2026-10-01, both replicas aborted at their
+                   * first LLM plateau). */
+                  unsigned char *buf = ck_alloc(65536 + 512);
                   memcpy(buf, seedbuf, rr);
                   size_t buf_len = rr;
 
@@ -18627,6 +18809,28 @@ int main(int argc, char **argv)
       OKF("MQTT fast-net: server_wait=%u µs, poll_wait=%u ms, "
           "socket_timeout=%u µs",
           server_wait_usecs, poll_wait_msecs, socket_timeout_usecs);
+    }
+
+    /* TCP-arm feedback recovery (2026-09-30): parse BEFORE the run-config
+     * start event so the arm record reflects the live knobs (both default
+     * OFF — see the declaration block near poll_wait_msecs; bounded
+     * 1..10000 ms; "0" explicitly disables the sweep). */
+    {
+      const char *nfd = getenv("CHATAFL_NET_FINAL_DRAIN_MS");
+      if (nfd && *nfd) {
+        u32 v = (u32)atoi(nfd);
+        if (v > 0 && v <= 10000) {
+          net_final_drain_ms = v;
+          OKF("NET: TCP final-drain window widened to %u ms", v);
+        }
+      }
+    }
+    {
+      const char *ko = getenv("CHATAFL_TCP_KILL_ORPHANS");
+      if (ko && *ko && strcmp(ko, "0") != 0) {
+        tcp_kill_orphans = 1;
+        OKF("NET: TCP daemon-orphan sweep ENABLED");
+      }
     }
 
     /* run_config start event (paper §十.1) — written BEFORE the LLM

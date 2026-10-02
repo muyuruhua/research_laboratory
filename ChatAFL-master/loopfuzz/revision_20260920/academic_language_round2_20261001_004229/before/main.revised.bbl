@@ -1,0 +1,539 @@
+\begin{thebibliography}{51}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\href}[2]{#2}
+\providecommand{\path}[1]{#1}
+\providecommand{\DOIprefix}{doi:}
+\providecommand{\ArXivprefix}{arXiv:}
+\providecommand{\URLprefix}{URL: }
+\providecommand{\Pubmedprefix}{pmid:}
+\providecommand{\doi}[1]{\href{http://dx.doi.org/#1}{\path{#1}}}
+\providecommand{\Pubmed}[1]{\href{pmid:#1}{\path{#1}}}
+\providecommand{\bibinfo}[2]{#2}
+\ifx\xfnm\relax \def\xfnm[#1]{\unskip,\space#1}\fi
+%Type = Inproceedings
+\bibitem[{Pham et~al.(2020)Pham, B{\"o}hme, and Roychoudhury}]{aflnet}
+\bibinfo{author}{V.-T. Pham}, \bibinfo{author}{M.~B{\"o}hme},
+  \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{{AFLNet}: A greybox fuzzer for network protocols},
+\newblock in: \bibinfo{booktitle}{2020 IEEE 13th International Conference on
+  Software Testing, Verification and Validation ({ICST})},
+  \bibinfo{year}{2020}, pp. \bibinfo{pages}{460--465}.
+  \DOIprefix\doi{10.1109/ICST46399.2020.00062}.
+%Type = Article
+\bibitem[{Natella(2022)}]{stateafl}
+\bibinfo{author}{R.~Natella},
+\newblock \bibinfo{title}{{StateAFL}: Greybox fuzzing for stateful network
+  servers},
+\newblock \bibinfo{journal}{Empirical Software Engineering}
+  \bibinfo{volume}{27} (\bibinfo{year}{2022}).
+  \DOIprefix\doi{10.1007/s10664-022-10233-3}, \bibinfo{note}{art. no. 191}.
+%Type = Inproceedings
+\bibitem[{Meng et~al.(2024)Meng, Mirchev, B{\"o}hme, and
+  Roychoudhury}]{chatafl}
+\bibinfo{author}{R.~Meng}, \bibinfo{author}{M.~Mirchev},
+  \bibinfo{author}{M.~B{\"o}hme}, \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{Large language model guided protocol fuzzing},
+\newblock in: \bibinfo{booktitle}{31st Annual Network and Distributed System
+  Security Symposium ({NDSS} 2024)}, \bibinfo{year}{2024}, pp.
+  \bibinfo{pages}{1--17}. \DOIprefix\doi{10.14722/ndss.2024.24556}.
+%Type = Article
+\bibitem[{Qin et~al.(2023)Qin, Hu, Ma, Zhao, Yin, and Zhang}]{nsfuzz}
+\bibinfo{author}{S.~Qin}, \bibinfo{author}{F.~Hu}, \bibinfo{author}{Z.~Ma},
+  \bibinfo{author}{B.~Zhao}, \bibinfo{author}{T.~Yin},
+  \bibinfo{author}{C.~Zhang},
+\newblock \bibinfo{title}{{NSFuzz}: Towards efficient and state-aware network
+  service fuzzing},
+\newblock \bibinfo{journal}{ACM Transactions on Software Engineering and
+  Methodology} \bibinfo{volume}{32} (\bibinfo{year}{2023})
+  \bibinfo{pages}{1--26}. \DOIprefix\doi{10.1145/3580598}.
+%Type = Inproceedings
+\bibitem[{Ba et~al.(2022)Ba, B{\"o}hme, Mirzamomen, and
+  Roychoudhury}]{sgf_usenix22}
+\bibinfo{author}{J.~Ba}, \bibinfo{author}{M.~B{\"o}hme},
+  \bibinfo{author}{Z.~Mirzamomen}, \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{Stateful greybox fuzzing},
+\newblock in: \bibinfo{booktitle}{31st USENIX Security Symposium ({USENIX}
+  Security 2022)}, \bibinfo{year}{2022}, pp. \bibinfo{pages}{3255--3272}.
+  \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity22/presentation/ba}.
+%Type = Article
+\bibitem[{Meng et~al.(2025)Meng, Pham, Böhme, and
+  Roychoudhury}]{aflnet5years2025}
+\bibinfo{author}{R.~Meng}, \bibinfo{author}{V.-T. Pham},
+  \bibinfo{author}{M.~Böhme}, \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{{AFLNet Five Years Later: On Coverage-Guided Protocol
+  Fuzzing}},
+\newblock \bibinfo{journal}{IEEE Transactions on Software Engineering}
+  \bibinfo{volume}{51} (\bibinfo{year}{2025}) \bibinfo{pages}{960--974}.
+  \DOIprefix\doi{10.1109/tse.2025.3535925}.
+%Type = Inproceedings
+\bibitem[{McMahon~Stone et~al.(2022)McMahon~Stone, Thomas, Vanhoef, Henderson,
+  Bailluet, and Chothia}]{stateinspector2022}
+\bibinfo{author}{C.~McMahon~Stone}, \bibinfo{author}{S.~L. Thomas},
+  \bibinfo{author}{M.~Vanhoef}, \bibinfo{author}{J.~Henderson},
+  \bibinfo{author}{N.~Bailluet}, \bibinfo{author}{T.~Chothia},
+\newblock \bibinfo{title}{{The Closer You Look, The More You Learn: A Grey-box
+  Approach to Protocol State Machine Learning}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 2022 ACM SIGSAC Conference
+  on Computer and Communications Security}, \bibinfo{year}{2022}, pp.
+  \bibinfo{pages}{2265--2278}. \DOIprefix\doi{10.1145/3548606.3559365}.
+%Type = Inproceedings
+\bibitem[{Schumilo et~al.(2022)Schumilo, Aschermann, Jemmett, Abbasi, and
+  Holz}]{nyxnet2022}
+\bibinfo{author}{S.~Schumilo}, \bibinfo{author}{C.~Aschermann},
+  \bibinfo{author}{A.~Jemmett}, \bibinfo{author}{A.~Abbasi},
+  \bibinfo{author}{T.~Holz},
+\newblock \bibinfo{title}{{Nyx-net: network fuzzing with incremental
+  snapshots}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the Seventeenth European
+  Conference on Computer Systems}, \bibinfo{year}{2022}, pp.
+  \bibinfo{pages}{166--180}. \DOIprefix\doi{10.1145/3492321.3519591}.
+%Type = Inproceedings
+\bibitem[{Andronidis and Cadar(2022)}]{snapfuzz2022}
+\bibinfo{author}{A.~Andronidis}, \bibinfo{author}{C.~Cadar},
+\newblock \bibinfo{title}{{SnapFuzz: high-throughput fuzzing of network
+  applications}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 31st ACM SIGSOFT
+  International Symposium on Software Testing and Analysis},
+  \bibinfo{year}{2022}, pp. \bibinfo{pages}{340--351}.
+  \DOIprefix\doi{10.1145/3533767.3534376}.
+%Type = Inproceedings
+\bibitem[{Bars et~al.(2024)Bars, Schloegel, Schiller, Bernhard, and
+  Holz}]{fuzztructionnet2024}
+\bibinfo{author}{N.~Bars}, \bibinfo{author}{M.~Schloegel},
+  \bibinfo{author}{N.~Schiller}, \bibinfo{author}{L.~Bernhard},
+  \bibinfo{author}{T.~Holz},
+\newblock \bibinfo{title}{{No Peer, no Cry: Network Application Fuzzing via
+  Fault Injection}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 2024 on ACM SIGSAC
+  Conference on Computer and Communications Security}, \bibinfo{year}{2024},
+  pp. \bibinfo{pages}{750--764}. \DOIprefix\doi{10.1145/3658644.3690274}.
+%Type = Inproceedings
+\bibitem[{Kao et~al.(2025)Kao, Chen, Lin, Yang, Li, and Huang}]{blueman2025}
+\bibinfo{author}{W.-C. Kao}, \bibinfo{author}{Y.-C. Chen},
+  \bibinfo{author}{Y.-S. Lin}, \bibinfo{author}{Y.-C. Yang},
+  \bibinfo{author}{C.-Y. Li}, \bibinfo{author}{C.-Y. Huang},
+\newblock \bibinfo{title}{{BLuEMan}: A stateful simulation-based fuzzing
+  framework for {Open-Source} {RTOS} bluetooth low energy protocol stacks},
+\newblock in: \bibinfo{booktitle}{34th USENIX Security Symposium (USENIX
+  Security 25)}, \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{Seattle, WA}, \bibinfo{year}{2025}, pp.
+  \bibinfo{pages}{6259--6278}. \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity25/presentation/kao}.
+%Type = Inproceedings
+\bibitem[{Zou et~al.(2025)Zou, Bai, Jiang, Zhao, and Zhou}]{distfuzz2025}
+\bibinfo{author}{Y.~Zou}, \bibinfo{author}{J.-J. Bai}, \bibinfo{author}{Z.-M.
+  Jiang}, \bibinfo{author}{M.~Zhao}, \bibinfo{author}{D.~Zhou},
+\newblock \bibinfo{title}{{Blackbox Fuzzing of Distributed Systems with
+  Multi-Dimensional Inputs and Symmetry-Based Feedback Pruning}},
+\newblock in: \bibinfo{booktitle}{Proceedings 2025 Network and Distributed
+  System Security Symposium}, \bibinfo{year}{2025}.
+  \DOIprefix\doi{10.14722/ndss.2025.241912}.
+%Type = Inproceedings
+\bibitem[{Srivastava and Payer(2021)}]{gramatron_effective_grammar_aware_2021}
+\bibinfo{author}{P.~Srivastava}, \bibinfo{author}{M.~Payer},
+\newblock \bibinfo{title}{Gramatron: effective grammar-aware fuzzing},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 30th ACM SIGSOFT
+  International Symposium on Software Testing and Analysis},
+  \bibinfo{year}{2021}, pp. \bibinfo{pages}{244--256}.
+  \DOIprefix\doi{10.1145/3460319.3464814}.
+%Type = Inproceedings
+\bibitem[{Wang et~al.(2023)Wang, Li, Zhang, and
+  Chen}]{carpetfuzz_documentation_2023}
+\bibinfo{author}{D.~Wang}, \bibinfo{author}{Y.~Li}, \bibinfo{author}{Z.~Zhang},
+  \bibinfo{author}{K.~Chen},
+\newblock \bibinfo{title}{{CarpetFuzz}: Automatic program option constraint
+  extraction from documentation for fuzzing},
+\newblock in: \bibinfo{booktitle}{32nd USENIX Security Symposium ({USENIX}
+  Security 2023)}, \bibinfo{year}{2023}, pp. \bibinfo{pages}{1919--1936}.
+  \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity23/presentation/wang-dawei}.
+%Type = Article
+\bibitem[{Dutra et~al.(2024)Dutra, Gopinath, and Zeller}]{formatfuzzer}
+\bibinfo{author}{R.~Dutra}, \bibinfo{author}{R.~Gopinath},
+  \bibinfo{author}{A.~Zeller},
+\newblock \bibinfo{title}{{FormatFuzzer: Effective Fuzzing of Binary File
+  Formats}},
+\newblock \bibinfo{journal}{ACM Transactions on Software Engineering and
+  Methodology} \bibinfo{volume}{33} (\bibinfo{year}{2024})
+  \bibinfo{pages}{1--29}. \DOIprefix\doi{10.1145/3628157}.
+%Type = Inproceedings
+\bibitem[{Bars et~al.(2023)Bars, Schloegel, Scharnowski, Schiller, and
+  Holz}]{fuzztruction2023}
+\bibinfo{author}{N.~Bars}, \bibinfo{author}{M.~Schloegel},
+  \bibinfo{author}{T.~Scharnowski}, \bibinfo{author}{N.~Schiller},
+  \bibinfo{author}{T.~Holz},
+\newblock \bibinfo{title}{Fuzztruction: Using fault injection-based fuzzing to
+  leverage implicit domain knowledge},
+\newblock in: \bibinfo{booktitle}{32nd USENIX Security Symposium (USENIX
+  Security 23)}, \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{Anaheim, CA}, \bibinfo{year}{2023}, pp.
+  \bibinfo{pages}{1847--1864}. \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity23/presentation/bars}.
+%Type = Inproceedings
+\bibitem[{Lyu et~al.(2023)Lyu, Xu, Ji, Zhang, Wang, Zhao, Pan, Cao, Chen, and
+  Beyah}]{miner2023}
+\bibinfo{author}{C.~Lyu}, \bibinfo{author}{J.~Xu}, \bibinfo{author}{S.~Ji},
+  \bibinfo{author}{X.~Zhang}, \bibinfo{author}{Q.~Wang},
+  \bibinfo{author}{B.~Zhao}, \bibinfo{author}{G.~Pan},
+  \bibinfo{author}{W.~Cao}, \bibinfo{author}{P.~Chen},
+  \bibinfo{author}{R.~Beyah},
+\newblock \bibinfo{title}{{MINER}: A hybrid {Data-Driven} approach for {REST}
+  {API} fuzzing},
+\newblock in: \bibinfo{booktitle}{32nd USENIX Security Symposium (USENIX
+  Security 23)}, \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{Anaheim, CA}, \bibinfo{year}{2023}, pp.
+  \bibinfo{pages}{4517--4534}. \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity23/presentation/lyu}.
+%Type = Inproceedings
+\bibitem[{Wang et~al.(2024)Wang, Yu, and
+  Luo}]{llmif_augmented_large_language_2024}
+\bibinfo{author}{J.~Wang}, \bibinfo{author}{L.~Yu}, \bibinfo{author}{X.~Luo},
+\newblock \bibinfo{title}{{{LLMIF}}: Augmented large language model for fuzzing
+  {IoT} devices},
+\newblock in: \bibinfo{booktitle}{2024 IEEE Symposium on Security and Privacy
+  (SP)}, \bibinfo{year}{2024}, pp. \bibinfo{pages}{881--896}.
+  \DOIprefix\doi{10.1109/sp54263.2024.00211}.
+%Type = Inproceedings
+\bibitem[{Xia et~al.(2024)Xia, Paltenghi, Tian, Pradel, and
+  Zhang}]{fuzz4all_universal_fuzzing_large_2024}
+\bibinfo{author}{C.~S. Xia}, \bibinfo{author}{M.~Paltenghi},
+  \bibinfo{author}{J.~L. Tian}, \bibinfo{author}{M.~Pradel},
+  \bibinfo{author}{L.~Zhang},
+\newblock \bibinfo{title}{{{Fuzz4All}}: Universal fuzzing with large language
+  models},
+\newblock in: \bibinfo{booktitle}{Proceedings of the IEEE/ACM 46th
+  International Conference on Software Engineering}, \bibinfo{year}{2024}, pp.
+  \bibinfo{pages}{1--13}. \DOIprefix\doi{10.1145/3597503.3639121}.
+%Type = Inproceedings
+\bibitem[{Deng et~al.(2024)Deng, Xia, Yang, Zhang, Yang, and
+  Zhang}]{fuzzgpt2024}
+\bibinfo{author}{Y.~Deng}, \bibinfo{author}{C.~S. Xia},
+  \bibinfo{author}{C.~Yang}, \bibinfo{author}{S.~D. Zhang},
+  \bibinfo{author}{S.~Yang}, \bibinfo{author}{L.~Zhang},
+\newblock \bibinfo{title}{{Large Language Models are Edge-Case Generators:
+  Crafting Unusual Programs for Fuzzing Deep Learning Libraries}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the IEEE/ACM 46th
+  International Conference on Software Engineering}, \bibinfo{year}{2024}, pp.
+  \bibinfo{pages}{1--13}. \DOIprefix\doi{10.1145/3597503.3623343}.
+%Type = Article
+\bibitem[{Yang et~al.(2024)Yang, Deng, Lu, Yao, Liu, Jabbarvand, and
+  Zhang}]{whitefox2024}
+\bibinfo{author}{C.~Yang}, \bibinfo{author}{Y.~Deng}, \bibinfo{author}{R.~Lu},
+  \bibinfo{author}{J.~Yao}, \bibinfo{author}{J.~Liu},
+  \bibinfo{author}{R.~Jabbarvand}, \bibinfo{author}{L.~Zhang},
+\newblock \bibinfo{title}{{WhiteFox: White-Box Compiler Fuzzing Empowered by
+  Large Language Models}},
+\newblock \bibinfo{journal}{Proceedings of the ACM on Programming Languages}
+  \bibinfo{volume}{8} (\bibinfo{year}{2024}) \bibinfo{pages}{709--735}.
+  \DOIprefix\doi{10.1145/3689736}.
+%Type = Inproceedings
+\bibitem[{Wang et~al.(2024)Wang, Zhou, Chen, Li, and Miao}]{prophetfuzz2024}
+\bibinfo{author}{D.~Wang}, \bibinfo{author}{G.~Zhou},
+  \bibinfo{author}{L.~Chen}, \bibinfo{author}{D.~Li},
+  \bibinfo{author}{Y.~Miao},
+\newblock \bibinfo{title}{{ProphetFuzz: Fully Automated Prediction and Fuzzing
+  of High-Risk Option Combinations with Only Documentation via Large Language
+  Model}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 2024 on ACM SIGSAC
+  Conference on Computer and Communications Security}, \bibinfo{year}{2024},
+  pp. \bibinfo{pages}{735--749}. \DOIprefix\doi{10.1145/3658644.3690231}.
+%Type = Article
+\bibitem[{Meng et~al.(2026)Meng, Duck, and Roychoudhury}]{hybridllm2026}
+\bibinfo{author}{R.~Meng}, \bibinfo{author}{G.~J. Duck},
+  \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{{Large Language Model Assisted Hybrid Fuzzing}},
+\newblock \bibinfo{journal}{IEEE Transactions on Software Engineering}
+  \bibinfo{volume}{52} (\bibinfo{year}{2026}) \bibinfo{pages}{2367--2382}.
+  \DOIprefix\doi{10.1109/tse.2026.3694408}.
+%Type = Article
+\bibitem[{Xu et~al.(2026)Xu, Zhao, Yu, and Wang}]{hgfuzzer2026}
+\bibinfo{author}{H.~Xu}, \bibinfo{author}{Y.~Zhao}, \bibinfo{author}{J.~Yu},
+  \bibinfo{author}{H.~Wang},
+\newblock \bibinfo{title}{{HGFuzzer: Directed Greybox Fuzzing via Large
+  Language Model}},
+\newblock \bibinfo{journal}{ACM Transactions on Software Engineering and
+  Methodology}  (\bibinfo{year}{2026}). \DOIprefix\doi{10.1145/3841476},
+  \bibinfo{note}{advance online publication, August 22, 2026}.
+%Type = Inproceedings
+\bibitem[{Borcherding et~al.(2023)Borcherding, Giraud, Fitzgerald, and
+  Beyerer}]{bandits_states2023}
+\bibinfo{author}{A.~Borcherding}, \bibinfo{author}{M.~Giraud},
+  \bibinfo{author}{I.~Fitzgerald}, \bibinfo{author}{J.~Beyerer},
+\newblock \bibinfo{title}{The bandit's states: Modeling state selection for
+  stateful network fuzzing as multi-armed bandit problem},
+\newblock in: \bibinfo{booktitle}{2023 IEEE European Symposium on Security and
+  Privacy Workshops (EuroS\&PW)}, \bibinfo{year}{2023}, pp.
+  \bibinfo{pages}{345--350}. \DOIprefix\doi{10.1109/EuroSPW59978.2023.00043}.
+%Type = Inproceedings
+\bibitem[{Luo et~al.(2024)Luo, Herrera, Quirk, Chase, Ranasinghe, and
+  Kanhere}]{tscheduler2024}
+\bibinfo{author}{S.~Luo}, \bibinfo{author}{A.~Herrera},
+  \bibinfo{author}{P.~Quirk}, \bibinfo{author}{M.~Chase},
+  \bibinfo{author}{D.~C. Ranasinghe}, \bibinfo{author}{S.~S. Kanhere},
+\newblock \bibinfo{title}{Make out like a (multi-armed) bandit: Improving the
+  odds of fuzzer seed scheduling with {T-Scheduler}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 19th ACM Asia Conference
+  on Computer and Communications Security}, \bibinfo{year}{2024}, pp.
+  \bibinfo{pages}{1463--1479}. \DOIprefix\doi{10.1145/3634737.3637639}.
+%Type = Inproceedings
+\bibitem[{B{\"o}hme et~al.(2020)B{\"o}hme, Man{\`e}s, and Cha}]{entropic2020}
+\bibinfo{author}{M.~B{\"o}hme}, \bibinfo{author}{V.~J.~M. Man{\`e}s},
+  \bibinfo{author}{S.~K. Cha},
+\newblock \bibinfo{title}{Boosting fuzzer efficiency: An information theoretic
+  perspective},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 28th ACM Joint Meeting on
+  European Software Engineering Conference and Symposium on the Foundations of
+  Software Engineering}, \bibinfo{year}{2020}, pp. \bibinfo{pages}{678--689}.
+  \DOIprefix\doi{10.1145/3368089.3409748}.
+%Type = Article
+\bibitem[{Ollando et~al.(2026)Ollando, Shin, and Briand}]{seqfuzzsdn2026}
+\bibinfo{author}{R.~Ollando}, \bibinfo{author}{S.~Y. Shin},
+  \bibinfo{author}{L.~C. Briand},
+\newblock \bibinfo{title}{Learning-guided fuzzing for testing stateful {SDN}
+  controllers},
+\newblock \bibinfo{journal}{ACM Transactions on Software Engineering and
+  Methodology} \bibinfo{volume}{35} (\bibinfo{year}{2026})
+  \bibinfo{pages}{1--45}. \DOIprefix\doi{10.1145/3733717}.
+%Type = Inproceedings
+\bibitem[{She et~al.(2024)She, Storek, Xie, Kweon, Srivastava, and
+  Jana}]{fox2024}
+\bibinfo{author}{D.~She}, \bibinfo{author}{A.~Storek},
+  \bibinfo{author}{Y.~Xie}, \bibinfo{author}{S.~Kweon},
+  \bibinfo{author}{P.~Srivastava}, \bibinfo{author}{S.~Jana},
+\newblock \bibinfo{title}{{FOX: Coverage-guided Fuzzing as Online Stochastic
+  Control}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 2024 on ACM SIGSAC
+  Conference on Computer and Communications Security}, \bibinfo{year}{2024},
+  pp. \bibinfo{pages}{765--779}. \DOIprefix\doi{10.1145/3658644.3670362}.
+%Type = Inproceedings
+\bibitem[{Zheng et~al.(2023)Zheng, Zhang, Huang, Ren, Wang, Cao, Zhang,
+  Toffalini, and Payer}]{fishfuzz2023}
+\bibinfo{author}{H.~Zheng}, \bibinfo{author}{J.~Zhang},
+  \bibinfo{author}{Y.~Huang}, \bibinfo{author}{Z.~Ren},
+  \bibinfo{author}{H.~Wang}, \bibinfo{author}{C.~Cao},
+  \bibinfo{author}{Y.~Zhang}, \bibinfo{author}{F.~Toffalini},
+  \bibinfo{author}{M.~Payer},
+\newblock \bibinfo{title}{{FISHFUZZ}: Catch deeper bugs by throwing larger
+  nets},
+\newblock in: \bibinfo{booktitle}{32nd USENIX Security Symposium (USENIX
+  Security 23)}, \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{Anaheim, CA}, \bibinfo{year}{2023}, pp.
+  \bibinfo{pages}{1343--1360}. \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity23/presentation/zheng}.
+%Type = Inproceedings
+\bibitem[{Zhu et~al.(2025)Zhu, Dai, Feng, Wang, Xia, Wen, Lam, and
+  Xiang}]{wingmuzz2025}
+\bibinfo{author}{X.~Zhu}, \bibinfo{author}{E.~Dai}, \bibinfo{author}{X.~Feng},
+  \bibinfo{author}{S.~Wang}, \bibinfo{author}{X.~Xia},
+  \bibinfo{author}{S.~Wen}, \bibinfo{author}{K.-Y. Lam},
+  \bibinfo{author}{Y.~Xiang},
+\newblock \bibinfo{title}{{WingMuzz: Blackbox Testing of IoT Protocols via
+  Two-dimensional Fuzzing Schedule}},
+\newblock in: \bibinfo{booktitle}{2025 40th IEEE/ACM International Conference
+  on Automated Software Engineering (ASE)}, \bibinfo{year}{2025}, pp.
+  \bibinfo{pages}{2580--2592}. \DOIprefix\doi{10.1109/ase63991.2025.00212}.
+%Type = Inproceedings
+\bibitem[{Song et~al.(2026)Song, Pei, Wu, Zeng, He, Zuo, Liu, Zhao, and
+  Guo}]{protocolguard2026}
+\bibinfo{author}{X.~Song}, \bibinfo{author}{L.~Pei}, \bibinfo{author}{J.~Wu},
+  \bibinfo{author}{Y.~Zeng}, \bibinfo{author}{G.~He}, \bibinfo{author}{C.~Zuo},
+  \bibinfo{author}{X.~Liu}, \bibinfo{author}{Q.~Zhao},
+  \bibinfo{author}{S.~Guo},
+\newblock \bibinfo{title}{{ProtocolGuard: Detecting Protocol Non-compliance
+  Bugs via LLM-guided Static Analysis and Dynamic Verification}},
+\newblock in: \bibinfo{booktitle}{Proceedings 2026 Network and Distributed
+  System Security Symposium}, \bibinfo{year}{2026}.
+  \DOIprefix\doi{10.14722/ndss.2026.240521}.
+%Type = Inproceedings
+\bibitem[{Yang et~al.(2026)Yang, Qin, Zhang, Fu, Chen, Wang, Zhao, Li, Li,
+  Wang, and Zhang}]{bsfuzzer2026}
+\bibinfo{author}{T.~Yang}, \bibinfo{author}{Y.~Qin},
+  \bibinfo{author}{L.~Zhang}, \bibinfo{author}{Z.~Fu},
+  \bibinfo{author}{J.~Chen}, \bibinfo{author}{J.~Wang},
+  \bibinfo{author}{S.~Zhao}, \bibinfo{author}{Q.~Li}, \bibinfo{author}{R.~Li},
+  \bibinfo{author}{H.~Wang}, \bibinfo{author}{Y.~Zhang},
+\newblock \bibinfo{title}{{BSFuzzer: Context-Aware Semantic Fuzzing for BLE
+  Logic Flaw Detection}},
+\newblock in: \bibinfo{booktitle}{Proceedings 2026 Network and Distributed
+  System Security Symposium}, \bibinfo{year}{2026}.
+  \DOIprefix\doi{10.14722/ndss.2026.240094}.
+%Type = Inproceedings
+\bibitem[{Wang et~al.(2026)Wang, Chen, Chen, Zhuge, Bai, and
+  Duan}]{mercuriuzz2026}
+\bibinfo{author}{K.~Wang}, \bibinfo{author}{J.~Chen},
+  \bibinfo{author}{P.~Chen}, \bibinfo{author}{J.~Zhuge},
+  \bibinfo{author}{J.~Bai}, \bibinfo{author}{H.~Duan},
+\newblock \bibinfo{title}{{Identifying Logical Vulnerabilities in QUIC
+  Implementations}},
+\newblock in: \bibinfo{booktitle}{Proceedings 2026 Network and Distributed
+  System Security Symposium}, \bibinfo{year}{2026}.
+  \DOIprefix\doi{10.14722/ndss.2026.231777}.
+%Type = Article
+\bibitem[{Hazimeh et~al.(2020)Hazimeh, Herrera, and Payer}]{magma2020}
+\bibinfo{author}{A.~Hazimeh}, \bibinfo{author}{A.~Herrera},
+  \bibinfo{author}{M.~Payer},
+\newblock \bibinfo{title}{{Magma}: A ground-truth fuzzing benchmark},
+\newblock \bibinfo{journal}{Proceedings of the ACM on Measurement and Analysis
+  of Computing Systems} \bibinfo{volume}{4} (\bibinfo{year}{2020})
+  \bibinfo{pages}{1--29}. \DOIprefix\doi{10.1145/3428334}.
+%Type = Inproceedings
+\bibitem[{Natella and
+  Pham(2021)}]{profuzzbench_benchmark_stateful_protocol_2021}
+\bibinfo{author}{R.~Natella}, \bibinfo{author}{V.-T. Pham},
+\newblock \bibinfo{title}{{{ProFuzzBench}}: A benchmark for stateful protocol
+  fuzzing},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 30th ACM SIGSOFT
+  International Symposium on Software Testing and Analysis},
+  \bibinfo{year}{2021}, pp. \bibinfo{pages}{662--665}.
+  \DOIprefix\doi{10.1145/3460319.3469077}.
+%Type = Inproceedings
+\bibitem[{Metzman et~al.(2021)Metzman, Szekeres, Simon, Sprabery, and
+  Arya}]{fuzzbench2021}
+\bibinfo{author}{J.~Metzman}, \bibinfo{author}{L.~Szekeres},
+  \bibinfo{author}{L.~Simon}, \bibinfo{author}{R.~Sprabery},
+  \bibinfo{author}{A.~Arya},
+\newblock \bibinfo{title}{{FuzzBench: an open fuzzer benchmarking platform and
+  service}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 29th ACM Joint Meeting on
+  European Software Engineering Conference and Symposium on the Foundations of
+  Software Engineering}, \bibinfo{year}{2021}, pp. \bibinfo{pages}{1393--1403}.
+  \DOIprefix\doi{10.1145/3468264.3473932}.
+%Type = Inproceedings
+\bibitem[{B{\"o}hme et~al.(2022)B{\"o}hme, Szekeres, and
+  Metzman}]{reliability_benchmarking_2022}
+\bibinfo{author}{M.~B{\"o}hme}, \bibinfo{author}{L.~Szekeres},
+  \bibinfo{author}{J.~Metzman},
+\newblock \bibinfo{title}{On the reliability of coverage-based fuzzer
+  benchmarking},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 44th International
+  Conference on Software Engineering}, \bibinfo{year}{2022}, pp.
+  \bibinfo{pages}{1621--1633}. \DOIprefix\doi{10.1145/3510003.3510230}.
+%Type = Inproceedings
+\bibitem[{Schloegel et~al.(2024)Schloegel, Bars, Schiller, Bernhard,
+  Scharnowski, Crump, Ale-Ebrahim, Bissantz, Muench, and
+  Holz}]{sok_prudent_evaluation_practices_2024}
+\bibinfo{author}{M.~Schloegel}, \bibinfo{author}{N.~Bars},
+  \bibinfo{author}{N.~Schiller}, \bibinfo{author}{L.~Bernhard},
+  \bibinfo{author}{T.~Scharnowski}, \bibinfo{author}{A.~Crump},
+  \bibinfo{author}{A.~Ale-Ebrahim}, \bibinfo{author}{N.~Bissantz},
+  \bibinfo{author}{M.~Muench}, \bibinfo{author}{T.~Holz},
+\newblock \bibinfo{title}{{{SoK}}: Prudent evaluation practices for fuzzing},
+\newblock in: \bibinfo{booktitle}{2024 IEEE Symposium on Security and Privacy
+  (SP)}, \bibinfo{year}{2024}, pp. \bibinfo{pages}{1974--1993}.
+  \DOIprefix\doi{10.1109/sp54263.2024.00137}.
+%Type = Article
+\bibitem[{Thompson(1933)}]{thompson1933}
+\bibinfo{author}{W.~R. Thompson},
+\newblock \bibinfo{title}{On the likelihood that one unknown probability
+  exceeds another in view of the evidence of two samples},
+\newblock \bibinfo{journal}{Biometrika} \bibinfo{volume}{25}
+  (\bibinfo{year}{1933}) \bibinfo{pages}{285--294}.
+  \DOIprefix\doi{10.1093/biomet/25.3-4.285}.
+%Type = Inproceedings
+\bibitem[{Ounjai et~al.(2023)Ounjai, Wüstholz, and
+  Christakis}]{greenbenchmark2023}
+\bibinfo{author}{J.~Ounjai}, \bibinfo{author}{V.~Wüstholz},
+  \bibinfo{author}{M.~Christakis},
+\newblock \bibinfo{title}{{Green Fuzzer Benchmarking}},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 32nd ACM SIGSOFT
+  International Symposium on Software Testing and Analysis},
+  \bibinfo{year}{2023}, pp. \bibinfo{pages}{1396--1406}.
+  \DOIprefix\doi{10.1145/3597926.3598144}.
+%Type = Article
+\bibitem[{Tantithamthavorn et~al.(2017)Tantithamthavorn, McIntosh, Hassan, and
+  Matsumoto}]{validation2017}
+\bibinfo{author}{C.~Tantithamthavorn}, \bibinfo{author}{S.~McIntosh},
+  \bibinfo{author}{A.~E. Hassan}, \bibinfo{author}{K.~Matsumoto},
+\newblock \bibinfo{title}{An empirical comparison of model validation
+  techniques for defect prediction models},
+\newblock \bibinfo{journal}{IEEE Transactions on Software Engineering}
+  \bibinfo{volume}{43} (\bibinfo{year}{2017}) \bibinfo{pages}{1--18}.
+  \DOIprefix\doi{10.1109/TSE.2016.2584050}.
+%Type = Inproceedings
+\bibitem[{Guo et~al.(2017)Guo, Pleiss, Sun, and
+  Weinberger}]{guo2017calibration}
+\bibinfo{author}{C.~Guo}, \bibinfo{author}{G.~Pleiss},
+  \bibinfo{author}{Y.~Sun}, \bibinfo{author}{K.~Q. Weinberger},
+\newblock \bibinfo{title}{On calibration of modern neural networks},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 34th International
+  Conference on Machine Learning}, volume~\bibinfo{volume}{70} of
+  \textit{\bibinfo{series}{Proceedings of Machine Learning Research}},
+  \bibinfo{publisher}{PMLR}, \bibinfo{year}{2017}, pp.
+  \bibinfo{pages}{1321--1330}. \URLprefix
+  \url{https://proceedings.mlr.press/v70/guo17a.html}.
+%Type = Inproceedings
+\bibitem[{Davis and Goadrich(2006)}]{davis2006pr}
+\bibinfo{author}{J.~Davis}, \bibinfo{author}{M.~Goadrich},
+\newblock \bibinfo{title}{The relationship between {Precision-Recall} and {ROC}
+  curves},
+\newblock in: \bibinfo{booktitle}{Proceedings of the 23rd International
+  Conference on Machine Learning}, \bibinfo{year}{2006}, pp.
+  \bibinfo{pages}{233--240}. \DOIprefix\doi{10.1145/1143844.1143874}.
+%Type = Article
+\bibitem[{Efron(1979)}]{efron1979}
+\bibinfo{author}{B.~Efron},
+\newblock \bibinfo{title}{Bootstrap methods: Another look at the jackknife},
+\newblock \bibinfo{journal}{The Annals of Statistics} \bibinfo{volume}{7}
+  (\bibinfo{year}{1979}) \bibinfo{pages}{1--26}.
+  \DOIprefix\doi{10.1214/aos/1176344552}.
+%Type = Article
+\bibitem[{Mann and Whitney(1947)}]{mann1947}
+\bibinfo{author}{H.~B. Mann}, \bibinfo{author}{D.~R. Whitney},
+\newblock \bibinfo{title}{On a test of whether one of two random variables is
+  stochastically larger than the other},
+\newblock \bibinfo{journal}{The Annals of Mathematical Statistics}
+  \bibinfo{volume}{18} (\bibinfo{year}{1947}) \bibinfo{pages}{50--60}.
+  \DOIprefix\doi{10.1214/aoms/1177730491}.
+%Type = Article
+\bibitem[{Cliff(1993)}]{cliff1993}
+\bibinfo{author}{N.~Cliff},
+\newblock \bibinfo{title}{Dominance statistics: Ordinal analyses to answer
+  ordinal questions},
+\newblock \bibinfo{journal}{Psychological Bulletin} \bibinfo{volume}{114}
+  (\bibinfo{year}{1993}) \bibinfo{pages}{494--509}.
+  \DOIprefix\doi{10.1037/0033-2909.114.3.494}.
+%Type = Article
+\bibitem[{Benjamini and Hochberg(1995)}]{benjamini1995}
+\bibinfo{author}{Y.~Benjamini}, \bibinfo{author}{Y.~Hochberg},
+\newblock \bibinfo{title}{Controlling the false discovery rate: A practical and
+  powerful approach to multiple testing},
+\newblock \bibinfo{journal}{Journal of the Royal Statistical Society Series B:
+  Statistical Methodology} \bibinfo{volume}{57} (\bibinfo{year}{1995})
+  \bibinfo{pages}{289--300}.
+  \DOIprefix\doi{10.1111/j.2517-6161.1995.tb02031.x}.
+%Type = Article
+\bibitem[{Kaplan and Meier(1958)}]{kaplan1958}
+\bibinfo{author}{E.~L. Kaplan}, \bibinfo{author}{P.~Meier},
+\newblock \bibinfo{title}{Nonparametric estimation from incomplete
+  observations},
+\newblock \bibinfo{journal}{Journal of the American Statistical Association}
+  \bibinfo{volume}{53} (\bibinfo{year}{1958}) \bibinfo{pages}{457--481}.
+  \DOIprefix\doi{10.1080/01621459.1958.10501452}.
+%Type = Article
+\bibitem[{Wolff et~al.(2026)Wolff, Böhme, and
+  Roychoudhury}]{benchmarkproperties}
+\bibinfo{author}{D.~Wolff}, \bibinfo{author}{M.~Böhme},
+  \bibinfo{author}{A.~Roychoudhury},
+\newblock \bibinfo{title}{{Fuzzing: On Benchmarking Outcome as a Function of
+  Benchmark Properties}},
+\newblock \bibinfo{journal}{ACM Transactions on Software Engineering and
+  Methodology} \bibinfo{volume}{35} (\bibinfo{year}{2026})
+  \bibinfo{pages}{1--26}. \DOIprefix\doi{10.1145/3732936}.
+%Type = Inproceedings
+\bibitem[{G{\"o}rz et~al.(2023)G{\"o}rz, Mathis, Hassler, G{\"u}ler, Holz,
+  Zeller, and Gopinath}]{mutationassessment2023}
+\bibinfo{author}{P.~G{\"o}rz}, \bibinfo{author}{B.~Mathis},
+  \bibinfo{author}{K.~Hassler}, \bibinfo{author}{E.~G{\"u}ler},
+  \bibinfo{author}{T.~Holz}, \bibinfo{author}{A.~Zeller},
+  \bibinfo{author}{R.~Gopinath},
+\newblock \bibinfo{title}{Systematic assessment of fuzzers using mutation
+  analysis},
+\newblock in: \bibinfo{booktitle}{32nd USENIX Security Symposium (USENIX
+  Security 23)}, \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{Anaheim, CA}, \bibinfo{year}{2023}, pp.
+  \bibinfo{pages}{4535--4552}. \URLprefix
+  \url{https://www.usenix.org/conference/usenixsecurity23/presentation/gorz}.
+
+\end{thebibliography}

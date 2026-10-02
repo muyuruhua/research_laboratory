@@ -1,0 +1,92 @@
+{
+  "audit_directory": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/revision_20260920/table7_layout_20260930_233746",
+  "table_label": "tab:targets",
+  "old_row_count": 9,
+  "records": [
+    [
+      "LightFTP",
+      "FTP",
+      "139af7c",
+      "tcp/2200",
+      "FTP",
+      "yes",
+      "cleanup"
+    ],
+    [
+      "bftpd",
+      "FTP",
+      "6.1 release",
+      "tcp/21",
+      "FTP",
+      "yes",
+      "cleanup"
+    ],
+    [
+      "ProFTPD",
+      "FTP",
+      "61e621e743346",
+      "tcp/21",
+      "FTP",
+      "yes",
+      "cleanup"
+    ],
+    [
+      "Pure-FTPd",
+      "FTP",
+      "10122d9f",
+      "tcp/21",
+      "FTP",
+      "yes",
+      "cleanup"
+    ],
+    [
+      "Exim",
+      "SMTP",
+      "d6a5a05b84",
+      "tcp/25",
+      "SMTP",
+      "yes",
+      "cleanup"
+    ],
+    [
+      "Live555",
+      "RTSP",
+      "live.2023.05.10",
+      "tcp/8554",
+      "RTSP",
+      "yes",
+      "unrecorded"
+    ],
+    [
+      "Kamailio",
+      "SIP",
+      "a2209018fb03d",
+      "udp/5060",
+      "SIP",
+      "no",
+      "PJSIP routine"
+    ],
+    [
+      "Forked-daapd",
+      "DAAP/DACP",
+      "2ca10d9",
+      "tcp/3689",
+      "DAAP",
+      "no",
+      "unrecorded"
+    ],
+    [
+      "Lighttpd1",
+      "HTTP",
+      "9f38b63cae3e2",
+      "tcp/8080",
+      "HTTP",
+      "yes",
+      "unrecorded"
+    ]
+  ],
+  "only_table7_modified": true,
+  "upload_copy_matches_original_except_paths": true,
+  "main_before_sha256": "db4b83f9645a4505bda0d17a02577e9a710f9986d44ff699ad1d30f97ecab259",
+  "main_after_sha256": "d19ea51ccebb43f31611425b795a7c08ee97e3d40460b5d324e7132deef3e5e1"
+}

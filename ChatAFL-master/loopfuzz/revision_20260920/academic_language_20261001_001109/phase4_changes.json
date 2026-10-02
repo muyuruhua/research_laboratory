@@ -1,0 +1,94 @@
+[
+  {
+    "before": "This limited need for target-specific knowledge comes with an abstraction boundary:",
+    "after": "Limited target-specific knowledge introduces an abstraction boundary:"
+  },
+  {
+    "before": "The scope is textual or semi-textual request-response protocols for which request structure, responses, and code coverage are observable. Response-derived state inference requires no target-specific access to internal state, but the complete controller remains greybox because productivity requires code feedback. It is not a pure black-box system. Encrypted or opaque binary protocols require additional assumptions about request construction, response interpretation, and code observability before evaluation.",
+    "after": "The scope covers textual or semi-textual request-response protocols with observable structure, responses, and code coverage. Response-derived inference requires no internal-state access, but code-based productivity makes the controller greybox rather than purely black-box. Encrypted or opaque binary protocols require additional assumptions about request construction, response interpretation, and code observability."
+  },
+  {
+    "before": "Each candidate is associated with its source state, intended target/frontier, and the information supplied to and returned by the model.",
+    "after": "Each candidate is linked to its source state, intended target/frontier, prompt, and model response."
+  },
+  {
+    "before": "Protocol-specific exceptions must be prespecified, with each decision supported by the observed response and its interpretation.",
+    "after": "Protocol-specific exceptions are prespecified; responses and justifications accompany each decision."
+  },
+  {
+    "before": "Coverage and IPSM observations obtained before each trial establish which gains are new.",
+    "after": "Pre-trial coverage and IPSM observations identify new gains."
+  },
+  {
+    "before": "Each newly discovered code element is attributed once to the responsible execution and candidate ancestry, avoiding repeated credit across ancestors.",
+    "after": "Each code discovery receives credit once, linked to its execution and candidate ancestry."
+  },
+  {
+    "before": "Trial execution, ordinary mutation, and provisional validation are distinguished when attributing rewards, preventing duplicate posterior updates.",
+    "after": "Trial execution, ordinary mutation, and provisional validation remain distinct in reward attribution, preventing duplicate updates."
+  },
+  {
+    "before": "Observations are linked to their originating trials and ordered in time under a consistent measurement definition. CVE identities remain separate from information available during testing.",
+    "after": "Each observation identifies its trial, measurement definition, order, and time. CVE identities remain inaccessible during testing."
+  },
+  {
+    "before": "Associate $x$ with its proposal context and ancestry\\;",
+    "after": "Associate candidate with proposal context and ancestry\\;"
+  },
+  {
+    "before": "Reject $x$ for structural invalidity; terminate validation\\;",
+    "after": "Reject $x$ for invalid structure; stop\\;"
+  },
+  {
+    "before": "Evaluate $U,R,\\gcode,\\gstate$ with supporting evidence\\;",
+    "after": "Assess $U,R,\\gcode,\\gstate$ and supporting evidence\\;"
+  },
+  {
+    "before": "Identify the first productive descendant; promote; end validation\\;",
+    "after": "Identify first productive descendant; promote; stop\\;"
+  },
+  {
+    "before": "Classify unresolved provisional status as expiration or campaign censoring\\;",
+    "after": "Classify provisional status: expired or censored\\;"
+  },
+  {
+    "before": "The dataset contains 94 AFLNet (A), 91 ChatAFL (B), 104 benchmark LoopFuzz (D), 90 direct-admission (C), and 91 calibrated (E) observations. The sensitivity conditions contain 81 observations at $\\gamma=0.99$ and 91 at $\\gamma=1.0$. Final configuration records assign a fixed-policy label to 17 of the 90 nominal C observations and 12 of the 91 nominal E observations; the $\\gamma=0.99$ and $\\gamma=1.0$ groups contain 15 and 12 such records. Within nominal C, the reported dispositions (all durable, none rejected) corroborate direct admission. E and the sensitivity groups cannot be distinguished behaviorally from the presence of posterior observations alone, because these observations occur in every LoopFuzz condition. Program versions also vary within nominal arms: D includes four versions (78/12/9/5 runs), C two (83/7), and E two (71/20); each sensitivity condition uses a single version. The analysis retains the original nominal group assignments and treats their uncertain correspondence to effective conditions as a validity limitation. All available observations are retained without assuming independence. The nominal target is ten trials per condition; actual sample sizes $n$ remain explicit. Means and sample SDs use observed values only, with no imputation for unavailable trials.",
+    "after": "The dataset contains 94 AFLNet (A), 91 ChatAFL (B), 104 benchmark LoopFuzz (D), 90 direct-admission (C), and 91 calibrated (E) observations. The sensitivity conditions contain 81 observations at $\\gamma=0.99$ and 91 at $\\gamma=1.0$. Final configuration records assign fixed-policy labels to 17 of the 90 nominal C observations and 12 of the 91 nominal E observations; the $\\gamma=0.99$ and $\\gamma=1.0$ groups contain 15 and 12 such records. Within C, all-durable, no-rejection outcomes corroborate direct admission. Posterior observations occur in every LoopFuzz condition and therefore do not distinguish E or the sensitivity groups. Nominal arms also contain multiple program versions: D four (78/12/9/5 runs), C two (83/7), and E two (71/20); each sensitivity group uses one version. Original group assignments are retained, but correspondence to effective conditions remains uncertain. All observations are included without assuming independence. The nominal target is ten trials per condition; means and sample SDs use observed values only, with actual $n$ and no imputation."
+  },
+  {
+    "before": "This supplies differential replay evidence with verified version identity for the pair, while the earlier three-trial patch comparison remains separate.",
+    "after": "This establishes differential replay for the verified pair; the earlier three-trial patch comparison remains separate."
+  },
+  {
+    "before": "Complete-input replays (September 30 observations) provide three additional comparisons.",
+    "after": "Complete-input replays (September 30 observations) extend the evidence."
+  },
+  {
+    "before": "All 172 share the same diagnostic signature, with no alternative signature observed.",
+    "after": "All 172 share one diagnostic signature; no alternative appears."
+  },
+  {
+    "before": "Diagnostics from the original campaigns are insufficient to confirm these outcomes, so their classification relies on the controlled version-pair replay.",
+    "after": "Original campaign diagnostics are insufficient; outcome classification therefore relies on the controlled version-pair replay."
+  },
+  {
+    "before": "For LIVE555, all 88 campaign crash inputs were replayed against the tested version without sanitizer-based memory checks: 82 terminate the server and 6 do not. This establishes reproduction only under those experimental conditions; without a patched counterpart or memory-error diagnosis, it does not attribute the crashes to the use-after-free.",
+    "after": "For LIVE555, all 88 campaign crash inputs were replayed against the tested version without sanitizer checks: 82 terminate the server and 6 do not. Without a patched comparison or memory-error diagnosis, these results establish reproduction in that version only, not attribution to the use-after-free."
+  },
+  {
+    "before": "For Kamailio, all 253 retained inputs with Content-Length $\\geq 2^{31}$ were evaluated against the verified vulnerable/patched pair. Of these, 102 produce a negative-length outcome in the vulnerable version and none in the patched version. The two runs contributed 77 and 176 inputs, with yields of 36/77 and 66/176. Overflow values include $-2147483648$, $-1$, and $-954437177$; 151/253 inputs do not produce the outcome, and the roles of interaction order and request interpretation remain unresolved. These three comparisons characterize individual-input replay; they provide no arm-level recall, time-to-trigger, or cost denominators.",
+    "after": "For Kamailio, all 253 retained inputs with Content-Length $\\geq 2^{31}$ were evaluated against the verified vulnerable/patched pair: 102 produce a negative-length outcome in the vulnerable version and none in the patched version. The two runs contributed 77 and 176 inputs, with yields of 36/77 and 66/176. Overflow values include $-2147483648$, $-1$, and $-954437177$; 151/253 inputs do not produce the outcome. The roles of interaction order and request interpretation remain unresolved. These comparisons characterize input replay, without arm-level recall, time-to-trigger, or cost denominators."
+  },
+  {
+    "before": "Removal of the affected parsing component in version 28.4 is reported, but has not been validated by a patched-version replay.",
+    "after": "Removal of the affected parsing component in version 28.4 remains unverified by patched-version replay."
+  },
+  {
+    "before": "while maintaining a separate, anonymized correspondence between cases and their evaluation criteria.",
+    "after": "while retaining anonymized case-to-oracle correspondence separately."
+  },
+  {
+    "before": "Richer response interpretation or direct observation of internal state addresses different aspects but requires additional target-specific knowledge and measurement access.",
+    "after": "Richer response interpretation or internal-state observation addresses different aspects but requires target-specific knowledge and measurement access."
+  }
+]

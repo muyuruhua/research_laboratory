@@ -1,0 +1,42 @@
+[
+  {
+    "old": "All three cases require common experimental versions, matched observation periods, and linked state/execution measurements before supporting a mechanism claim.",
+    "new": "Mechanism claims require matched versions and observation periods, with linked state/execution measurements, for all three cases.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "\\namedref{Figure}{fig:reliability} instead examines a narrower estimand: agreement between pre-update probabilities and the binary reward associated with coverage-based retention, separately by target.",
+    "new": "\\namedref{Figure}{fig:reliability} examines target-specific agreement between pre-update probabilities and binary rewards for coverage-based retention.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "Percentile 95\\% CIs use 2,000 bootstrap resamples of whole runs within each target; they do not resolve unknown dependence between trials.",
+    "new": "Percentile 95\\% CIs use 2,000 bootstrap resamples of runs within each target; dependence between trials remains unresolved.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "Empty bins have no estimate, and bins represented by fewer than two runs have no CI.",
+    "new": "Empty bins are unestimated; CIs require at least two runs per bin.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "The observed reward reflects coverage-based retention, which may include execution-frequency novelty; positive mutation counts do not establish complete fixed-energy episodes.",
+    "new": "Rewards measure coverage-based retention, potentially including execution-frequency novelty; nonzero mutation counts do not establish complete fixed-energy episodes.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "These diagnostics do not establish calibration against independent code-branch outcomes; the equal-energy subset rows in \\namedref{Table}{tab:mechanisms} condition the same proxy reward on one fixed energy and inherit these limits.",
+    "new": "These diagnostics do not establish independent code-branch calibration. The equal-energy subset in \\namedref{Table}{tab:mechanisms} conditions the same proxy reward on one energy and retains these limits.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "LoopFuzz is presented as an integrated controller design with a retrospective analysis of its evidence boundaries. The proposed admission rule separates code progress from IPSM novelty and gives state-only proposals a bounded provisional budget. Productivity calibration is an exploratory scheduling mechanism; it does not recover semantic protocol states.",
+    "new": "We present a LoopFuzz controller design with retrospective boundary analysis. Admission separates code progress from IPSM novelty and bounds provisional validation for state-only proposals. Productivity calibration remains exploratory and does not recover semantic protocol states.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  },
+  {
+    "old": "The contribution comprises a controller specification and an assessment of its validation requirements; no quantitative repair effect is claimed.",
+    "new": "The contribution is a controller specification and validation assessment; repair remains unquantified.",
+    "reason": "Condense wording while retaining sample definitions, uncertainty, and the unverified-efficacy boundary."
+  }
+]

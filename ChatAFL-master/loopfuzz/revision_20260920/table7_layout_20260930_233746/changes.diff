@@ -1,0 +1,39 @@
+--- before/main.revised.tex
++++ main.revised.tex
+@@ -481,21 +481,21 @@
+ \centering\small
+ \caption{Target protocols and recorded test conditions.}
+ \label{tab:targets}
+-\begin{tabularx}{\textwidth}{l l l l Y}
+-\toprule
+-Target & Protocol & Source revision & Endpoint (localhost) & Seed protocol / dictionary / reset \\
+-\midrule
+-LightFTP & FTP & 139af7c & tcp/2200 & FTP; yes; cleanup \\
+-bftpd & FTP & 6.1 release & tcp/21 & FTP; yes; cleanup \\
+-ProFTPD & FTP & 61e621e743346 & tcp/21 & FTP; yes; cleanup \\
+-Pure-FTPd & FTP & 10122d9f & tcp/21 & FTP; yes; cleanup \\
+-Exim & SMTP & d6a5a05b84 & tcp/25 & SMTP; yes; cleanup \\
+-Live555 & RTSP & live.2023.05.10 & tcp/8554 & RTSP; yes; unrecorded \\
+-Kamailio & SIP & a2209018fb03d & udp/5060 & SIP; no; PJSIP routine \\
+-Forked-daapd & DAAP/DACP & 2ca10d9 & tcp/3689 & DAAP; no; unrecorded \\
+-Lighttpd1 & HTTP & 9f38b63cae3e2 & tcp/8080 & HTTP; yes; unrecorded \\
+-\bottomrule
+-\end{tabularx}
++\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllllcl@{}}
++\toprule
++Target & Protocol & Source revision & Endpoint (localhost) & Seed protocol & Dictionary & Reset \\
++\midrule
++LightFTP & FTP & 139af7c & tcp/2200 & FTP & yes & cleanup \\
++bftpd & FTP & 6.1 release & tcp/21 & FTP & yes & cleanup \\
++ProFTPD & FTP & 61e621e743346 & tcp/21 & FTP & yes & cleanup \\
++Pure-FTPd & FTP & 10122d9f & tcp/21 & FTP & yes & cleanup \\
++Exim & SMTP & d6a5a05b84 & tcp/25 & SMTP & yes & cleanup \\
++Live555 & RTSP & live.2023.05.10 & tcp/8554 & RTSP & yes & unrecorded \\
++Kamailio & SIP & a2209018fb03d & udp/5060 & SIP & no & PJSIP routine \\
++Forked-daapd & DAAP/DACP & 2ca10d9 & tcp/3689 & DAAP & no & unrecorded \\
++Lighttpd1 & HTTP & 9f38b63cae3e2 & tcp/8080 & HTTP & yes & unrecorded \\
++\bottomrule
++\end{tabular*}
+ \end{table*}
+ 
+ Each run executes in its own Docker container with loopback-only networking and an AFL-instrumented build of the pinned revision; the recorded invocation fixes the seed corpus, dictionary, endpoint, and per-execution reset script listed in \namedref{Table}{tab:targets}. Dockerfile pins document the built revision but are not themselves embedded in the per-run evidence, and \texttt{latest} image tags do not record rebuild provenance.

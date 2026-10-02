@@ -1,0 +1,58 @@
+[
+  {
+    "before": "\\subsection{LLM proposal interface}",
+    "after": "\\subsection{LLM-generated proposals}"
+  },
+  {
+    "before": "Each candidate has a persistent identifier, source state, intended target/frontier, and links to its prompt and raw reply.",
+    "after": "Each candidate is associated with its source state, intended target/frontier, and the information supplied to and returned by the model."
+  },
+  {
+    "before": "An adapter must specify exceptions before a run and retain the response and reason code.",
+    "after": "Protocol-specific exceptions must be prespecified, with each decision supported by the observed response and its interpretation."
+  },
+  {
+    "before": "If runtime instrumentation observes code edges instead, that reward definition must be prespecified and reported separately.",
+    "after": "If coverage measurement observes code edges instead, that reward definition must be prespecified and reported separately."
+  },
+  {
+    "before": "Pre-trial coverage and IPSM snapshots establish which gains are new.",
+    "after": "Coverage and IPSM observations obtained before each trial establish which gains are new."
+  },
+  {
+    "before": "A global code-discovery event is credited once through execution/lineage IDs, not repeatedly to multiple ancestors.",
+    "after": "Each newly discovered code element is attributed once to the responsible execution and candidate ancestry, avoiding repeated credit across ancestors."
+  },
+  {
+    "before": "Trial execution, ordinary mutation, and provisional validation use distinct event types to avoid duplicate updates.",
+    "after": "Trial execution, ordinary mutation, and provisional validation are distinguished when attributing rewards, preventing duplicate posterior updates."
+  },
+  {
+    "before": "\\section{Operational Validity and Measurement}",
+    "after": "\\section{Experimental Fidelity and Measurement}"
+  },
+  {
+    "before": "Operational validity therefore depends on both effective experimental conditions and the sequence of admission decisions.",
+    "after": "Experimental fidelity therefore depends on both effective experimental conditions and the sequence of admission decisions."
+  },
+  {
+    "before": "summarizes the resulting threats to operational validity.",
+    "after": "summarizes the resulting threats to experimental fidelity."
+  },
+  {
+    "before": "\\caption{Operational criteria and evidence limitations.}",
+    "after": "\\caption{Decision criteria and evidence limitations.}"
+  },
+  {
+    "before": "Each observation retains its trial identity, measurement-definition version, temporal order, and time. CVE identities remain isolated benchmark metadata.",
+    "after": "Observations are linked to their originating trials and ordered in time under a consistent measurement definition. CVE identities remain separate from information available during testing."
+  },
+  {
+    "before": "Source revisions are fixed by the benchmark configuration; endpoints and initialization procedures follow the recorded trial conditions. Build identity beyond those revisions remains unverified.",
+    "after": "The benchmark specifies source versions, local communication conditions, and initialization procedures. The correspondence between these versions and every tested program remains unverified."
+  },
+  {
+    "before": "Each run executes in its own Docker container with loopback-only networking and an AFL-instrumented build of the pinned revision; the recorded invocation fixes the seed corpus, dictionary, endpoint, and per-execution reset script listed in \\namedref{Table}{tab:targets}. Dockerfile pins document the built revision but are not themselves embedded in the per-run evidence, and \\texttt{latest} image tags do not record rebuild provenance.",
+    "after": "Runs use isolated execution environments, local-network communication, and AFL-based coverage measurement. \\namedref{Table}{tab:targets} reports the declared source versions, seed protocols, dictionaries, communication settings, and reset procedures. These declarations do not independently establish the identity of every tested program or the effective reset conditions throughout each run."
+  }
+]

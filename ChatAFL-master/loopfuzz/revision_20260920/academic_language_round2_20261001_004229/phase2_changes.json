@@ -1,0 +1,184 @@
+[
+  {
+    "file": "main.revised.tex",
+    "old": "the measurements needed to validate it.",
+    "new": "the measurements needed to validate the design.",
+    "occurrences": 1,
+    "reason": "Correct antecedent after changing contract to criteria."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "In the table, yes/no denotes dictionary use, and unrecorded means that no reset procedure was recorded; it does not establish that state restoration occurred.",
+    "new": "In the table, yes/no denotes dictionary use. Reset evidence distinguishes a declared procedure from an unrecorded one; neither label verifies successful state restoration.",
+    "occurrences": 1,
+    "reason": "Report evidence availability without procedural shorthand or implying successful resets."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Source revision & Endpoint (localhost) & Seed protocol & Dictionary & Reset",
+    "new": "Source version & Local endpoint & Seed protocol & Dictionary & Reset evidence",
+    "occurrences": 1,
+    "reason": "Use concise experimental-condition headings."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "& yes & cleanup",
+    "new": "& yes & Declared",
+    "occurrences": 5,
+    "reason": "Replace procedural shorthand with declared reset evidence; exact mapping retained in audit."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "& no & PJSIP routine",
+    "new": "& no & Declared",
+    "occurrences": 1,
+    "reason": "Report documented reset procedure without an unsupported behavioral description."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "& yes & unrecorded",
+    "new": "& yes & Unrecorded",
+    "occurrences": 2,
+    "reason": "Consistent categorical capitalization."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "& no & unrecorded",
+    "new": "& no & Unrecorded",
+    "occurrences": 1,
+    "reason": "Consistent categorical capitalization."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "seed protocols, dictionaries, communication settings, and reset procedures.",
+    "new": "seed protocols, dictionaries, communication settings, and reset evidence.",
+    "occurrences": 1,
+    "reason": "Align text with evidence-based table heading."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Termination categories alone do not establish memory exhaustion or vulnerability activation.",
+    "new": "The interruption column identifies a reported termination category; it does not establish memory exhaustion or vulnerability activation.",
+    "occurrences": 1,
+    "reason": "Explain category without inferring termination cause."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "guard observed (L).",
+    "new": "security check observed (L).",
+    "occurrences": 1,
+    "reason": "Replace terse diagnostic label with scientific description."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "guard: 193/253 (L).",
+    "new": "security check: 193/253 (L).",
+    "occurrences": 1,
+    "reason": "Preserve predicate count while clarifying its meaning."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "the earlier three-trial patch comparison remains separate. Earlier reported replays yielded",
+    "new": "the three-trial patch comparison remains separate. Reported input-specific replays yielded",
+    "occurrences": 1,
+    "reason": "Describe distinct evidence sets instead of update chronology."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "a later 8/9 aggregate",
+    "new": "an 8/9 aggregate",
+    "occurrences": 1,
+    "reason": "Retain separate report and denominator without revision chronology."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Earlier reported batches remain separate:",
+    "new": "Reported input batches remain separate:",
+    "occurrences": 1,
+    "reason": "Distinguish evidence sets without manuscript-update narration."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "The earlier comparison using a local security check is also separate.",
+    "new": "The comparison using a local security check is also separate.",
+    "occurrences": 1,
+    "reason": "Preserve non-pooling caveat without chronology."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "and a later 1/1 replay.",
+    "new": "and a separate 1/1 replay.",
+    "occurrences": 1,
+    "reason": "Retain distinct observation without implying independent sampling."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "summarizes the replay outcomes; earlier reported batches remain separate in the case descriptions.",
+    "new": "summarizes the replay outcomes; input-specific reported batches remain separate in the case descriptions.",
+    "occurrences": 1,
+    "reason": "Retain provenance and separate denominators without chronological narration."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Selected batches, per-input repeats, and later aggregate counts may overlap;",
+    "new": "Selected batches, per-input repeats, and aggregate counts may overlap;",
+    "occurrences": 1,
+    "reason": "Retain overlap warning."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Complete-input replays (September 30 observations) extend the evidence.",
+    "new": "Complete-input replays assess the retained inputs.",
+    "occurrences": 1,
+    "reason": "Move observation-update date into audit; preserve replay scope."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "seed: 3/3; later: 1/1 (R).",
+    "new": "seed: 3/3; separate: 1/1 (R).",
+    "occurrences": 1,
+    "reason": "Keep sample categories concise and non-chronological."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "A later admission or calibration claim requires independent supporting evidence;",
+    "new": "An admission or calibration claim requires independent supporting evidence;",
+    "occurrences": 1,
+    "reason": "State evidential condition directly."
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "prespecified infrastructure repetitions.",
+    "new": "prespecified repeats after experimental-environment failure.",
+    "occurrences": 1,
+    "reason": "Replace operations shorthand with failure-based analysis criterion."
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "old": "Observed trial counts and D-arm status",
+    "new": "Observed trial counts and reported D-arm status",
+    "occurrences": 1,
+    "reason": "Distinguish reported status from independently verified outcome."
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "old": "Exit 137(D)",
+    "new": "Interrupted(D)",
+    "occurrences": 1,
+    "reason": "Re-label reported interruption category without attributing cause; original category retained here."
+  },
+  {
+    "file": "archive_arm_results.updated_20260930.tex",
+    "old": "Row IDs = arm + target number.",
+    "new": "Conditions are indexed by arm and target.",
+    "occurrences": 1,
+    "reason": "Replace data-processing shorthand with experimental indexing description."
+  },
+  {
+    "file": "archive_arm_results.updated_20260930.tex",
+    "old": "Status: C, completed; X, exit 137 near limit; S, SIGABRT; O, reported OOM. Labels do not verify causes.",
+    "new": "Reported status: C, completed; X, interruption near limit; S, abnormal termination; O, memory exhaustion. Causes are unverified.",
+    "occurrences": 1,
+    "reason": "Translate raw operational labels while retaining categories and counts and qualifying reported causes."
+  }
+]

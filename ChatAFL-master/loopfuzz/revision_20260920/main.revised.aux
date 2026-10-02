@@ -78,7 +78,7 @@
 \newlabel{tab:novelty}{{2}{4}{Prior mechanisms and novelty boundaries}{table.2}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {4}Evidence-Calibrated Controller}{4}{section.4}\protected@file@percent }
 \newlabel{sec:design}{{4}{4}{Evidence-Calibrated Controller}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}LLM proposal interface}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}LLM-generated proposals}{4}{subsection.4.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Admission predicates and evidence separation}{4}{subsection.4.2}\protected@file@percent }
 \newlabel{eq:gcode}{{1}{4}{Admission predicates and evidence separation}{equation.4.1}{}}
 \newlabel{eq:gstate}{{2}{4}{Admission predicates and evidence separation}{equation.4.2}{}}
@@ -100,29 +100,29 @@
 \newlabel{fig:posterior}{{3}{6}{Online calibration from pre-update predictions and independent code rewards}{figure.3}{}}
 \@writefile{loa}{\contentsline {algocf}{\numberline {1}{\ignorespaces Evidence-gated candidate processing}}{6}{algocf.1}\protected@file@percent }
 \newlabel{alg:admission}{{1}{6}{Calibrated scheduling}{algocf.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Operational Validity and Measurement}{6}{section.5}\protected@file@percent }
-\newlabel{sec:implementation}{{5}{6}{Operational Validity and Measurement}{section.5}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Operational criteria and evidence limitations.}}{7}{table.4}\protected@file@percent }
-\newlabel{tab:implementation}{{4}{7}{Operational criteria and evidence limitations}{table.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Measurement structure and traceability}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Fidelity and Measurement}{6}{section.5}\protected@file@percent }
+\newlabel{sec:implementation}{{5}{6}{Experimental Fidelity and Measurement}{section.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Decision criteria and evidence limitations.}}{7}{table.4}\protected@file@percent }
+\newlabel{tab:implementation}{{4}{7}{Decision criteria and evidence limitations}{table.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Observation classes and required measurements.}}{7}{table.5}\protected@file@percent }
+\newlabel{tab:events}{{5}{7}{Observation classes and required measurements}{table.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Measurement definitions and correspondence}{7}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation Scope and Validation Criteria}{7}{section.6}\protected@file@percent }
 \newlabel{sec:protocol}{{6}{7}{Evaluation Scope and Validation Criteria}{section.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Research questions}{7}{subsection.6.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Five arms and causal comparisons}{7}{subsection.6.2}\protected@file@percent }
 \citation{greenbenchmark2023}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Observation classes and required measurements.}}{8}{table.5}\protected@file@percent }
-\newlabel{tab:events}{{5}{8}{Observation classes and required measurements}{table.5}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Required configurations for arms A--E.}}{8}{table.6}\protected@file@percent }
 \newlabel{tab:arms}{{6}{8}{Required configurations for arms A--E}{table.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Target protocols and recorded test conditions.}}{8}{table.7}\protected@file@percent }
-\newlabel{tab:targets}{{7}{8}{Target protocols and recorded test conditions}{table.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Five arms and causal comparisons}{8}{subsection.6.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Targets and experimental controls}{8}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}LLM fairness and configuration}{8}{subsection.6.4}\protected@file@percent }
 \citation{validation2017}
 \citation{guo2017calibration}
 \citation{davis2006pr}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Target protocols and recorded test conditions.}}{9}{table.7}\protected@file@percent }
+\newlabel{tab:targets}{{7}{9}{Target protocols and recorded test conditions}{table.7}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces LLM settings for C/D/E and sensitivity groups; B unverified.}}{9}{table.8}\protected@file@percent }
 \newlabel{tab:llm}{{8}{9}{LLM settings for C/D/E and sensitivity groups; B unverified}{table.8}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}LLM fairness and configuration}{9}{subsection.6.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Mechanism and calibration metrics}{9}{subsection.6.5}\protected@file@percent }
 \citation{efron1979}
 \citation{mann1947}
@@ -133,19 +133,19 @@
 \@writefile{toc}{\contentsline {section}{\numberline {7}Available Evidence and Results}{10}{section.7}\protected@file@percent }
 \newlabel{sec:results}{{7}{10}{Available Evidence and Results}{section.7}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Sample composition and observation periods}{10}{subsection.7.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Observed trial counts and D-arm status ($N=10$ nominal runs).}}{11}{table.9}\protected@file@percent }
-\newlabel{tab:observed_inventory}{{9}{11}{Observed trial counts and D-arm status ($N=10$ nominal runs)}{table.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}RQ1: State--code alignment}{10}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Observed trial counts and reported D-arm status ($N=10$ nominal runs).}}{11}{table.9}\protected@file@percent }
+\newlabel{tab:observed_inventory}{{9}{11}{Observed trial counts and reported D-arm status ($N=10$ nominal runs)}{table.9}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces A/D terminal coverage (mean $\pm $ SD); descriptive comparisons.}}{11}{table.10}\protected@file@percent }
 \newlabel{tab:observed_endpoints}{{10}{11}{A/D terminal coverage (mean $\pm $ SD); descriptive comparisons}{table.10}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces D-arm candidate and episode counts; dispositions are reported labels.}}{11}{table.11}\protected@file@percent }
 \newlabel{tab:observed_log_counts}{{11}{11}{D-arm candidate and episode counts; dispositions are reported labels}{table.11}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}RQ1: Current alignment observations}{11}{subsection.7.2}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Proxy-reward calibration in E (95\% CIs in brackets).}}{12}{table.12}\protected@file@percent }
 \newlabel{tab:logged_calibration}{{12}{12}{Proxy-reward calibration in E (95\% CIs in brackets)}{table.12}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces E-arm proxy-reward reliability (bin means; 95\% CIs).}}{12}{figure.4}\protected@file@percent }
+\newlabel{fig:reliability}{{4}{12}{E-arm proxy-reward reliability (bin means; 95\% CIs)}{figure.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.3}RQ2: Admission records and evidence limits}{12}{subsection.7.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}RQ3: Exploratory scheduling diagnostics}{12}{subsection.7.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces E-arm proxy-reward reliability (bin means; 95\% CIs).}}{13}{figure.4}\protected@file@percent }
-\newlabel{fig:reliability}{{4}{13}{E-arm proxy-reward reliability (bin means; 95\% CIs)}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}RQ3: Exploratory scheduling diagnostics}{13}{subsection.7.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.5}RQ5: Recorded costs and interpretation limits}{13}{subsection.7.5}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces A--E code-branch trajectories (median and interquartile range).}}{14}{figure.5}\protected@file@percent }
 \newlabel{fig:trajectories}{{5}{14}{A--E code-branch trajectories (median and interquartile range)}{figure.5}{}}
@@ -168,21 +168,21 @@
 \newlabel{fig:callcost}{{9}{17}{Code-branch endpoints versus reported calls, by target and arm}{figure.9}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Vulnerability cases and supporting evidence (L: direct observation; R: report).}}{17}{table.16}\protected@file@percent }
 \newlabel{tab:cve}{{16}{17}{Vulnerability cases and supporting evidence (L: direct observation; R: report)}{table.16}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Replay outcomes and controls; original denominators retained.}}{18}{table.17}\protected@file@percent }
+\newlabel{tab:cveresults}{{17}{18}{Replay outcomes and controls; original denominators retained}{table.17}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Replay outcomes and their denominators}{18}{subsection.8.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Controlled rediscovery still to be measured}{18}{subsection.8.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Discussion}{18}{section.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}What calibration can and cannot repair}{18}{subsection.9.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Replay outcomes and controls; original denominators retained.}}{19}{table.17}\protected@file@percent }
-\newlabel{tab:cveresults}{{17}{19}{Replay outcomes and controls; original denominators retained}{table.17}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Validity threats, required controls, and evidence limits.}}{19}{table.18}\protected@file@percent }
-\newlabel{tab:threats}{{18}{19}{Validity threats, required controls, and evidence limits}{table.18}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Cost, nonstationarity, and provider variability}{19}{subsection.9.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Evidence limits for controlled rediscovery}{18}{subsection.8.3}\protected@file@percent }
+\citation{benchmarkproperties}
+\citation{mutationassessment2023}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Discussion}{19}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}What calibration can and cannot repair}{19}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Cost, nonstationarity, and model variability}{19}{subsection.9.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Evidence required for confirmatory claims}{19}{subsection.9.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {10}Threats to Validity}{19}{section.10}\protected@file@percent }
 \newlabel{sec:threats}{{10}{19}{Threats to Validity}{section.10}{}}
-\citation{benchmarkproperties}
-\citation{mutationassessment2023}
-\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{20}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{19}{section.11}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Validity threats, required controls, and evidence limits.}}{20}{table.18}\protected@file@percent }
+\newlabel{tab:threats}{{18}{20}{Validity threats, required controls, and evidence limits}{table.18}{}}
 \@writefile{toc}{\let\numberline\tmptocnumberline}
 \@writefile{toc}{\contentsline {section}{\numberline {Appendix\nobreakspace  {}A}Complete descriptive results}{20}{appendix.A}\protected@file@percent }
 \newlabel{sec:archive_appendix}{{Appendix\nobreakspace  {}A}{20}{Complete descriptive results}{appendix.A}{}}

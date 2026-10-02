@@ -31,10 +31,25 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   # The tcp_read_headers Content-Length signed-overflow is only reachable
   # over TCP. Default (unset/0) keeps the original UDP arm byte-identical
   # so historical campaign data stays comparable. TCP needs: fork=yes
-  # (no-fork mode never starts tcp_main), no -D (which forces no-fork),
-  # and a wider exec timeout (daemonizing startup exceeds 5 s under
-  # load). Validated: ~28 execs/s, state machine forms, S1 shapes reach
-  # the vulnerable path, log fingerprint confirmed.
+  # (no-fork mode never starts tcp_main — re-verified 2026-09-30: with -D
+  # the TCP listener never becomes ready and kamailio hangs in init), no
+  # -D (which forces no-fork), and a wider exec timeout (daemonizing
+  # startup exceeds 5 s under load).
+  #
+  # run12 post-mortem (2026-09-30): fork=yes makes kamailio daemonize, the
+  # fork-server's direct child exits immediately, the first exec's
+  # setsid()d tree survives every kill and serves the whole campaign while
+  # all later fresh instances die at bind() (run12: b_abs 9166 vs ~10700
+  # UDP, 55 state edges vs 125-170, 321 captured responses vs ~10500).
+  # Two env-gated fuzzer fixes are exported HERE for the TCP arm only —
+  # the UDP arm and all other protocols keep legacy behavior:
+  #   CHATAFL_TCP_KILL_ORPHANS=1 — afl-fuzz SIGKILLs the daemonized tree
+  #     after each exec's network phase (restores per-exec state reset,
+  #     coverage attribution, and bind() for the next exec's instance).
+  #   CHATAFL_NET_FINAL_DRAIN_MS=150 — kamailio TCP replies are flushed
+  #     asynchronously by tcp_main (measured 5-110 ms vs <3 ms on UDP);
+  #     the legacy 1 ms final-drain poll recorded silence for the tail of
+  #     each sequence, so the IPSM never saw those code transitions.
   if [ "${KAMAILIO_TCP:-0}" = "1" ]; then
     sed -e 's/^fork=no/fork=yes/' \
         -e 's/^disable_tcp=yes/disable_tcp=no/' \
@@ -52,6 +67,8 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
     OPTIONS=$(echo "$OPTIONS" | sed 's/-t [0-9]*+*//g; s/-l [0-9]*//g')
     KAM_EXTRA_TMO="-t 12000+"
     KAM_NODAEMON=""
+    export CHATAFL_TCP_KILL_ORPHANS=1
+    export CHATAFL_NET_FINAL_DRAIN_MS=150
   else
     KAM_NET="-N udp://127.0.0.1/5060"
     KAM_CFG="-f ${WORKDIR}/kamailio-basic.cfg"

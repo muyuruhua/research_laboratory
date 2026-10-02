@@ -50,3 +50,10 @@ docker build . -t mosquitto-v2.0.18 --build-arg MAKE_OPT $NO_CACHE
 cd $PFBENCH
 cd subjects/MQTT/Mosquitto-v2.1.2
 docker build . -t mosquitto-v2.1.2 --build-arg MAKE_OPT $NO_CACHE
+
+# ── StateAFL 扩展（开闭：仅追加一次调用，不改上方任何既有构建段）──
+# 自动发现 subjects/*/*/Dockerfile-stateafl 并构建 <target>-stateafl 镜像；
+# 语义与上方一致（无条件重建）。幂等快速路径请直接调用：
+#   FORCE=0 PFBENCH=$PFBENCH scripts/execution/profuzzbench_build_stateafl.sh
+cd $PFBENCH
+PFBENCH=$PFBENCH scripts/execution/profuzzbench_build_stateafl.sh

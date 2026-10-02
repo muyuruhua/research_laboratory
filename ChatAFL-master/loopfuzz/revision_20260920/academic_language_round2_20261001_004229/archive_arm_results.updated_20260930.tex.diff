@@ -1,0 +1,23 @@
+--- before/archive_arm_results.updated_20260930.tex
++++ after/archive_arm_results.updated_20260930.tex
+@@ -1,9 +1,9 @@
+-% Generated from current Key_Experiment archives on 2026-09-30.
++% Complete descriptive results; provenance is documented separately.
+ \begingroup
+ \small
+ \setlength{\tabcolsep}{1.6pt}
+ \renewcommand{\arraystretch}{1.0}
+-\noindent Row IDs = arm + target number. Arms A--E follow the main text; $E_{99}$: $\gamma=0.99$; $E_{100}$: $\gamma=1.0$.
++\noindent Conditions are indexed by arm and target. Arms A--E follow the main text; $E_{99}$: $\gamma=0.99$; $E_{100}$: $\gamma=1.0$.
+ \par\smallskip
+ \noindent\begin{tabularx}{\columnwidth}{@{}YYY@{}}
+ 1: LightFTP & 4: Pure-FTPd & 7: Kamailio \\
+@@ -11,7 +11,7 @@
+ 3: ProFTPD & 6: Live555 & 9: Lighttpd1 \\
+ \end{tabularx}
+ \par\smallskip
+-\noindent AUC: branch-hours; IPSM: state edges. Status: C, completed; X, exit 137 near limit; S, SIGABRT; O, reported OOM. Labels do not verify causes. Missing combinations are unobserved, not zero.
++\noindent AUC: branch-hours; IPSM: state edges. Reported status: C, completed; X, interruption near limit; S, abnormal termination; O, memory exhaustion. Causes are unverified. Missing combinations are unobserved, not zero.
+ \par\smallskip
+ \captionof{table}{Target--arm coverage (mean $\pm$ SD; actual $n$, nominal $N=10$).}
+ \label{tab:archive_arms}

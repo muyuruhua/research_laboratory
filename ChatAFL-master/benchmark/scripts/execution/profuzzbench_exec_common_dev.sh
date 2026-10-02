@@ -515,6 +515,25 @@ else
     SUBJECT_COPY=""
 fi
 
+# ── StateAFL 扩展（开闭：仅新增检查与下方 docker run 分支，不改既有路径）──
+# StateAFL 的目标必须用它自带的 afl-clang-fast 编译，因此运行在独立镜像
+# ${DOCIMAGE}-stateafl 上；种子必须为 4 字节长度前缀的 replayable 格式，
+# 由分发层通过 STATEAFL_INPUTS 环境变量注入（容器内转为 -e INPUTS，
+# run.sh 以 ${INPUTS:-默认} 读取）。SUBJECT_DIR 仍按基础目标名解析，
+# 使 dev 模式的 run.sh 挂载刷新对其同样生效。
+STATEAFL_IMAGE=""
+if [[ "$FUZZER" == "stateafl" ]]; then
+    STATEAFL_IMAGE="${DOCIMAGE}-stateafl"
+    if ! docker image inspect "$STATEAFL_IMAGE" >/dev/null 2>&1; then
+        printf "\n${LOG_TAG}: [ERROR] StateAFL 镜像 %s 不存在。请先构建：\n" "$STATEAFL_IMAGE"
+        printf "${LOG_TAG}:   cd <对应 subject 目录> && docker build -f Dockerfile-stateafl -t %s --build-arg MAKE_OPT=-j3 .\n" "$STATEAFL_IMAGE"
+        exit 2
+    fi
+    if [[ -z "${STATEAFL_INPUTS:-}" ]]; then
+        printf "\n${LOG_TAG}: [WARN] STATEAFL_INPUTS 未设置，容器将使用镜像默认种子（StateAFL 只认 replayable 格式）\n"
+    fi
+fi
+
 MQTT_AUTO_NETWORK=""
 MQTT_AUTO_BROKER_LIST=""
 MQTT_STABLE_CONTAINER=""
@@ -943,6 +962,24 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+  elif [[ "$FUZZER" == "stateafl" ]]; then
+    # StateAFL：独立镜像（目标用其 afl-clang-fast 编译）+ 源码挂载重编译，无 LLM。
+    # 启动命令格式与 loopfuzz 分支完全一致（cd ${WORKDIR} && run ...）。
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+      --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
+      ${DIAG_PTRACE_FLAGS} \
+      -e INPUTS="${STATEAFL_INPUTS:-}" \
+      ${TARGET_ENV_FLAGS} \
+      ${MQTT_RUN_FLAGS} \
+      -v "${PROJECT_ROOT}/stateafl:/tmp/stateafl-src:ro" \
+      ${SUBJECT_MOUNT} \
+      -d -it "$STATEAFL_IMAGE" /bin/bash -c "\
+        ${SUBJECT_COPY}\
+        echo '[DEV] Copying and compiling updated stateafl code...' && \
+        if [ ! -d /home/ubuntu/stateafl ]; then cp -a /tmp/stateafl-src /home/ubuntu/stateafl; fi && \
+        cp -f /tmp/stateafl-src/*.c /tmp/stateafl-src/*.h /tmp/stateafl-src/Makefile /home/ubuntu/stateafl/ 2>/dev/null || true && \
+        cd /home/ubuntu/stateafl && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")

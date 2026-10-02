@@ -29,7 +29,7 @@ export FUZZER_LIST=$2
 if [[ "x$TARGET_LIST" == "x" ]] || [[ "x$FUZZER_LIST" == "x" ]]
 then
     echo "Usage: $0 TARGET FUZZER"
-    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all"
+    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,stateafl,all"
     exit 1
 fi
 
@@ -38,13 +38,14 @@ normalize_fuzzer_list() {
     for item in $(echo "$raw" | tr ',' ' '); do
         case "$item" in
             loopfuzz|LoopFuzz) canon="loopfuzz" ;;
+            stateafl|StateAFL) canon="stateafl" ;;
             aflnet|chatafl|chatafl-cl1|chatafl-cl2|all) canon="$item" ;;
             "")
                 continue
                 ;;
             *)
                 echo "[ERROR] Unknown fuzzer: $item" >&2
-                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all" >&2
+                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,stateafl,all" >&2
                 exit 2
                 ;;
         esac
@@ -78,6 +79,64 @@ validate_target_list() {
 validate_target_list "$TARGET_LIST"
 FUZZER_LIST="$(normalize_fuzzer_list "$FUZZER_LIST")" || exit $?
 export FUZZER_LIST
+
+# ── StateAFL 扩展钩子（开闭原则：不修改下方任何既有目标块）──────────────
+# StateAFL 与其他 fuzzer 的三个关键差异，由该钩子统一封装：
+#   1) 镜像：<target>-stateafl——目标必须用 StateAFL 自带的 afl-clang-fast 编译
+#      （subjects/<proto>/<target>/Dockerfile-stateafl）；
+#   2) 种子：只认 4 字节长度前缀的 replayable 格式，通过 STATEAFL_INPUTS
+#      注入 common 层的 -e INPUTS（run.sh 支持 INPUTS 环境变量覆盖）；
+#   3) OPTIONS 逐目标镜像该目标的 loopfuzz 行，保证臂间可比。
+# 新增 StateAFL 目标 = 在 stateafl_target_config 加一行 + 构建对应镜像。
+
+stateafl_target_config() {
+    # 输出 "<options>|<replay-seed-dir>"；TEST_TIMEOUT 在此展开（与目标块内联展开一致）
+    case "$1" in
+        proftpd)      echo "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-ftp-replay" ;;
+        live555)      echo "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+|in-rtsp-replay" ;;
+        kamailio)     echo "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-sip-replay" ;;
+        forked-daapd) echo "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-daap-replay" ;;
+        *)            return 1 ;;
+    esac
+}
+
+stateafl_dispatch_one() {
+    local target="$1" mode="$2" cfg opts inputs
+    # mode: "explicit"（用户点名 stateafl，缺镜像即报错）
+    #       "all"（FUZZER=all 的顺带运行，缺镜像告警跳过，不拖垮整批）
+    if ! cfg="$(stateafl_target_config "$target")"; then
+        echo "[ERROR] StateAFL 暂不支持目标 ${target}：需先添加 Dockerfile-stateafl 并构建 ${target}-stateafl" >&2
+        [[ "$mode" == "explicit" ]] && exit 2
+        return 0
+    fi
+    if ! docker image inspect "${target}-stateafl" >/dev/null 2>&1; then
+        echo "[WARN] 镜像 ${target}-stateafl 不存在，跳过 StateAFL（构建：对应 subject 目录内 docker build -f Dockerfile-stateafl -t ${target}-stateafl --build-arg MAKE_OPT=-j3 .）" >&2
+        [[ "$mode" == "explicit" ]] && exit 2
+        return 0
+    fi
+    opts="${cfg%%|*}"
+    inputs="${cfg##*|}"
+    cd $PFBENCH
+    RESULTS_DIR="results-${target}_${TIMESTAMP}"
+    RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+    mkdir -p "${RESULTS_DIR}"
+    chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
+    STATEAFL_INPUTS="/home/ubuntu/experiments/${inputs}" \
+    profuzzbench_exec_common_dev.sh "$target" $NUM_CONTAINERS "${RESULTS_DIR}" stateafl \
+        "out-${target}-stateafl" "${opts}" $TIMEOUT $SKIPCOUNT &
+}
+
+stateafl_dispatch() {
+    local t="$1" mode="$2"
+    if [[ "$t" == "all" ]]; then
+        for t in proftpd live555 kamailio forked-daapd; do
+            stateafl_dispatch_one "$t" "$mode"
+        done
+    else
+        stateafl_dispatch_one "$t" "$mode"
+    fi
+}
+
 
 echo
 echo "=========================================="
@@ -554,6 +613,11 @@ do
                 profuzzbench_exec_common_dev.sh mosquitto-v2.1.2 $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-mosquitto-v2.1.2-loopfuzz "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+        fi
+
+        # ── StateAFL 通用分发钩子（开闭扩展点：唯一插入，不碰上方目标块）──
+        if [[ $FUZZER == "stateafl" ]] || [[ $FUZZER == "all" ]]; then
+            stateafl_dispatch "$TARGET" "$FUZZER"
         fi
 
         # Brief pause so background process startup messages print in order

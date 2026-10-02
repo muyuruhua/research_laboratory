@@ -1,0 +1,11 @@
+USER ubuntu
+PASS ubuntu
+CWD /tmp
+MKD deep_a
+CWD deep_a
+MKD deep_b
+CWD deep_b
+PWD
+CDUP
+RMD deep_b
+RMD deep_a

@@ -1,0 +1,34 @@
+[
+  {
+    "before": "Record candidate, prompt, reply, and lineage identifiers\\;",
+    "after": "Associate $x$ with its proposal context and ancestry\\;"
+  },
+  {
+    "before": "Record structural rejection; stop processing $x$\\;",
+    "after": "Reject $x$ for structural invalidity; terminate validation\\;"
+  },
+  {
+    "before": "Record $U,R,\\gcode,\\gstate$ and reason codes\\;",
+    "after": "Evaluate $U,R,\\gcode,\\gstate$ with supporting evidence\\;"
+  },
+  {
+    "before": "Execute and record one descendant\\;",
+    "after": "Execute one descendant and observe its outcome\\;"
+  },
+  {
+    "before": "Record first productive descendant; promote; end validation\\;",
+    "after": "Identify the first productive descendant; promote; end validation\\;"
+  },
+  {
+    "before": "Record expiration or campaign censoring if still provisional\\;",
+    "after": "Classify unresolved provisional status as expiration or campaign censoring\\;"
+  },
+  {
+    "before": "\\Else{Record rejection\\;}",
+    "after": "\\Else{Reject $x$\\;}"
+  },
+  {
+    "before": "Preserve security-oracle evidence separately\\;",
+    "after": "Retain security-oracle evidence independently\\;"
+  }
+]

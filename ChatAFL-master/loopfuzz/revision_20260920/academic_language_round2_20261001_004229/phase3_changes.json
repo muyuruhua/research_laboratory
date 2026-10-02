@@ -1,0 +1,44 @@
+[
+  {
+    "file": "main.revised.tex",
+    "old": "Infrastructure-interrupted episodes are incomplete, rather than silently assigned reward zero.",
+    "new": "Episodes interrupted by experimental-environment failure are incomplete and receive no assigned reward.",
+    "reason": "Preserve missing-reward rule using experimental terminology.",
+    "occurrences": 1
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "infrastructure or measurement failure",
+    "new": "experimental-environment or measurement failure",
+    "reason": "Distinguish environmental failure from target and measurement outcomes.",
+    "occurrences": 1
+  },
+  {
+    "file": "main.revised.tex",
+    "old": "Only prespecified infrastructure failures permit repetition.",
+    "new": "Only prespecified experimental-environment failures permit repetition.",
+    "reason": "Retain the same permitted-repetition criterion.",
+    "occurrences": 1
+  },
+  {
+    "file": "observed_tables.updated_20260930.tex",
+    "old": "% Generated from current Key_Experiment archives on 2026-09-30.",
+    "new": "% Descriptive trial results; provenance is documented separately.",
+    "reason": "Remove work-directory and update-date narration from source comments.",
+    "occurrences": 1
+  },
+  {
+    "file": "archive_arm_results.updated_20260930.tex",
+    "old": "% Generated from current Key_Experiment archives on 2026-09-30.",
+    "new": "% Complete descriptive results; provenance is documented separately.",
+    "reason": "Remove work-directory and update-date narration from source comments.",
+    "occurrences": 1
+  },
+  {
+    "file": "observed_costs.updated_20260930.tex",
+    "old": "% Generated from current selected benchmark LoopFuzz D archives.",
+    "new": "% Descriptive cost results; provenance is documented separately.",
+    "reason": "Remove work-log framing from source comment; typeset content unchanged.",
+    "occurrences": 1
+  }
+]
