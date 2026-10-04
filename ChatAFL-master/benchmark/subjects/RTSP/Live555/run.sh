@@ -20,7 +20,11 @@ fi
 if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" ]; then
 
   TARGET_DIR=${TARGET_DIR:-"live"}
-  INPUTS=${WORKDIR}/in-rtsp
+  # INPUTS env override (like the other subjects): the stateafl dispatch layer
+  # injects the length-prefixed in-rtsp-replay corpus via -e INPUTS; the raw
+  # in-rtsp seeds make StateAFL's extract_requests_generic() abort with
+  # "Erroneous message length in input file".
+  INPUTS=${INPUTS:-${WORKDIR}/in-rtsp}
 
   # Run fuzzer-specific commands (if any)
   if [ -e ${WORKDIR}/run-${FUZZER} ]; then

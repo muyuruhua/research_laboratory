@@ -45,13 +45,46 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   TARGET_DIR=${TARGET_DIR:-"forked-daapd"}
   INPUTS=${INPUTS:-${WORKDIR}"/in-daap"}
 
+  # StateAFL arm: forked-daapd's socket I/O happens inside libevent (not
+  # instrumented by StateAFL's LLVM pass), so no protocol states can be
+  # inferred from memory dumps; the threaded target also crashes the
+  # unsynchronized tracer hooks. Disable the target-side tracer entirely
+  # (see stateafl/llvm_mode kill switch) — this arm runs coverage-guided.
+  if [ "$FUZZER" = "stateafl" ]; then
+    export STATEAFL_DISABLE_TRACER=1
+  fi
+
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR
 
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
-
-  STATUS=$?
+  # StateAFL on forked-daapd still hits an upstream AFLNet-lineage list-
+  # management bug (amplified by the generic length-prefix parser) that can
+  # abort afl-fuzz mid-campaign. Restart afl-fuzz in AFL resume mode (-i-)
+  # until the campaign time is exhausted; the queue/IPSM state on disk is
+  # preserved across restarts, so only wall-clock is lost.
+  if [ "$FUZZER" = "stateafl" ]; then
+    END_AT=$(( $(date +%s) + TIMEOUT ))
+    FIRST=1
+    while [ "$(date +%s)" -lt "$END_AT" ]; do
+      REMAIN=$(( END_AT - $(date +%s) ))
+      if [ "$FIRST" = "1" ]; then
+        SEED_ARG="-i ${INPUTS}"; FIRST=0
+      else
+        SEED_ARG="-i-"
+      fi
+      timeout -k 2s --preserve-status $REMAIN /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d ${SEED_ARG} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+      [ "$STOP_ON_ERR" = "1" ] && break
+      # a crashed fuzzer leaks its target child holding port 3689; clean up
+      # so the resumed instance can bind again
+      pkill -x forked-daapd 2>/dev/null
+      sleep 2
+    done
+    STATUS=0
+  else
+    timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+    STATUS=$?
+  fi
 
   #Step-2. Collect code coverage over time
   #Move to gcov folder

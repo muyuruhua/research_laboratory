@@ -134,6 +134,9 @@ RUN mkdir ${WORKDIR}/db
 COPY --chown=ubuntu:ubuntu in-daap ${WORKDIR}/in-daap
 # StateAFL parses requests with the generic length-prefixed (replayable) format
 COPY --chown=ubuntu:ubuntu in-daap-replay ${WORKDIR}/in-daap-replay
+# Single-message replay corpus for the StateAFL arm (see run.sh: tracer is
+# disabled on this target and multi-message seeds destabilize the fuzzer)
+COPY --chown=ubuntu:ubuntu in-daap-single ${WORKDIR}/in-daap-single
 COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
 COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
 COPY --chown=ubuntu:ubuntu MP3 ${WORKDIR}/MP3

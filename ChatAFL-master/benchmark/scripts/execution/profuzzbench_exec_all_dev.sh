@@ -95,7 +95,16 @@ stateafl_target_config() {
         proftpd)      echo "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-ftp-replay" ;;
         live555)      echo "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+|in-rtsp-replay" ;;
         kamailio)     echo "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-sip-replay" ;;
-        forked-daapd) echo "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+|in-daap-replay" ;;
+        # forked-daapd：StateAFL 探针下每次执行的启动（sqlite+avahi 初始化）在
+        # 多容器负载下可达 5-10 s，5 s 会把种子整批判超时并在 IPSM 初始化处
+        # 中止（见 afl-fuzz.c 的 stateafl-fix），故该臂使用 4 倍执行超时。
+        # 同时去掉 -E/-q/-s：该目标的网络 I/O 在未插桩的 libevent 内、且为多
+        # 线程目标，状态推断不可用（run.sh 会设置 STATEAFL_DISABLE_TRACER=1），
+        # 此臂按纯 coverage-guided 运行。
+        # 种子用 in-daap-single（整流合并为单条消息）：多消息 replay 种子在
+        # havoc 下 region 数剧烈波动，会触发 AFLNet 谱系 M2/M3 链表的
+        # use-after-free（fuzzer 崩溃；run.sh 的续跑循环兜底但占空比差）。
+        forked-daapd) echo "-P HTTP -D 200000 -m none -K -t $((TEST_TIMEOUT * 4))+|in-daap-single" ;;
         *)            return 1 ;;
     esac
 }

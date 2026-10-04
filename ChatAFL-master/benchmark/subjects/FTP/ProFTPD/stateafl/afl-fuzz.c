@@ -1360,7 +1360,37 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run, char** argv
 
     was_fuzzed_map[0][q->index] = 0; //Mark it as reachable but not fuzzed
   } else {
-    PFATAL("AFLNet - the states hashtable should always contain an entry of the initial state");
+    /* [stateafl-fix 2026-10-02] When every seed times out (or yields no
+       state sequence) during dry-run calibration, khms_states is still
+       empty here and the original PFATAL aborted the whole campaign at
+       IPSM init (forked-daapd: per-exec startup incl. sqlite/avahi can
+       exceed a 5 s exec timeout under load). Insert the missing initial
+       state on demand, mirroring the "supposed to be not reachable"
+       recovery below (an early return here would desynchronize
+       state_ids/state_ids_count bookkeeping and crash
+       choose_target_state() later). */
+    int discard;
+    state_info_t *newState = (state_info_t *) ck_alloc (sizeof(state_info_t));
+    newState->id = 0;
+    newState->is_covered = 1;
+    newState->paths = 0;
+    newState->paths_discovered = 0;
+    newState->selected_times = 0;
+    newState->fuzzs = 0;
+    newState->score = 1;
+    newState->selected_seed_index = 0;
+    newState->seeds = (void **) ck_realloc (newState->seeds, sizeof(void *));
+    newState->seeds[0] = (void *)q;
+    newState->seeds_count = 1;
+
+    k = kh_put(hms, khms_states, 0, &discard);
+    kh_val(khms_states, k) = newState;
+
+    //Insert this into the state_ids array too (mirrors the code above)
+    state_ids = (u32 *) ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
+    state_ids[state_ids_count++] = 0;
+
+    WARNF("AFLNet - the states hashtable had no entry for the initial state; inserted on demand");
   }
 
   //Now update other states
@@ -3028,16 +3058,29 @@ region_t* extract_requests_generic(unsigned char* buf, unsigned int buf_size, un
 
   while(byte_count < buf_size) {
 
+    /* [stateafl-fix 2026-10-02] Trailing bytes (<4) can be produced by
+       truncating havoc mutations; PFATAL here let one such mutation kill the
+       whole campaign. Stop parsing instead (drops the trailing tail). */
     if(byte_count + 4 >= buf_size) {
-      PFATAL("AFLNet - Erroreous message length in input file");
+      break;
     }
 
     unsigned int next_message_len = *((unsigned int *)(void *)&buf[byte_count]);
 
     byte_count += sizeof(unsigned int);
 
-    if(byte_count + next_message_len > buf_size) {
-      PFATAL("AFLNet - Erroneous message length in input file (2)");
+    /* [stateafl-fix 2026-10-02] The original check
+       (byte_count + next_message_len > buf_size) wraps around on u32 when a
+       havoc mutation sets the 4-byte length prefix close to 0xFFFFFFFF,
+       bypassing the bound and later making common_fuzz_stuff() request a
+       multi-GB ck_alloc that aborts the fuzzer mid-campaign. Additionally,
+       PFATAL-ing on any over-sized prefix lets a single havoc bit flip kill
+       the whole campaign, so clamp the message to the remaining bytes and
+       carry on (byte_count < buf_size is guaranteed by the header check). */
+    if(next_message_len > buf_size - byte_count) {
+      WARNF("AFLNet - clamping over-sized message length in input file (%u > %u)",
+            next_message_len, buf_size - byte_count);
+      next_message_len = buf_size - byte_count;
     }
 
     region_count++;
@@ -6360,6 +6403,7 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
   // parse the out_buf into messages
   u32 region_count;
+  u32 buf_len = len; /* [stateafl-fix 2026-10-02] saved before the shadowing loop below */
   region_t *regions = (*extract_requests)(out_buf, len, &region_count);
   if (!region_count) PFATAL("AFLNet Region count cannot be Zero");
 
@@ -6376,6 +6420,25 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
       len = regions[region_count - 1].end_byte - regions[i].start_byte + 1;
     } else {
       len = regions[i].end_byte - regions[i].start_byte + 1;
+    }
+
+    /* [stateafl-fix 2026-10-02] Region descriptors can carry out-of-order or
+       out-of-bounds byte ranges (mutated length prefixes, region-level
+       mutations); the subtraction then underflows to ~4G and ck_alloc()
+       aborts the whole fuzzer via ALLOC_CHECK_SIZE, and skipping the message
+       instead would desynchronize the M2/M3 list surgery below (it expects
+       exactly region_count messages pushed). Clamp the descriptor to the
+       input buffer instead. buf_len is the buffer length captured before
+       this shadowing loop. */
+    if (regions[i].start_byte >= buf_len) {
+      WARNF("AFLNet - clamping malformed region %u (start=%u, buflen=%u)",
+            i, regions[i].start_byte, buf_len);
+      regions[i].start_byte = buf_len - 1;
+    }
+    if (regions[i].end_byte < regions[i].start_byte || regions[i].end_byte >= buf_len) {
+      WARNF("AFLNet - clamping malformed region %u (start=%u end=%u, buflen=%u)",
+            i, regions[i].start_byte, regions[i].end_byte, buf_len);
+      regions[i].end_byte = buf_len - 1;
     }
 
     //Create a new message
@@ -10550,7 +10613,19 @@ int main(int argc, char** argv) {
   if (state_aware_mode) {
 
     if (state_ids_count == 0) {
-      PFATAL("No server states have been detected. Server responses are likely empty!");
+      /* [stateafl-fix 2026-10-02] Some targets do their network I/O inside
+         uninstrumented shared libraries (e.g., forked-daapd receives and
+         sends via libevent), so the state tracer never observes a
+         RECV->SEND transition, records no memory dumps, and detects zero
+         states. Aborting here kills the whole campaign; degrade to plain
+         coverage-guided fuzzing instead. */
+      WARNF("No server states have been detected (target I/O not visible to the tracer?); falling back to non-state-aware fuzzing");
+      state_aware_mode = 0;
+      /* [stateafl-fix 2026-10-02] The state-aware while-loop below is
+         straight-line code inside this if-block; merely clearing the flag
+         does not skip it (and it dereferences the NULL state_ids array).
+         Jump into the plain queue-cycle loop instead. */
+      goto stateafl_non_state_aware_loop;
     }
 
     while (1) {
@@ -10607,6 +10682,9 @@ int main(int argc, char** argv) {
     }
 
   } else {
+
+stateafl_non_state_aware_loop:
+    state_aware_mode = 0;
     while (1) {
 
       u8 skipped_fuzz;

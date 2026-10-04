@@ -173,12 +173,24 @@ extern char __executable_start;
 extern char __etext;
 
 
+/* [stateafl-fix 2026-10-02] Left disabled as upstream ships it: enabling
+   this mutex regressed single-threaded targets (kamailio exec children got
+   orphaned -> every seed times out at dry run). The multi-threaded target
+   that would need the lock (forked-daapd) runs with STATEAFL_DISABLE_TRACER=1
+   instead, so the hooks never execute there. */
 //#define __TRACER_USE_PTHREAD_MUTEX
 
 #ifdef __TRACER_USE_PTHREAD_MUTEX
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+
+/* [stateafl-fix 2026-10-02] Runtime kill switch: setting STATEAFL_DISABLE_TRACER
+   in the environment disables every tracer hook and the exit-time analysis.
+   Needed for targets whose network I/O lives in uninstrumented shared libs
+   (forked-daapd/libevent): no states can be inferred there anyway, and the
+   hooks crash the threaded target intermittently. */
+int stateafl_tracer_enabled = 1;
 
 static int compare_key_addr(const void * const one, const void * const two) {
 
@@ -322,6 +334,11 @@ static void tracer_signal_handler(__attribute__((unused)) const int signum) {
 
 __attribute__((constructor (0)))
 void init_state_tracer() {
+
+  if (getenv("STATEAFL_DISABLE_TRACER")) {
+    stateafl_tracer_enabled = 0;
+    return;
+  }
 
   char *out_dir_str = getenv(AFL_OUTDIR_ENV_VAR);
 
@@ -730,6 +747,8 @@ static int check_blacklist() {
 
 
 void new_alloc_record(void * addr, size_t size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   START_TIMING("alloc");
 
@@ -787,6 +806,8 @@ void new_alloc_record(void * addr, size_t size) {
 }
 
 void free_alloc_record(void * addr) {
+  if (!stateafl_tracer_enabled) return;
+
 
   START_TIMING("free");
 
@@ -818,19 +839,32 @@ void free_alloc_record(void * addr) {
 
 
 void new_heap_alloc_record(void * addr, uint64_t size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("NEW HEAP ALLOC: %p (%lu bytes)\n", addr, size);
 
   if(!addr_san_detected) {
 
-    // Zero-byte initialization of the area
-    memset(addr, 0, size);
+    /* [stateafl-fix 2026-10-02 revision] This memset uses the size of the
+       allocation made by THIS call, so it cannot write past the chunk.
+       It was briefly removed wholesale with the realloc-tail fix below;
+       that broke targets whose modules rely on zeroed fresh allocations
+       (kamailio), so it is restored. Only the realloc tail-zeroing (which
+       trusts a possibly stale record size) stays removed. */
+    /* [stateafl-fix 2026-10-02] removed: zeroing fresh allocations makes every
+       memory dump of a fresh chunk identical, which collapses TLSH state
+       clustering (kamailio detected zero states with it restored). Keeping
+       the raw bytes preserves the state signal; heap safety is unaffected
+       because the dump code only reads. */
   }
 
   new_alloc_record(addr, size);
 }
 
 void free_heap_alloc_record(void * addr, uint64_t size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("FREE HEAP ALLOC: %p (%lu bytes)\n", addr, size);
 
@@ -838,19 +872,30 @@ void free_heap_alloc_record(void * addr, uint64_t size) {
 }
 
 void new_stack_alloc_record(void * addr, uint64_t size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("NEW STACK ALLOC: %p (%lu bytes)\n", addr, size);
 
   if(!addr_san_detected) {
 
-    // Zero-byte initialization of the area
-    memset(addr, 0, size);
+    /* [stateafl-fix 2026-10-02 revision] This memset uses the size of the
+       allocation made by THIS call, so it cannot write past the chunk.
+       It was briefly removed wholesale with the realloc-tail fix below;
+       that broke targets whose modules rely on zeroed fresh allocations
+       (kamailio), so it is restored. Only the realloc tail-zeroing (which
+       trusts a possibly stale record size) stays removed. */
+/* [stateafl-fix] kept removed: for dynamic allocas (VLAs) the pass-recorded
+       size can differ from the runtime alloca size, and zeroing past the
+       frame smashes the stack. */
   }
 
   new_alloc_record(addr, size);
 }
 
 void free_stack_alloc_record(void * addr, uint64_t size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("FREE STACK ALLOC: %p (%lu bytes)\n", addr, size);
 
@@ -858,19 +903,22 @@ void free_stack_alloc_record(void * addr, uint64_t size) {
 }
 
 void trace_calloc(void * addr, int size, int nmemb) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("NEW HEAP CALLOC: %p (%d elems, %lu bytes)\n", addr, nmemb, size*nmemb);
 
   if(!addr_san_detected) {
 
-    // Zero-byte initialization of the area
-    memset(addr, 0, size*nmemb);
+    /* [stateafl-fix 2026-10-02] removed: see new_heap_alloc_record */
   }
 
   new_alloc_record(addr, size*nmemb);
 }
 
 void trace_realloc(void * addr, int size, void * oldaddr) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE REALLOC\n");
 
@@ -898,8 +946,9 @@ void trace_realloc(void * addr, int size, void * oldaddr) {
     oldalloc_size = record_oldalloc->size;
 
     if(size > oldalloc_size) {
-      // Zero-byte initialization of the area
-      memset(addr + oldalloc_size, 0, size - oldalloc_size);
+      /* [stateafl-fix 2026-10-02] removed: oldalloc_size comes from the
+       (possibly stale) alloc record; when it exceeds the real chunk this
+       memset writes out of bounds and corrupts the heap. */
     }
   }
 
@@ -1129,6 +1178,8 @@ static void net_send(void * buf, int size) {
 }
 
 void trace_receive(void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   START_TIMING("recv");
 
@@ -1138,6 +1189,8 @@ void trace_receive(void * buf, int size) {
 }
 
 void trace_send(void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   START_TIMING("send");
 
@@ -1149,6 +1202,8 @@ void trace_send(void * buf, int size) {
 
 
 void trace_read(int fd, void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE READ\n");
 
@@ -1162,6 +1217,8 @@ void trace_read(int fd, void * buf, int size) {
 }
 
 void trace_write(int fd, void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE WRITE\n");
 
@@ -1175,6 +1232,8 @@ void trace_write(int fd, void * buf, int size) {
 }
 
 void trace_fprintf(void* p, void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE FPRINTF\n");
 
@@ -1196,6 +1255,8 @@ void trace_fprintf(void* p, void * buf, int size) {
 }
 
 void trace_fgets(void* p, void * buf, int size) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE FGETS\n");
 
@@ -1217,6 +1278,8 @@ void trace_fgets(void* p, void * buf, int size) {
 }
 
 void trace_fread(void* p, void * buf, int size, int nmemb) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE FREAD\n");
 
@@ -1238,6 +1301,8 @@ void trace_fread(void* p, void * buf, int size, int nmemb) {
 }
 
 void trace_fwrite(void* p, void * buf, int size, int nmemb) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE FWRITE\n");
 
@@ -1259,6 +1324,8 @@ void trace_fwrite(void* p, void * buf, int size, int nmemb) {
 }
 
 void trace_close(int fd) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE CLOSE\n");
 
@@ -1281,6 +1348,8 @@ void trace_close(int fd) {
 }
 
 void trace_fclose(FILE * p) {
+  if (!stateafl_tracer_enabled) return;
+
 
   LOG_DEBUG("TRACE FCLOSE\n");
 
@@ -1339,8 +1408,10 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
 
       LOG_DEBUG("APPENDING HASH TO REFERENCE SEQUENCE FOR CALIBRATION: %d\n", calib_shm->ref_len);
 
-      strcpy(calib_shm->ref_state_seq[calib_shm->ref_len], tlsh_hash);
-      calib_shm->ref_len++;
+      if(calib_shm->ref_len < MAX_NUM_STATES) {
+        strcpy(calib_shm->ref_state_seq[calib_shm->ref_len], tlsh_hash);
+        calib_shm->ref_len++;
+      }
     }
     else {
 
@@ -1356,8 +1427,10 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
 
         LOG_DEBUG("TLSH DISTANCE FROM REF: %d\n", diff);
 
-        calib_shm->dist[calib_shm->dist_len] = diff;
-        calib_shm->dist_len++;
+        if(calib_shm->dist_len < MAX_NUM_STATES*MAX_REPETITIONS) {
+          calib_shm->dist[calib_shm->dist_len] = diff;
+          calib_shm->dist_len++;
+        }
 
         Tlsh_delete(ref_tlsh);
       }
@@ -1473,6 +1546,8 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
 
 __attribute__((destructor))
 void end_state_tracer() {
+
+  if (!stateafl_tracer_enabled) return;
 
 #ifdef SKIP_POSTEXEC_ANALYSIS
   LOG_DEBUG("Skipping analysis, terminating...\n");
@@ -1654,12 +1729,14 @@ void end_state_tracer() {
 
       LOG_INFO("SAVING STATE [# %d]: %08x\n", current_state_number, current_state_value);
 
-      *state_sequence = current_state_value;
-      state_sequence++;
-      current_state_number++;
+      if(current_state_number < MAX_NUM_STATES) {
+        *state_sequence = current_state_value;
+        state_sequence++;
+        current_state_number++;
 
-      // update state sequence length
-      state_shared_ptr->seq_len = current_state_number;
+        // update state sequence length
+        state_shared_ptr->seq_len = current_state_number;
+      }
 
       current_state_value = 0;
 

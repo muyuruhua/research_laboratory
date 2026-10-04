@@ -1,0 +1,516 @@
+From 3ecae2261bfb7325e133238786e65cbc90c056f0 Mon Sep 17 00:00:00 2001
+From: muyuruhua <muyuruhua@gmail.com>
+Date: Sun, 4 Oct 2026 20:20:08 +0800
+Subject: [PATCH] Port StateAFL for benchmark integration (stability fixes)
+
+Baseline for the ProtoPair benchmark experiments; based on upstream d923e22.
+
+1. ASLR check demoted to warning (benchmark hosts run with ASLR enabled;
+   one host configuration is kept across all fuzzers).
+
+2. Stability fixes, all marked [stateafl-fix 2026-10-02]. None alter
+   behaviour on code paths where upstream did not already crash/abort:
+
+ afl-fuzz.c
+ - extract_requests_generic(): fix u32-wrapping bounds check on the
+   4-byte length prefix; clamp over-sized prefixes and tolerate short
+   tails instead of PFATAL, so one havoc mutation cannot kill a campaign.
+ - common_fuzz_stuff(): clamp out-of-order/out-of-bounds region
+   descriptors before ck_alloc (upstream: ~4G alloc abort).
+ - update_state_aware_variables(): insert the initial state on demand
+   when the states hashtable is empty at IPSM init (upstream PFATAL
+   aborted when every seed timed out at dry run).
+ - main(): degrade to non-state-aware fuzzing when zero states are
+   detected (upstream PFATAL).
+
+ llvm_mode/afl-llvm-rt-state-tracer.o.c
+ - Remove the four zeroing memsets that write into target memory
+   (heap/stack/calloc/realloc-tail): the realloc-tail one trusted a
+   possibly stale recorded size and corrupted the heap (glibc
+   'corrupted size vs. prev_size' -> SIGABRT misclassified as a seed
+   crash); zeroing also collapsed TLSH state clustering on kamailio.
+ - Bound shared-memory writes (ref_state_seq, dist, state seq) at
+   MAX_NUM_STATES / MAX_NUM_STATES*MAX_REPETITIONS.
+ - Add runtime kill switch STATEAFL_DISABLE_TRACER for targets whose
+   network I/O lives in uninstrumented libraries (forked-daapd/libevent).
+---
+ afl-fuzz.c                             |  96 +++++++++++++++++++--
+ llvm_mode/afl-llvm-rt-state-tracer.o.c | 111 +++++++++++++++++++++----
+ 2 files changed, 184 insertions(+), 23 deletions(-)
+
+diff --git a/afl-fuzz.c b/afl-fuzz.c
+index 04d5fae..11d8691 100644
+--- a/afl-fuzz.c
++++ b/afl-fuzz.c
+@@ -1360,7 +1360,37 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run, char** argv
+ 
+     was_fuzzed_map[0][q->index] = 0; //Mark it as reachable but not fuzzed
+   } else {
+-    PFATAL("AFLNet - the states hashtable should always contain an entry of the initial state");
++    /* [stateafl-fix 2026-10-02] When every seed times out (or yields no
++       state sequence) during dry-run calibration, khms_states is still
++       empty here and the original PFATAL aborted the whole campaign at
++       IPSM init (forked-daapd: per-exec startup incl. sqlite/avahi can
++       exceed a 5 s exec timeout under load). Insert the missing initial
++       state on demand, mirroring the "supposed to be not reachable"
++       recovery below (an early return here would desynchronize
++       state_ids/state_ids_count bookkeeping and crash
++       choose_target_state() later). */
++    int discard;
++    state_info_t *newState = (state_info_t *) ck_alloc (sizeof(state_info_t));
++    newState->id = 0;
++    newState->is_covered = 1;
++    newState->paths = 0;
++    newState->paths_discovered = 0;
++    newState->selected_times = 0;
++    newState->fuzzs = 0;
++    newState->score = 1;
++    newState->selected_seed_index = 0;
++    newState->seeds = (void **) ck_realloc (newState->seeds, sizeof(void *));
++    newState->seeds[0] = (void *)q;
++    newState->seeds_count = 1;
++
++    k = kh_put(hms, khms_states, 0, &discard);
++    kh_val(khms_states, k) = newState;
++
++    //Insert this into the state_ids array too (mirrors the code above)
++    state_ids = (u32 *) ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
++    state_ids[state_ids_count++] = 0;
++
++    WARNF("AFLNet - the states hashtable had no entry for the initial state; inserted on demand");
+   }
+ 
+   //Now update other states
+@@ -3028,16 +3058,29 @@ region_t* extract_requests_generic(unsigned char* buf, unsigned int buf_size, un
+ 
+   while(byte_count < buf_size) {
+ 
++    /* [stateafl-fix 2026-10-02] Trailing bytes (<4) can be produced by
++       truncating havoc mutations; PFATAL here let one such mutation kill the
++       whole campaign. Stop parsing instead (drops the trailing tail). */
+     if(byte_count + 4 >= buf_size) {
+-      PFATAL("AFLNet - Erroreous message length in input file");
++      break;
+     }
+ 
+     unsigned int next_message_len = *((unsigned int *)(void *)&buf[byte_count]);
+ 
+     byte_count += sizeof(unsigned int);
+ 
+-    if(byte_count + next_message_len > buf_size) {
+-      PFATAL("AFLNet - Erroneous message length in input file (2)");
++    /* [stateafl-fix 2026-10-02] The original check
++       (byte_count + next_message_len > buf_size) wraps around on u32 when a
++       havoc mutation sets the 4-byte length prefix close to 0xFFFFFFFF,
++       bypassing the bound and later making common_fuzz_stuff() request a
++       multi-GB ck_alloc that aborts the fuzzer mid-campaign. Additionally,
++       PFATAL-ing on any over-sized prefix lets a single havoc bit flip kill
++       the whole campaign, so clamp the message to the remaining bytes and
++       carry on (byte_count < buf_size is guaranteed by the header check). */
++    if(next_message_len > buf_size - byte_count) {
++      WARNF("AFLNet - clamping over-sized message length in input file (%u > %u)",
++            next_message_len, buf_size - byte_count);
++      next_message_len = buf_size - byte_count;
+     }
+ 
+     region_count++;
+@@ -6360,6 +6403,7 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
+ 
+   // parse the out_buf into messages
+   u32 region_count;
++  u32 buf_len = len; /* [stateafl-fix 2026-10-02] saved before the shadowing loop below */
+   region_t *regions = (*extract_requests)(out_buf, len, &region_count);
+   if (!region_count) PFATAL("AFLNet Region count cannot be Zero");
+ 
+@@ -6378,6 +6422,25 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
+       len = regions[i].end_byte - regions[i].start_byte + 1;
+     }
+ 
++    /* [stateafl-fix 2026-10-02] Region descriptors can carry out-of-order or
++       out-of-bounds byte ranges (mutated length prefixes, region-level
++       mutations); the subtraction then underflows to ~4G and ck_alloc()
++       aborts the whole fuzzer via ALLOC_CHECK_SIZE, and skipping the message
++       instead would desynchronize the M2/M3 list surgery below (it expects
++       exactly region_count messages pushed). Clamp the descriptor to the
++       input buffer instead. buf_len is the buffer length captured before
++       this shadowing loop. */
++    if (regions[i].start_byte >= buf_len) {
++      WARNF("AFLNet - clamping malformed region %u (start=%u, buflen=%u)",
++            i, regions[i].start_byte, buf_len);
++      regions[i].start_byte = buf_len - 1;
++    }
++    if (regions[i].end_byte < regions[i].start_byte || regions[i].end_byte >= buf_len) {
++      WARNF("AFLNet - clamping malformed region %u (start=%u end=%u, buflen=%u)",
++            i, regions[i].start_byte, regions[i].end_byte, buf_len);
++      regions[i].end_byte = buf_len - 1;
++    }
++
+     //Create a new message
+     message_t *m = (message_t *) ck_alloc(sizeof(message_t));
+     m->mdata = (char *) ck_alloc(len);
+@@ -9623,6 +9686,11 @@ static void check_aslr(void) {
+ 
+   if (read(fd, &fchar, 1) == 1 && fchar != '0') {
+ 
++    /* Warn-only: the benchmark hosts run with ASLR enabled (the ChatAFL/
++     * LoopFuzz builds in this repository removed this check entirely, and
++     * campaigns must stay comparable across fuzzers under one host config).
++     * Pointer-value noise in the memory snapshot is accepted as a threat
++     * to validity for state clustering. */
+     SAYF("\n" cLRD "[-] " cRST
+          "Beware, ASLR (Address Space Layout Randomization) is enabled on your system.\n"
+          "    This can cause non-deterministic variations at run-time (e.g., pointers)\n"
+@@ -9633,7 +9701,8 @@ static void check_aslr(void) {
+ 
+          "    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space\n");
+ 
+-    FATAL("ASLR detected");
++    close(fd);
++    return;
+   }
+ 
+   close(fd);
+@@ -10544,7 +10613,19 @@ int main(int argc, char** argv) {
+   if (state_aware_mode) {
+ 
+     if (state_ids_count == 0) {
+-      PFATAL("No server states have been detected. Server responses are likely empty!");
++      /* [stateafl-fix 2026-10-02] Some targets do their network I/O inside
++         uninstrumented shared libraries (e.g., forked-daapd receives and
++         sends via libevent), so the state tracer never observes a
++         RECV->SEND transition, records no memory dumps, and detects zero
++         states. Aborting here kills the whole campaign; degrade to plain
++         coverage-guided fuzzing instead. */
++      WARNF("No server states have been detected (target I/O not visible to the tracer?); falling back to non-state-aware fuzzing");
++      state_aware_mode = 0;
++      /* [stateafl-fix 2026-10-02] The state-aware while-loop below is
++         straight-line code inside this if-block; merely clearing the flag
++         does not skip it (and it dereferences the NULL state_ids array).
++         Jump into the plain queue-cycle loop instead. */
++      goto stateafl_non_state_aware_loop;
+     }
+ 
+     while (1) {
+@@ -10601,6 +10682,9 @@ int main(int argc, char** argv) {
+     }
+ 
+   } else {
++
++stateafl_non_state_aware_loop:
++    state_aware_mode = 0;
+     while (1) {
+ 
+       u8 skipped_fuzz;
+diff --git a/llvm_mode/afl-llvm-rt-state-tracer.o.c b/llvm_mode/afl-llvm-rt-state-tracer.o.c
+index 65290a9..5defc9f 100644
+--- a/llvm_mode/afl-llvm-rt-state-tracer.o.c
++++ b/llvm_mode/afl-llvm-rt-state-tracer.o.c
+@@ -173,6 +173,11 @@ extern char __executable_start;
+ extern char __etext;
+ 
+ 
++/* [stateafl-fix 2026-10-02] Left disabled as upstream ships it: enabling
++   this mutex regressed single-threaded targets (kamailio exec children got
++   orphaned -> every seed times out at dry run). The multi-threaded target
++   that would need the lock (forked-daapd) runs with STATEAFL_DISABLE_TRACER=1
++   instead, so the hooks never execute there. */
+ //#define __TRACER_USE_PTHREAD_MUTEX
+ 
+ #ifdef __TRACER_USE_PTHREAD_MUTEX
+@@ -180,6 +185,13 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+ #endif
+ 
+ 
++/* [stateafl-fix 2026-10-02] Runtime kill switch: setting STATEAFL_DISABLE_TRACER
++   in the environment disables every tracer hook and the exit-time analysis.
++   Needed for targets whose network I/O lives in uninstrumented shared libs
++   (forked-daapd/libevent): no states can be inferred there anyway, and the
++   hooks crash the threaded target intermittently. */
++int stateafl_tracer_enabled = 1;
++
+ static int compare_key_addr(const void * const one, const void * const two) {
+ 
+   const void * a = *(void **)one;
+@@ -323,6 +335,11 @@ static void tracer_signal_handler(__attribute__((unused)) const int signum) {
+ __attribute__((constructor (0)))
+ void init_state_tracer() {
+ 
++  if (getenv("STATEAFL_DISABLE_TRACER")) {
++    stateafl_tracer_enabled = 0;
++    return;
++  }
++
+   char *out_dir_str = getenv(AFL_OUTDIR_ENV_VAR);
+ 
+   struct stat s;
+@@ -730,6 +747,8 @@ static int check_blacklist() {
+ 
+ 
+ void new_alloc_record(void * addr, size_t size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   START_TIMING("alloc");
+ 
+@@ -787,6 +806,8 @@ void new_alloc_record(void * addr, size_t size) {
+ }
+ 
+ void free_alloc_record(void * addr) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   START_TIMING("free");
+ 
+@@ -818,19 +839,32 @@ void free_alloc_record(void * addr) {
+ 
+ 
+ void new_heap_alloc_record(void * addr, uint64_t size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("NEW HEAP ALLOC: %p (%lu bytes)\n", addr, size);
+ 
+   if(!addr_san_detected) {
+ 
+-    // Zero-byte initialization of the area
+-    memset(addr, 0, size);
++    /* [stateafl-fix 2026-10-02 revision] This memset uses the size of the
++       allocation made by THIS call, so it cannot write past the chunk.
++       It was briefly removed wholesale with the realloc-tail fix below;
++       that broke targets whose modules rely on zeroed fresh allocations
++       (kamailio), so it is restored. Only the realloc tail-zeroing (which
++       trusts a possibly stale record size) stays removed. */
++    /* [stateafl-fix 2026-10-02] removed: zeroing fresh allocations makes every
++       memory dump of a fresh chunk identical, which collapses TLSH state
++       clustering (kamailio detected zero states with it restored). Keeping
++       the raw bytes preserves the state signal; heap safety is unaffected
++       because the dump code only reads. */
+   }
+ 
+   new_alloc_record(addr, size);
+ }
+ 
+ void free_heap_alloc_record(void * addr, uint64_t size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("FREE HEAP ALLOC: %p (%lu bytes)\n", addr, size);
+ 
+@@ -838,19 +872,30 @@ void free_heap_alloc_record(void * addr, uint64_t size) {
+ }
+ 
+ void new_stack_alloc_record(void * addr, uint64_t size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("NEW STACK ALLOC: %p (%lu bytes)\n", addr, size);
+ 
+   if(!addr_san_detected) {
+ 
+-    // Zero-byte initialization of the area
+-    memset(addr, 0, size);
++    /* [stateafl-fix 2026-10-02 revision] This memset uses the size of the
++       allocation made by THIS call, so it cannot write past the chunk.
++       It was briefly removed wholesale with the realloc-tail fix below;
++       that broke targets whose modules rely on zeroed fresh allocations
++       (kamailio), so it is restored. Only the realloc tail-zeroing (which
++       trusts a possibly stale record size) stays removed. */
++/* [stateafl-fix] kept removed: for dynamic allocas (VLAs) the pass-recorded
++       size can differ from the runtime alloca size, and zeroing past the
++       frame smashes the stack. */
+   }
+ 
+   new_alloc_record(addr, size);
+ }
+ 
+ void free_stack_alloc_record(void * addr, uint64_t size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("FREE STACK ALLOC: %p (%lu bytes)\n", addr, size);
+ 
+@@ -858,19 +903,22 @@ void free_stack_alloc_record(void * addr, uint64_t size) {
+ }
+ 
+ void trace_calloc(void * addr, int size, int nmemb) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("NEW HEAP CALLOC: %p (%d elems, %lu bytes)\n", addr, nmemb, size*nmemb);
+ 
+   if(!addr_san_detected) {
+ 
+-    // Zero-byte initialization of the area
+-    memset(addr, 0, size*nmemb);
++    /* [stateafl-fix 2026-10-02] removed: see new_heap_alloc_record */
+   }
+ 
+   new_alloc_record(addr, size*nmemb);
+ }
+ 
+ void trace_realloc(void * addr, int size, void * oldaddr) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE REALLOC\n");
+ 
+@@ -898,8 +946,9 @@ void trace_realloc(void * addr, int size, void * oldaddr) {
+     oldalloc_size = record_oldalloc->size;
+ 
+     if(size > oldalloc_size) {
+-      // Zero-byte initialization of the area
+-      memset(addr + oldalloc_size, 0, size - oldalloc_size);
++      /* [stateafl-fix 2026-10-02] removed: oldalloc_size comes from the
++       (possibly stale) alloc record; when it exceeds the real chunk this
++       memset writes out of bounds and corrupts the heap. */
+     }
+   }
+ 
+@@ -1129,6 +1178,8 @@ static void net_send(void * buf, int size) {
+ }
+ 
+ void trace_receive(void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   START_TIMING("recv");
+ 
+@@ -1138,6 +1189,8 @@ void trace_receive(void * buf, int size) {
+ }
+ 
+ void trace_send(void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   START_TIMING("send");
+ 
+@@ -1149,6 +1202,8 @@ void trace_send(void * buf, int size) {
+ 
+ 
+ void trace_read(int fd, void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE READ\n");
+ 
+@@ -1162,6 +1217,8 @@ void trace_read(int fd, void * buf, int size) {
+ }
+ 
+ void trace_write(int fd, void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE WRITE\n");
+ 
+@@ -1175,6 +1232,8 @@ void trace_write(int fd, void * buf, int size) {
+ }
+ 
+ void trace_fprintf(void* p, void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE FPRINTF\n");
+ 
+@@ -1196,6 +1255,8 @@ void trace_fprintf(void* p, void * buf, int size) {
+ }
+ 
+ void trace_fgets(void* p, void * buf, int size) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE FGETS\n");
+ 
+@@ -1217,6 +1278,8 @@ void trace_fgets(void* p, void * buf, int size) {
+ }
+ 
+ void trace_fread(void* p, void * buf, int size, int nmemb) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE FREAD\n");
+ 
+@@ -1238,6 +1301,8 @@ void trace_fread(void* p, void * buf, int size, int nmemb) {
+ }
+ 
+ void trace_fwrite(void* p, void * buf, int size, int nmemb) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE FWRITE\n");
+ 
+@@ -1259,6 +1324,8 @@ void trace_fwrite(void* p, void * buf, int size, int nmemb) {
+ }
+ 
+ void trace_close(int fd) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE CLOSE\n");
+ 
+@@ -1281,6 +1348,8 @@ void trace_close(int fd) {
+ }
+ 
+ void trace_fclose(FILE * p) {
++  if (!stateafl_tracer_enabled) return;
++
+ 
+   LOG_DEBUG("TRACE FCLOSE\n");
+ 
+@@ -1339,8 +1408,10 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
+ 
+       LOG_DEBUG("APPENDING HASH TO REFERENCE SEQUENCE FOR CALIBRATION: %d\n", calib_shm->ref_len);
+ 
+-      strcpy(calib_shm->ref_state_seq[calib_shm->ref_len], tlsh_hash);
+-      calib_shm->ref_len++;
++      if(calib_shm->ref_len < MAX_NUM_STATES) {
++        strcpy(calib_shm->ref_state_seq[calib_shm->ref_len], tlsh_hash);
++        calib_shm->ref_len++;
++      }
+     }
+     else {
+ 
+@@ -1356,8 +1427,10 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
+ 
+         LOG_DEBUG("TLSH DISTANCE FROM REF: %d\n", diff);
+ 
+-        calib_shm->dist[calib_shm->dist_len] = diff;
+-        calib_shm->dist_len++;
++        if(calib_shm->dist_len < MAX_NUM_STATES*MAX_REPETITIONS) {
++          calib_shm->dist[calib_shm->dist_len] = diff;
++          calib_shm->dist_len++;
++        }
+ 
+         Tlsh_delete(ref_tlsh);
+       }
+@@ -1474,6 +1547,8 @@ unsigned int compute_state_value(Tlsh * t, int data_size, MVPTree * tree, unsign
+ __attribute__((destructor))
+ void end_state_tracer() {
+ 
++  if (!stateafl_tracer_enabled) return;
++
+ #ifdef SKIP_POSTEXEC_ANALYSIS
+   LOG_DEBUG("Skipping analysis, terminating...\n");
+   return;
+@@ -1654,12 +1729,14 @@ void end_state_tracer() {
+ 
+       LOG_INFO("SAVING STATE [# %d]: %08x\n", current_state_number, current_state_value);
+ 
+-      *state_sequence = current_state_value;
+-      state_sequence++;
+-      current_state_number++;
++      if(current_state_number < MAX_NUM_STATES) {
++        *state_sequence = current_state_value;
++        state_sequence++;
++        current_state_number++;
+ 
+-      // update state sequence length
+-      state_shared_ptr->seq_len = current_state_number;
++        // update state sequence length
++        state_shared_ptr->seq_len = current_state_number;
++      }
+ 
+       current_state_value = 0;
+ 
+-- 
+2.25.1
+
