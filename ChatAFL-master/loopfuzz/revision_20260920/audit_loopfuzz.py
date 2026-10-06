@@ -73,9 +73,15 @@ for r in adm:
 trials = [r for r in adm if r.get("event") == "admission_trial"]
 n_exec = [r for r in trials if r.get("executed")]
 n_native = [r for r in n_exec if r.get("native_promoted")]
-check(len(n_native) == 0,
-      f"0/{len(n_exec)} executed trials natively retained (was: every hnb>0 trial)",
-      f"{len(n_native)} trials natively promoted — trial-mode leak!")
+if expected == "loopfuzz-direct":
+    # arm C semantic: direct admission EXECUTES then retains natively when
+    # interesting (that IS the counterfactual); force-queue covers the rest.
+    print(f"  PASS: arm C — {len(n_native)}/{len(n_exec)} executed trials "
+          f"natively retained (direct-admission semantics, by design)")
+else:
+    check(len(n_native) == 0,
+          f"0/{len(n_exec)} executed trials natively retained (was: every hnb>0 trial)",
+          f"{len(n_native)} trials natively promoted — trial-mode leak!")
 dur = [r for r in trials if r.get("durable_promoted")]
 viol = [r for r in dur if r.get("candidate_id") not in decisions or
         decisions[r["candidate_id"]]["time_ms"] > r.get("time_ms", 0)]

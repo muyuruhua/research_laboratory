@@ -30,7 +30,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}/
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
 
   STATUS=$?
 

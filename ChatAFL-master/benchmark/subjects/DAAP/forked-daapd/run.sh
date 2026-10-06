@@ -73,7 +73,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
       else
         SEED_ARG="-i-"
       fi
-      timeout -k 2s --preserve-status $REMAIN /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d ${SEED_ARG} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+      timeout -k 30s --preserve-status $REMAIN /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d ${SEED_ARG} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
       [ "$STOP_ON_ERR" = "1" ] && break
       # a crashed fuzzer leaks its target child holding port 3689; clean up
       # so the resumed instance can bind again
@@ -82,7 +82,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
     done
     STATUS=0
   else
-    timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+    timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
     STATUS=$?
   fi
 

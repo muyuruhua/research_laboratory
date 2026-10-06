@@ -83,7 +83,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
   cd $WORKDIR/${TARGET_DIR}
 
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR ${KAM_NET} $OPTIONS ${KAM_EXTRA_TMO} -c ${WORKDIR}/run_pjsip ./src/kamailio ${KAM_CFG} -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 ${KAM_NODAEMON} -E
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR ${KAM_NET} $OPTIONS ${KAM_EXTRA_TMO} -c ${WORKDIR}/run_pjsip ./src/kamailio ${KAM_CFG} -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 ${KAM_NODAEMON} -E
 
   STATUS=$?
 

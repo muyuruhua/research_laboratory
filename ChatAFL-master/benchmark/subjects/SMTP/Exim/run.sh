@@ -31,7 +31,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}
   cp ./src/build-Linux-x86_64/exim /usr/exim/bin/exim
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c ${WORKDIR}/clean exim -bd -d -oX 25 -oP /var/lock/exim.pid
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c ${WORKDIR}/clean exim -bd -d -oX 25 -oP /var/lock/exim.pid
 
   STATUS=$?
 

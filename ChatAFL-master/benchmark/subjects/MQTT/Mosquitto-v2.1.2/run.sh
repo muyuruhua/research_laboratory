@@ -80,7 +80,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
     echo "[run] Starting afl-fuzz (remaining=${REMAINING}s, restart=${CRASH_COUNT})..."
 
-    timeout -k 2s --preserve-status $REMAINING /home/ubuntu/${FUZZER_DIR}/afl-fuzz \
+    timeout -k 30s --preserve-status $REMAINING /home/ubuntu/${FUZZER_DIR}/afl-fuzz \
       -d -i ${INPUTS} -o $OUTDIR \
       -N tcp://127.0.0.1/1883 \
       $OPTIONS \
