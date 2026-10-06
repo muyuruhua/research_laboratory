@@ -31,16 +31,24 @@ def reply_for(prompt):
         if "%d" in cmd:
             cmd = cmd % i
         ins = CMDS[(i - 1) % len(CMDS)].split()[0] + "\r\n"
+        # v3: ALTERNATE reply shapes.  The fuzzer's parser takes
+        # suggested_request when present and NEVER processes actions[] in
+        # that reply — returning both (v1/v2 behaviour) means the clean
+        # seed-0 mutation path is never exercised.  Even replies:
+        # actions-only (mutate the clean initial seed); odd: suggested-only.
+        if i % 2 == 0:
+            return json.dumps({
+                "analysis": "mock: mutate the clean initial seed",
+                "actions": [
+                    {"type": "propose_mutations", "seed_id": 0,
+                     "ops": [{"op": "insert", "pos": 999999,
+                              "data": base64.b64encode(ins.encode()).decode()}]},
+                    {"type": "set_target_state", "state_id": 0},
+                    {"type": "prioritize_seeds", "seed_ids": [0]},
+                ]})
         return json.dumps({
-            "analysis": "mock: append a post-auth-safe FTP command",
-            "suggested_request": cmd + "\r\n",
-            "actions": [
-                {"type": "propose_mutations", "seed_id": 0,
-                 "ops": [{"op": "insert", "pos": 999999,
-                          "data": base64.b64encode(ins.encode()).decode()}]},
-                {"type": "set_target_state", "state_id": 0},
-                {"type": "prioritize_seeds", "seed_ids": [0]},
-            ]})
+            "analysis": "mock: propose a post-auth-safe command",
+            "suggested_request": cmd + "\r\n"})
     reqs["seed"] += 1
     return "USER mockuser\r\nPASS mockpass\r\nSYST\r\n"
 

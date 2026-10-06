@@ -3208,8 +3208,22 @@ static void evidence_identity_hashes(const char *target_path) {
   sha256_byte d[32];
 
   if (sha256_file("/proc/self/exe", d) == 0) sha256_hex(d, runcfg_fuzzer_sha);
-  if (target_path && *target_path && sha256_file(target_path, d) == 0)
-    sha256_hex(d, runcfg_target_sha);
+  if (target_path && *target_path) {
+    if (sha256_file(target_path, d) == 0) {
+      sha256_hex(d, runcfg_target_sha);
+    } else if (!strchr(target_path, '/')) {
+      /* Bare command name (e.g. exim resolved via PATH): search $PATH. */
+      char *paths = getenv("PATH"), *p2 = paths ? strdup(paths) : NULL;
+      char *save = NULL;
+      for (char *dir = p2 ? strtok_r(p2, ":", &save) : NULL; dir;
+           dir = strtok_r(NULL, ":", &save)) {
+        char *full = alloc_printf("%s/%s", dir, target_path);
+        if (sha256_file(full, d) == 0) { sha256_hex(d, runcfg_target_sha); ck_free(full); break; }
+        ck_free(full);
+      }
+      free(p2);
+    }
+  }
 
   /* Deterministic aggregate over the INITIAL corpus (before enrichment
    * writes more seeds): sha256 of "name contenthex\\n" lines in sorted
@@ -19591,6 +19605,10 @@ int main(int argc, char **argv)
    * protocol argument (target hash silently "unknown") and out_dir could
    * be unset. */
   evidence_env_parse();
+  /* Resolve LLM sampling/caps BEFORE the run-config start record so its
+   * cap fields are final at start (chat_llm_global_init otherwise runs
+   * later, inside the grammar phase, leaving start=-1).  Idempotent. */
+  chat_llm_apply_sampling_env();
   /* v3 (P0-2): pin binary/corpus/config identity into the run-config, and
    * register the per-call LLM ledger so every gateway call (starting with
    * the grammar phase below) is recorded. */

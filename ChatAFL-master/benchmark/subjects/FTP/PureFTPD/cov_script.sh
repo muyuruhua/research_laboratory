@@ -18,13 +18,9 @@ gcovr -r . -s -d > /dev/null 2>&1
 #output the header of the coverage file which is in the CSV format
 #Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
 echo "Time,l_per,l_abs,b_per,b_abs,idx" >> $covfile
-# v3 (P0-3): idx = replay order (cumulative union order). Analysis MUST
-# sort by idx, never by Time alone (1s mtime ties). A terminal row at the
-# campaign end is appended; see cov_over_time.csv.audit for the audit.
 idx=0
 prev_t=0
 first_t=0
-
 
 #files stored in replayable-* folders are structured
 #in such a way that messages are separated
@@ -39,18 +35,7 @@ fi
 #process initial seed corpus first
 for f in $(echo $folder/$testdir/*.raw); do 
   time=$(stat -c %Y $f)
-  [ "$time" -lt "$prev_t" ] && time=$prev_t
-  prev_t=$time
-  # v3 (P0-3): observation timestamps must be monotone non-decreasing;
-  # 1-second mtime resolution produces ties/backward jumps that are pure
-  # ordering artifacts. idx = replay order (the true cumulative order).
-  [ "$time" -lt "$prev_t" ] && time=$prev_t
-  prev_t=$time
-  [ "$first_t" -eq 0 ] && first_t=$time
-  idx=$(expr $idx + 1)
-  # v3 (P0-3): observation timestamps must be monotone non-decreasing;
-  # 1-second mtime resolution produces ties/backward jumps that are pure
-  # ordering artifacts. idx = replay order (the true cumulative order).
+  # v3 (P0-3): timestamps must be monotone; idx = replay order.
   [ "$time" -lt "$prev_t" ] && time=$prev_t
   prev_t=$time
   [ "$first_t" -eq 0 ] && first_t=$time
@@ -77,6 +62,11 @@ done
 count=0
 for f in $(echo $folder/$testdir/id*); do 
   time=$(stat -c %Y $f)
+  # v3 (P0-3): timestamps must be monotone; idx = replay order.
+  [ "$time" -lt "$prev_t" ] && time=$prev_t
+  prev_t=$time
+  [ "$first_t" -eq 0 ] && first_t=$time
+  idx=$(expr $idx + 1)
 
   #terminate running server(s)
   pkill pure-ftpd
@@ -102,6 +92,8 @@ done
 if [[ $step -gt 1 ]]
 then
   time=$(stat -c %Y $f)
+  [ "$time" -lt "$prev_t" ] && time=$prev_t
+  prev_t=$time
   cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
@@ -112,12 +104,6 @@ then
 fi
 
 # ── v3 (P0-3) campaign-end terminal row + audit sidecar ─────────────
-# The last coverage DISCOVERY time understates the campaign horizon on
-# plateau runs (no new file mtime after saturation), which previously made
-# completed >24h runs lose support at 24h. A terminal row at the campaign
-# end (fuzzer_stats last_update) restores it; .audit records the
-# first/last observation, campaign window and replay count for per-run
-# audits.
 end_ts=$(grep -a "^last_update" "$folder/fuzzer_stats" 2>/dev/null | head -1 | tr -dc '0-9')
 start_ts=$(grep -a "^start_time" "$folder/fuzzer_stats" 2>/dev/null | head -1 | tr -dc '0-9')
 if [ -n "$end_ts" ] && [ "$end_ts" -ge "$prev_t" ] 2>/dev/null; then
