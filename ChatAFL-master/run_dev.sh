@@ -124,6 +124,26 @@ else
     echo "[✓] KEY 已设置 (长度=${#KEY}, 前缀=${KEY:0:8}...)"
 fi
 
+# ── 结果目录时间戳（提前生成 + 醒目打印）─────────────────────────────
+# profuzzbench_exec_all_dev.sh 用 TIMESTAMP 命名结果目录：
+#   benchmark/results-<target>_<TIMESTAMP>/
+# 独立调用时 TIMESTAMP 未设 → exec 脚本自行生成 → 用户无法预知。
+# 这里提前生成并 export，确保：
+#   1) 用户在终端第一屏就能看到确切目录名
+#   2) exec 脚本使用同一值（不重复生成）
+#   3) run_ablation.sh 调用时透传已设的 TIMESTAMP，仅回显
+if [[ -z "${TIMESTAMP:-}" ]]; then
+    export TIMESTAMP="$(date "+%b-%d_%H-%M-%S")"
+fi
+_RESULT_DIR="benchmark/results-$(echo ${TARGET_LIST} | tr ',' '_')_${TIMESTAMP}"
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  结果目录时间戳: ${TIMESTAMP}"
+echo "║  预期结果路径:   ${_RESULT_DIR}"
+echo "║  查找命令:       ls -d ${_RESULT_DIR}"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
 # ── 全效果模式默认值 ──────────────────────────────────────────────────
 # run_dev.sh 独立运行时（非从 run_ablation.sh 调用），默认启用全部策略：
 #   Hypothesis 语法生成 ON，自适应阈值 ON（初始=512），CEGAR ON，
