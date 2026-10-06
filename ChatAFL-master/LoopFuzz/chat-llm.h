@@ -94,6 +94,19 @@ double      llm_active_top_p(void);
 int         llm_active_max_tokens(void);
 const char *llm_active_model(void);
 
+/* ── v3 (P0-2/P1-7): per-call ledger + campaign caps ──────────────
+ * llm-calls.jsonl: one append-only line per gateway ATTEMPT (all call
+ * classes, retries, failures) with requested + SERVED model, latency,
+ * token usage and cumulative totals.  Caps are enforced centrally in
+ * chat_with_llm(): CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP
+ * (unset/-1 = unlimited). */
+void                chat_llm_set_calls_log(const char *path);
+extern char         llm_last_served_model[128];
+unsigned long long  chat_llm_cum_calls(void);
+unsigned long long  chat_llm_cum_tokens(void);
+long                chat_llm_cap_calls(void);
+long                chat_llm_cap_tokens(void);
+
 /* Per-call token usage filled by chat_with_llm().
  * __thread: safe for concurrent enrichment worker threads.
  * In the forked plateau-handler child, TLS works normally. */

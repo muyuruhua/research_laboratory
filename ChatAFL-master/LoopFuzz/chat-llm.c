@@ -61,6 +61,64 @@ void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
 __thread unsigned long long llm_last_prompt_tokens     = 0;
 __thread unsigned long long llm_last_completion_tokens = 0;
 
+/* ── v3 (P0-2/P1-7): per-call ledger + campaign-wide caps ──────────
+ * llm-calls.jsonl records EVERY gateway call (attempts, retries,
+ * failures, all call classes) with the served model echoed by the
+ * service — the two audit fields the retrospective data could not
+ * provide.  Caps: CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP are
+ * enforced centrally here (-1 / unset = unlimited), so a recorded cap
+ * is a real cap, not a declaration. */
+char llm_last_served_model[128] = {0};
+static char chat_llm_calls_path[4096] = {0};
+static unsigned long long llm_calls_seq = 0;
+static unsigned long long llm_cum_calls = 0;    /* every attempt sent */
+static unsigned long long llm_cum_tokens = 0;   /* billed prompt+completion */
+static long llm_cap_total_calls = -1;           /* CHATAFL_LLM_TOTAL_CALL_CAP */
+static long llm_cap_total_tokens = -1;          /* CHATAFL_TOKEN_CAP */
+#include <pthread.h>
+#include <sys/time.h>
+static pthread_mutex_t g_llm_calls_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void chat_llm_set_calls_log(const char *path) {
+    if (path && *path)
+        snprintf(chat_llm_calls_path, sizeof(chat_llm_calls_path), "%s", path);
+}
+
+unsigned long long chat_llm_cum_calls(void)  { return llm_cum_calls; }
+unsigned long long chat_llm_cum_tokens(void) { return llm_cum_tokens; }
+long chat_llm_cap_calls(void)   { return llm_cap_total_calls; }
+long chat_llm_cap_tokens(void)  { return llm_cap_total_tokens; }
+
+static unsigned long long chat_llm_now_ms(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (unsigned long long)tv.tv_sec * 1000ULL + tv.tv_usec / 1000;
+}
+
+static void chat_llm_log_call(const char *status, const char *model_req,
+                              long latency_ms,
+                              unsigned long long pt, unsigned long long ct,
+                              const char *endpoint) {
+    if (!chat_llm_calls_path[0]) return;
+    pthread_mutex_lock(&g_llm_calls_mutex);
+    FILE *f = fopen(chat_llm_calls_path, "a");
+    if (f) {
+        unsigned long long seq = ++llm_calls_seq;
+        fprintf(f,
+            "{\"seq\":%llu,\"time_ms\":%llu,\"status\":\"%s\","
+            "\"model_requested\":\"%s\",\"model_served\":\"%s\","
+            "\"latency_ms\":%ld,\"prompt_tokens\":%llu,"
+            "\"completion_tokens\":%llu,\"endpoint\":\"%s\","
+            "\"cum_calls\":%llu,\"cum_tokens\":%llu}\n",
+            seq, chat_llm_now_ms(), status ? status : "unknown",
+            model_req ? model_req : "", llm_last_served_model[0] ? llm_last_served_model : "",
+            latency_ms, pt, ct, endpoint ? endpoint : "",
+            llm_cum_calls, llm_cum_tokens);
+        fclose(f);
+    }
+    pthread_mutex_unlock(&g_llm_calls_mutex);
+}
+
 /* ── Auditable LLM configuration (paper §九: matched configs) ──────
  * Sampling parameters are resolved once from the environment so every
  * call uses identical settings, and run-config.jsonl can record them
@@ -92,6 +150,17 @@ void chat_llm_apply_sampling_env(void) {
     if (m && *m) {
         snprintf(llm_cfg_model, sizeof(llm_cfg_model), "%s", m);
     }
+    /* v3 campaign-wide caps (resolved once; enforced per call). */
+    const char *cc = getenv("CHATAFL_LLM_TOTAL_CALL_CAP");
+    if (cc && *cc) {
+        long v = atol(cc);
+        if (v > 0) llm_cap_total_calls = v;
+    }
+    const char *tc = getenv("CHATAFL_TOKEN_CAP");
+    if (tc && *tc) {
+        long v = atol(tc);
+        if (v > 0) llm_cap_total_tokens = v;
+    }
 }
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
@@ -103,7 +172,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     /* Reset per-call token counters so a failed call yields 0. */
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;
-    const char *url = "https://www.cctq.ai/v1/chat/completions";
+    /* Endpoint: default gateway, overridable via CHATAFL_LLM_BASE for
+     * (a) auditable/reproducible LLM replay against a recorded mock, and
+     * (b) mechanism-level integration tests without live-gateway latency.
+     * The effective endpoint is persisted in run-config.jsonl. */
+    const char *env_base = getenv("CHATAFL_LLM_BASE");
+    const char *url = (env_base && *env_base) ? env_base
+                    : "https://www.cctq.ai/v1/chat/completions";
     const char *api_key = getenv("KEY");
     if (!api_key || api_key[0] == '\0') {
         static int key_warning_shown = 0;
@@ -112,8 +187,15 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                             "[LLM]   All LLM features (grammar, enrichment, plateau) are DISABLED.\n"
                             "[LLM]   Fix: export KEY=\"sk-...\" before launching.\n\n",
                     !api_key ? "not set" : "empty");
-            key_warning_shown = 1;
+        key_warning_shown = 1;
         }
+        return NULL;
+    }
+    /* v3: campaign-wide caps are enforced centrally, before any request
+     * is sent — a recorded cap is a real cap (P1-7). */
+    if ((llm_cap_total_calls >= 0 && (long long)llm_cum_calls >= (long long)llm_cap_total_calls) ||
+        (llm_cap_total_tokens >= 0 && (long long)llm_cum_tokens >= (long long)llm_cap_total_tokens)) {
+        chat_llm_log_call("cap-refused", llm_active_model(), 0, 0, 0, url);
         return NULL;
     }
     char auth_header[256];
@@ -172,17 +254,44 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
             
             // Set timeouts to prevent hanging
-            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);   // REQUIRED for multi-threaded: disable SIGALRM-based timeout
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);  // Total request timeout: 120 seconds
+            /* Total request timeout: 120 s by default (paper §六 Table:
+             * "120 s request").  CHATAFL_LLM_TIMEOUT_MS overrides it for
+             * slow gateways WITHOUT changing the documented default —
+             * the override, when used, is recorded in the environment
+             * provenance rather than the paper config. */
+            {
+                long llm_timeout_s = 120L;
+                const char *lt = getenv("CHATAFL_LLM_TIMEOUT_MS");
+                if (lt && *lt) {
+                    long ms = atol(lt);
+                    if (ms >= 10000 && ms <= 900000) llm_timeout_s = ms / 1000;
+                }
+                curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);   // REQUIRED for multi-threaded: disable SIGALRM-based timeout
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, llm_timeout_s);
+            }
             curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
             curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);  // Abort if < 1 byte/sec
             curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);  // ... for 60 seconds
 
+            unsigned long long _t0 = chat_llm_now_ms();
             res = curl_easy_perform(curl);
+            long _lat = (long)(chat_llm_now_ms() - _t0);
 
             if (res == CURLE_OK)
             {
                 json_object *jobj = json_tokener_parse(chunk.memory);
+
+                /* v3 (P0-2): record the model version the SERVICE says it
+                 * used — the requested name alone does not pin identity. */
+                {
+                    json_object *jm = NULL;
+                    if (json_object_object_get_ex(jobj, "model", &jm) && jm) {
+                        const char *sm = json_object_get_string(jm);
+                        if (sm && *sm)
+                            snprintf(llm_last_served_model, sizeof(llm_last_served_model), "%s", sm);
+                    }
+                }
+                llm_cum_calls++;
 
                 // Check if the "choices" key exists
                 if (json_object_object_get_ex(jobj, "choices", NULL))
@@ -212,9 +321,12 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                         if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
                             llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
                     }
+                    llm_cum_tokens += llm_last_prompt_tokens + llm_last_completion_tokens;
 
                     if (data == NULL) {
                         printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
+                        chat_llm_log_call("empty-content", llm_active_model(), _lat,
+                                          llm_last_prompt_tokens, llm_last_completion_tokens, url);
                         json_object_put(jobj);
                         sleep(2);
                         continue;
@@ -222,10 +334,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     if (data[0] == '\n')
                         data++;
                     answer = strdup(data);
+                    chat_llm_log_call("ok", llm_active_model(), _lat,
+                                      llm_last_prompt_tokens, llm_last_completion_tokens, url);
                 }
                 else
                 {
                     printf("Error response is: %s\n", chunk.memory);
+                    chat_llm_log_call("api-error", llm_active_model(), _lat, 0, 0, url);
                     /* Detect fatal provider-side errors and abort immediately
                      * instead of burning all retries (each retry sleeps 2 s
                      * and re-sends the full prompt — pure waste when the
@@ -257,6 +372,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             else
             {
                 printf("Error: %s\n", curl_easy_strerror(res));
+                llm_cum_calls++;
+                chat_llm_log_call("transport-error", llm_active_model(), _lat, 0, 0, url);
             }
 
             curl_slist_free_all(headers);

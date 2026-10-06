@@ -30,8 +30,12 @@
 
 #include <stdint.h>
 
-/* Event-log schema version (bump on any field change). */
-#define EC_SCHEMA_VERSION 2
+/* Event-log schema version (bump on any field change).
+ * v3 (2026-10-05, first-batch fidelity fixes): admission decision event added
+ * (pre-action gate log), trial_hnb / obs_new_states / obs_new_transitions
+ * fields, episode completed/posterior_updated/energy fields, provisional
+ * "censor" kind, run-config episode_energy_cap + code_reward_semantics. */
+#define EC_SCHEMA_VERSION 3
 
 /* Candidate dispositions after the bounded trial (paper §四). */
 #define EC_REJECT       0

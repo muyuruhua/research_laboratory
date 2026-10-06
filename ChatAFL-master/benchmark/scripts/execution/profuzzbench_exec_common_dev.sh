@@ -506,6 +506,13 @@ if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
     printf "\n${LOG_TAG}: [DEV] Subject dir mounted: ${SUBJECT_DIR}\n"
     SUBJECT_MOUNT="-v ${SUBJECT_DIR}:/tmp/subject-src:ro"
     SUBJECT_COPY="cp -f /tmp/subject-src/run.sh ${WORKDIR}/run && chmod +x ${WORKDIR}/run && "
+    # v3 (P0-3): cov_script.sh is patched on the host (idx column,
+    # monotone timestamps, campaign-end row); dev mode must use it,
+    # otherwise the image-embedded pre-v3 script silently produces
+    # the old mtime-artifact trajectories.
+    # NOTE: test the HOST path ($SUBJECT_DIR) — /tmp/subject-src only
+    # exists INSIDE the container; a host-side -f on it is always false.
+    if [[ -f "${SUBJECT_DIR}/cov_script.sh" ]]; then SUBJECT_COPY+="cp -f /tmp/subject-src/cov_script.sh ${WORKDIR}/cov_script && chmod +x ${WORKDIR}/cov_script && "; fi
     if is_mqtt_target "$DOCIMAGE" && [[ -f "${SUBJECT_DIR}/mosquitto.conf" ]]; then
       SUBJECT_COPY+="cp -f /tmp/subject-src/mosquitto.conf ${WORKDIR}/mosquitto.conf && "
     fi
@@ -834,6 +841,15 @@ for i in $(seq 1 $RUNS); do
 
   TOKEN_FLAGS=""
   [[ -n "${CHATAFL_MAX_TOKENS:-}" ]]       && TOKEN_FLAGS+=" -e CHATAFL_MAX_TOKENS=${CHATAFL_MAX_TOKENS}"
+  [[ -n "${CHATAFL_LLM_TIMEOUT_MS:-}" ]]   && TOKEN_FLAGS+=" -e CHATAFL_LLM_TIMEOUT_MS=${CHATAFL_LLM_TIMEOUT_MS}"
+  [[ -n "${CHATAFL_LLM_BASE:-}" ]]         && TOKEN_FLAGS+=" -e CHATAFL_LLM_BASE=${CHATAFL_LLM_BASE}"
+  # P0-2: pin the container image identity (image id sha256; locally built
+  # images have no RepoDigest). Resolved below, right before docker run.
+  _IMG_ID="$(docker inspect --format "{{.Id}}" "${DOCIMAGE}" 2>/dev/null || true)"
+  [[ -n "${_IMG_ID}" ]]                       && TOKEN_FLAGS+=" -e CHATAFL_IMAGE_DIGEST=${_IMG_ID}"
+  [[ -n "${CHATAFL_EPISODE_ENERGY:-}" ]]   && TOKEN_FLAGS+=" -e CHATAFL_EPISODE_ENERGY=${CHATAFL_EPISODE_ENERGY}"
+  [[ -n "${CHATAFL_LLM_TOTAL_CALL_CAP:-}" ]] && TOKEN_FLAGS+=" -e CHATAFL_LLM_TOTAL_CALL_CAP=${CHATAFL_LLM_TOTAL_CALL_CAP}"
+  [[ -n "${CHATAFL_TOKEN_CAP:-}" ]]          && TOKEN_FLAGS+=" -e CHATAFL_TOKEN_CAP=${CHATAFL_TOKEN_CAP}"
   [[ -n "${CHATAFL_TOP_P:-}" ]]            && TOKEN_FLAGS+=" -e CHATAFL_TOP_P=${CHATAFL_TOP_P}"
   [[ -n "${CHATAFL_TOKEN_CAP:-}" ]]        && TOKEN_FLAGS+=" -e CHATAFL_TOKEN_CAP=${CHATAFL_TOKEN_CAP}"
 

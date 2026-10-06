@@ -10,6 +10,50 @@ response-derived state 的效用由在线后验校准，而非固定信任。
 
 ---
 
+## 0. v3 保真度修复（2026-10-05，first-batch，schema_version=3）
+
+针对专家 P0-1/P0-2/P0-4 的实现层修复，重跑 C/D/E 前必须先部署：
+
+1. **真正的 execute-before-promote（P0-1）**：LLM 候选 trial 期间设置
+   `admission_trial_mode`，`save_if_interesting()` 对 trial 只做**非破坏性
+   novelty 探测**（scratch 副本上调 `has_new_bits`），不入队、不消耗
+   virgin map。评估顺序固定为 P → isolated trial → U/R → 独立 G_code/G_state
+   → decision。**decision 事件（`admission_decision`）先于任何队列插入写盘**，
+   durable 只有 `P∧U∧R∧G_code` 才由 `admission_promote_durable()` 显式入队
+   （此时才把 trial bitmap 应用到真实 virgin map）。arm C 保持 legacy 直通路径
+   （它就是反事实对照），trial mode 仅对门控 arm（D/E）启用。
+2. **G_state 与 retention 解耦（P0-1）**：新增**观察台账**（observed-state /
+   observed-transition 两个 khash 集合），每次 trial 的响应状态序列先登记；
+   新颖性 = 不在 IPSM ∪ 台账。旧实现里 IPSM 只在入队后更新，导致
+   `¬G_code∧G_state` 结构性不可能、provisional 恒为 0 —— 已消除。
+   admission 事件新增字段：`trial_hnb`（0/1/2，2=新 edge）、
+   `obs_new_states`、`obs_new_transitions`。
+3. **provisional 预算逐 descendant 前置检查（P0-1）**：`common_fuzz_stuff()`
+   顶部 per-exec 钩子在实际执行**之前**检查并原子扣减 `prov_budget_left`
+   （TTL 同检），预算耗尽即中止该 entry 的继续变异；账本不变量：
+   `descendant_execs ≤ budget`。`provisional_account_after_fuzz()` 只负责
+   生命周期收尾（convert/expire），不再事后扣减。停机时存活 provisional
+   记 `censor`（保留文件与证据），与 expire 区分。
+4. **arm 身份时序修复（P0-2）**：全部 arm 生效的环境变量解析抽取为
+   `evidence_env_parse()`，在 `run_config_log("start")` **之前**执行 ——
+   修复了 Sep-2026 tarball 中 start 事件系统性把 arm 标成 gated-fixed +
+   默认 γ 的 bug（end 事件才是真值）。
+5. **reward 口径纯净（P0-4）**：`code_save_events`（任意覆盖 save，含
+   hit-count-only）与 `code_gain_events`（**仅新 edge，hnb==2**）分离；
+   episode reward 与 provisional 转化只看新 edge。durable promotion 记
+   `admission_gain_events`，绝不混入 episode reward。
+6. **固定 episode 能量（P0-4）**：`CHATAFL_EPISODE_ENERGY`（默认 512，
+   0=关闭）限定每个 state-selection episode 的 havoc/splice 阶段执行数，
+   deterministic 阶段不算能量（一次性阶段，保持谱系）。episode 事件新增
+   `completed` / `posterior_updated` / `episode_energy_cap` / `energy_used` /
+   `energy_exhausted`。
+7. **episode 完成度门控（P0-4）**：零变异 episode（无 seed 状态的空选）与
+   被 stop 中断的 episode 只记录（`reward=-1` 或 `posterior_updated=false`），
+   **不更新后验**；LLM trial 的执行/收益通过 `cal_episode_rebase_after_trial()`
+   从当期 episode 的 mutations/reward 中剔除（trial 归 candidate 账）。
+
+---
+
 ## 1. 论文要求 → 实现映射
 
 | 论文章节 | 要求 | 实现 |
@@ -128,6 +172,7 @@ sudo -E ./run_ablation.sh bftpd 1 1580 -g full,wo_hypothesis,wo_refinement,wo_fr
 | `CHATAFL_ADMISSION_LOG` | 1 | 0=关闭 admission JSONL（门控仍生效） |
 | `CHATAFL_EVENT_LOG` | 1 | 0=关闭全部 JSONL 事件日志 |
 | `CHATAFL_TOP_P` / `CHATAFL_MAX_TOKENS` | 1.0 / 4096 | LLM 采样配置（所有调用统一） |
+| `CHATAFL_EPISODE_ENERGY` | 512 | 每 episode havoc 阶段固定执行预算（v3，0=关闭） |
 
 ### 离线指标
 

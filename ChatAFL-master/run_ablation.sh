@@ -281,7 +281,11 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "wo_state_prompt" "CHATAFL_NO_STATE_PROMPT=1"
         ;;
-      fixed150|fixed200|fixed300|fixed512)
+      fixed8|fixed16|fixed32|fixed64|fixed150|fixed200|fixed300|fixed512)
+        # v3 验证组泛化：fixedN = arm D（满效果）+ 固定 plateau 阈值 N。
+        # 阈值必须是组自带变量——父 shell 导出的 CHATAFL_NO_ADAPTIVE/
+        # CHATAFL_ABLATION_THRESHOLD 会被本函数开头的 unset 清掉（arm 隔离），
+        # 这是 2026-10-05 两次消融 e2e 零候选的真实根因。
         valid+=("$name")
         local thr="${name#fixed}"
         queue_group "$name" \

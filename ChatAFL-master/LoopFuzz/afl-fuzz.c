@@ -87,6 +87,7 @@
 #include <poll.h>          /* P1-fix: non-blocking connect timeout */
 
 #include "aflnet.h"
+#include "sha256.h"
 #include <graphviz/gvc.h>
 #include <math.h>
 
@@ -825,13 +826,69 @@ static u64  provisional_live = 0;
 static u64  cal_episodes_total = 0;
 static u64  cal_episodes_rewarded = 0;
 
-/* Monotone code-progress event counters.  code_gain_events counts native
- * coverage saves ONLY (has_new_bits), so provisional admissions never
- * contaminate the calibration reward; ipsm_new_edge_events counts state-
- * machine edge additions (the misaligned proxy signal). */
+/* Monotone code-progress event counters.  code_save_events counts EVERY
+ * native coverage save (has_new_bits != 0, INCLUDING hit-count-only changes,
+ * hnb==1); code_gain_events counts NEW-EDGE saves only (hnb==2) and is the
+ * sole calibration reward signal (paper Eq.4: previously unseen code
+ * branches — execution-frequency novelty must not fire the reward).
+ * ipsm_new_edge_events counts state-machine edge additions (the misaligned
+ * proxy signal).  admission_gain_events counts code evidence produced by
+ * PROMOTED LLM candidates so trial work stays out of episode rewards. */
 static u64  code_gain_events = 0;
+static u64  code_save_events = 0;
+static u64  admission_gain_events = 0;
 static u64  ipsm_new_edge_events = 0;
 static u32  last_native_save_index = 0;
+
+/* ── P0-1 first-batch fidelity fixes (2026-10-05) ───────────────────
+ *
+ * (1) Execute-before-promote, for real: while admission_trial_mode is set,
+ *     save_if_interesting() performs a NON-destructive novelty probe
+ *     (has_new_bits on a scratch copy of virgin_bits) and does NOT insert
+ *     into the queue nor update virgin_bits.  The gate (P→trial→U/R→
+ *     G_code/G_state→decision) runs on the probe evidence, the decision is
+ *     logged, and only then may admission_promote_durable() apply the trial
+ *     bitmap to the real virgin map and add the queue entry.  Arm C
+ *     (CHATAFL_NO_ADMISSION=1) keeps the legacy direct path — it IS the
+ *     counterfactual — so trial mode is armed only for the gated arms.
+ * (2) G_state decoupled from retention: the observed-state ledger below
+ *     records every state/transition ever observed by an executed trial,
+ *     so state-only novelty is assessable WITHOUT a prior queue save
+ *     (update_state_aware_variables still only runs on retention — that
+ *     coupling previously made provisional admissions structurally
+ *     impossible).
+ * (3) Provisional budgets are checked BEFORE each descendant execution
+ *     (per-exec hook in common_fuzz_stuff), not reconciled after a whole
+ *     fuzz_one cycle.
+ * (4) Episodes carry a fixed havoc-phase energy budget
+ *     (CHATAFL_EPISODE_ENERGY, default 512) enforced by the same hook;
+ *     zero-mutation and interrupted episodes never update the posterior.
+ */
+static u8   admission_trial_mode = 0;   /* armed around LLM trial executions */
+static u8   last_trial_hnb = 0;         /* 0 none / 1 hit-count-only / 2 new edge */
+static u8 *trial_virgin_scratch = NULL; /* MAP_SIZE probe buffer, lazily alloc'd */
+
+KHASH_SET_INIT_INT64(hs64)             /* u64 set: (from<<32)|to transitions */
+static khash_t(hs32) *observed_state_ledger = NULL;  /* state ids seen by trials */
+static khash_t(hs64) *observed_trans_ledger = NULL;  /* transitions seen by trials */
+
+/* Fixed episode energy (havoc-phase executions per state-selection episode).
+ * 0 disables the cap (legacy variable-energy behaviour). */
+static u32  episode_energy_cap = 512;  /* CHATAFL_EPISODE_ENERGY */
+static u64  episode_energy_left = 0;   /* remaining havoc execs this episode */
+static u8   episode_energy_exhausted = 0;
+static u8   episode_havoc_phase = 0;   /* 1 inside fuzz_one havoc/splice stages */
+/* Set by the per-exec hook when it refuses an execution; purely
+ * informational (fuzz_one abandons the entry via the nonzero return). */
+static u8   provisional_budget_exhausted_stop = 0;
+static u8   provisional_ttl_stop = 0;
+
+/* Shutdown censoring counters (campaign-end, distinct from expiry). */
+static u64  provisional_censored = 0;
+static u64  cal_episodes_completed = 0;
+static u64  cal_episodes_zero_mut = 0;
+static u64  cal_episodes_interrupted = 0;
+static u64  admission_promoted_durable = 0;
 
 /* Per-candidate LLM linkage: filled when a plateau reply is accepted,
  * consumed by the admission trial(s) executing its candidates. */
@@ -2886,14 +2943,84 @@ static char *admission_edge_sequence_to_string(unsigned int *states,
   return out;
 }
 
+/* ── Observed-state ledger (P0-1 fix 2) ────────────────────────────
+ * Novelty oracle for G_state that does NOT depend on retention: a state
+ * (or transition) is novel iff it is neither in the scheduler IPSM
+ * (populated only on saves, see update_state_aware_variables) nor in the
+ * ledger of states/transitions observed by previous trials.  Everything a
+ * trial observes is then recorded so repeated trials of the same rejected
+ * candidate are not re-flagged as novel. */
+static u8 ipsm_has_state_node(u32 sid) {
+  if (!ipsm) return 0;
+  char s[STATE_STR_LEN];
+  snprintf(s, sizeof(s), "%d", (int)sid);
+  return agnode(ipsm, s, FALSE) != NULL;
+}
+
+static u8 ipsm_has_state_transition(u32 from, u32 to) {
+  if (!ipsm) return 0;
+  char a[STATE_STR_LEN], b[STATE_STR_LEN];
+  snprintf(a, sizeof(a), "%d", (int)from);
+  snprintf(b, sizeof(b), "%d", (int)to);
+  Agnode_t *na = agnode(ipsm, a, FALSE);
+  Agnode_t *nb = agnode(ipsm, b, FALSE);
+  if (!na || !nb) return 0;
+  return agedge(ipsm, na, nb, NULL, FALSE) != NULL;
+}
+
+/* Record one executed trial's response-state sequence in the ledger and
+ * count how much of it was genuinely novel (pre-registration: called once
+ * per trial, BEFORE any retention decision). */
+static void admission_ledger_observe(const unsigned int *states,
+                                     unsigned int state_count,
+                                     u32 source_state,
+                                     u32 *new_states_out,
+                                     u32 *new_trans_out) {
+  if (new_states_out) *new_states_out = 0;
+  if (new_trans_out) *new_trans_out = 0;
+  if (!states || state_count == 0) return;
+
+  if (!observed_state_ledger) observed_state_ledger = kh_init(hs32);
+  if (!observed_trans_ledger) observed_trans_ledger = kh_init(hs64);
+
+  int absent = 0;
+  for (unsigned int i = 0; i < state_count; i++) {
+    u32 s = states[i];
+    kh_put(hs32, observed_state_ledger, s, &absent);
+    if (!ipsm_has_state_node(s) && absent)
+      if (new_states_out) (*new_states_out)++;
+    /* absent==1 only when the key was just inserted — i.e., first-ever
+     * observation by a trial.  Combined with the IPSM check above, this
+     * flags only states the campaign has never seen anywhere. */
+  }
+
+  /* Transitions: consecutive pairs inside the observed sequence, plus the
+   * source_state→first edge when the generating seed's state is known. */
+  if (source_state) {
+    u64 key = ((u64)source_state << 32) | (u64)states[0];
+    kh_put(hs64, observed_trans_ledger, key, &absent);
+    if (!ipsm_has_state_transition(source_state, states[0]) && absent)
+      if (new_trans_out) (*new_trans_out)++;
+  }
+  for (unsigned int i = 1; i < state_count; i++) {
+    u64 key = ((u64)states[i - 1] << 32) | (u64)states[i];
+    kh_put(hs64, observed_trans_ledger, key, &absent);
+    if (!ipsm_has_state_transition(states[i - 1], states[i]) && absent)
+      if (new_trans_out) (*new_trans_out)++;
+  }
+}
+
 static char *admission_collect_state_evidence(u8 executed,
                                               u32 target_sid,
+                                              u32 source_sid,
                                               u32 *state_count_out,
                                               u32 *first_state_out,
                                               u32 *last_state_out,
                                               u8 *has_error_out,
                                               u8 *target_hit_out,
-                                              char **edge_seq_out) {
+                                              char **edge_seq_out,
+                                              u32 *obs_new_states_out,
+                                              u32 *obs_new_trans_out) {
   unsigned int state_count = 0;
   unsigned int *states = NULL;
   char *seq = NULL;
@@ -2904,6 +3031,8 @@ static char *admission_collect_state_evidence(u8 executed,
   if (has_error_out) *has_error_out = 0;
   if (target_hit_out) *target_hit_out = 0;
   if (edge_seq_out) *edge_seq_out = NULL;
+  if (obs_new_states_out) *obs_new_states_out = 0;
+  if (obs_new_trans_out) *obs_new_trans_out = 0;
 
   if (!executed || !extract_response_codes || !response_buf || response_buf_size <= 0) {
     seq = strdup("");
@@ -2920,6 +3049,11 @@ static char *admission_collect_state_evidence(u8 executed,
     if (edge_seq_out) *edge_seq_out = strdup("");
     return seq;
   }
+
+  /* Pre-registration: observe this executed trial's response sequence in
+   * the ledger BEFORE any retention decision is taken (P0-1 fix 2). */
+  admission_ledger_observe(states, state_count, source_sid,
+                           obs_new_states_out, obs_new_trans_out);
 
   if (state_count_out) *state_count_out = state_count;
   if (first_state_out) *first_state_out = states[0];
@@ -2982,6 +3116,11 @@ typedef struct {
   u32  ipsm_edge_delta, ipsm_node_delta, bitmap_delta, favored_delta;
   u32  queued_delta, forced_queue_delta;
   u8   native_promoted;
+  /* Trial-mode evidence (P0-1): non-destructive novelty probe result
+   * (0=none, 1=hit-count-only, 2=new edge) and ledger-based state-novelty
+   * counts that do not depend on retention. */
+  u8   trial_hnb;
+  u32  obs_new_states, obs_new_transitions;
   char *state_seq;   /* owned */
   char *edge_seq;    /* owned */
   int  disposition;  /* EC_* */
@@ -3003,13 +3142,15 @@ static void admission_evaluate(const admission_snapshot_t *before,
                                const admission_snapshot_t *after_common,
                                const admission_snapshot_t *after_final,
                                u8 p_pass, u8 executed, u32 target_sid,
+                               u32 source_sid,
                                admission_evidence_t *ev) {
   memset(ev, 0, sizeof(*ev));
   ev->p_pass = p_pass;
 
   char *state_seq = admission_collect_state_evidence(
-      executed, target_sid, &ev->state_count, &ev->first_state,
-      &ev->last_state, &ev->has_error, &ev->target_hit, &ev->edge_seq);
+      executed, target_sid, source_sid, &ev->state_count, &ev->first_state,
+      &ev->last_state, &ev->has_error, &ev->target_hit, &ev->edge_seq,
+      &ev->obs_new_states, &ev->obs_new_transitions);
   ev->state_seq = state_seq;
 
   ev->ipsm_edge_delta = admission_u32_delta(after_common->ipsm_edges, before->ipsm_edges);
@@ -3019,19 +3160,28 @@ static void admission_evaluate(const admission_snapshot_t *before,
   ev->bitmap_delta    = admission_u32_delta(after_common->bitmap_bytes, before->bitmap_bytes);
   ev->forced_queue_delta = admission_u32_delta(after_final->queued, after_common->queued);
   ev->native_promoted = last_common_fuzz_saved ? 1 : 0;
+  ev->trial_hnb       = executed ? last_trial_hnb : 0;
 
   ev->u_pass = (p_pass && executed && last_common_fuzz_fault == FAULT_NONE &&
                 ev->state_count > 0 && !ev->has_error);
   ev->r_pass = (p_pass && executed && ev->state_count > 0 &&
                 (ev->state_count > 1 || ev->target_hit ||
-                 ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0));
-  /* G_code: independent code-coverage evidence only. */
+                 ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0 ||
+                 ev->obs_new_states > 0 || ev->obs_new_transitions > 0));
+  /* G_code: independent code-coverage evidence only.  In trial mode the
+   * evidence comes from the non-destructive probe: ONLY a new edge (hnb==2)
+   * qualifies — hit-count-only changes are execution-frequency novelty and
+   * must not open the durable gate (nor fire the reward).  In the legacy
+   * direct path (arm C) native promotion / bitmap deltas apply as before. */
   ev->g_code_pass = (p_pass && executed &&
-                     (ev->native_promoted || ev->bitmap_delta > 0 ||
-                      ev->favored_delta > 0));
-  /* G_state: IPSM state-machine novelty only. */
+                     (ev->trial_hnb == 2 || ev->native_promoted ||
+                      ev->bitmap_delta > 0 || ev->favored_delta > 0));
+  /* G_state: IPSM state-machine novelty only — assessed from the observed
+   * response sequence via the ledger (retention-independent), with the
+   * graph deltas kept as the legacy signal for the direct path. */
   ev->g_state_pass = (p_pass && executed &&
-                      (ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0));
+                      (ev->obs_new_states > 0 || ev->obs_new_transitions > 0 ||
+                       ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0));
   /* Legacy aggregate kept for backward-compatible counters. */
   ev->g_pass = (ev->g_code_pass || ev->g_state_pass);
 
@@ -3041,6 +3191,85 @@ static void admission_evaluate(const admission_snapshot_t *before,
 }
 
 /* ── run_config event (paper §十.1) ─────────────────────────────── */
+/* v3 (P0-2) identity hashes — filled once by evidence_identity_hashes()
+ * before the run-config start event so both start and end records carry
+ * the same pinned identity: fuzzer binary, target binary, initial seed
+ * corpus aggregate, and the CHATAFL_ and LLM_MODEL configuration. */
+static char runcfg_fuzzer_sha[65] = "unknown";
+static char runcfg_target_sha[65] = "unknown";
+static char runcfg_seeds_sha[65]  = "unknown";
+static char runcfg_config_sha[65] = "unknown";
+
+static int cmp_strptr(const void *a, const void *b) {
+  return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+static void evidence_identity_hashes(const char *target_path) {
+  sha256_byte d[32];
+
+  if (sha256_file("/proc/self/exe", d) == 0) sha256_hex(d, runcfg_fuzzer_sha);
+  if (target_path && *target_path && sha256_file(target_path, d) == 0)
+    sha256_hex(d, runcfg_target_sha);
+
+  /* Deterministic aggregate over the INITIAL corpus (before enrichment
+   * writes more seeds): sha256 of "name contenthex\\n" lines in sorted
+   * name order — order-independent and cheap to re-verify offline. */
+  if (in_dir) {
+    DIR *sd = opendir((char *)in_dir);
+    if (sd) {
+      char *names[8192];
+      size_t n = 0;
+      struct dirent *de;
+      while ((de = readdir(sd)) && n < 8192)
+        if (de->d_name[0] != '.') names[n++] = strdup(de->d_name);
+      closedir(sd);
+      qsort(names, n, sizeof(char *), cmp_strptr);
+      size_t cap = 1 << 20, off = 0;
+      char *buf = malloc(cap);
+      if (buf) {
+        for (size_t i = 0; i < n; i++) {
+          char *p = alloc_printf("%s/%s", in_dir, names[i]);
+          char hex[65] = "unreadable";
+          if (p && sha256_file(p, d) == 0) sha256_hex(d, hex);
+          int w = snprintf(buf + off, cap - off, "%s %s\n", names[i], hex);
+          if (w < 0 || (size_t)w >= cap - off) { off = cap - 1; if (p) ck_free(p); break; }
+          off += (size_t)w;
+          if (p) ck_free(p);
+        }
+        sha256_buf(buf, off, d);
+        sha256_hex(d, runcfg_seeds_sha);
+        free(buf);
+      }
+      for (size_t i = 0; i < n; i++) free(names[i]);
+    }
+  }
+
+  /* Config hash: sorted concatenation of every CHATAFL_* / LLM_MODEL
+   * environment entry (KEY excluded — secret).  Two runs of the same arm
+   * on the same config produce the same hash; any drift is detectable. */
+  {
+    extern char **environ;
+    char *vals[512];
+    size_t n = 0;
+    for (char **e = environ; e && *e && n < 512; e++)
+      if (!strncmp(*e, "CHATAFL_", 8) || !strncmp(*e, "LLM_MODEL", 9))
+        vals[n++] = *e;
+    qsort(vals, n, sizeof(char *), cmp_strptr);
+    size_t cap = 1 << 18, off = 0;
+    char *buf = malloc(cap);
+    if (buf) {
+      for (size_t i = 0; i < n; i++) {
+        int w = snprintf(buf + off, cap - off, "%s\n", vals[i]);
+        if (w < 0 || (size_t)w >= cap - off) { off = cap - 1; break; }
+        off += (size_t)w;
+      }
+      sha256_buf(buf, off, d);
+      sha256_hex(d, runcfg_config_sha);
+      free(buf);
+    }
+  }
+}
+
 static void run_config_log(const char *phase, const char *termination_reason) {
   if (!event_log_enabled || !out_dir) return;
   struct json_object *j = json_object_new_object();
@@ -3067,8 +3296,13 @@ static void run_config_log(const char *phase, const char *termination_reason) {
     const char *m = getenv("LLM_MODEL");
     json_object_object_add(j, "model",
         json_object_new_string((m && *m) ? m : LLM_DEFAULT_MODEL));
-    json_object_object_add(j, "endpoint",
-        json_object_new_string("https://www.cctq.ai/v1/chat/completions"));
+    /* Effective endpoint (CHATAFL_LLM_BASE override included) so arm
+     * records are auditable against the gateway actually used. */
+    {
+      const char *eb = getenv("CHATAFL_LLM_BASE");
+      json_object_object_add(j, "endpoint", json_object_new_string(
+          (eb && *eb) ? eb : "https://www.cctq.ai/v1/chat/completions"));
+    }
     admission_json_add_f64(j, "temperature_plateau", 1.2);
     admission_json_add_f64(j, "temperature_grammar", 0.5);
     admission_json_add_f64(j, "top_p", llm_active_top_p());
@@ -3105,6 +3339,36 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   admission_json_add_u64(j, "provisional_budget", provisional_budget_default);
   admission_json_add_u64(j, "provisional_ttl_ms", provisional_ttl_ms_default);
   admission_json_add_u64(j, "provisional_max_live", provisional_max_live);
+  /* v3 fidelity knobs: fixed episode energy (havoc execs; 0=legacy variable),
+   * reward semantics (new-edge-only since schema v3), and trial-mode
+   * admission (execute-before-promote with a non-destructive probe). */
+  admission_json_add_u64(j, "episode_energy_cap", episode_energy_cap);
+  json_object_object_add(j, "code_reward_semantics",
+      json_object_new_string("new-edge-only-hnb2"));
+  json_object_object_add(j, "trial_mode_admission",
+      json_object_new_boolean(ablation_no_admission ? 0 : 1));
+  /* v3 (P0-2) identity pinning: binary / corpus / config hashes, container
+   * image digest, and the effective (enforced) LLM campaign caps. */
+  json_object_object_add(j, "fuzzer_sha256",
+      json_object_new_string(runcfg_fuzzer_sha));
+  json_object_object_add(j, "target_sha256",
+      json_object_new_string(runcfg_target_sha));
+  json_object_object_add(j, "seeds_sha256",
+      json_object_new_string(runcfg_seeds_sha));
+  json_object_object_add(j, "config_hash",
+      json_object_new_string(runcfg_config_sha));
+  {
+    const char *imgd = getenv("CHATAFL_IMAGE_DIGEST");
+    json_object_object_add(j, "image_digest",
+        json_object_new_string((imgd && *imgd) ? imgd : "unrecorded"));
+  }
+  json_object_object_add(j, "call_cap_scope", json_object_new_string(
+      "CHATTING_THRESHOLD caps plateau calls; campaign-wide caps below are "
+      "enforced centrally in chat_with_llm (all call classes incl. retries)"));
+  json_object_object_add(j, "llm_total_call_cap",
+      json_object_new_int((int)chat_llm_cap_calls()));
+  json_object_object_add(j, "token_cap_enforced",
+      json_object_new_int((int)chat_llm_cap_tokens()));
   admission_json_add_u64(j, "rng_seed", ec_rng_seed_value);
   admission_json_add_u64(j, "start_time_ms", run_start_time_ms);
   admission_json_add_u64(j, "end_time_ms", get_cur_time());
@@ -3214,7 +3478,9 @@ static void episode_log_event(u32 state_id, s32 seed_index,
                               double final_score, u64 mutations,
                               u64 new_code_edges, u64 new_state_edges,
                               int reward, double alpha_after, double beta_after,
-                              u64 latency_ms, u32 selected_times) {
+                              u64 latency_ms, u32 selected_times,
+                              u8 completed, u8 posterior_updated,
+                              u64 energy_used, u8 energy_exhausted) {
   if (!event_log_enabled) return;
   struct json_object *j = json_object_new_object();
   json_object_object_add(j, "event", json_object_new_string("state_selection_episode"));
@@ -3234,12 +3500,21 @@ static void episode_log_event(u32 state_id, s32 seed_index,
   admission_json_add_u64(j, "mutations", mutations);
   admission_json_add_u64(j, "new_code_edges", new_code_edges);
   admission_json_add_u64(j, "new_state_edges", new_state_edges);
+  /* reward == -1 marks an incomplete episode (interrupted / aborted): no
+   * reward is assigned and the posterior is NOT updated (paper §五.1). */
   json_object_object_add(j, "reward", json_object_new_int(reward));
   admission_json_add_f64(j, "alpha_after", alpha_after);
   admission_json_add_f64(j, "beta_after", beta_after);
   admission_json_add_u64(j, "episode_latency_ms", latency_ms);
   admission_json_add_u64(j, "selected_times", selected_times);
   admission_json_add_u64(j, "execs_done", total_execs);
+  /* v3 completion + fixed-energy bookkeeping. */
+  json_object_object_add(j, "completed", json_object_new_boolean(completed));
+  json_object_object_add(j, "posterior_updated", json_object_new_boolean(posterior_updated));
+  admission_json_add_u64(j, "episode_energy_cap", episode_energy_cap);
+  admission_json_add_u64(j, "energy_used", energy_used);
+  json_object_object_add(j, "energy_exhausted",
+      json_object_new_boolean(energy_exhausted));
   ec_append_jsonl("state-episodes.jsonl", j);
   json_object_put(j);
 }
@@ -3253,24 +3528,27 @@ static void admission_log_candidate_event(const char *source,
                                           const admission_snapshot_t *before,
                                           const admission_snapshot_t *after_common,
                                           const admission_snapshot_t *after_final,
-                                          u8 p_pass,
+                                          const admission_evidence_t *ev_in,
                                           const char *p_reason,
                                           u8 executed,
                                           u8 common_ret,
                                           u8 forced_promoted,
+                                          u8 durable_promoted,
                                           u8 provisional_queued) {
   admission_evidence_t ev;
-  if (!out_dir || !before || !after_common || !after_final) return;
-
-  admission_evaluate(before, after_common, after_final, p_pass, executed,
-                     target_sid, &ev);
+  if (!out_dir || !before || !after_common || !after_final || !ev_in) return;
+  /* Shallow copy of the caller's evidence: the trial is evaluated exactly
+   * once per candidate (single ledger registration, single decision), and
+   * this outcome log must not re-derive or mutate it.  The owned strings
+   * stay owned by the caller — no admission_evidence_free() here. */
+  memcpy(&ev, ev_in, sizeof(ev));
 
   char first_line[192], request_path[192];
   admission_request_summary(candidate, candidate_len,
                             first_line, sizeof(first_line),
                             request_path, sizeof(request_path));
 
-  u8 promoted = (ev.native_promoted || forced_promoted) ? 1 : 0;
+  u8 promoted = (ev.native_promoted || forced_promoted || durable_promoted) ? 1 : 0;
 
   admission_candidate_total++;
   if (!ev.p_pass) admission_p_fail++;
@@ -3281,12 +3559,14 @@ static void admission_log_candidate_event(const char *source,
   if (!ev.g_state_pass) admission_g_state_fail++;
   if (ev.native_promoted) admission_native_promoted++;
   if (forced_promoted) admission_forced_promoted++;
+  if (durable_promoted) admission_promoted_durable++;
 
   /* Disposition accounting (paper §十一.1): what actually happened to the
    * candidate, not what the predicates alone would have allowed. */
   int disposition = ev.disposition;
   if (ev.native_promoted) disposition = EC_DURABLE;
   else if (forced_promoted) disposition = EC_DURABLE;        /* arm C direct */
+  else if (durable_promoted) disposition = EC_DURABLE;       /* gated promote */
   else if (provisional_queued) disposition = EC_PROVISIONAL; /* arm D/E gated */
   else if (disposition != EC_REJECT) disposition = EC_REJECT; /* predicates
         allowed an entry but none was actually created (e.g. empty message
@@ -3301,6 +3581,7 @@ static void admission_log_candidate_event(const char *source,
                          ev.g_code_pass, ev.g_state_pass };
   const char *disposition_reason =
       (disposition == EC_DURABLE && forced_promoted) ? "direct-force-admit (arm C)" :
+      (disposition == EC_DURABLE && durable_promoted) ? "P^U^R^G_code (gated promote)" :
       (disposition == EC_DURABLE) ? "P^U^R^G_code" :
       (disposition == EC_PROVISIONAL) ? "P^U^R^!G_code^G_state" :
       ec_reject_reason(&pr);
@@ -3347,6 +3628,14 @@ static void admission_log_candidate_event(const char *source,
         (!executed ? "not executed" : "no IPSM novelty")));
     json_object_object_add(j, "g_pass", json_object_new_boolean(ev.g_pass));
 
+    /* v3 trial-mode evidence: non-destructive probe strength and
+     * retention-independent state novelty from the observed ledger. */
+    json_object_object_add(j, "trial_hnb", json_object_new_int((int)ev.trial_hnb));
+    json_object_object_add(j, "obs_new_states",
+        json_object_new_int((int)ev.obs_new_states));
+    json_object_object_add(j, "obs_new_transitions",
+        json_object_new_int((int)ev.obs_new_transitions));
+
     /* Disposition + reason. */
     json_object_object_add(j, "disposition",
         json_object_new_string(ec_disposition_name(disposition)));
@@ -3385,6 +3674,7 @@ static void admission_log_candidate_event(const char *source,
     json_object_object_add(j, "forced_queue_delta", json_object_new_int((int)ev.forced_queue_delta));
     json_object_object_add(j, "native_promoted", json_object_new_boolean(ev.native_promoted));
     json_object_object_add(j, "forced_promoted", json_object_new_boolean(forced_promoted));
+    json_object_object_add(j, "durable_promoted", json_object_new_boolean(durable_promoted));
     json_object_object_add(j, "provisional_queued", json_object_new_boolean(provisional_queued));
     json_object_object_add(j, "promoted", json_object_new_boolean(promoted));
     admission_json_add_u64(j, "latency_ms",
@@ -3394,8 +3684,51 @@ static void admission_log_candidate_event(const char *source,
     ec_append_jsonl("admission-events.jsonl", j);
     json_object_put(j);
   }
+  /* NOTE: no admission_evidence_free(&ev) — the strings are owned by the
+   * caller (single-evaluation refactor); freeing them here would double-free. */
+}
 
-  admission_evidence_free(&ev);
+/* ── admission decision event (paper §四, P0-1 fix 2) ──────────────
+ * Append-only PRE-action gate log: written after the trial evidence is
+ * evaluated but BEFORE any queue insertion, so every durable/provisional
+ * insertion is preceded by a complete gate record carrying the intended
+ * disposition and all supporting evidence (audit invariant:
+ * decision.time_ms <= queue file mtime). */
+static void admission_log_decision_event(const admission_evidence_t *ev,
+                                         const char *source,
+                                         const char *action_type,
+                                         s32 seed_id,
+                                         u32 target_sid) {
+  if (!admission_accounting_enabled || !ev) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("admission_decision"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "decision_id", ++admission_event_seq);
+  admission_json_add_u64(j, "candidate_id", (u64)llm_cur_candidate_id);
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  admission_json_add_u64(j, "execs_done", total_execs);
+  json_object_object_add(j, "source", json_object_new_string(source ? source : ""));
+  json_object_object_add(j, "action_type", json_object_new_string(action_type ? action_type : ""));
+  json_object_object_add(j, "seed_id", json_object_new_int(seed_id));
+  json_object_object_add(j, "target_state_id", json_object_new_int((int)target_sid));
+  json_object_object_add(j, "arm", json_object_new_string(admission_arm_name()));
+  json_object_object_add(j, "trial_mode", json_object_new_boolean(admission_trial_mode));
+  json_object_object_add(j, "p_pass", json_object_new_boolean(ev->p_pass));
+  json_object_object_add(j, "u_pass", json_object_new_boolean(ev->u_pass));
+  json_object_object_add(j, "r_pass", json_object_new_boolean(ev->r_pass));
+  json_object_object_add(j, "g_code_pass", json_object_new_boolean(ev->g_code_pass));
+  json_object_object_add(j, "g_state_pass", json_object_new_boolean(ev->g_state_pass));
+  json_object_object_add(j, "trial_hnb", json_object_new_int((int)ev->trial_hnb));
+  json_object_object_add(j, "obs_new_states", json_object_new_int((int)ev->obs_new_states));
+  json_object_object_add(j, "obs_new_transitions",
+      json_object_new_int((int)ev->obs_new_transitions));
+  json_object_object_add(j, "bitmap_delta", json_object_new_int((int)ev->bitmap_delta));
+  json_object_object_add(j, "ipsm_edges_delta", json_object_new_int((int)ev->ipsm_edge_delta));
+  json_object_object_add(j, "ipsm_nodes_delta", json_object_new_int((int)ev->ipsm_node_delta));
+  json_object_object_add(j, "intended_disposition",
+      json_object_new_string(ec_disposition_name(ev->disposition)));
+  ec_append_jsonl("admission-events.jsonl", j);
+  json_object_put(j);
 }
 
 // Patterns generated from the Language Model
@@ -4314,13 +4647,34 @@ static void cal_episode_begin(u32 state_id) {
   cal_episode_theta_sample = st->last_sampled_theta;
   cal_episode_frontier_score = st->last_frontier_score;
   cal_episode_final_score = st->last_selection_score;
+  /* Fixed havoc-phase energy for this episode (P0-4): enforced per
+   * execution by the common_fuzz_stuff hook; 0 cap = legacy behaviour. */
+  episode_energy_left = episode_energy_cap;
+  episode_energy_exhausted = 0;
 }
 
 static void cal_episode_note_seed(struct queue_entry *q) {
   if (cal_episode_active && q) cal_episode_seed_index = (s32)q->index;
 }
 
-static void cal_episode_finalize(void) {
+/* Trial/episode reward separation (P0-1/P0-4): LLM trial executions (and
+ * any promotion they cause) happen inside fuzz_one, i.e. inside the
+ * current episode.  Re-base the episode's start counters after a trial so
+ * the episode's mutations/reward describe ONLY its descendant mutations. */
+static void cal_episode_rebase_after_trial(void) {
+  if (!cal_episode_active) return;
+  cal_episode_start_execs = total_execs;
+  cal_episode_start_code_gains = code_gain_events;
+  cal_episode_start_ipsm_edges = ipsm_new_edge_events;
+}
+
+/* Close the current state-selection episode.  `interrupted` != 0 means the
+ * campaign is stopping mid-episode: the episode is incomplete — no reward
+ * is assigned and the posterior is NOT updated (paper §五.1).  Zero-
+ * mutation episodes (seedless state selections) are logged but likewise
+ * never update the posterior: an r=0 update for a state that never ran
+ * would fabricate evidence. */
+static void cal_episode_finalize(u8 interrupted) {
   if (!cal_episode_active) return;
   cal_episode_active = 0;
 
@@ -4328,31 +4682,45 @@ static void cal_episode_finalize(void) {
   khint_t k = kh_get(hms, khms_states, state_id);
   state_info_t *st = (k != kh_end(khms_states)) ? kh_val(khms_states, k) : NULL;
 
-  /* Reward: new code coverage discovered during this episode. */
-  int reward = (code_gain_events > cal_episode_start_code_gains) ? 1 : 0;
   u64 mutations = total_execs >= cal_episode_start_execs ?
                   total_execs - cal_episode_start_execs : 0;
-  u64 new_code_edges = code_gain_events - cal_episode_start_code_gains;
+  u8 completed = !interrupted;
+  u8 eligible = (completed && mutations > 0 && st != NULL);
+
+  /* Reward: new code EDGE discovered by this episode's descendant
+   * mutations only (code_gain_events is new-edge-only since schema v3;
+   * trial work was re-based out by cal_episode_rebase_after_trial). */
+  int reward = completed ?
+      ((code_gain_events > cal_episode_start_code_gains) ? 1 : 0) : -1;
+  u64 new_code_edges = code_gain_events >= cal_episode_start_code_gains ?
+                       code_gain_events - cal_episode_start_code_gains : 0;
   u64 new_state_edges = ipsm_new_edge_events >= cal_episode_start_ipsm_edges ?
                         ipsm_new_edge_events - cal_episode_start_ipsm_edges : 0;
   u64 now = get_cur_time();
   u64 latency = now >= cal_episode_start_ms ? now - cal_episode_start_ms : 0;
+  u64 energy_used = (episode_energy_cap > episode_energy_left) ?
+                    episode_energy_cap - episode_energy_left : 0;
 
   double alpha_after = cal_episode_alpha_before;
   double beta_after = cal_episode_beta_before;
-  if (st) {
+  u8 posterior_updated = 0;
+  if (eligible) {
     ec_posterior_t post = { st->cal_alpha, st->cal_beta, cal_gamma };
     ec_posterior_update(&post, reward);
     st->cal_alpha = post.alpha;
     st->cal_beta = post.beta;
     st->cal_episodes++;
-    if (reward) st->cal_episode_rewards++;
+    if (reward > 0) st->cal_episode_rewards++;
     alpha_after = post.alpha;
     beta_after = post.beta;
+    posterior_updated = 1;
   }
 
   cal_episodes_total++;
-  if (reward) cal_episodes_rewarded++;
+  if (completed) cal_episodes_completed++;
+  else cal_episodes_interrupted++;
+  if (completed && mutations == 0) cal_episodes_zero_mut++;
+  if (reward > 0) cal_episodes_rewarded++;
 
   episode_log_event(state_id, cal_episode_seed_index,
                     cal_episode_alpha_before, cal_episode_beta_before,
@@ -4360,7 +4728,9 @@ static void cal_episode_finalize(void) {
                     cal_episode_final_score, mutations,
                     new_code_edges, new_state_edges, reward,
                     alpha_after, beta_after, latency,
-                    st ? st->selected_times : 0);
+                    st ? st->selected_times : 0,
+                    completed, posterior_updated,
+                    energy_used, episode_energy_exhausted);
 }
 
 /* Select a seed to exercise the target state */
@@ -10382,6 +10752,20 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     /* Keep only if there are new bits in the map, add to queue for
        future fuzzing, etc. */
 
+    /* P0-1 (execute-before-promote): while an LLM candidate's bounded
+     * trial is running, do NOT retain and do NOT consume the virgin map.
+     * Probe novelty non-destructively on a scratch copy so the gate
+     * (admission_evaluate) sees the evidence while the retention decision
+     * stays with the controller.  Crash/hang handling below is unaffected:
+     * a faulting trial never reaches this branch (fault != crash_mode). */
+    if (admission_trial_mode) {
+      if (!trial_virgin_scratch)
+        trial_virgin_scratch = ck_alloc_nozero(MAP_SIZE);
+      memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
+      last_trial_hnb = has_new_bits(trial_virgin_scratch);  /* 1=hit-count only, 2=new edge */
+      return 0;
+    }
+
     if (!(hnb = has_new_bits(virgin_bits)))
     {
       if (crash_mode)
@@ -10407,12 +10791,17 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     /* We use the actual length of all messages (full_len), not the len of the mutated message subsequence (len)*/
     add_to_queue(fn, full_len, 0);
 
-    /* Native code-progress event: this save happened only because the run
-     * found new code coverage (has_new_bits).  Used as the calibration
-     * reward signal and for provisional conversion detection — deliberately
-     * independent of IPSM state-machine novelty. */
-    code_gain_events++;
-    last_native_save_index = queue_top->index;
+    /* Native code-progress events, split by evidence strength (P0-4):
+     * code_save_events counts EVERY coverage save (has_new_bits != 0,
+     * including hit-count-only changes, hnb==1 — execution-frequency
+     * novelty); code_gain_events counts NEW-EDGE saves (hnb==2) ONLY and
+     * is the sole calibration reward / provisional-conversion signal
+     * (paper Eq.4: previously unseen code branches). */
+    code_save_events++;
+    if (hnb == 2) {
+      code_gain_events++;
+      last_native_save_index = queue_top->index;
+    }
 
     if (state_aware_mode)
       update_state_aware_variables(queue_top, 0);
@@ -11036,8 +11425,16 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "provisional_admitted  : %llu\n"
              "provisional_converted : %llu\n"
              "provisional_expired   : %llu\n"
+             "provisional_censored  : %llu\n"
              "provisional_live      : %llu\n"
+             "code_save_events      : %llu\n"
              "code_gain_events      : %llu\n"
+             "admission_gain_events : %llu\n"
+             "admission_promoted_durable : %llu\n"
+             "episode_energy_cap    : %u\n"
+             "cal_eps_completed     : %llu\n"
+             "cal_eps_zero_mut      : %llu\n"
+             "cal_eps_interrupted   : %llu\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
              "admission_accounting : %u\n",
@@ -11072,8 +11469,16 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)provisional_admitted,
           (unsigned long long)provisional_converted,
           (unsigned long long)provisional_expired_total,
+          (unsigned long long)provisional_censored,
           (unsigned long long)provisional_live,
+          (unsigned long long)code_save_events,
           (unsigned long long)code_gain_events,
+          (unsigned long long)admission_gain_events,
+          (unsigned long long)admission_promoted_durable,
+          episode_energy_cap,
+          (unsigned long long)cal_episodes_completed,
+          (unsigned long long)cal_episodes_zero_mut,
+          (unsigned long long)cal_episodes_interrupted,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
@@ -12515,6 +12920,41 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   last_common_fuzz_saved = 0;
   last_common_fuzz_fault = FAULT_NONE;
 
+  /* ── Per-execution gates (P0-1 fix 3 / P0-4 fixed energy) ────────
+   * Checked BEFORE every descendant execution.  LLM trial executions are
+   * exempt (they are controller work, not descendants of any entry).
+   * Returning 1 aborts the current stage; fuzz_one treats it like a
+   * fault and abandons the entry, so no execution can overshoot a
+   * provisional budget or the episode's havoc energy. */
+  if (!admission_trial_mode) {
+    /* (a) Provisional validation: budget and TTL are consumed here, one
+     *     execution at a time, before the execution happens. */
+    if (queue_cur && queue_cur->is_provisional &&
+        !queue_cur->prov_converted && !queue_cur->prov_expired) {
+      if (queue_cur->prov_budget_left == 0) {
+        provisional_budget_exhausted_stop = 1;
+        return 1;
+      }
+      if (get_cur_time() >= queue_cur->prov_deadline_ms) {
+        provisional_ttl_stop = 1;
+        return 1;
+      }
+      queue_cur->prov_budget_left--;
+      queue_cur->prov_desc_execs++;
+    }
+    /* (b) Fixed episode energy: havoc/splice-phase executions only —
+     *     deterministic stages are one-time per seed and stay outside the
+     *     energy definition (prespecified; see run-config
+     *     episode_energy_cap).  0 cap = legacy variable energy. */
+    if (cal_episode_active && episode_energy_cap > 0 && episode_havoc_phase) {
+      if (episode_energy_left == 0) {
+        episode_energy_exhausted = 1;
+        return 1;
+      }
+      episode_energy_left--;
+    }
+  }
+
   if (post_handler)
   {
 
@@ -12910,16 +13350,16 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
   return 1;
 }
 
-/* Budget accounting for a provisional entry after one fuzz_one() cycle of
- * descendant mutations.  execs_delta = executions spent on this entry;
- * code_gain = whether any descendant discovered new code coverage. */
+/* Lifecycle accounting for a provisional entry after one fuzz_one() cycle.
+ * Since schema v3 the budget/TTL are enforced BEFORE each descendant
+ * execution by the per-exec hook in common_fuzz_stuff() (which decrements
+ * prov_budget_left / increments prov_desc_execs); this function therefore
+ * no longer debits anything — it only closes the lifecycle: first
+ * descendant code-EDGE gain converts to durable, exhausted budget/TTL
+ * expires the entry. */
 static void provisional_account_after_fuzz(struct queue_entry *q,
-                                           u64 execs_delta, u8 code_gain) {
+                                           u8 code_gain) {
   if (!q || !q->is_provisional || q->prov_converted) return;
-
-  q->prov_desc_execs += (u32)execs_delta;
-  u64 used = execs_delta > q->prov_budget_left ? q->prov_budget_left : execs_delta;
-  q->prov_budget_left -= (u32)used;
 
   if (code_gain) {
     q->prov_desc_code_gain++;
@@ -12940,6 +13380,22 @@ static void provisional_account_after_fuzz(struct queue_entry *q,
   }
 }
 
+/* Shutdown censoring (paper §四: "Campaign termination before the
+ * validation horizon is censoring, not unproductive expiration"): log
+ * every still-live provisional entry as censored and deactivate it
+ * WITHOUT deleting its files — the supporting evidence is preserved. */
+static void provisional_censor_all_at_shutdown(void) {
+  for (struct queue_entry *q = queue; q; q = q->next) {
+    if (q->is_provisional && !q->prov_converted && !q->prov_expired) {
+      provisional_censored++;
+      q->is_provisional = 0;
+      q->prov_expired = 1;  /* stop any further lifecycle action */
+      provisional_log_event("censor", q, "campaign-end");
+    }
+  }
+  provisional_live = 0;
+}
+
 /* Periodic sweep: expire provisionals whose TTL passed while they were not
  * being fuzzed (they would otherwise linger until re-selected). */
 static void provisional_sweep_expired(void) {
@@ -12953,6 +13409,56 @@ static void provisional_sweep_expired(void) {
   }
 }
 
+/* Case A admission (paper §四, execute-before-promote): P∧U∧R∧G_code →
+ * DURABLE queue entry.  Called only AFTER the decision event has been
+ * logged.  Applies the trial's bitmap to the real virgin map (trace_bits
+ * still holds the trial execution — no exec may intervene between the
+ * trial and this call) and inserts the queue entry with its replayable
+ * copy.  A durable promotion is code evidence about the CANDIDATE, so it
+ * increments admission_gain_events — never code_gain_events — keeping
+ * episode rewards free of trial work (P0-4 attribution separation). */
+static u8 admission_promote_durable(u8 *candidate, u32 len) {
+  if (!out_dir || !kl_messages || stop_soon) return 0;
+  if (!candidate || !len) return 0;
+
+  /* Re-derive and APPLY the novelty for real.  The probe said hnb==2; the
+   * same trace against the unchanged real map must agree. */
+  u8 hnb = has_new_bits(virgin_bits);
+  if (hnb != 2) return 0;   /* defensive: novelty evaporated — do not promote */
+
+#ifndef SIMPLE_FILES
+  u8 *fn = alloc_printf("%s/queue/id:%06u,llm-durable", out_dir, queued_paths);
+#else
+  u8 *fn = alloc_printf("%s/queue/id_%06u_llm_durable", out_dir, queued_paths);
+#endif
+
+  u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
+  if (!full_len) {
+    unlink((char *)fn);
+    ck_free(fn);
+    return 0;
+  }
+  add_to_queue(fn, full_len, 0);
+  struct queue_entry *q = queue_top;
+
+  if (state_aware_mode)
+    update_state_aware_variables(queue_top, 0);
+
+  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
+                               out_dir, basename(q->fname));
+  save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+  ck_free(fn_replay);
+
+  q->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+  q->has_new_cov = 1;
+  queued_with_cov++;
+  queued_discovered++;
+
+  admission_gain_events++;
+  uninteresting_times = 0;   /* promoted candidate = real progress */
+  return 1;
+}
+
 static u8 admission_run_llm_candidate(char **argv,
                                       const char *source,
                                       const char *action_type,
@@ -12963,14 +13469,16 @@ static u8 admission_run_llm_candidate(char **argv,
                                       u8 p_pass,
                                       const char *p_reason) {
   admission_snapshot_t before, after_common, after_final;
-  u8 common_ret = 0, executed = 0, forced = 0, provisional = 0;
+  u8 common_ret = 0, executed = 0, forced = 0, provisional = 0, durable = 0;
 
   /* Paper v2 default: admission is ALWAYS execute-before-promote.  Every
-   * candidate runs one bounded trial on the live target; only code-progress
-   * evidence (G_code, via the native coverage save) grants durable queue
-   * entry, state-only novelty gets a provisional entry, everything else is
-   * rejected.  CHATAFL_NO_ADMISSION=1 switches to the direct counterfactual
-   * (arm C) where parseable candidates are force-admitted. */
+   * candidate runs one bounded trial on the live target; the gate
+   * P → trial → U/R → G_code/G_state → decision runs on trial evidence,
+   * the decision is logged FIRST, and only then may a queue insertion
+   * happen (durable promotion, provisional queue, or nothing).  Arm C
+   * (CHATAFL_NO_ADMISSION=1) keeps the legacy direct path — parseable
+   * candidates are force-admitted; it IS the counterfactual, so trial
+   * mode is armed only for the gated arms (D/E). */
 
   /* Candidate-generation event (paper §十.2) — logged before the trial. */
   u32 source_state = 0;
@@ -12984,9 +13492,14 @@ static u8 admission_run_llm_candidate(char **argv,
 
   admission_take_snapshot(&before);
 
+  u8 use_trial_mode = (p_pass && candidate && candidate_len > 0 &&
+                       !ablation_no_admission) ? 1 : 0;
+  last_trial_hnb = 0;
   if (p_pass && candidate && candidate_len > 0) {
+    admission_trial_mode = use_trial_mode;
     executed = 1;
     common_ret = common_fuzz_stuff(argv, candidate, candidate_len);
+    admission_trial_mode = 0;
   } else {
     last_common_fuzz_saved = 0;
     last_common_fuzz_fault = FAULT_NONE;
@@ -12994,29 +13507,38 @@ static u8 admission_run_llm_candidate(char **argv,
 
   admission_take_snapshot(&after_common);
 
-  /* Evaluate the trial evidence once, then act on the disposition. */
+  /* Evaluate the trial evidence ONCE (single ledger registration), log
+   * the decision, then act on it — decision strictly precedes insertion. */
   admission_evidence_t ev;
   admission_evaluate(&before, &after_common, &after_common, p_pass, executed,
-                     target_sid, &ev);
+                     target_sid, source_state, &ev);
+
+  admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
 
   if (executed && !common_ret && !last_common_fuzz_saved &&
       last_common_fuzz_fault == FAULT_NONE && !stop_soon) {
     if (ablation_no_admission) {
       forced = admission_force_queue_candidate(candidate, candidate_len);
+    } else if (ev.disposition == EC_DURABLE) {
+      durable = admission_promote_durable(candidate, candidate_len);
     } else if (ev.disposition == EC_PROVISIONAL) {
       provisional = admission_provisional_queue_candidate(
           target_sid, (u64)llm_cur_candidate_id);
     }
     /* EC_REJECT: no queue entry — execute-before-promote said no. */
   }
-  admission_evidence_free(&ev);
 
   admission_take_snapshot(&after_final);
   admission_log_candidate_event(source, action_type, seed_id, target_sid,
                                 candidate, candidate_len,
                                 &before, &after_common, &after_final,
-                                p_pass, p_reason, executed, common_ret,
-                                forced, provisional);
+                                &ev, p_reason, executed, common_ret,
+                                forced, durable, provisional);
+  admission_evidence_free(&ev);
+
+  /* Trial work (execution + any promotion) must stay out of the current
+   * episode's reward/mutation accounting (paper §五.1 attribution). */
+  cal_episode_rebase_after_trial();
 
   return common_ret;
 }
@@ -13763,6 +14285,10 @@ static u8 fuzz_one(char **argv)
 
   u8 ret_val = 1, doing_det = 0;
 
+  /* Episode energy accounting only applies to the havoc/splice phases of
+   * this entry (see the per-exec hook in common_fuzz_stuff). */
+  episode_havoc_phase = 0;
+
   u8 a_collect[MAX_AUTO_EXTRA];
   u32 a_len = 0;
 
@@ -14435,14 +14961,20 @@ AFLNET_REGIONS_SELECTION:;
                   (u8 *)raw_stall_message, (u32)strlen(raw_stall_message), 0);
               admission_snapshot_t snap;
               admission_take_snapshot(&snap);
+              /* Never executed: evidence is trivially all-fail; evaluate
+               * once here so the outcome log has a complete record. */
+              admission_evidence_t ev0;
+              admission_evaluate(&snap, &snap, &snap, 0, 0,
+                                 target_state_id, 0, &ev0);
               admission_log_candidate_event("plateau_llm_output", "json",
                                             queue_cur ? (s32)queue_cur->index : -1,
                                             target_state_id,
                                             (u8 *)raw_stall_message,
                                             (u32)strlen(raw_stall_message),
                                             &snap, &snap, &snap,
-                                            0, "json-schema-invalid",
-                                            0, 0, 0, 0);
+                                            &ev0, "json-schema-invalid",
+                                            0, 0, 0, 0, 0);
+              admission_evidence_free(&ev0);
             } else {
               llm_cur_candidate_id = 0;
             }
@@ -15794,6 +16326,10 @@ skip_extras:
    ****************/
 
 havoc_stage:;
+  /* Havoc (and splicing, which re-enters through this label) is the
+   * energy-bearing phase: from here on, executions consume the current
+   * episode's fixed energy budget (P0-4). */
+  episode_havoc_phase = 1;
 
   /* O4: Per-havoc generation context for semantic dependency injection.
    * Re-initialised each time we enter the havoc stage so that packets
@@ -16926,6 +17462,7 @@ retry_splicing:
 abandon_entry:
 
   splicing_with = -1;
+  episode_havoc_phase = 0;   /* leaving the energy-bearing phase */
 
   /* Update pending_not_fuzzed count if we made it through the calibration
      cycle and have not seen this entry before. */
@@ -18246,6 +18783,265 @@ static int check_ep_capability(cap_value_t cap, const char *filename)
 
 /* Main entry point */
 
+/* ── Arm/evidence environment parsing (P0-2 fix) ───────────────────
+ * Extracted from main(): every arm-defining switch (CHATAFL_NO_ADMISSION,
+ * CHATAFL_CALIBRATION, γ/ε, provisional budgets, event-log and ablation
+ * knobs) is parsed here, ONCE, BEFORE the run-config start event is
+ * written.  Historically the start record was emitted before this
+ * parsing, so every start line was mislabelled gated-fixed with
+ * default parameters while the end record held the truth — the arm
+ * identity bug found in the Sep-2026 tarballs. */
+static void evidence_env_parse(void) {
+  static u8 parsed = 0;
+  if (parsed) return;
+  parsed = 1;
+
+  fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
+  fflush(stderr);
+  char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
+  if (hyp_env && strcmp(hyp_env, "0") != 0)
+  {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode DEFERRED (lazy init on first plateau)\n", hyp_env);
+    fflush(stderr);
+    hypothesis_mode = 1;
+    OKF("Grammar Hypothesis Mode enabled (deferred init until first plateau)");
+    /* init_grammar_hypothesis_system() will be called on first plateau trigger */
+  }
+  else
+  {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode disabled\n", hyp_env ? hyp_env : "not set");
+    fflush(stderr);
+  }
+
+  /* ============================================
+   * Ablation Control: Read env vars
+   * ============================================ */
+  if (getenv("CHATAFL_NO_REFINEMENT")) {
+    ablation_no_refinement = 1;
+    OKF("ABLATION: Tier-2 hypothesis refinement DISABLED");
+    /* Fix-Ablation-2: Warn if CHATAFL_HYPOTHESIS is not set.
+     * Without hypothesis_mode=1, periodic_hypothesis_refinement() returns
+     * immediately at its entry guard — NO_REFINEMENT has zero effect and
+     * Full vs w/o-Refinement runs are behaviorally identical, making the
+     * ablation data meaningless. */
+    if (!getenv("CHATAFL_HYPOTHESIS")) {
+      WARNF("ABLATION: CHATAFL_NO_REFINEMENT set but CHATAFL_HYPOTHESIS not set "
+            "— ablation has NO EFFECT (hypothesis_mode=0). "
+            "Set CHATAFL_HYPOTHESIS=1 to make this ablation valid.");
+      fprintf(stderr,
+              "[ABLATION WARNING] NO_REFINEMENT is a no-op without CHATAFL_HYPOTHESIS=1.\n");
+      fflush(stderr);
+    }
+  }
+  if (getenv("CHATAFL_NO_FRONTIER")) {
+    ablation_no_frontier = 1;
+    OKF("ABLATION: Frontier bonus + error penalty DISABLED");
+  }
+  if (getenv("CHATAFL_NO_ESCAPE_AMP")) {
+    mut_no_escape_amp = 1;
+    OKF("ABLATION: S2c quote-internal escape-run amplifier DISABLED");
+  }
+  if (getenv("CHATAFL_NO_LEXKILL")) {
+    mut_no_lexkill = 1;
+    OKF("ABLATION: S12 lexer-killer token injection DISABLED");
+  }
+  if (getenv("CHATAFL_NO_NESTIMB")) {
+    mut_no_nestimb = 1;
+    OKF("ABLATION: S13 nesting-imbalance injection DISABLED");
+  }
+  if (getenv("CHATAFL_NO_TRANSPORTSAT")) {
+    mut_no_transportsat = 1;
+    OKF("ABLATION: S1b Transport parameter saturation DISABLED");
+  }
+  if (getenv("CHATAFL_NO_TUNNELSWITCH")) {
+    mut_no_tunnelswitch = 1;
+    OKF("ABLATION: S15 tunnel-switch append DISABLED");
+  }
+  /* Semantic-oracle sampling rate (default 1 = every execution).  The indexed
+   * precise oracle is cheap; this is an optional safety valve for very slow
+   * targets.  N=2 skips every other execution, N=10 runs on ~10%. */
+  {
+    const char *osr = getenv("CHATAFL_ORACLE_SAMPLE_RATE");
+    if (osr && *osr) {
+      u32 rate = (u32)atoi(osr);
+      if (rate > 0) oracle_sample_rate = rate;
+    }
+    if (oracle_sample_rate > 1)
+      OKF("ORACLE: running on every %u-th execution (CHATAFL_ORACLE_SAMPLE_RATE=%u)",
+          oracle_sample_rate, oracle_sample_rate);
+  }
+  /* E1/E2a (2026-08-25): oracle-evidence drain + hang evidence gates.
+   * CHATAFL_ORACLE_DRAIN_MS widens the final response drain (default off,
+   * 10-25 ms covers pure-ftpd-class auth latencies); the sensitive-only
+   * filter bounds the throughput tax to executions ending in an
+   * auth/state-changing command.  CHATAFL_HANG_EVIDENCE=0 disables the
+   * .hang.meta sidecar (default on — save-path only). */
+  {
+    const char *od = getenv("CHATAFL_ORACLE_DRAIN_MS");
+    if (od && *od) {
+      u32 drain = (u32)atoi(od);
+      if (drain > 1000) drain = 1000;   /* hard cap: never stall the loop */
+      oracle_drain_ms = drain;
+    }
+    const char *so = getenv("CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY");
+    if (so && *so && strcmp(so, "0") == 0) oracle_drain_sensitive_only = 0;
+    const char *he = getenv("CHATAFL_HANG_EVIDENCE");
+    if (he && *he && strcmp(he, "0") == 0) hang_evidence_enabled = 0;
+    /* P0-2 payload guard: default ON, only affects attack_/deep_ queue
+     * entries (restore-before-execute on payload anchors). */
+    const char *pg = getenv("CHATAFL_PAYLOAD_GUARD");
+    if (pg && *pg && strcmp(pg, "0") == 0) payload_guard_enabled = 0;
+    if (!payload_guard_enabled)
+      OKF("PAYLOAD-GUARD: disabled (CHATAFL_PAYLOAD_GUARD=0)");
+    if (oracle_drain_ms > 0)
+      OKF("ORACLE: response-evidence drain ENABLED "
+          "(CHATAFL_ORACLE_DRAIN_MS=%u, sensitive_only=%u)",
+          oracle_drain_ms, oracle_drain_sensitive_only);
+    if (!hang_evidence_enabled)
+      OKF("HANG: evidence sidecar DISABLED (CHATAFL_HANG_EVIDENCE=0)");
+  }
+  /* Stage 2 (attack catalog): CVE-pattern seed injection, default OFF.
+   * Enabled with CHATAFL_ATTACK_SEEDS=1; per-protocol file cap defaults
+   * to 16 and can be overridden with CHATAFL_ATTACK_SEED_MAX.  Seeds go
+   * through the standard read_testcases() admission channel, so the
+   * coverage/scheduler machinery is untouched. */
+  {
+    const char *atk = getenv("CHATAFL_ATTACK_SEEDS");
+    const char *atk_cap = getenv("CHATAFL_ATTACK_SEED_MAX");
+    if (atk && *atk && strcmp(atk, "0") != 0)
+      OKF("ATTACK: CVE-pattern seed catalog ENABLED (CHATAFL_ATTACK_SEEDS=%s)",
+          atk);
+    if (atk_cap && *atk_cap)
+      OKF("ATTACK: seed file cap override (CHATAFL_ATTACK_SEED_MAX=%s)",
+          atk_cap);
+  }
+  /* Stage 3 (attack prompt): plateau CVE-pattern bias in chat-llm.c,
+   * default OFF.  Enabled with CHATAFL_ATTACK_PROMPT=1.  Purely additive
+   * prompt text; responses still go through the unchanged JSON validation
+   * and P/U/R/G admission.  (Read here for the banner only; chat-llm.c
+   * does its own lazy getenv.) */
+  {
+    const char *atkp = getenv("CHATAFL_ATTACK_PROMPT");
+    if (atkp && *atkp && strcmp(atkp, "0") != 0)
+      OKF("ATTACK: plateau CVE-pattern prompt bias ENABLED "
+          "(CHATAFL_ATTACK_PROMPT=%s)", atkp);
+  }
+  if (getenv("CHATAFL_NO_ADAPTIVE")) {
+    ablation_no_adaptive = 1;
+    /* Fix-Ablation-1: Support CHATAFL_ABLATION_THRESHOLD to set a custom
+     * fixed threshold.  Without this, NO_ADAPTIVE always fixes at 100
+     * (Opt's UNINTERESTING_THRESHOLD), which is 5× more frequent than
+     * ChatAFL baseline's 512.  To align with baseline trigger frequency,
+     * use: export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512 */
+    char *fixed_thresh_env = getenv("CHATAFL_ABLATION_THRESHOLD");
+    if (fixed_thresh_env) {
+      u32 custom_thresh = (u32)atoi(fixed_thresh_env);
+      if (custom_thresh > 0) {
+        /* Will be applied after adaptive_plateau_threshold is initialized below */
+        setenv("_CHATAFL_RESOLVED_THRESHOLD", fixed_thresh_env, 1);
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u from CHATAFL_ABLATION_THRESHOLD)",
+            custom_thresh);
+      } else {
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default)",
+            UNINTERESTING_THRESHOLD);
+      }
+    } else {
+      OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default — "
+          "note: ChatAFL baseline uses 512; set CHATAFL_ABLATION_THRESHOLD=512 to align)",
+          UNINTERESTING_THRESHOLD);
+    }
+  }
+  if (getenv("CHATAFL_NO_STATE_PROMPT")) {
+    ablation_no_state_prompt = 1;
+    OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
+  }
+  if (getenv("CHATAFL_NO_ADMISSION")) {
+    ablation_no_admission = 1;
+    OKF("ABLATION: Runtime gain admission DISABLED for LLM request candidates "
+        "(arm C: loopfuzz-direct, parseable→durable force-admit)");
+  }
+  {
+    /* Paper v2: admission accounting is ON by default so every candidate's
+     * disposition is auditable.  CHATAFL_ADMISSION_LOG=0 is the explicit
+     * opt-out (gating still applies; only the JSONL trail is dropped). */
+    char *adm_log_env = getenv("CHATAFL_ADMISSION_LOG");
+    if (adm_log_env && strcmp(adm_log_env, "0") == 0) {
+      admission_accounting_enabled = 0;
+      OKF("Admission accounting DISABLED (CHATAFL_ADMISSION_LOG=0) — "
+          "gating still active, only the JSONL event trail is dropped");
+    } else {
+      admission_accounting_enabled = 1;
+      OKF("Admission accounting ENABLED (default; CHATAFL_ADMISSION_LOG=0 to opt out)");
+    }
+  }
+
+  /* ── Evidence controller v2 (paper-aligned) ─────────────────────────
+   * CHATAFL_CALIBRATION=1           → arm E scheduler (Thompson posterior)
+   * CHATAFL_CAL_GAMMA=<double>      → posterior discount γ (default 0.995)
+   * CHATAFL_CAL_EPSILON=<double>    → exploration floor ε (default 0.1)
+   * CHATAFL_PROVISIONAL_BUDGET=<n>  → descendant-mutation budget (default 64)
+   * CHATAFL_PROVISIONAL_TTL_MS=<n>  → wall-clock validation TTL (default 30000)
+   * CHATAFL_PROVISIONAL_MAX_LIVE=<n>→ live provisional cap (default 64)
+   * CHATAFL_EVENT_LOG=0             → disable all JSONL event logs
+   */
+  {
+    const char *cal_env = getenv("CHATAFL_CALIBRATION");
+    if (cal_env && *cal_env && strcmp(cal_env, "0") != 0) {
+      calibration_enabled = 1;
+      OKF("CALIBRATION: online state-productivity posterior ENABLED "
+          "(arm E: loopfuzz-gated-calibrated, Score=Frontier·[ε+(1−ε)θ̃])");
+    }
+    const char *g = getenv("CHATAFL_CAL_GAMMA");
+    if (g && *g) {
+      double gv = atof(g);
+      if (gv > 0.0 && gv <= 1.0) cal_gamma = gv;
+      else WARNF("CHATAFL_CAL_GAMMA=%s out of (0,1], keeping %.3f", g, cal_gamma);
+    }
+    const char *e = getenv("CHATAFL_CAL_EPSILON");
+    if (e && *e) {
+      double ev2 = atof(e);
+      if (ev2 >= 0.0 && ev2 < 1.0) cal_epsilon = ev2;
+      else WARNF("CHATAFL_CAL_EPSILON=%s out of [0,1), keeping %.2f", e, cal_epsilon);
+    }
+    const char *pb = getenv("CHATAFL_PROVISIONAL_BUDGET");
+    if (pb && *pb) {
+      u32 b = (u32)atoi(pb);
+      if (b > 0 && b <= 100000) provisional_budget_default = b;
+    }
+    const char *pt = getenv("CHATAFL_PROVISIONAL_TTL_MS");
+    if (pt && *pt) {
+      u32 t = (u32)atoi(pt);
+      if (t >= 1000 && t <= 3600000) provisional_ttl_ms_default = t;
+    }
+    const char *pm = getenv("CHATAFL_PROVISIONAL_MAX_LIVE");
+    if (pm && *pm) {
+      u32 m = (u32)atoi(pm);
+      if (m > 0 && m <= 10000) provisional_max_live = m;
+    }
+    const char *el = getenv("CHATAFL_EVENT_LOG");
+    if (el && *el && strcmp(el, "0") == 0) {
+      event_log_enabled = 0;
+      OKF("EVENT LOG: JSONL event trails DISABLED (CHATAFL_EVENT_LOG=0)");
+    }
+    OKF("EVIDENCE CONTROLLER: arm=%s gamma=%.3f epsilon=%.2f "
+        "provisional(budget=%u, ttl_ms=%llu, max_live=%u)",
+        admission_arm_name(), cal_gamma, cal_epsilon,
+        provisional_budget_default,
+        (unsigned long long)provisional_ttl_ms_default, provisional_max_live);
+  }
+
+  /* v3 (2026-10-05): fixed havoc-phase energy per state-selection
+   * episode (P0-4).  0 disables the cap (legacy variable energy). */
+  {
+    const char *ee = getenv("CHATAFL_EPISODE_ENERGY");
+    if (ee && *ee) {
+      u32 cap = (u32)atoi(ee);
+      if (cap <= 1000000) episode_energy_cap = cap;
+    }
+    OKF("EPISODE ENERGY: fixed havoc budget = %u executions per episode (0 = legacy variable)", episode_energy_cap);
+  }
+}
+
 int main(int argc, char **argv)
 {
 
@@ -18523,6 +19319,7 @@ int main(int argc, char **argv)
       break;
 
     case 'P': /* protocol to be tested */
+
       if (protocol_selected)
         FATAL("Multiple -P options not supported");
 
@@ -18786,6 +19583,24 @@ int main(int argc, char **argv)
   /* Initialize protocol-specific semantic oracle */
   oracle_init(protocol_name);
 
+  /* Parse arm/evidence env BEFORE the run-config start event so the
+   * start record carries the TRUE arm/γ/ε/provisional/energy fields
+   * (P0-2: tarball audit showed start lines systematically mislabeled).
+   * NOTE: this must run AFTER the getopt loop — an earlier version of
+   * this block sat inside `case 'P':`, where optind still pointed at the
+   * protocol argument (target hash silently "unknown") and out_dir could
+   * be unset. */
+  evidence_env_parse();
+  /* v3 (P0-2): pin binary/corpus/config identity into the run-config, and
+   * register the per-call LLM ledger so every gateway call (starting with
+   * the grammar phase below) is recorded. */
+  evidence_identity_hashes(argv[optind]);
+  {
+    u8 *p = alloc_printf("%s/llm-calls.jsonl", out_dir);
+    chat_llm_set_calls_log((char *)p);
+    ck_free(p);
+  }
+
   if (protocol_selected)
   {
     protocol_patterns = kl_init(rang);
@@ -18835,10 +19650,10 @@ int main(int argc, char **argv)
 
     /* run_config start event (paper §十.1) — written BEFORE the LLM
      * grammar/enrichment phase (which can run 20+ minutes; Sep-05 batch:
-     * bftpd enrichment = 25 min).  Previous post-banner placement lost the
-     * config record when the fuzzer died during enrichment.  This spot is
-     * after the ablation/env block (arm fields final) and after
-     * setup_dirs (output dir exists), but before any LLM network call. */
+     * bftpd enrichment = 25 min) so the record survives enrichment deaths.
+     * Arm fields are final here: evidence_env_parse() ran above (P0-2
+     * fix — the pre-2026-10 start events were emitted before env parsing
+     * and mislabelled every arm as gated-fixed with default γ/ε). */
     run_config_log("start", NULL);
     run_config_logged = 1;
 
@@ -18909,240 +19724,8 @@ int main(int argc, char **argv)
    * Instead, just record that hypothesis mode is requested.  The actual
    * init_grammar_hypothesis_system() call is deferred to the first time
    * the plateau handler fires, when the system actually needs it. */
-  fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
-  fflush(stderr);
-  char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
-  if (hyp_env && strcmp(hyp_env, "0") != 0)
-  {
-    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode DEFERRED (lazy init on first plateau)\n", hyp_env);
-    fflush(stderr);
-    hypothesis_mode = 1;
-    OKF("Grammar Hypothesis Mode enabled (deferred init until first plateau)");
-    /* init_grammar_hypothesis_system() will be called on first plateau trigger */
-  }
-  else
-  {
-    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode disabled\n", hyp_env ? hyp_env : "not set");
-    fflush(stderr);
-  }
-
-  /* ============================================
-   * Ablation Control: Read env vars
-   * ============================================ */
-  if (getenv("CHATAFL_NO_REFINEMENT")) {
-    ablation_no_refinement = 1;
-    OKF("ABLATION: Tier-2 hypothesis refinement DISABLED");
-    /* Fix-Ablation-2: Warn if CHATAFL_HYPOTHESIS is not set.
-     * Without hypothesis_mode=1, periodic_hypothesis_refinement() returns
-     * immediately at its entry guard — NO_REFINEMENT has zero effect and
-     * Full vs w/o-Refinement runs are behaviorally identical, making the
-     * ablation data meaningless. */
-    if (!getenv("CHATAFL_HYPOTHESIS")) {
-      WARNF("ABLATION: CHATAFL_NO_REFINEMENT set but CHATAFL_HYPOTHESIS not set "
-            "— ablation has NO EFFECT (hypothesis_mode=0). "
-            "Set CHATAFL_HYPOTHESIS=1 to make this ablation valid.");
-      fprintf(stderr,
-              "[ABLATION WARNING] NO_REFINEMENT is a no-op without CHATAFL_HYPOTHESIS=1.\n");
-      fflush(stderr);
-    }
-  }
-  if (getenv("CHATAFL_NO_FRONTIER")) {
-    ablation_no_frontier = 1;
-    OKF("ABLATION: Frontier bonus + error penalty DISABLED");
-  }
-  if (getenv("CHATAFL_NO_ESCAPE_AMP")) {
-    mut_no_escape_amp = 1;
-    OKF("ABLATION: S2c quote-internal escape-run amplifier DISABLED");
-  }
-  if (getenv("CHATAFL_NO_LEXKILL")) {
-    mut_no_lexkill = 1;
-    OKF("ABLATION: S12 lexer-killer token injection DISABLED");
-  }
-  if (getenv("CHATAFL_NO_NESTIMB")) {
-    mut_no_nestimb = 1;
-    OKF("ABLATION: S13 nesting-imbalance injection DISABLED");
-  }
-  if (getenv("CHATAFL_NO_TRANSPORTSAT")) {
-    mut_no_transportsat = 1;
-    OKF("ABLATION: S1b Transport parameter saturation DISABLED");
-  }
-  if (getenv("CHATAFL_NO_TUNNELSWITCH")) {
-    mut_no_tunnelswitch = 1;
-    OKF("ABLATION: S15 tunnel-switch append DISABLED");
-  }
-  /* Semantic-oracle sampling rate (default 1 = every execution).  The indexed
-   * precise oracle is cheap; this is an optional safety valve for very slow
-   * targets.  N=2 skips every other execution, N=10 runs on ~10%. */
-  {
-    const char *osr = getenv("CHATAFL_ORACLE_SAMPLE_RATE");
-    if (osr && *osr) {
-      u32 rate = (u32)atoi(osr);
-      if (rate > 0) oracle_sample_rate = rate;
-    }
-    if (oracle_sample_rate > 1)
-      OKF("ORACLE: running on every %u-th execution (CHATAFL_ORACLE_SAMPLE_RATE=%u)",
-          oracle_sample_rate, oracle_sample_rate);
-  }
-  /* E1/E2a (2026-08-25): oracle-evidence drain + hang evidence gates.
-   * CHATAFL_ORACLE_DRAIN_MS widens the final response drain (default off,
-   * 10-25 ms covers pure-ftpd-class auth latencies); the sensitive-only
-   * filter bounds the throughput tax to executions ending in an
-   * auth/state-changing command.  CHATAFL_HANG_EVIDENCE=0 disables the
-   * .hang.meta sidecar (default on — save-path only). */
-  {
-    const char *od = getenv("CHATAFL_ORACLE_DRAIN_MS");
-    if (od && *od) {
-      u32 drain = (u32)atoi(od);
-      if (drain > 1000) drain = 1000;   /* hard cap: never stall the loop */
-      oracle_drain_ms = drain;
-    }
-    const char *so = getenv("CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY");
-    if (so && *so && strcmp(so, "0") == 0) oracle_drain_sensitive_only = 0;
-    const char *he = getenv("CHATAFL_HANG_EVIDENCE");
-    if (he && *he && strcmp(he, "0") == 0) hang_evidence_enabled = 0;
-    /* P0-2 payload guard: default ON, only affects attack_/deep_ queue
-     * entries (restore-before-execute on payload anchors). */
-    const char *pg = getenv("CHATAFL_PAYLOAD_GUARD");
-    if (pg && *pg && strcmp(pg, "0") == 0) payload_guard_enabled = 0;
-    if (!payload_guard_enabled)
-      OKF("PAYLOAD-GUARD: disabled (CHATAFL_PAYLOAD_GUARD=0)");
-    if (oracle_drain_ms > 0)
-      OKF("ORACLE: response-evidence drain ENABLED "
-          "(CHATAFL_ORACLE_DRAIN_MS=%u, sensitive_only=%u)",
-          oracle_drain_ms, oracle_drain_sensitive_only);
-    if (!hang_evidence_enabled)
-      OKF("HANG: evidence sidecar DISABLED (CHATAFL_HANG_EVIDENCE=0)");
-  }
-  /* Stage 2 (attack catalog): CVE-pattern seed injection, default OFF.
-   * Enabled with CHATAFL_ATTACK_SEEDS=1; per-protocol file cap defaults
-   * to 16 and can be overridden with CHATAFL_ATTACK_SEED_MAX.  Seeds go
-   * through the standard read_testcases() admission channel, so the
-   * coverage/scheduler machinery is untouched. */
-  {
-    const char *atk = getenv("CHATAFL_ATTACK_SEEDS");
-    const char *atk_cap = getenv("CHATAFL_ATTACK_SEED_MAX");
-    if (atk && *atk && strcmp(atk, "0") != 0)
-      OKF("ATTACK: CVE-pattern seed catalog ENABLED (CHATAFL_ATTACK_SEEDS=%s)",
-          atk);
-    if (atk_cap && *atk_cap)
-      OKF("ATTACK: seed file cap override (CHATAFL_ATTACK_SEED_MAX=%s)",
-          atk_cap);
-  }
-  /* Stage 3 (attack prompt): plateau CVE-pattern bias in chat-llm.c,
-   * default OFF.  Enabled with CHATAFL_ATTACK_PROMPT=1.  Purely additive
-   * prompt text; responses still go through the unchanged JSON validation
-   * and P/U/R/G admission.  (Read here for the banner only; chat-llm.c
-   * does its own lazy getenv.) */
-  {
-    const char *atkp = getenv("CHATAFL_ATTACK_PROMPT");
-    if (atkp && *atkp && strcmp(atkp, "0") != 0)
-      OKF("ATTACK: plateau CVE-pattern prompt bias ENABLED "
-          "(CHATAFL_ATTACK_PROMPT=%s)", atkp);
-  }
-  if (getenv("CHATAFL_NO_ADAPTIVE")) {
-    ablation_no_adaptive = 1;
-    /* Fix-Ablation-1: Support CHATAFL_ABLATION_THRESHOLD to set a custom
-     * fixed threshold.  Without this, NO_ADAPTIVE always fixes at 100
-     * (Opt's UNINTERESTING_THRESHOLD), which is 5× more frequent than
-     * ChatAFL baseline's 512.  To align with baseline trigger frequency,
-     * use: export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512 */
-    char *fixed_thresh_env = getenv("CHATAFL_ABLATION_THRESHOLD");
-    if (fixed_thresh_env) {
-      u32 custom_thresh = (u32)atoi(fixed_thresh_env);
-      if (custom_thresh > 0) {
-        /* Will be applied after adaptive_plateau_threshold is initialized below */
-        setenv("_CHATAFL_RESOLVED_THRESHOLD", fixed_thresh_env, 1);
-        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u from CHATAFL_ABLATION_THRESHOLD)",
-            custom_thresh);
-      } else {
-        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default)",
-            UNINTERESTING_THRESHOLD);
-      }
-    } else {
-      OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default — "
-          "note: ChatAFL baseline uses 512; set CHATAFL_ABLATION_THRESHOLD=512 to align)",
-          UNINTERESTING_THRESHOLD);
-    }
-  }
-  if (getenv("CHATAFL_NO_STATE_PROMPT")) {
-    ablation_no_state_prompt = 1;
-    OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
-  }
-  if (getenv("CHATAFL_NO_ADMISSION")) {
-    ablation_no_admission = 1;
-    OKF("ABLATION: Runtime gain admission DISABLED for LLM request candidates "
-        "(arm C: loopfuzz-direct, parseable→durable force-admit)");
-  }
-  {
-    /* Paper v2: admission accounting is ON by default so every candidate's
-     * disposition is auditable.  CHATAFL_ADMISSION_LOG=0 is the explicit
-     * opt-out (gating still applies; only the JSONL trail is dropped). */
-    char *adm_log_env = getenv("CHATAFL_ADMISSION_LOG");
-    if (adm_log_env && strcmp(adm_log_env, "0") == 0) {
-      admission_accounting_enabled = 0;
-      OKF("Admission accounting DISABLED (CHATAFL_ADMISSION_LOG=0) — "
-          "gating still active, only the JSONL event trail is dropped");
-    } else {
-      admission_accounting_enabled = 1;
-      OKF("Admission accounting ENABLED (default; CHATAFL_ADMISSION_LOG=0 to opt out)");
-    }
-  }
-
-  /* ── Evidence controller v2 (paper-aligned) ─────────────────────────
-   * CHATAFL_CALIBRATION=1           → arm E scheduler (Thompson posterior)
-   * CHATAFL_CAL_GAMMA=<double>      → posterior discount γ (default 0.995)
-   * CHATAFL_CAL_EPSILON=<double>    → exploration floor ε (default 0.1)
-   * CHATAFL_PROVISIONAL_BUDGET=<n>  → descendant-mutation budget (default 64)
-   * CHATAFL_PROVISIONAL_TTL_MS=<n>  → wall-clock validation TTL (default 30000)
-   * CHATAFL_PROVISIONAL_MAX_LIVE=<n>→ live provisional cap (default 64)
-   * CHATAFL_EVENT_LOG=0             → disable all JSONL event logs
-   */
-  {
-    const char *cal_env = getenv("CHATAFL_CALIBRATION");
-    if (cal_env && *cal_env && strcmp(cal_env, "0") != 0) {
-      calibration_enabled = 1;
-      OKF("CALIBRATION: online state-productivity posterior ENABLED "
-          "(arm E: loopfuzz-gated-calibrated, Score=Frontier·[ε+(1−ε)θ̃])");
-    }
-    const char *g = getenv("CHATAFL_CAL_GAMMA");
-    if (g && *g) {
-      double gv = atof(g);
-      if (gv > 0.0 && gv <= 1.0) cal_gamma = gv;
-      else WARNF("CHATAFL_CAL_GAMMA=%s out of (0,1], keeping %.3f", g, cal_gamma);
-    }
-    const char *e = getenv("CHATAFL_CAL_EPSILON");
-    if (e && *e) {
-      double ev2 = atof(e);
-      if (ev2 >= 0.0 && ev2 < 1.0) cal_epsilon = ev2;
-      else WARNF("CHATAFL_CAL_EPSILON=%s out of [0,1), keeping %.2f", e, cal_epsilon);
-    }
-    const char *pb = getenv("CHATAFL_PROVISIONAL_BUDGET");
-    if (pb && *pb) {
-      u32 b = (u32)atoi(pb);
-      if (b > 0 && b <= 100000) provisional_budget_default = b;
-    }
-    const char *pt = getenv("CHATAFL_PROVISIONAL_TTL_MS");
-    if (pt && *pt) {
-      u32 t = (u32)atoi(pt);
-      if (t >= 1000 && t <= 3600000) provisional_ttl_ms_default = t;
-    }
-    const char *pm = getenv("CHATAFL_PROVISIONAL_MAX_LIVE");
-    if (pm && *pm) {
-      u32 m = (u32)atoi(pm);
-      if (m > 0 && m <= 10000) provisional_max_live = m;
-    }
-    const char *el = getenv("CHATAFL_EVENT_LOG");
-    if (el && *el && strcmp(el, "0") == 0) {
-      event_log_enabled = 0;
-      OKF("EVENT LOG: JSONL event trails DISABLED (CHATAFL_EVENT_LOG=0)");
-    }
-    OKF("EVIDENCE CONTROLLER: arm=%s gamma=%.3f epsilon=%.2f "
-        "provisional(budget=%u, ttl_ms=%llu, max_live=%u)",
-        admission_arm_name(), cal_gamma, cal_epsilon,
-        provisional_budget_default,
-        (unsigned long long)provisional_ttl_ms_default, provisional_max_live);
-  }
-
+  /* Arm/evidence environment parsing moved UP, before the run-config
+   * start event — see evidence_env_parse() (P0-2 arm-identity fix). */
   /* ============================================
    * Phase 1: Race-Aware Execution (RAE) Configuration
    * ============================================ */
@@ -19480,7 +20063,6 @@ retry_state_aware:
     while (1)
     {
       u8 skipped_fuzz;
-      u64 episode_execs_before = total_execs;
       u64 episode_code_gains_before = code_gain_events;
 
       struct queue_entry *selected_seed = NULL;
@@ -19514,7 +20096,7 @@ retry_state_aware:
 
         /* Close the previous state-selection episode (posterior update on
          * its code-progress reward) before a new selection is made. */
-        cal_episode_finalize();
+        cal_episode_finalize(0);
 
         target_state_id = choose_target_state(effective_algo);
         cal_episode_begin(target_state_id);
@@ -19559,12 +20141,12 @@ retry_state_aware:
 
       skipped_fuzz = fuzz_one(use_argv);
 
-      /* Two-tier queue accounting: descendant executions of a provisional
-       * entry consume its validation budget; the first descendant code
-       * gain converts it to durable; exhausted budget/TTL expires it. */
+      /* Two-tier queue accounting: the per-exec hook already enforced the
+       * budget/TTL before every descendant execution; this closes the
+       * lifecycle (first descendant code-EDGE gain converts to durable,
+       * exhausted budget/TTL expires the entry). */
       provisional_account_after_fuzz(
-          queue_cur, total_execs - episode_execs_before,
-          code_gain_events > episode_code_gains_before);
+          queue_cur, code_gain_events > episode_code_gains_before);
       provisional_sweep_expired();
 
       if (!stop_soon && sync_id && !skipped_fuzz)
@@ -19685,8 +20267,12 @@ retry_state_aware:
 
   /* Finalize the in-flight state-selection episode BEFORE the final stats
    * write so fuzzer_stats includes it (the stop_fuzzing copy is a no-op
-   * safety net). */
-  cal_episode_finalize();
+   * safety net).  Campaign stop mid-episode → interrupted: no reward is
+   * assigned and the posterior is NOT updated (paper §五.1). */
+  cal_episode_finalize(1);
+  /* Censor still-live provisional entries: campaign termination inside
+   * the validation horizon is censoring, not unproductive expiration. */
+  provisional_censor_all_at_shutdown();
   write_bitmap();
   write_stats_file(0, 0, 0);
   save_auto();
@@ -19699,7 +20285,8 @@ stop_fuzzing:
   /* Evidence-controller shutdown: close the in-flight state-selection
    * episode and append the run_config end record so the campaign ledger
    * is complete (termination reason, end time). */
-  cal_episode_finalize();
+  cal_episode_finalize(1);
+  provisional_censor_all_at_shutdown();
   if (run_config_logged) {
     const char *reason =
         stop_soon == 2 ? "exit_1" :
