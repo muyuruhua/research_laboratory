@@ -1,0 +1,7 @@
+{
+ "provenance": "pilot-descriptive-only",
+ "reason": "P0-2: arm identity unverifiable in these records (start-event arm mislabel pre-v3, three different fuzzer commits across arm batches, no binary/corpus/config hashes). Excluded from causal D-C / E-D inference; usable for effect-size priors and power analysis only.",
+ "dataset": "filled_run_evidence_20260930.json (642 runs)",
+ "marked_by": "P0 remediation 2026-10-06",
+ "superseded_by": "v3 formal reruns (run-config schema v3, commit dffc7cefb+)"
+}

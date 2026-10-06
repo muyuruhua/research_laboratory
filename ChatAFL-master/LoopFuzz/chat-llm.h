@@ -101,6 +101,7 @@ const char *llm_active_model(void);
  * chat_with_llm(): CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP
  * (unset/-1 = unlimited). */
 void                chat_llm_set_calls_log(const char *path);
+void                chat_llm_set_archive_dir(const char *d); /* full req/resp sidecars */
 extern char         llm_last_served_model[128];
 unsigned long long  chat_llm_cum_calls(void);
 unsigned long long  chat_llm_cum_tokens(void);

@@ -70,6 +70,7 @@ __thread unsigned long long llm_last_completion_tokens = 0;
  * is a real cap, not a declaration. */
 char llm_last_served_model[128] = {0};
 static char chat_llm_calls_path[4096] = {0};
+static char chat_llm_archive_dir[4096] = {0};  /* full req/resp sidecars */
 static unsigned long long llm_calls_seq = 0;
 static unsigned long long llm_cum_calls = 0;    /* every attempt sent */
 static unsigned long long llm_cum_tokens = 0;   /* billed prompt+completion */
@@ -78,6 +79,13 @@ static long llm_cap_total_tokens = -1;          /* CHATAFL_TOKEN_CAP */
 #include <pthread.h>
 #include <sys/time.h>
 static pthread_mutex_t g_llm_calls_mutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread char g_llm_last_req[65536];   /* last POST body (this thread) */
+static __thread char g_llm_last_resp[262144]; /* last raw response (this thread) */
+
+void chat_llm_set_archive_dir(const char *d) {
+    if (d && *d)
+        snprintf(chat_llm_archive_dir, sizeof(chat_llm_archive_dir), "%s", d);
+}
 
 void chat_llm_set_calls_log(const char *path) {
     if (path && *path)
@@ -95,25 +103,47 @@ static unsigned long long chat_llm_now_ms(void) {
     return (unsigned long long)tv.tv_sec * 1000ULL + tv.tv_usec / 1000;
 }
 
+/* v3.1 (P1-7): full request/response provenance.  Prompts and replies are
+ * written as sidecar files <seq>.req/.resp next to llm-calls.jsonl so the
+ * ledger stays parseable while the complete exchanges remain auditable
+ * (gateway nondeterminism / replay). */
+static void chat_llm_archive(unsigned long long seq, const char *req_json,
+                             const char *resp) {
+    if (!chat_llm_archive_dir[0]) return;
+    if (req_json && *req_json) {
+        char p[4352]; snprintf(p, sizeof(p), "%s/%llu.req", chat_llm_archive_dir, seq);
+        FILE *f = fopen(p, "w");
+        if (f) { fputs(req_json, f); fclose(f); }
+    }
+    if (resp && *resp) {
+        char p[4352]; snprintf(p, sizeof(p), "%s/%llu.resp", chat_llm_archive_dir, seq);
+        FILE *f = fopen(p, "w");
+        if (f) { fputs(resp, f); fclose(f); }
+    }
+}
+
 static void chat_llm_log_call(const char *status, const char *model_req,
                               long latency_ms,
                               unsigned long long pt, unsigned long long ct,
                               const char *endpoint) {
     if (!chat_llm_calls_path[0]) return;
     pthread_mutex_lock(&g_llm_calls_mutex);
+    unsigned long long seq = llm_calls_seq + 1;
+    chat_llm_archive(seq, g_llm_last_req, g_llm_last_resp);
     FILE *f = fopen(chat_llm_calls_path, "a");
     if (f) {
-        unsigned long long seq = ++llm_calls_seq;
+        seq = ++llm_calls_seq;
         fprintf(f,
             "{\"seq\":%llu,\"time_ms\":%llu,\"status\":\"%s\","
             "\"model_requested\":\"%s\",\"model_served\":\"%s\","
             "\"latency_ms\":%ld,\"prompt_tokens\":%llu,"
             "\"completion_tokens\":%llu,\"endpoint\":\"%s\","
-            "\"cum_calls\":%llu,\"cum_tokens\":%llu}\n",
+            "\"cum_calls\":%llu,\"cum_tokens\":%llu,\"archived\":%s}\n",
             seq, chat_llm_now_ms(), status ? status : "unknown",
             model_req ? model_req : "", llm_last_served_model[0] ? llm_last_served_model : "",
             latency_ms, pt, ct, endpoint ? endpoint : "",
-            llm_cum_calls, llm_cum_tokens);
+            llm_cum_calls, llm_cum_tokens,
+            chat_llm_archive_dir[0] ? "true" : "false");
         fclose(f);
     }
     pthread_mutex_unlock(&g_llm_calls_mutex);
@@ -234,6 +264,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     }
     do
     {
+        snprintf(g_llm_last_req, sizeof(g_llm_last_req), "%s", data ? data : "");
+        g_llm_last_resp[0] = 0;
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
@@ -276,6 +308,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             unsigned long long _t0 = chat_llm_now_ms();
             res = curl_easy_perform(curl);
             long _lat = (long)(chat_llm_now_ms() - _t0);
+            if (chunk.memory)
+                snprintf(g_llm_last_resp, sizeof(g_llm_last_resp), "%s", chunk.memory);
 
             if (res == CURLE_OK)
             {

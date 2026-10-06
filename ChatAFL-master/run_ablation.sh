@@ -281,6 +281,17 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "wo_state_prompt" "CHATAFL_NO_STATE_PROMPT=1"
         ;;
+      fixed8ttl)
+        # v3 机制验证组：arm D + 阈值 8 + provisional TTL 放宽到 10 分钟。
+        # 依据：三次独立 run 复现 30s TTL < 600+ 队列的调度可达延迟，
+        # provisional 在被选中 fuzz 前即 expire（desc_execs=0）——放宽 TTL
+        # 使逐 descendant 预算钩子可在验证窗口内真实执行。
+        valid+=("$name")
+        queue_group "$name" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_PROVISIONAL_TTL_MS=600000"
+        ;;
       fixed8|fixed16|fixed32|fixed64|fixed150|fixed200|fixed300|fixed512)
         # v3 验证组泛化：fixedN = arm D（满效果）+ 固定 plateau 阈值 N。
         # 阈值必须是组自带变量——父 shell 导出的 CHATAFL_NO_ADAPTIVE/
@@ -311,6 +322,11 @@ launch_custom_groups() {
   fi
 
   echo "[CUSTOM] 已入队 ${#valid[@]} 组: ${valid[*]}"
+  # P0-2: 随机化运行顺序（消除组序与时间相关的混杂）；ABLATION_SHUFFLE=1 启用
+  if [[ "${ABLATION_SHUFFLE:-0}" == "1" && ${#GROUP_SPECS[@]} -gt 1 ]]; then
+    mapfile -t GROUP_SPECS < <(printf '%s\n' "${GROUP_SPECS[@]}" | shuf)
+    echo "[CUSTOM] ABLATION_SHUFFLE=1 → 随机化后顺序: ${GROUP_SPECS[*]}"
+  fi
 }
 
 launch_core_preset() {

@@ -3383,6 +3383,18 @@ static void run_config_log(const char *phase, const char *termination_reason) {
       json_object_new_int((int)chat_llm_cap_calls()));
   json_object_object_add(j, "token_cap_enforced",
       json_object_new_int((int)chat_llm_cap_tokens()));
+  /* P0-2: repair + instrumentation provenance.  The confirmatory C/D/E
+   * design (paper §4.7) requires repair disabled; the closest in-code
+   * mechanism is hypothesis tier-2 refinement — record its state
+   * explicitly so arm records can be audited against that requirement. */
+  json_object_object_add(j, "repair_status", json_object_new_string(
+      ablation_no_refinement ? "disabled (CHATAFL_NO_REFINEMENT=1)" :
+      (hypothesis_mode ? "hypothesis-refinement-active" : "off (no hypothesis ctx)")));
+  {
+    const char *ins = getenv("CHATAFL_INSTRUMENTATION");
+    json_object_object_add(j, "instrumentation", json_object_new_string(
+        (ins && *ins) ? ins : "afl-bitmap(afl-gcc)+gcov(cov_script)"));
+  }
   admission_json_add_u64(j, "rng_seed", ec_rng_seed_value);
   admission_json_add_u64(j, "start_time_ms", run_start_time_ms);
   admission_json_add_u64(j, "end_time_ms", get_cur_time());
@@ -19617,6 +19629,10 @@ int main(int argc, char **argv)
     u8 *p = alloc_printf("%s/llm-calls.jsonl", out_dir);
     chat_llm_set_calls_log((char *)p);
     ck_free(p);
+    u8 *ad = alloc_printf("%s/llm-archive", out_dir);
+    mkdir((char *)ad, 0755);
+    chat_llm_set_archive_dir((char *)ad);
+    ck_free(ad);
   }
 
   if (protocol_selected)
