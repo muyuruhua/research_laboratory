@@ -83,6 +83,19 @@ if [[ -z "$KEY" ]]; then
   exit 1
 fi
 
+# ── 批次时间戳（提前生成 + 醒目打印，便于事后检索结果目录）──────────
+# 每组子 shell 各自生成精确的 per-group TIMESTAMP（秒级），
+# 但它们共享同一日期前缀（YYYYMMDD）。在脚本开头打印该前缀，
+# 用户可通过 `ls -d ablation/results-*_<前缀>T*` 检索本批全部结果。
+_BATCH_TS="$(date +%Y%m%dT%H%M%S)"
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  批次启动时间戳: ${_BATCH_TS}"
+echo "║  结果目录模式:   ablation/results-${TARGET}_ablation_<label>_<TS>T*/"
+echo "║  检索命令:       ls -d ablation/results-${TARGET}_ablation_*${_BATCH_TS:0:8}T*"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
 # ── Pre-flight checks ────────────────────────────────────────────────
 echo ""
 echo "[PREFLIGHT] System resource check:"
