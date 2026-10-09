@@ -73,9 +73,35 @@ CVE oracles: `cve-benchmark/bin/build_stateafl_vuln.sh <ORACLE_ID>` (stages
   campaign collects a complete archive; IPSM built (states + transitions).
 - End-to-end smoke (1 container x 3 min per target): all four targets
   `[recover] complete`; queue growth 28 / 310 / 48 / 12 entries.
-- Pilot watch-item: O-MOSQ-01 (mosquitto) is multi-threaded — check the
-  stateafl arm there for the forked-daapd-style flakiness during the pilot
-  phase; the kill switch and restart loop are available per-target.
+- CVE-oracle pilots (run_cve_campaign.sh, 8 min):
+  - O-PFTP-01: 7561 execs, IPSM 2 states / 2 edges, no advisories.
+  - O-KAM-01: 6106 execs, 238 queue, IPSM 2 states / 1 edge
+    (after 2026-10-09 seed fix below; before: zero states -> fallback).
+  - O-MOSQ-01: 5112 execs, 65 queue, IPSM 2 states / 1 edge
+    (after 2026-10-09 fixes below; before: immediate abort).
+
+## CVE-campaign fixes (2026-10-09, in cve-benchmark/bin/run_cve_campaign.sh)
+
+All three fixes are shared-pipeline corrections verified to restore the
+native state signal; they apply to every fuzzer arm equally (information
+control untouched - seeds remain basic protocol handshakes):
+
+1. SIP seeds: `Via: SIP/2.0/UDP 1.2.3.4:9` -> `127.0.0.1:5061`. Kamailio
+   routes replies per the Via header; the old address blackholed every
+   response, so `response_buf` stayed empty and StateAFL's state machine
+   never populated (AFLNet-lineage response feedback equally affected).
+2. MQTT seeds: CONNECT protocol level 5 -> 4. mosquitto 2.0.18 (oracle
+   build) silently drops the socket on the v5 CONNECT handshake; level
+   4 gets a proper CONNACK.
+3. stateafl arm strips `-P MQTT`: upstream StateAFL aborts with
+   "MQTT protocol is not supported yet!". `-P` there is only an AFLNet
+   cross-check hook - state inference (memory dumps + TLSH) is
+   protocol-agnostic - verified native `-E` IPSM construction without it.
+
+Known-limitation note for RQ3: mosquitto/kamailio oracle seeds are now
+response-routable for ALL arms; earlier campaign data on these oracles
+(from any fuzzer) predating this fix had empty response capture and is
+not comparable.
 
 ## Known unrelated issues (affect other arms equally, not fixed here)
 
