@@ -2,8 +2,7 @@
 
 > 生成日期：2026-10-06。代码基线：commit `dffc7cefb` + `1a0fddc0e`（含 cov_script v3 重打补丁、
 > cap 排序修复、PATH 目标哈希解析）。**全部命令使用真实 LLM 网关，不用 mock。**
-> 其余 8 个 target：把 `bftpd` 换成 `exim / live555 / kamailio / lighttpd1 / pure-ftpd /
-> forked-daapd / lightftp / proftpd`（注意：forked-daapd 的 cov 重放目前会中途终止，
+> 其余 8 个 target：把 `bftpd` 换成 `exim / live555 / kamailio / lighttpd1 / pure-ftpd / forked-daapd / lightftp / proftpd`（注意：forked-daapd 的 cov 重放目前会中途终止，
 > 属该 target 专项问题，其 cov 字段验证结果暂不可用）。
 >
 > **真实网关事实（决定预期）**：① grammar+enrichment 真实耗时 25–40 分钟（含在 120 分钟内，
@@ -94,12 +93,12 @@ grep -E "^(arm|calibration)" /tmp/v/calibrated/out-bftpd-loopfuzz/fuzzer_stats
 
 ## 通过标准
 
-| 层 | 通过标准 |
-|---|---|
+| 层               | 通过标准                                                                                                                                                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 命令 1（三 arm） | audit 硬不变量全过（episode 能量≤512 且多数恰封顶、reward 口径、零变异/中断不更新后验、cov v3）；**候选 0–2 属预期**；`fuzzer_commit` == 提交的 commit；四哈希非 unknown 且三 arm 一致；llm-calls 为真实网关记录（served model、延迟最高 ~300s）；E `calibration=1` |
-| 命令 2（fixed8） | 候选数十个；`0 executed trial 原生入队`；decision 先行；provisional>0 且门控 P∧U∧R∧¬G_code∧G_state（TTL 内未调度致 desc_execs=0 属已知边界）；descendant_execs≤64 |
-| 命令 3（arm C） | start `arm=loopfuzz-direct`；`admission_forced_promo>0` |
-| 全部 | p03：`decreases after rebuild: 0`、2h run 判 censored；idx 严格递增；末行时间==campaign_end；rq1 三基线裁决正常输出；映射 r 与比率正常输出 |
+| 命令 2（fixed8） | 候选数十个；`0 executed trial 原生入队`；decision 先行；provisional>0 且门控 P∧U∧R∧¬G_code∧G_state（TTL 内未调度致 desc_execs=0 属已知边界）；descendant_execs≤64                                                                                                       |
+| 命令 3（arm C）  | start`arm=loopfuzz-direct`；`admission_forced_promo>0`                                                                                                                                                                                                                      |
+| 全部             | p03：`decreases after rebuild: 0`、2h run 判 censored；idx 严格递增；末行时间==campaign_end；rq1 三基线裁决正常输出；映射 r 与比率正常输出                                                                                                                                    |
 
 ## 诚实边界（真实网关 120 分钟内验证不到的）
 
@@ -208,10 +207,37 @@ python3 loopfuzz/revision_20260920/bitmap_source_mapping.py $O --window-min 30 |
 
 ### 算力预算（论文 §六 Table 5 设计值）
 
-| 阶段 | run 数 | 每 run | 总时长 |
-|---|---|---|---|
-| C/D/E（3 arm × 9 目标 × 1 run） | 27 | 26.3h | ~710h ≈ 30 天 |
-| γ 敏感性（3 组 × 9 目标 × 1 run） | 27 | 26.3h | ~710h ≈ 30 天 |
-| **合计** | **54** | | **~1420h ≈ 59 天（串行）** |
+| 阶段                                 | run 数       | 每 run | 总时长                            |
+| ------------------------------------ | ------------ | ------ | --------------------------------- |
+| C/D/E（3 arm × 9 目标 × 1 run）    | 27           | 26.3h  | ~710h ≈ 30 天                    |
+| γ 敏感性（3 组 × 9 目标 × 1 run） | 27           | 26.3h  | ~710h ≈ 30 天                    |
+| **合计**                       | **54** |        | **~1420h ≈ 59 天（串行）** |
 
 > 论文设计为每 arm 每 target 10 runs（共 540 runs），算力允许时按上述命令把 `1` 改为 `10`。
+
+## 2026-10-10 rogue 容器事故与根除记录
+
+**事故**：05:56 原地编辑 `run_dev.sh`（中部插入 1 行）时，仍有 104 个昨天启动的 bash 实例
+停在最后一条命令（`NUM_CONTAINERS=1 TIMEOUT=94800 ... exec_all_dev.sh`，22h 长 campaign）上。
+每个 bash 命令返回后从保存的文件偏移重读到被移位的调用尾巴并**裸执行**（无环境变量前缀），
+`exec_all_dev.sh` 旧默认值 `NUM_CONTAINERS:-10 / TIMEOUT:-86400` 生效 → 沿用残留的旧
+ablation TIMESTAMP，逐波拉起 6 波 × 10 容器 × 24h rogue campaign（07:03–11:41），
+写入 6 个旧 campaign 目录。**处置**：`docker rm -f` 60 容器（不用 stop：docker cp 对已停
+容器仍会归档半程数据覆盖 `out-*_1.tar.gz`）；`sudo pkill -f '/bin/bash \./run_dev\.sh'`
+斩断唯一触发者（重读只可能发生在这个 bash 进程内；子进程 reparent 后正常跑完归档）。
+合法归档零覆盖，98 个正常 campaign 全部自然结束。
+
+**根除（双防线 + 兜底）**：
+1. `profuzzbench_exec_all_dev.sh`：删除 `NUM_CONTAINERS/TIMEOUT` 静默默认值，缺参 `exit 3`
+   ——任何裸调用（脚本重读/误敲/回放）在拉起 docker 前即死；
+2. `profuzzbench_exec_all_dev.sh`：检测到 `results-*_${TIMESTAMP}` 已含 `run_summary.csv`
+   时拒绝重跑（`export CHATAFL_ALLOW_RERUN=1` 显式豁免）——即使带对参数的重放也无法
+   覆盖已完成归档；
+3. `profuzzbench_exec_common_dev.sh`：参数 <8 或 RUNS 非正整数立即 `exit 2`。
+
+测试（均不触 docker）：裸调用 exit 3；已完成目录 exit 3；`ALLOW_RERUN=1` 与全新 TIMESTAMP
+均能穿过守卫到达目标校验；common_dev 缺参 exit 2。
+
+**操作铁律**：实例运行期间禁止原地编辑 `run_dev.sh`（bash 按偏移增量读取，rename 式写入
+如 vim/sed -i/git checkout 对运行实例不可见故安全；`>` 重定向、python `open('w')` 危险）。
+修改前 `pgrep -f run_dev.sh` 须为空，或 cp 成新文件再改。

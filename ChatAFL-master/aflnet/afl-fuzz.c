@@ -9254,6 +9254,7 @@ int main(int argc, char** argv) {
   if (state_aware_mode) {
 
     if (state_ids_count == 0) {
+      extern char *protocol_name; /* LoopFuzz addition: absent in vanilla AFLNet */
       if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
         /* MQTT relax (mirrors LoopFuzz and the benchmark subjects' fuzzer
          * trees): zero-state dry runs defer state-aware scheduling instead

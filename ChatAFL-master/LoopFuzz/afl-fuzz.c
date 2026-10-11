@@ -4361,6 +4361,13 @@ u8 *choose_source_region(u32 *out_len)
     index--;
   }
 
+  // Skip expired provisional entries: provisional_expire() unlinked their
+  // files, so they can no longer serve as region sources.
+  while (q && q->prov_expired)
+    q = q->next;
+  if (!q)
+    return out;
+
   // randomly select a region in the selected seed
   if (q->region_count)
   {
@@ -4374,6 +4381,12 @@ u8 *choose_source_region(u32 *out_len)
       *out_len = len;
       // Read region data into memory. */
       FILE *fp = fopen(q->fname, "rb");
+      if (fp == NULL)
+      {
+        ck_free(out);
+        *out_len = 0;
+        return NULL;
+      }
       fseek(fp, q->regions[reg_index].start_byte, SEEK_CUR);
       fread(out, 1, len, fp);
       fclose(fp);
@@ -17161,7 +17174,9 @@ havoc_stage:;
           for (u32 di = 0; di < donor_idx && donor->next; di++)
             donor = donor->next;
 
-          if (donor && donor->len >= 4 && donor->fname) {
+          /* Expired provisional entries have no file on disk. */
+          if (donor && donor->len >= 4 && donor->fname &&
+              !donor->prov_expired) {
             int donor_fd = open(donor->fname, O_RDONLY);
             if (donor_fd >= 0) {
               u32 donor_len = donor->len;
@@ -17434,9 +17449,13 @@ retry_splicing:
     while (tid--)
       target = target->next;
 
-    /* Make sure that the target has a reasonable length. */
+    /* Make sure that the target has a reasonable length.  Expired
+       provisional entries stay in the queue list for accounting, but
+       provisional_expire() removed their files, so they must never be
+       picked as splice sources. */
 
-    while (target && (target->len < 2 || target == queue_cur))
+    while (target && (target->len < 2 || target == queue_cur ||
+                      target->prov_expired))
     {
       target = target->next;
       splicing_with++;

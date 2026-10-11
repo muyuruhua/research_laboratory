@@ -943,7 +943,7 @@ for i in $(seq 1 $RUNS); do
         cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null || true && \
         cd /home/ubuntu/loopfuzz && make clean && make -j\$(nproc) && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
@@ -960,7 +960,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-src/*.c /tmp/chatafl-src/*.h /home/ubuntu/chatafl/ && \
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
@@ -976,7 +976,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl1-src/*.c /tmp/chatafl-cl1-src/*.h /home/ubuntu/chatafl-cl1/ && \
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
@@ -992,7 +992,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "stateafl" ]]; then
     # StateAFL：独立镜像（目标用其 afl-clang-fast 编译）+ 源码挂载重编译，无 LLM。
     # 启动命令格式与 loopfuzz 分支完全一致（cd ${WORKDIR} && run ...）。
@@ -1010,9 +1010,11 @@ for i in $(seq 1 $RUNS); do
         if [ ! -d /home/ubuntu/stateafl ]; then cp -a /tmp/stateafl-src /home/ubuntu/stateafl; fi && \
         cp -f /tmp/stateafl-src/*.c /tmp/stateafl-src/*.h /tmp/stateafl-src/Makefile /home/ubuntu/stateafl/ 2>/dev/null || true && \
         cd /home/ubuntu/stateafl && make clean && make -j\$(nproc) && \
+        # stateafl 的 afl-fuzz 在战役结束时偶发 139 退出(已知不稳定,见 2fe412778),
+        # 保留 139→0 掩码;其余 fuzzer 的 139 是真实段错误,必须让 POSTRUN 看到。
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")

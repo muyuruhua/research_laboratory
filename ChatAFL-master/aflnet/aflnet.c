@@ -10,6 +10,7 @@
 
 #include "alloc-inl.h"
 #include "aflnet.h"
+char *protocol_name = NULL; /* LoopFuzz compat: afl-fuzz.c references it */
 
 // Protocol-specific functions for extracting requests and responses
 

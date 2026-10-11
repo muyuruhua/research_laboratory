@@ -12,6 +12,20 @@
 #     group them by target name, merge into the earliest-timestamp directory
 #     for each target, then delete the redundant later directories.
 #
+# Information-preservation contract (2026-10-10 revision):
+#   For every merged tarball out-<prefix>_<old>.tar.gz -> out-<prefix>_<new>.tar.gz
+#   the merge also
+#     * rewrites the appended run_summary.csv rows (source + run columns) to
+#       the NEW archive name, so every CSV row keeps matching a real file;
+#     * copies .sample_status/<old>.status to <new>.status and rewrites its
+#       archive_name= line (preserves status/reason/exit_code/container_id/
+#       finished_at, the source of invalid_reason/exit_code/diagnostics_dir
+#       for later CSV regeneration);
+#     * appends .result_manifest.tsv rows with the archive_name/run columns
+#       rewritten.
+#   DRY_RUN=1 now performs no mutation at all (it used to merge then skip
+#   only the deletion).
+#
 # Target-to-protocol mapping (for validation/reporting):
 #   FTP:  lightftp, bftpd, proftpd, pure-ftpd
 #   SMTP: exim
@@ -33,7 +47,68 @@ declare -A PROTO_MAP=(
 # ── Helpers ─────────────────────────────────────────────────────────
 log()  { echo "[$(date +%H:%M:%S)] $*"; }
 warn() { echo "[$(date +%H:%M:%S)] ⚠ $*" >&2; }
-die()  { echo "[$(date +%H:%H:%M)] ✗ $*" >&2; exit 1; }
+die()  { echo "[$(date +%H:%M:%S)] ✗ $*" >&2; exit 1; }
+
+# Rewrite a .status sidecar for a renamed archive: copy <src> to <dst>
+# and replace the archive_name= line with the new name.
+copy_status_sidecar() {
+    local src_status="$1" dst_status="$2" new_name
+    new_name=$(basename "$dst_status" .status)
+    sed -e "s|^archive_name=.*|archive_name=${new_name}|" "$src_status" > "$dst_status"
+}
+
+# Append manifest rows with archive_name (and run number) rewritten.
+# Usage: merge_manifest <src_dir> <dst_dir> <map_file>
+# map_file lines: <old_basename>\t<new_basename>
+merge_manifest() {
+    local src_dir="$1" dst_dir="$2" map_file="$3"
+    local src_tsv="$src_dir/.result_manifest.tsv" dst_tsv="$dst_dir/.result_manifest.tsv"
+    [ -f "$src_tsv" ] || return 0
+    if [ ! -f "$dst_tsv" ]; then
+        cp "$src_tsv" "$dst_tsv"
+        log "  copied .result_manifest.tsv from $(basename "$src_dir")"
+        return 0
+    fi
+    python3 - "$src_tsv" "$dst_tsv" "$map_file" <<'PY'
+import csv, sys
+src, dst, map_file = sys.argv[1], sys.argv[2], sys.argv[3]
+rename = {}
+for line in open(map_file):
+    line = line.rstrip("\n")
+    if "\t" in line:
+        old, new = line.split("\t", 1)
+        rename[old] = new
+def new_run(name):
+    # out-<prefix>_<N>.tar.gz -> N
+    import re
+    m = re.search(r"_(\d+)\.tar\.gz$", name)
+    return str(int(m.group(1))) if m else ""
+with open(src, newline="") as f:
+    rows = list(csv.reader(f, delimiter="\t"))
+if not rows:
+    sys.exit(0)
+header, body = rows[0], rows[1:]
+try:
+    arch_i = header.index("archive_name")
+except ValueError:
+    arch_i = None
+run_i = None
+for i, h in enumerate(header):
+    if h.strip() == "run":
+        run_i = i
+        break
+with open(dst, "a", newline="") as f:
+    w = csv.writer(f, delimiter="\t")
+    for row in body:
+        if arch_i is not None and arch_i < len(row) and row[arch_i] in rename:
+            new = rename[row[arch_i]]
+            row[arch_i] = new
+            if run_i is not None and run_i < len(row):
+                row[run_i] = new_run(new)
+        w.writerow(row)
+PY
+    log "  appended manifest rows from $(basename "$src_dir")"
+}
 
 # Extract the "max run number" for a given tarball prefix in a directory
 # e.g., for out-proftpd-loopfuzz_3.tar.gz → prefix=out-proftpd-loopfuzz, num=3
@@ -52,13 +127,18 @@ scan_counters() {
     done
 }
 
-# Copy tarballs from src_dir into dst_dir with sequential renaming
+# Copy tarballs from src_dir into dst_dir with sequential renaming.
+# Also migrates .sample_status sidecars and .result_manifest rows, and
+# records the old->new mapping for the CSV rewrite in merge_summaries.
 merge_into() {
     local src_dir="$1" dst_dir="$2"
     [ -d "$src_dir" ] || { warn "skip non-existent: $src_dir"; return 0; }
     [ "$src_dir" == "$dst_dir" ] && return 0
 
     scan_counters "$dst_dir"
+
+    local map_file
+    map_file=$(mktemp /tmp/merge_map.XXXXXX)
 
     local count=0
     for f in "$src_dir"/*.tar.gz; do
@@ -72,35 +152,115 @@ merge_into() {
         counter[$prefix]=$((counter[$prefix] + 1))
         new_name="${prefix}_${counter[$prefix]}.tar.gz"
         cp "$f" "$dst_dir/$new_name"
+        printf '%s\t%s\n' "$filename" "$new_name" >> "$map_file"
+        # migrate status sidecar
+        if [ -f "$src_dir/.sample_status/$filename.status" ]; then
+            mkdir -p "$dst_dir/.sample_status"
+            copy_status_sidecar "$src_dir/.sample_status/$filename.status" \
+                               "$dst_dir/.sample_status/$new_name.status"
+        else
+            warn "  no status sidecar for $filename (from $(basename "$src_dir"))"
+        fi
         count=$((count + 1))
     done
+
+    # migrate manifest rows (no-op when the source has no manifest)
+    merge_manifest "$src_dir" "$dst_dir" "$map_file"
+
+    # export the mapping for merge_summaries via a per-pair file list
+    MERGE_MAP_FILES+=("$map_file")
+
     log "  merged $count tarballs from $(basename "$src_dir")"
 }
 
-# Merge run_summary.csv files (append non-header rows from sources to target)
+# Merge run_summary.csv files: append source rows with the `source` and
+# `run` columns rewritten to the NEW archive names recorded by merge_into.
 merge_summaries() {
     local dst_dir="$1"; shift
     local target_csv="$dst_dir/run_summary.csv"
 
-    # If target has no CSV, copy the first source that has one
+    # If target has no CSV, synthesize one from the first source that has one,
+    # applying its rename map (the map for that pair is MERGE_MAP_FILES[0]).
     if [ ! -f "$target_csv" ]; then
+        local idx=0
         for src in "$@"; do
             if [ -f "$src/run_summary.csv" ]; then
-                cp "$src/run_summary.csv" "$target_csv"
-                log "  copied run_summary.csv from $(basename "$src")"
+                python3 - "$src/run_summary.csv" "$target_csv" "${MERGE_MAP_FILES[$idx]}" <<'PY'
+import csv, sys, re
+src_csv, dst_csv, map_file = sys.argv[1], sys.argv[2], sys.argv[3]
+rename = {}
+for line in open(map_file):
+    line = line.rstrip("\n")
+    if "\t" in line:
+        old, new = line.split("\t", 1)
+        rename[old] = new
+def new_run(name):
+    m = re.search(r"_(\d+)\.tar\.gz$", name)
+    return str(int(m.group(1))) if m else None
+with open(src_csv, newline="") as f:
+    reader = csv.DictReader(f)
+    fields = reader.fieldnames
+    rows = list(reader)
+with open(dst_csv, "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=fields)
+    w.writeheader()
+    for row in rows:
+        old = row.get("source", "")
+        if old in rename:
+            row["source"] = rename[old]
+            nr = new_run(rename[old])
+            if nr is not None and "run" in row:
+                row["run"] = nr
+        w.writerow(row)
+PY
+                log "  copied run_summary.csv from $(basename "$src") (renamed)"
                 break
             fi
+            idx=$((idx + 1))
         done
         return 0
     fi
 
-    # Append rows from each source (skip header)
+    # Append rows from each source, rewriting source/run per its map.
+    local idx=0
     for src in "$@"; do
         if [ -f "$src/run_summary.csv" ]; then
-            # Skip header, append
-            tail -n +2 "$src/run_summary.csv" >> "$target_csv" 2>/dev/null || true
-            log "  appended rows from $(basename "$src")/run_summary.csv"
+            python3 - "$src/run_summary.csv" "$target_csv" "${MERGE_MAP_FILES[$idx]}" <<'PY'
+import csv, sys, re
+src_csv, dst_csv, map_file = sys.argv[1], sys.argv[2], sys.argv[3]
+rename = {}
+for line in open(map_file):
+    line = line.rstrip("\n")
+    if "\t" in line:
+        old, new = line.split("\t", 1)
+        rename[old] = new
+def new_run(name):
+    m = re.search(r"_(\d+)\.tar\.gz$", name)
+    return str(int(m.group(1))) if m else None
+appended = unmatched = 0
+with open(src_csv, newline="") as f:
+    reader = csv.DictReader(f)
+    fields = reader.fieldnames
+    rows = list(reader)
+with open(dst_csv, "a", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=fields)
+    for row in rows:
+        old = row.get("source", "")
+        if old in rename:
+            row["source"] = rename[old]
+            nr = new_run(rename[old])
+            if nr is not None and "run" in row:
+                row["run"] = nr
+            appended += 1
+        else:
+            unmatched += 1
+        w.writerow(row)
+if unmatched:
+    sys.stderr.write(f"[merge_tar] WARN: {unmatched} row(s) in {src_csv} had no archive mapping\n")
+PY
+            log "  appended rows from $(basename "$src")/run_summary.csv (renamed)"
         fi
+        idx=$((idx + 1))
     done
 }
 
@@ -138,6 +298,11 @@ if [ "$1" == "--auto" ]; then
             year=$(date +%Y)
             sortkey="${year}${m}${day}${ts}"
             target_dirs[$target]="${target_dirs[$target]:-} $sortkey|$d"
+        elif [[ "$dname" =~ ^results-(.+)_([0-9]{8}T[0-9]{6})$ ]]; then
+            # Alternate timestamp format: results-<target>_<YYYYMMDD>T<HHMMSS>
+            target="${BASH_REMATCH[1]}"
+            sortkey="${BASH_REMATCH[2]}"
+            target_dirs[$target]="${target_dirs[$target]:-} $sortkey|$d"
         else
             warn "unrecognized pattern: $dname (skipped)"
         fi
@@ -168,27 +333,36 @@ if [ "$1" == "--auto" ]; then
         # Skip if only one directory
         [ ${#others[@]} -eq 0 ] && { log "  only one dir, nothing to merge"; continue; }
 
-        # Merge tarballs
+        # DRY_RUN performs no mutation at all: report the plan only.
+        if [ "${DRY_RUN:-0}" == "1" ]; then
+            log "  [DRY RUN] would merge ${#others[@]} dir(s) into $(basename "$main_dir") and delete them"
+            continue
+        fi
+
+        MERGE_MAP_FILES=()
+        # Merge tarballs (+ sidecars + manifests)
         for src in "${others[@]}"; do
             merge_into "$src" "$main_dir"
         done
 
-        # Merge run_summary.csv
+        # Merge run_summary.csv (with rename-aware row rewriting)
         merge_summaries "$main_dir" "${others[@]}"
 
-        # Delete redundant directories (ask for confirmation in dry-run mode)
-        if [ "${DRY_RUN:-0}" == "1" ]; then
-            log "  [DRY RUN] would delete: ${others[*]}"
-        else
-            for src in "${others[@]}"; do
-                rm -rf "$src"
-                log "  deleted: $(basename "$src")"
-            done
-        fi
+        # Clean up map files
+        rm -f "${MERGE_MAP_FILES[@]:-/dev/null}"
+
+        # Delete redundant directories only after their CSV rows, status
+        # sidecars, and manifest rows have been merged into the main dir.
+        for src in "${others[@]}"; do
+            rm -rf "$src"
+            log "  deleted: $(basename "$src")"
+        done
 
         # Report totals
         total=$(ls "$main_dir"/*.tar.gz 2>/dev/null | wc -l)
-        log "  result: $total tarballs in $(basename "$main_dir")"
+        n_status=$(ls "$main_dir"/.sample_status/*.status 2>/dev/null | wc -l)
+        n_csv=$(awk 'NR>1' "$main_dir/run_summary.csv" 2>/dev/null | wc -l)
+        log "  result: $total tarballs, $n_status status files, $n_csv csv rows in $(basename "$main_dir")"
     done
 
     log ""
@@ -282,23 +456,30 @@ else
 
             [ ${#others[@]} -eq 0 ] && { log "  only one dir, nothing to merge"; continue; }
 
+            # DRY_RUN performs no mutation at all: report the plan only.
+            if [ "${DRY_RUN:-0}" == "1" ]; then
+                log "  [DRY RUN] would merge ${#others[@]} dir(s) into $(basename "$main_dir") and delete them"
+                continue
+            fi
+
+            MERGE_MAP_FILES=()
             for src in "${others[@]}"; do
                 merge_into "$src" "$main_dir"
             done
 
             merge_summaries "$main_dir" "${others[@]}"
 
-            if [ "${DRY_RUN:-0}" == "1" ]; then
-                log "  [DRY RUN] would delete: ${others[*]}"
-            else
-                for src in "${others[@]}"; do
-                    rm -rf "$src"
-                    log "  deleted: $(basename "$src")"
-                done
-            fi
+            rm -f "${MERGE_MAP_FILES[@]:-/dev/null}"
+
+            for src in "${others[@]}"; do
+                rm -rf "$src"
+                log "  deleted: $(basename "$src")"
+            done
 
             total=$(ls "$main_dir"/*.tar.gz 2>/dev/null | wc -l)
-            log "  result: $total tarballs in $(basename "$main_dir")"
+            n_status=$(ls "$main_dir"/.sample_status/*.status 2>/dev/null | wc -l)
+            n_csv=$(awk 'NR>1' "$main_dir/run_summary.csv" 2>/dev/null | wc -l)
+            log "  result: $total tarballs, $n_status status files, $n_csv csv rows in $(basename "$main_dir")"
         done
 
         log ""
@@ -310,6 +491,8 @@ else
     log "Sub dirs: $*"
 
     scan_counters "$MAIN_DIR"
+    MERGE_MAP_FILES=()
+    MERGED_DIRS=()
 
     for dir in "$@"; do
         [ ! -d "$dir" ] && { warn "skip non-existent: $dir"; continue; }
@@ -317,7 +500,13 @@ else
 
         log "Processing: $dir"
         merge_into "$dir" "$MAIN_DIR"
+        MERGED_DIRS+=("$dir")
     done
+
+    # Mode 1 now also merges the CSVs (it used to leave source rows behind).
+    # Only actually-merged dirs are passed so the rename maps stay aligned.
+    [ ${#MERGED_DIRS[@]} -gt 0 ] && merge_summaries "$MAIN_DIR" "${MERGED_DIRS[@]}"
+    rm -f "${MERGE_MAP_FILES[@]:-/dev/null}"
 
     log "✅ Merge done."
 fi

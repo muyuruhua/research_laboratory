@@ -525,6 +525,10 @@ for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
 
     if [[ "$EXIT_CODE" == "137" ]]; then
       ISSUES="${ISSUES}  OOM_KILL(exit=137:${ARCHIVE_NAME})"
+    elif [[ "$EXIT_CODE" == "139" ]]; then
+      ISSUES="${ISSUES}  SEGFAULT(exit=139:${ARCHIVE_NAME})"
+    elif [[ "$EXIT_CODE" == "134" ]]; then
+      ISSUES="${ISSUES}  HEAP_ABORT(exit=134:${ARCHIVE_NAME})"
     elif [[ "$EXIT_CODE" != "0" && "$EXIT_CODE" != "" ]]; then
       ISSUES="${ISSUES}  ABNORMAL_EXIT(${EXIT_CODE}:${ARCHIVE_NAME})"
     fi

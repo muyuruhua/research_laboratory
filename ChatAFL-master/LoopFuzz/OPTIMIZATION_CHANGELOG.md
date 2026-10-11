@@ -1,5 +1,29 @@
 ---
 
+# 修复:过期 provisional 队列条目被选为 splice/region 供体 → afl-fuzz exit(1) 提前终止(2026-10-11)
+
+- **现象**:两级准入臂(gated_fixed/calibrated/cal_gamma*)随机提前终止,exit_code=1,
+  POSTRUN 标 ABNORMAL_EXIT(1)。实测签名完全一致的三例:
+  `gated_fixed_20261010T220101`(496/1580 min,`queue/id:000740,prov`)、
+  `gated_fixed_20261010T220053`(104 min,`id:000263,prov`)、
+  `calibrated_20261008T070031`(queue_entry 815);`direct` 臂不走两级准入,不受影响。
+  OOM_KILL(137) 为另一独立问题。
+- **根因**:`provisional_expire()`(afl-fuzz.c:13305)在 TTL/预算耗尽时 unlink 队列文件
+  (及 regions/replayable 副本),但条目留在内存链表仅置 `prov_expired=1`;种子选择
+  (afl-fuzz.c:4811/20107)与生命周期钩子(12965)已跳过,但三处 `UR(queued_paths)`
+  随机选靶未过滤,open 已删除文件 → ENOENT → `PFATAL`(实测致死点
+  `fuzz_one(), afl-fuzz.c:17453`):
+  1. `fuzz_one()` havoc splice 选靶(致命);
+  2. `choose_source_region()`(致命:fopen 无判空,命中即对 NULL fp 做 fseek);
+  3. MQTT havoc case 4 corpus-splice donor(原已 `donor_fd >= 0` 容错,防御性补齐)。
+- **修复**(afl-fuzz.c,22+/3-):三处选靶统一跳过 `prov_expired` 条目;
+  `choose_source_region()` 补 fopen 判空(失败 ck_free 缓冲、`*out_len=0`、返回 NULL,
+  调用方 case 17-22 均已判 NULL)。宿主机 `make` 重编译通过。
+- **部署**:容器启动时从挂载源码自编译(profuzzbench_exec_common_dev.sh:942-944),
+  新起战役自动携带修复;修复前已启动的容器仍是旧二进制,需重启才生效。
+
+---
+
 # 去注入:统一知识层级 + CVE 目录编译隔离(2026-10-10)
 
 分支 `deinject-knowledge-level`(第一篇正式消融留在 dev2026 基线跑完,本分支归第二篇)。
