@@ -49,6 +49,7 @@
 #include "mqtt-builder.h"
 #include "mqtt-generate.h"
 #include "attack-catalog.h"
+#include "knowledge-level.h"
 #include "mqtt-scheduler.h"
 #include "mp-driver.h"
 #include "mqtt-differential.h"
@@ -707,7 +708,9 @@ u32 deep_state_seeds_written = 0;
  * restore, so structural exploration is untouched.  Evidence base:
  * 2026-08-21 pure-ftpd — only the pristine seed kept "../.." among 130
  * RNTO queue entries. */
-static u8  payload_guard_enabled  = 1;   /* CHATAFL_PAYLOAD_GUARD=0 off */
+static u8  payload_guard_enabled  = 0;   /* set from kl_payload_guard_on()
+                                           * in the env banner; explicit
+                                           * CHATAFL_PAYLOAD_GUARD wins */
 static u64 payload_guard_restores = 0;   /* ranges restored */
 
 /* ============================================
@@ -11509,6 +11512,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           ablation_no_admission,
           admission_accounting_enabled);
 
+  fprintf(f, "knowledge_level       : %u\n", (u32)kl_level());
+  fprintf(f, "kl_cve_catalog_compiled : %u\n",
+          (u32)KL_CVE_CATALOG_COMPILED);
   fprintf(f, "attack_seeds_written : %u\n", attack_seeds_written);
   fprintf(f, "deep_state_seeds_written : %u\n", deep_state_seeds_written);
   fprintf(f, "payload_guard_restores : %llu\n",
@@ -18926,31 +18932,28 @@ static void evidence_env_parse(void) {
     if (!hang_evidence_enabled)
       OKF("HANG: evidence sidecar DISABLED (CHATAFL_HANG_EVIDENCE=0)");
   }
-  /* Stage 2 (attack catalog): CVE-pattern seed injection, default OFF.
-   * Enabled with CHATAFL_ATTACK_SEEDS=1; per-protocol file cap defaults
-   * to 16 and can be overridden with CHATAFL_ATTACK_SEED_MAX.  Seeds go
-   * through the standard read_testcases() admission channel, so the
-   * coverage/scheduler machinery is untouched. */
+  /* ── Unified knowledge level (de-injection 2026-10-10) ──────────
+   * Single control surface for every CVE-knowledge channel; the legacy
+   * CHATAFL_ATTACK_* / CHATAFL_DEEP_STATE_EXPLORE / CHATAFL_PAYLOAD_GUARD
+   * envs still override their channel (kept for historical ablation
+   * scripts) but print a deprecation notice here.  Paper main arm:
+   * level 1 on a default (catalog-free) build.  Level 3 needs
+   * make L3=1 and is the leakage upper-bound ablation only. */
   {
-    const char *atk = getenv("CHATAFL_ATTACK_SEEDS");
-    const char *atk_cap = getenv("CHATAFL_ATTACK_SEED_MAX");
-    if (atk && *atk && strcmp(atk, "0") != 0)
-      OKF("ATTACK: CVE-pattern seed catalog ENABLED (CHATAFL_ATTACK_SEEDS=%s)",
-          atk);
-    if (atk_cap && *atk_cap)
-      OKF("ATTACK: seed file cap override (CHATAFL_ATTACK_SEED_MAX=%s)",
-          atk_cap);
-  }
-  /* Stage 3 (attack prompt): plateau CVE-pattern bias in chat-llm.c,
-   * default OFF.  Enabled with CHATAFL_ATTACK_PROMPT=1.  Purely additive
-   * prompt text; responses still go through the unchanged JSON validation
-   * and P/U/R/G admission.  (Read here for the banner only; chat-llm.c
-   * does its own lazy getenv.) */
-  {
-    const char *atkp = getenv("CHATAFL_ATTACK_PROMPT");
-    if (atkp && *atkp && strcmp(atkp, "0") != 0)
-      OKF("ATTACK: plateau CVE-pattern prompt bias ENABLED "
-          "(CHATAFL_ATTACK_PROMPT=%s)", atkp);
+    payload_guard_enabled = kl_payload_guard_on();
+    OKF("KNOWLEDGE-LEVEL: %u (%s)%s", (u32)kl_level(),
+        KL_CVE_CATALOG_COMPILED ? "catalog-free build" : "CVE-catalog build",
+        kl_level() == 3 ? " [L3 leakage-upper-bound arm]" : "");
+    static const char *legacy[] = {
+      "CHATAFL_ATTACK_SEEDS", "CHATAFL_ATTACK_PROMPT",
+      "CHATAFL_ATTACK_ORACLE", "CHATAFL_DEEP_STATE_EXPLORE",
+      "CHATAFL_PAYLOAD_GUARD", NULL
+    };
+    for (int li = 0; legacy[li]; li++)
+      if (getenv(legacy[li]))
+        WARNF("Knowledge-level: legacy env %s set — overriding the level "
+              "default for its channel (deprecated; use "
+              "CHATAFL_KNOWLEDGE_LEVEL)", legacy[li]);
   }
   if (getenv("CHATAFL_NO_ADAPTIVE")) {
     ablation_no_adaptive = 1;

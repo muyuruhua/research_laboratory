@@ -39,7 +39,8 @@ static int generated_count(const char *protocol) {
     if (!seed_dir_created) return -1;
     /* Clean the dir first */
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "rm -f %s/deep_* %s/attack_*", TEST_DIR, TEST_DIR);
+    snprintf(cmd, sizeof(cmd), "rm -f %s/deep_* %s/deepstate_* %s/attack_*",
+             TEST_DIR, TEST_DIR, TEST_DIR);
     system(cmd);
     return (int)deep_state_enrich_seeds(TEST_DIR, protocol);
 }
@@ -189,8 +190,12 @@ static void test_all_protocols_nonzero(void) {
 }
 
 int main(void) {
+    /* L3-only test: the CVE deep templates below are compiled solely in
+     * catalog builds (de-injection 2026-10-10), so the test pins the
+     * level to 3 and the Makefile rule links a catalog-enabled object. */
+    setenv("CHATAFL_KNOWLEDGE_LEVEL", "3", 1);
     printf("═══════════════════════════════════════════════════════\n");
-    printf("  attack_catalog_test — 6 new deep-state patterns\n");
+    printf("  attack_catalog_test — 6 new deep-state patterns (L3)\n");
     printf("═══════════════════════════════════════════════════════\n\n");
 
     setup();

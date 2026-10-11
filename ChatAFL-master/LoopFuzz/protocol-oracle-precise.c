@@ -37,6 +37,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include "knowledge-level.h"
 
 #include "protocol-oracle.h"
 #include "alloc-inl.h"
@@ -112,20 +113,14 @@ static int g_gate_skip_ordinal = 0;   /* skip ordinal checks entirely   */
 static int g_gate_downgrade    = 0;   /* demote ordinal-only MEDIUM+    */
 
 /* CHATAFL_ATTACK_ORACLE (2026-08-20): gate for the attack-pattern oracle
- * rules R1-R10 (CVE-pattern checks from papers/漏洞发现经验).  Default OFF
- * so default behavior is bit-identical to the pre-change oracle; enable
- * explicitly with CHATAFL_ATTACK_ORACLE=1.  Lazy getenv cache following the
- * CHATAFL_ORACLE_GATE precedent in oracle_init(). */
-static int attack_oracle_enabled(void) {
-    static int cached = -1;
-    if (cached < 0) {
-        const char *env = getenv("CHATAFL_ATTACK_ORACLE");
-        cached = (env && (atoi(env) == 1 || strcasecmp(env, "on") == 0 ||
-                          strcasecmp(env, "yes") == 0 ||
-                          strcasecmp(env, "true") == 0)) ? 1 : 0;
-    }
-    return cached;
-}
+ * rules R1-R10 (CVE-pattern checks from papers/漏洞发现经验).
+ *
+ * DE-INJECTION (2026-10-10): the rules are observer-side and stay
+ * compiled (they never help input generation), but their default now
+ * follows the unified knowledge level — ON only at level 3 (leakage
+ * upper-bound arm).  An explicit CHATAFL_ATTACK_ORACLE env still
+ * overrides so oracle_selftest and historical ablation scripts work. */
+#define attack_oracle_enabled() kl_attack_oracle_on()
 
 /* Dedup bitmap */
 #define ORACLE_DEDUP_SIZE 4096
@@ -2525,7 +2520,7 @@ int oracle_check_ftp(
                             ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTH_BYPASS,
                             ORACLE_EVIDENCE_STRONG,
                             "FTP: PASS accepted without USER (auth state bypass)",
-                            "CVE-2024-42644", i);
+                            "ORACLE-2024-42644", i);
                     }
                 }
                 continue;
@@ -2570,7 +2565,7 @@ int oracle_check_ftp(
                         ORACLE_CAT_AUTH_BYPASS,
                         ORACLE_EVIDENCE_STRONG,
                         "FTP: Data command succeeded without authentication",
-                        "CVE-2024-42645", i);
+                        "ORACLE-2024-42645", i);
                     reported_data_bypass = 1;
                 }
             }
@@ -2597,7 +2592,7 @@ int oracle_check_ftp(
                         ORACLE_EVIDENCE_STRONG,
                         "FTP: Filesystem command accepted without authentication "
                         "(no prior 230)",
-                        "CVE-2024-42645", i);
+                        "ORACLE-2024-42645", i);
                     reported_data_bypass = 1;
                 }
             }
@@ -2717,7 +2712,7 @@ int oracle_check_ftp(
                     ORACLE_CAT_INFO_LEAK,
                     ORACLE_EVIDENCE_WEAK,
                     "FTP: Sensitive file CONTENT leaked (shadow/cert/key)",
-                    "CVE-2024-42650", -1);
+                    "ORACLE-2024-42650", -1);
             }
         }
 
@@ -2731,7 +2726,7 @@ int oracle_check_ftp(
                     ORACLE_CAT_INFO_LEAK,
                     ORACLE_EVIDENCE_WEAK,
                     "FTP: /etc/passwd content leaked (NOT command echo)",
-                    "CVE-2024-42650", -1);
+                    "ORACLE-2024-42650", -1);
             }
         }
 
@@ -2852,7 +2847,7 @@ int oracle_check_ftp(
                 ORACLE_CAT_RESOURCE_EXHAUST | ORACLE_CAT_DOS,
                 ORACLE_EVIDENCE_HEURISTIC,
                 "FTP: Excessive failed authentication attempts (resource exhaustion risk)",
-                "CVE-2026-41324", -1);
+                "ORACLE-2026-41324", -1);
             /* oracle_dos_count auto-derived by dispatcher */
         }
     }
@@ -3302,7 +3297,7 @@ int oracle_check_rtsp(
                     ORACLE_CAT_STATE_VIOLATION,
                     ORACLE_EVIDENCE_STRONG,
                     "RTSP: PLAY before SETUP accepted by server",
-                    "CVE-2021-38382", i);
+                    "ORACLE-2021-38382", i);
                 /* oracle_state_violation_count auto-derived by dispatcher */
             }
         }
@@ -3372,7 +3367,7 @@ int oracle_check_rtsp(
                         ORACLE_CAT_DOS,
                         ORACLE_EVIDENCE_STRONG,
                         "RTSP: Oversized CSeq header accepted by server (potential buffer overflow)",
-                        "CVE-2019-7314", i);
+                        "ORACLE-2019-7314", i);
                 }
             }
         }

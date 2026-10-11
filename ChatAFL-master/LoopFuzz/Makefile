@@ -44,6 +44,20 @@ endif
 
 COMM_HDR    = alloc-inl.h config.h debug.h types.h
 
+# ── De-injection build modes (2026-10-10) ─────────────────────────────
+# Default: catalog-free build.  The CVE-pattern knowledge (attack seed
+# catalog, CVE-named deep templates, plateau CVE prompt patterns) is NOT
+# compiled in — the binary is auditable (strings(1) + audit_infoleak.py).
+# This is the paper main arm (CHATAFL_KNOWLEDGE_LEVEL=1 activates the
+# class-generic channels).
+#
+# `make L3=1`: compiles the CVE catalog in for the level-3 leakage
+# upper-bound ablation arm.  Run `make clean` when toggling L3 — the
+# objects are not mode-stamped.
+ifdef L3
+CFLAGS += -DCHATAFL_EMBED_CVE_CATALOG
+endif
+
 all: test_x86 $(PROGS) afl-as test_build all_done
 
 ifndef AFL_NO_X86
@@ -98,8 +112,12 @@ mutation_engine_test: mutation_engine_test.c mutation-ops.o mutation-ops.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ mutation_engine_test.c mutation-ops.o
 
 # Attack catalog deep-state pattern test (2026-09-07).
-attack_catalog_test: attack_catalog_test.c attack-catalog.o attack-catalog.h
-	$(CC) $(CFLAGS) -I. -o $@ attack_catalog_test.c attack-catalog.o
+# L3-only test: the CVE deep templates exist solely in catalog builds;
+# a dedicated catalog-enabled object keeps the default attack-catalog.o
+# clean (de-injection 2026-10-10).
+attack_catalog_test: attack_catalog_test.c attack-catalog.h
+	$(CC) $(CFLAGS) -DCHATAFL_EMBED_CVE_CATALOG -I. -c attack-catalog.c -o attack-catalog-l3.o
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I. -o $@ attack_catalog_test.c attack-catalog-l3.o
 
 # Hot Replay + Context Snapshot unit test (mocked globals, no forkserver).
 hot_replay_test: hot_replay_test.c

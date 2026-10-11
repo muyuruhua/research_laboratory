@@ -1,18 +1,31 @@
-/* attack-catalog.c — CVE-pattern attack seed catalog (Stage 2).
+/* attack-catalog.c — CVE-pattern attack seed catalog (Stage 2) and the
+ * generic deep-state template set.
  *
- * Deterministic seed-file generation encoding the bug-trigger patterns
- * distilled from papers/漏洞发现经验 (ChatAFL's 9 0-days in
- * Live555/ProFTPD/Kamailio + MBFuzzer's 4 core MQTT bugs; see
- * papers/ChatAFLBugDetect.txt / MBFuzzerBugDetect.txt).
+ * DE-INJECTION (2026-10-10): this file now separates two kinds of
+ * knowledge with different legality under information-controlled
+ * evaluation (see knowledge-level.h):
+ *
+ *   (a) GENERIC deep-state templates — protocol state-machine shapes
+ *       derivable from the RFC alone (lifecycle reversal, teardown reuse,
+ *       double state reversal, file lifecycle, mid-session RSET reuse,
+ *       re-INVITE after BYE, HTTP resource lifecycle).  Always compiled;
+ *       written as deepstate_<id>_v0.raw; active at
+ *       CHATAFL_KNOWLEDGE_LEVEL>=1.  The file name deliberately avoids
+ *       the attack_ prefix so the (CVE-anchor) payload guard never
+ *       applies to them.
+ *
+ *   (b) CVE-PATTERN knowledge — the Stage-2 catalog (bug-trigger
+ *       sequences distilled from papers/漏洞发现经验, incl. the MQTT
+ *       MBFuzzer projections) plus the CVE-named deep templates added
+ *       2026-09-07.  Compiled ONLY under CHATAFL_EMBED_CVE_CATALOG
+ *       (make L3=1), active ONLY at CHATAFL_KNOWLEDGE_LEVEL=3, written
+ *       as attack_<id>_v<N>.raw.  Paper builds exclude this data at
+ *       compile time; the binary is auditable with strings(1).
  *
  * Every seed is written into in_dir BEFORE read_testcases() runs, so it
  * flows through the EXISTING admission channel: queued, coverage-accounted,
- * and auto-deprioritized when it adds no new edges.  This is the exact
- * mechanism the MQTT binary enrichment (mqtt_generate_v5_seeds) already
- * uses, verified not to perturb b_abs/edges metrics.
+ * and auto-deprioritized when it adds no new edges.
  *
- * Gated by CHATAFL_ATTACK_SEEDS (default OFF — bit-identical behavior
- * when unset).  Per-protocol cap via CHATAFL_ATTACK_SEED_MAX (default 16).
  * Single message <= 16KB, whole seed <= 64KB; both enforced in the writer.
  */
 
@@ -27,6 +40,7 @@
 
 #include "types.h"
 #include "attack-catalog.h"
+#include "knowledge-level.h"
 
 #define ATTACK_ARRAY_CNT(a) ((unsigned int)(sizeof(a) / sizeof((a)[0])))
 
@@ -34,18 +48,10 @@
 /* Gate + limits                                                       */
 /* ------------------------------------------------------------------ */
 
-/* Same lazy-getenv-cache convention as attack_oracle_enabled() in
- * protocol-oracle-precise.c.  Default OFF. */
-static int attack_seeds_enabled(void) {
-  static int cached = -1;
-  if (cached < 0) {
-    const char *env = getenv("CHATAFL_ATTACK_SEEDS");
-    cached = (env && (atoi(env) == 1 || strcasecmp(env, "on") == 0 ||
-                      strcasecmp(env, "yes") == 0 ||
-                      strcasecmp(env, "true") == 0)) ? 1 : 0;
-  }
-  return cached;
-}
+/* Unified gate (knowledge-level.h); the legacy CHATAFL_ATTACK_SEEDS env
+ * still overrides for the historical ablation scripts.  Default OFF at
+ * levels 0-2; level 3 requires an L3 catalog build. */
+#define attack_seeds_enabled() kl_attack_seeds_on()
 
 static unsigned int attack_seed_cap(void) {
   static int cached = -1;
@@ -87,7 +93,11 @@ static unsigned int g_last_rep_len = 0;
 
 /* ------------------------------------------------------------------ */
 /* Raw (binary MQTT) packet builders                                   */
+/*                                                                     */
+/* CVE-catalog only (the MQTT MBFuzzer projections): compiled under    */
+/* CHATAFL_EMBED_CATALOG.                                              */
 /* ------------------------------------------------------------------ */
+#ifdef CHATAFL_EMBED_CVE_CATALOG
 
 static unsigned int mqtt_put_varint(unsigned char *out, unsigned int len) {
   unsigned int n = 0;
@@ -156,6 +166,8 @@ static unsigned int mqtt_gen_publish(unsigned char *out, unsigned int cap,
 static unsigned int mqtt_gen_disconnect(unsigned char *out) {
   return mqtt_put_packet(out, 0xE0, NULL, 0);
 }
+
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
 /* ------------------------------------------------------------------ */
 /* Step rendering                                                      */
@@ -244,6 +256,16 @@ static unsigned int render_step_variant_bump(unsigned char *out,
 /*   SMTP — in-smtp (command lines; AUTH PLAIN base64 blob)            */
 /*   MQTT — in-mqtt raw binary control packets, no framing            */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* CVE-pattern tables (Stage-2 catalog)                                */
+/*                                                                     */
+/* Compiled ONLY under CHATAFL_EMBED_CVE_CATALOG.  The bug-trigger     */
+/* sequences below are distilled from historical CVEs (ChatAFL 0-days, */
+/* MBFuzzer MQTT bugs) — knowledge that information-controlled        */
+/* evaluation must exclude at the binary level.                       */
+/* ------------------------------------------------------------------ */
+#ifdef CHATAFL_EMBED_CVE_CATALOG
 
 /* ---- RTSP (Live555 31284aa) — 7 patterns from ChatAFL Table VII ---- */
 
@@ -539,12 +561,18 @@ find_len_spec(const attack_len_spec_t *tbl, unsigned int n,
   return NULL;
 }
 
-/* Write one seed file.  Returns 1 on success. */
-static int write_seed_file(const char *seed_dir, const char *id,
-                           unsigned int variant, const unsigned char *buf,
-                           unsigned int len) {
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
+
+/* Write one seed file.  `stem_prefix` selects the admission family:
+ * "attack" for the L3 CVE catalog (payload-guard visible), "deepstate"
+ * for the generic RFC-derived templates (guard never applies).
+ * Returns 1 on success. */
+static int write_seed_file(const char *seed_dir, const char *stem_prefix,
+                           const char *id, unsigned int variant,
+                           const unsigned char *buf, unsigned int len) {
   char path[512];
-  snprintf(path, sizeof(path), "%s/attack_%s_v%u.raw", seed_dir, id, variant);
+  snprintf(path, sizeof(path), "%s/%s_%s_v%u.raw", seed_dir,
+           stem_prefix, id, variant);
   int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (fd < 0) return 0;
   ssize_t written = write(fd, buf, len);
@@ -553,7 +581,7 @@ static int write_seed_file(const char *seed_dir, const char *id,
     unlink(path);
     return 0;
   }
-  fprintf(stderr, "[+] attack seed: %s (%u bytes)\n", path, len);
+  fprintf(stderr, "[+] seed: %s (%u bytes)\n", path, len);
   return 1;
 }
 
@@ -573,10 +601,12 @@ static unsigned int build_text_seed(const attack_pattern_t *pat,
     for (unsigned int r = 0; r < reps; r++) {
       /* Long-payload patching: when the payload is the 4-byte marker
        * "aaaa" (FTP CWD) / base64 stub (SMTP AUTH), substitute a
-       * deterministic filler of the variant's configured length. */
+       * deterministic filler of the variant's configured length.
+       * CVE-catalog markers — compiled only with the L3 build. */
       const char *subst = NULL;
       unsigned int subst_len = 0;
 
+#ifdef CHATAFL_EMBED_CVE_CATALOG
       if (st->payload && strcmp(st->payload, "aaaa") == 0) {
         const attack_len_spec_t *ls =
           find_len_spec(ftp_cwd_lens, ATTACK_ARRAY_CNT(ftp_cwd_lens),
@@ -596,6 +626,7 @@ static unsigned int build_text_seed(const attack_pattern_t *pat,
         subst = (const char *)g_scratch;
         subst_len = g_scratch_len;
       }
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
       unsigned int n;
       if (subst) {
@@ -640,7 +671,9 @@ static unsigned int build_text_seed(const attack_pattern_t *pat,
 
 /* Oversized-RTP patching: after the text steps of the oversized-rtp
  * pattern, append filler so the '$' frame's payload approaches the
- * message budget.  The '$\x00\x40\x00' header declares 16KB. */
+ * message budget.  The '$\x00\x40\x00' header declares 16KB.
+ * CVE-catalog pattern — compiled only with the L3 build. */
+#ifdef CHATAFL_EMBED_CVE_CATALOG
 static unsigned int patch_oversized_rtp(unsigned char *buf,
                                         unsigned int total,
                                         unsigned int cap) {
@@ -658,6 +691,7 @@ static unsigned int patch_oversized_rtp(unsigned char *buf,
   }
   return total;
 }
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
 /* ------------------------------------------------------------------ */
 /* Deep-state sequence patterns (DSE-fix, 2026-08-25)                  */
@@ -675,14 +709,18 @@ static unsigned int patch_oversized_rtp(unsigned char *buf,
 /* CHATAFL_DEEP_STATE_SEED_MAX (default 6).                            */
 /* ------------------------------------------------------------------ */
 
-static int deep_state_enabled(void) {
-  static int cached = -1;
-  if (cached < 0) {
-    const char *env = getenv("CHATAFL_DEEP_STATE_EXPLORE");
-    cached = (env && atoi(env) == 0) ? 0 : 1;   /* default ON */
-  }
-  return cached;
-}
+/* ------------------------------------------------------------------ */
+/* Deep-state gates (de-injection 2026-10-10)                          */
+/*                                                                     */
+/* GENERIC templates (below): RFC-derivable state-machine shapes,      */
+/* active at CHATAFL_KNOWLEDGE_LEVEL>=1 (kl_generic_deep_seeds_on).    */
+/* CVE-named templates (2026-09-07 block): compiled only under         */
+/* CHATAFL_EMBED_CVE_CATALOG, active only at level 3.  The legacy      */
+/* CHATAFL_DEEP_STATE_EXPLORE env (formerly default ON) still          */
+/* overrides for historical ablation scripts.                          */
+/* ------------------------------------------------------------------ */
+
+#define deep_state_enabled() kl_generic_deep_seeds_on()
 
 static unsigned int deep_state_seed_cap(void) {
   static int cached = -1;
@@ -789,9 +827,15 @@ static const attack_msg_step_t pat_deep_http_lifecycle[] = {
 
 
 /* ══════════════════════════════════════════════════════════════════
- * 2026-09-07: 6 new deep-state patterns targeting known CVE classes
- * that the existing catalog does not reach.
+ * 2026-09-07: 6 deep-state patterns targeting known CVE classes.
+ *
+ * DE-INJECTION (2026-10-10): these patterns are named after — and
+ * shaped by — specific CVEs (pure-ftpd domlsd, proftpd RNTO, exim
+ * BDAT/AUTH, kamailio Content-Length, plus an oracle-rule feeder).
+ * That is catalog knowledge: compiled ONLY under
+ * CHATAFL_EMBED_CVE_CATALOG and active only at KNOWLEDGE_LEVEL=3.
  * ══════════════════════════════════════════════════════════════════ */
+#ifdef CHATAFL_EMBED_CVE_CATALOG
 
 /* FTP: MLSD after login — targets pure-ftpd CVE-2024-48208 (domlsd OOB
  * read when MLSD receives a long "-..." option sequence). */
@@ -879,6 +923,7 @@ static const attack_msg_step_t pat_deep_ftp_authfail[] = {
   {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
   {"QUIT\r\n", NULL, NULL, 0, 1},
 };
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
 static const attack_pattern_t deep_patterns[] = {
   { "deep_rtsp_toggle", "RTSP", "deep-state/pause-play-toggle",
@@ -897,7 +942,12 @@ static const attack_pattern_t deep_patterns[] = {
     pat_deep_sip_reinvite, ATTACK_ARRAY_CNT(pat_deep_sip_reinvite), 1 },
   { "deep_http_lifecycle", "HTTP", "deep-state/resource-lifecycle",
     pat_deep_http_lifecycle, ATTACK_ARRAY_CNT(pat_deep_http_lifecycle), 1 },
-  /* 2026-09-07: 6 new patterns targeting known CVE classes */
+};
+
+#ifdef CHATAFL_EMBED_CVE_CATALOG
+/* CVE-named deep patterns — L3 catalog build only. */
+static const attack_pattern_t cve_deep_patterns[] = {
+  /* 2026-09-07: 6 patterns targeting known CVE classes */
   { "deep_ftp_mlsd", "FTP", "CVE-2024-48268/pure-ftpd-domlsd",
     pat_deep_ftp_mlsd, ATTACK_ARRAY_CNT(pat_deep_ftp_mlsd), 1 },
   { "deep_ftp_rename", "FTP", "CVE-2023-51713/proftpd-rnto-oob",
@@ -909,8 +959,9 @@ static const attack_pattern_t deep_patterns[] = {
   { "deep_sip_clen", "SIP", "CVE-2026-39863/kamailio-clen-ovf",
     pat_deep_sip_clen, ATTACK_ARRAY_CNT(pat_deep_sip_clen), 1 },
   { "deep_ftp_authfail", "FTP", "ftp-auth-brute",
-    pat_deep_ftp_authfail, ATTACK_ARRAY_CNT(pat_deep_ftp_authfail), 1 },
+    pat_deep_ftp_authfail, ATTACK_ARRAY_CNT(pat_deep_ftp_authfail), 1 }
 };
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
 unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol) {
   if (!deep_state_enabled()) return 0;
@@ -920,6 +971,8 @@ unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol)
   unsigned int cap = deep_state_seed_cap();
   static unsigned char seed_buf[ATTACK_SEED_MAX];
 
+  /* Generic RFC-derived templates: deepstate_<id>_v0.raw (no attack_
+   * prefix — the CVE-anchor payload guard must never see them). */
   for (unsigned int p = 0;
        p < ATTACK_ARRAY_CNT(deep_patterns) && count < cap; p++) {
     const attack_pattern_t *pat = &deep_patterns[p];
@@ -930,9 +983,29 @@ unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol)
 
     unsigned int len = build_text_seed(pat, 0, seed_buf, sizeof(seed_buf));
     if (!len) continue;
-    if (write_seed_file(seed_dir, pat->id, 0, seed_buf, len))
+    if (write_seed_file(seed_dir, "deepstate", pat->id, 0, seed_buf, len))
       count++;
   }
+
+#ifdef CHATAFL_EMBED_CVE_CATALOG
+  /* CVE-named deep templates: attack_deep_<id>_v0.raw, level 3 only. */
+  if (kl_cve_deep_seeds_on()) {
+    for (unsigned int p = 0;
+         p < ATTACK_ARRAY_CNT(cve_deep_patterns) && count < cap; p++) {
+      const attack_pattern_t *pat = &cve_deep_patterns[p];
+      if (strcasecmp(pat->protocol, protocol) != 0 &&
+          !(strcasecmp(protocol, "DAAP") == 0 &&
+            strcasecmp(pat->protocol, "HTTP") == 0))
+        continue;
+
+      unsigned int len = build_text_seed(pat, 0, seed_buf,
+                                         sizeof(seed_buf));
+      if (!len) continue;
+      if (write_seed_file(seed_dir, "attack", pat->id, 0, seed_buf, len))
+        count++;
+    }
+  }
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
   if (count)
     fprintf(stderr, "[+] deep-state seed generation (%s): %u files\n",
@@ -942,12 +1015,10 @@ unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol)
 
 /* ------------------------------------------------------------------ */
 /* Payload patterns for the havoc payload guard (P0-2, 2026-08-25)    */
-/*                                                                    */
-/* Short, grep-cheap byte anchors whose corruption by havoc destroys  */
-/* an attack seed's trigger semantics: traversal payloads, the RTSP   */
-/* session token (without it PAUSE/PLAY never re-enters the session   */
-/* path), and the MQTT $SYS topic.  Evidence (2026-08-21 pure-ftpd):  */
-/* only the pristine seed kept "../.." among 130 RNTO queue entries.  */
+/*                                                                     */
+/* DE-INJECTION: these anchors are CVE-derived byte markers and the    */
+/* guard only applies to attack_* files (the L3 catalog).  Compiled    */
+/* only with the catalog build; returns 0 (no anchors) otherwise.      */
 /* ------------------------------------------------------------------ */
 
 unsigned int attack_payload_patterns(const char *protocol,
@@ -959,6 +1030,8 @@ unsigned int attack_payload_patterns(const char *protocol,
 
   if (!protocol || !patterns_out) return 0;
   for (unsigned int k = 0; k < 4; k++) patterns_out[k] = NULL;
+#ifdef CHATAFL_EMBED_CVE_CATALOG
+  if (!kl_payload_guard_on()) return 0;
 
   const char **pats = NULL;
   if (strcasecmp(protocol, "FTP") == 0) pats = ftp_pats;
@@ -967,6 +1040,9 @@ unsigned int attack_payload_patterns(const char *protocol,
 
   if (!pats) return 0;
   for (; pats[n] && n < 4; n++) patterns_out[n] = pats[n];
+#else
+  (void)ftp_pats; (void)rtsp_pats; (void)mqtt_pats;
+#endif
   return n;
 }
 
@@ -977,7 +1053,12 @@ unsigned int attack_payload_patterns(const char *protocol,
 unsigned int attack_enrich_seeds(const char *seed_dir, const char *protocol) {
   if (!attack_seeds_enabled()) return 0;
   if (!seed_dir || !protocol) return 0;
-
+#ifndef CHATAFL_EMBED_CVE_CATALOG
+  /* Clean build: the catalog data is not compiled in.  The gate above
+   * only passes when the level/env explicitly requests it, which
+   * knowledge-level.h already caps — but belt-and-suspenders here. */
+  return 0;
+#else
   unsigned int count = 0;
   unsigned int cap = attack_seed_cap();
   static unsigned char seed_buf[ATTACK_SEED_MAX];
@@ -992,26 +1073,26 @@ unsigned int attack_enrich_seeds(const char *seed_dir, const char *protocol) {
       unsigned int tlen = ls ? ls->len_a : 256;
       unsigned int len = build_mqtt_long_topic(seed_buf,
                                                sizeof(seed_buf), tlen);
-      if (len && write_seed_file(seed_dir, "mqtt_long_topic_sub_pub", v,
+      if (len && write_seed_file(seed_dir, "attack", "mqtt_long_topic_sub_pub", v,
                                  seed_buf, len))
         count++;
     }
     if (count < cap) {
       unsigned int len = build_mqtt_persistent_retained(seed_buf,
                                                         sizeof(seed_buf));
-      if (len && write_seed_file(seed_dir, "mqtt_persistent_retained", 0,
+      if (len && write_seed_file(seed_dir, "attack", "mqtt_persistent_retained", 0,
                                  seed_buf, len))
         count++;
     }
     if (count < cap) {
       unsigned int len = build_mqtt_shared_sub(seed_buf, sizeof(seed_buf));
-      if (len && write_seed_file(seed_dir, "mqtt_shared_sub", 0,
+      if (len && write_seed_file(seed_dir, "attack", "mqtt_shared_sub", 0,
                                  seed_buf, len))
         count++;
     }
     if (count < cap) {
       unsigned int len = build_mqtt_sys_wildcard(seed_buf, sizeof(seed_buf));
-      if (len && write_seed_file(seed_dir, "mqtt_sys_wildcard", 0,
+      if (len && write_seed_file(seed_dir, "attack", "mqtt_sys_wildcard", 0,
                                  seed_buf, len))
         count++;
     }
@@ -1033,7 +1114,7 @@ unsigned int attack_enrich_seeds(const char *seed_dir, const char *protocol) {
       if (strcmp(pat->id, "rtsp_oversized_rtp_chunk") == 0)
         len = patch_oversized_rtp(seed_buf, len, sizeof(seed_buf));
 
-      if (write_seed_file(seed_dir, pat->id, v, seed_buf, len))
+      if (write_seed_file(seed_dir, "attack", pat->id, v, seed_buf, len))
         count++;
     }
   }
@@ -1041,4 +1122,5 @@ unsigned int attack_enrich_seeds(const char *seed_dir, const char *protocol) {
   fprintf(stderr, "[+] attack seed generation (%s): %u files\n",
           protocol, count);
   return count;
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 }

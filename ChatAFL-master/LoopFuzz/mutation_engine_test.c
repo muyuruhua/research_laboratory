@@ -56,6 +56,9 @@ static uint32_t load(uint8_t *buf, const char *s) {
 }
 
 int main(void) {
+    /* Class-generic operators run at CHATAFL_KNOWLEDGE_LEVEL>=1
+     * (de-injection 2026-10-10); pin the level for the harness. */
+    setenv("CHATAFL_KNOWLEDGE_LEVEL", "1", 1);
     printf("═══ Mutation Engine Tests (REAL mutation-ops.o) ═══\n\n");
     static uint8_t orig[MAX_BUF], mut[MAX_BUF];
 

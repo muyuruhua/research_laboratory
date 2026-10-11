@@ -1,3 +1,18 @@
+---
+
+# 去注入:统一知识层级 + CVE 目录编译隔离(2026-10-10)
+
+分支 `deinject-knowledge-level`(第一篇正式消融留在 dev2026 基线跑完,本分支归第二篇)。
+完整记录见 `DEINJECTION.md`。要点:
+
+- 新增 `knowledge-level.h`(header-only):`CHATAFL_KNOWLEDGE_LEVEL=0|1|2|3` 统一五条 CVE 知识通道;旧 `CHATAFL_ATTACK_*` / `DEEP_STATE_EXPLORE` / `PAYLOAD_GUARD` env 降级为通道级覆盖(启动告警)。**默认从"deep-state ON"翻转为全关**。
+- CVE 数据(CVE 种子目录、点名 CVE 的 deep 模板、prompt CVE 模式段、guard 锚点)全部 `#ifdef CHATAFL_EMBED_CVE_CATALOG` 隔离;`make L3=1` 才编译(泄漏上界消融臂专用)。通用 deep 模板改名 `deepstate_*.raw` 始终可用(L1)。
+- plateau prompt 新增 `PLATEAU_BUGCLASS_PRIMITIVES`(五原语,CWE 引用,目标无关)替代 CVE 模式段(L1)。
+- mutation-ops:入口接 level 门;S9 去目标化(删 owntone 端点表 → 类属分隔符复制);~44 处 oracle CVE 标签字面量改 `ORACLE-*`。
+- `audit_infoleak.py`(benchmark/scripts/analysis/):二进制/种子/prompt 三层审计,默认构建 PASS、L3 构建 `--expect-mode l3` PASS。
+- 回归:oracle_selftest 全过、attack_catalog_test 7/7(L3 适配)、门控冒烟全过;mutation_engine/cve_mutation 两套件失败集与 HEAD 基线完全相同(零新增,既有问题已登记)。
+- fuzzer_stats 新增 `knowledge_level` / `kl_cve_catalog_compiled`;run_dev.sh 与 profuzzbench_exec_common_dev.sh 透传 level。
+
 # LoopFuzz 优化实现说明
 
 ## 优化日期

@@ -4,6 +4,7 @@
  * (S5-S10). See mutation-ops.h for the strategy/CVE map. */
 
 #include "mutation-ops.h"
+#include "knowledge-level.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -593,6 +594,12 @@ static uint8_t nest_imbalance_apply(uint8_t *buf, uint32_t *len_ref,
 uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                             uint32_t buf_cap, const char *proto) {
     if (!buf || !len_ref || !proto || *len_ref < 8) return 0;
+    /* De-injection (2026-10-10): the operators below are class-generic
+     * bug shapes (boundary saturation, structural asymmetry, escape
+     * amplification, identity replay) — the method contribution — and
+     * run at CHATAFL_KNOWLEDGE_LEVEL>=1.  Level 0 keeps the mutation
+     * core pure vanilla so the clean baseline arm stays clean. */
+    if (!kl_bugclass_mutate_on()) return 0;
     uint32_t len = *len_ref;
 
     /* ── S1: Content-Length overflow (kamailio CVE-2026-39863) ── */
@@ -892,7 +899,7 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
         for (uint32_t i = 0; i + 9 < len; i++) {
             if (strncasecmp((char *)buf + i, sess_marker, 9) == 0) {
                 static const char *session_ids[] = {
-                    "000022B8",       /* live555 deterministic counter */
+                    "000022B8",       /* also in public AFLNet in-rtsp seeds */
                     "DEADBEEF",       /* random guess */
                     "00000001",       /* first possible value */
                 };
@@ -962,25 +969,28 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                     return 1;
                 }
 
-                /* S9: consecutive-separator path (owntone CVE-2026-26828 —
-                 * NULL-deref on double-slash paths at library endpoints). */
-                static const char *sep_paths[] = {
-                    "/databases/1//playlists",
-                    "/databases/1//containers",
-                    "/databases/1//browse/genre",
-                    "/api//playlists",
-                    "/api///",
-                };
-                const char *new_path = sep_paths[mut_ur(5)];
-                uint32_t new_plen = strlen(new_path);
-                uint32_t old_plen = path_end - path_start;
-                if (len - old_plen + new_plen >= buf_cap) continue;
-                memmove(buf + path_start + new_plen, buf + path_end,
-                        len - path_end);
-                memcpy(buf + path_start, new_path, new_plen);
-                *len_ref = len - old_plen + new_plen;
-                cve_mutations_applied++;
-                return 1;
+                /* S9 (generalized 2026-10-10): consecutive-separator path
+                 * — duplicate one '/' separator at a random position
+                 * inside the URI the buffer already carries.  Class:
+                 * routers that split on '/' and dereference empty
+                 * segments (owntone CVE-2026-26828 was the historical
+                 * origin of the shape).  The former hardcoded endpoint
+                 * list is removed: no target API knowledge remains. */
+                {
+                    uint32_t seps[8];
+                    uint32_t n_sep = 0;
+                    for (uint32_t q = path_start;
+                         q < path_end && n_sep < 8; q++)
+                        if (buf[q] == '/') seps[n_sep++] = q;
+                    if (n_sep > 0 && len + 1 < buf_cap) {
+                        uint32_t at = seps[mut_ur(n_sep)];
+                        memmove(buf + at + 1, buf + at, len - at);
+                        buf[at + 1] = '/';
+                        (*len_ref)++;
+                        cve_mutations_applied++;
+                        return 1;
+                    }
+                }
             }
         }
     }

@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "chat-llm.h"
+#include "knowledge-level.h"
 #include "alloc-inl.h"
 #include "hash.h"
 
@@ -608,11 +609,14 @@ static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
 /* Stage-3 (CHATAFL_ATTACK_PROMPT, 2026-08-21): per-protocol vulnerability
  * patterns distilled from papers/漏洞发现经验 (papers/ChatAFLBugDetect.txt
  * Table VII / MBFuzzerBugDetect.txt / vulnerabilities.txt, 11 CVEs).
- * Injected into the plateau prompt ONLY when the gate is on, as an extra
- * bias paragraph next to the Fix-23 format constraint.  The output path is
- * unchanged: responses still flow through the same JSON validation and
- * P/U/R/G admission, so a bad suggestion is dropped exactly like any other
- * plateau candidate.  Total ≤200 tokens per protocol. */
+ *
+ * DE-INJECTION (2026-10-10): this is per-target CVE knowledge — compiled
+ * ONLY under CHATAFL_EMBED_CVE_CATALOG (make L3=1) and injected ONLY at
+ * CHATAFL_KNOWLEDGE_LEVEL=3 (or an explicit CHATAFL_ATTACK_PROMPT env
+ * override, which is inert in catalog-free builds).  The paper main arm
+ * (level 1) gets the target-agnostic bug-class primitives below instead.
+ */
+#ifdef CHATAFL_EMBED_CVE_CATALOG
 typedef struct { const char *name; const char *patterns; } ProtocolVulnPattern;
 static const ProtocolVulnPattern PLATEAU_VULN_PATTERNS[] = {
     {"RTSP",
@@ -649,19 +653,41 @@ static const ProtocolVulnPattern PLATEAU_VULN_PATTERNS[] = {
      "- Very long database/playlist id query strings\n"},
     {NULL, NULL}
 };
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
 
-/* Lazy getenv cache mirroring attack_oracle_enabled() in
- * protocol-oracle-precise.c. */
-static int attack_prompt_enabled(void) {
-    static int cached = -1;
-    if (cached < 0) {
-        const char *env = getenv("CHATAFL_ATTACK_PROMPT");
-        cached = (env && (atoi(env) == 1 || strcasecmp(env, "on") == 0 ||
-                          strcasecmp(env, "yes") == 0 ||
-                          strcasecmp(env, "true") == 0)) ? 1 : 0;
-    }
-    return cached;
-}
+/* Bug-class generative primitives (de-injection 2026-10-10).
+ *
+ * Replaces the CVE-pattern bias for the paper main arm
+ * (CHATAFL_KNOWLEDGE_LEVEL>=1).  This is target-agnostic generative
+ * theory with public CWE grounding — no CVE, no target, no trigger
+ * sequence is encoded; each primitive instantiates on whatever protocol
+ * the LLM already knows from the seed examples and the learned state
+ * data in the same prompt.  Injected at the same high-attention spot as
+ * the Fix-23 constraint; the output path (JSON validation + P/U/R/G
+ * admission) is unchanged. */
+static const char PLATEAU_BUGCLASS_PRIMITIVES[] =
+    "**BUG-CLASS GENERATIVE PRIMITIVES (target-agnostic):**\n"
+    "- Lifecycle violation (CWE-416/672): after a resource-releasing step "
+    "(teardown/logout/abort/delete/close), keep sending requests that "
+    "re-enter the released resource; also alternate inverse transitions "
+    "many times.\n"
+    "- Repetition & amplification (CWE-401/772): repeat the same "
+    "resource-acquiring request on one session/id far beyond normal "
+    "counts.\n"
+    "- Boundary stress (CWE-120/190): extreme field lengths, deep "
+    "nesting, and numeric type limits (0, -1, INT_MAX, INT_MAX+1, "
+    "4294967295) in any length/count/timeout/sequence field.\n"
+    "- Structural asymmetry (CWE-1284/1286): unbalanced quotes/brackets/"
+    "escapes; escape-decode mismatch (parser consumes 2 bytes, stores 1) "
+    "amplified by long escape runs.\n"
+    "- Identity confusion (CWE-284/672): stale or replayed tokens/ids "
+    "from earlier steps, duplicate identifiers, cross-session or "
+    "cross-connection references.\n\n";
+
+/* Unified gate (knowledge-level.h); legacy CHATAFL_ATTACK_PROMPT still
+ * overrides for historical ablation scripts (inert in catalog-free
+ * builds). */
+#define attack_prompt_enabled() kl_attack_prompt_on()
 
 char *llm_handle_plateau(const char *protocol_name, const char *examples,
                          const char *history, const char *state_ctx) {
@@ -676,17 +702,22 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         }
     }
 
-    /* Stage-3 (CHATAFL_ATTACK_PROMPT): look up per-protocol CVE-pattern bias.
-     * Injected next to the Fix-23 constraint so both land in the high-attention
+    /* Plateau bias paragraph: CVE patterns at level 3 (catalog builds
+     * only), bug-class primitives at level 1+ (all builds).  Injected
+     * next to the Fix-23 constraint so both land in the high-attention
      * region; the output path below is untouched. */
     const char *vuln_patterns = "";
     if (attack_prompt_enabled()) {
+#ifdef CHATAFL_EMBED_CVE_CATALOG
         for (int ci = 0; PLATEAU_VULN_PATTERNS[ci].name != NULL; ci++) {
             if (strcasecmp(protocol_name, PLATEAU_VULN_PATTERNS[ci].name) == 0) {
                 vuln_patterns = PLATEAU_VULN_PATTERNS[ci].patterns;
                 break;
             }
         }
+#endif /* CHATAFL_EMBED_CVE_CATALOG */
+    } else if (kl_bugclass_enabled()) {
+        vuln_patterns = PLATEAU_BUGCLASS_PRIMITIVES;
     }
 
     const char *mqtt_state_hint = "";

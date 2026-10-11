@@ -416,7 +416,7 @@ int oracle_check_ftp(
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTH_BYPASS,
                     "FTP: PASS accepted without USER (auth state bypass)",
-                    "CVE-2024-42644", i);
+                    "ORACLE-2024-42644", i);
             }
         }
     }
@@ -430,7 +430,7 @@ int oracle_check_ftp(
             oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                 ORACLE_CAT_AUTH_BYPASS,
                 "FTP: Data command succeeded without authentication",
-                "CVE-2024-42645", data_cmd_index);
+                "ORACLE-2024-42645", data_cmd_index);
             oracle_auth_bypass_count++;
         }
     }
@@ -448,7 +448,7 @@ int oracle_check_ftp(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_PATH_TRAVERSAL,
                         "FTP: Path traversal command accepted by server",
-                        "CVE-2024-3935", i);
+                        "ORACLE-2024-3935", i);
                     oracle_path_traversal_count++;
                     break;  /* One finding is enough */
                 }
@@ -464,7 +464,7 @@ int oracle_check_ftp(
             oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                 ORACLE_CAT_INFO_LEAK,
                 "FTP: Sensitive file content leaked in response",
-                "CVE-2024-42650", -1);
+                "ORACLE-2024-42650", -1);
             oracle_info_leak_count++;
         }
         /* Extended info leak: internal paths, version disclosure */
@@ -500,7 +500,7 @@ int oracle_check_ftp(
                             oracle_add_violation(result, ORACLE_SEV_HIGH,
                                 ORACLE_CAT_INJECTION,
                                 "FTP: CRLF injection in command arguments (FTP command smuggling)",
-                                "CVE-2026-39983", i);
+                                "ORACLE-2026-39983", i);
                             break;
                         }
                     }
@@ -528,7 +528,7 @@ int oracle_check_ftp(
                     oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                         ORACLE_CAT_ISOLATION,
                         "FTP: PORT command specifies private/internal address (FTP bounce risk)",
-                        "CVE-2018-15516", i);
+                        "ORACLE-2018-15516", i);
                 }
             }
         }
@@ -548,7 +548,7 @@ int oracle_check_ftp(
                     oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                         ORACLE_CAT_INJECTION,
                         "FTP: Multiple format string specifiers in command (format string vuln risk)",
-                        "CVE-2006-6750", i);
+                        "ORACLE-2006-6750", i);
                     break;
                 }
             }
@@ -577,7 +577,7 @@ int oracle_check_ftp(
                             oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                                 ORACLE_CAT_STATE_VIOLATION,
                                 "FTP: Cleartext data transfer after AUTH TLS (TLS downgrade risk)",
-                                "CVE-2021-22946", k);
+                                "ORACLE-2021-22946", k);
                             break;
                         }
                     }
@@ -603,7 +603,7 @@ int oracle_check_ftp(
             oracle_add_violation(result, ORACLE_SEV_LOW,
                 ORACLE_CAT_RESOURCE_EXHAUST | ORACLE_CAT_DOS,
                 "FTP: Excessive failed authentication attempts (resource exhaustion risk)",
-                "CVE-2026-41324", -1);
+                "ORACLE-2026-41324", -1);
             oracle_dos_count++;
         }
     }
@@ -685,7 +685,7 @@ int oracle_check_smtp(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
                         "SMTP: Bare CR/LF in address (SMTP smuggling attempt)",
-                        "CVE-2023-42117", i);
+                        "ORACLE-2023-42117", i);
                     break;
                 }
             }
@@ -707,7 +707,7 @@ int oracle_check_smtp(
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_AUTH_BYPASS | ORACLE_CAT_AUTHZ_BYPASS,
                     "SMTP: Mail relay succeeded without authentication (open relay)",
-                    "CVE-2023-42117", rcpt_idx);
+                    "ORACLE-2023-42117", rcpt_idx);
                 oracle_auth_bypass_count++;
             }
         }
@@ -755,7 +755,7 @@ int oracle_check_smtp(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_STATE_VIOLATION,
                         "SMTP: Cleartext command after STARTTLS (STRIPTLS downgrade risk)",
-                        "CVE-2005-3402", i);
+                        "ORACLE-2005-3402", i);
                     break;
                 }
             }
@@ -778,7 +778,7 @@ int oracle_check_smtp(
             oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                 ORACLE_CAT_INJECTION,
                 "SMTP: Multiple format string specifiers in command (format string vuln risk)",
-                "CVE-2001-1078", i);
+                "ORACLE-2001-1078", i);
             break;
         }
     }
@@ -790,7 +790,7 @@ int oracle_check_smtp(
             oracle_add_violation(result, ORACLE_SEV_LOW,
                 ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
                 "SMTP: Excessively long command (memory exhaustion risk)",
-                "CVE-2001-0894", i);
+                "ORACLE-2001-0894", i);
             oracle_dos_count++;
             break;
         }
@@ -854,7 +854,7 @@ int oracle_check_rtsp(
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_STATE_VIOLATION,
                     "RTSP: PLAY before SETUP accepted by server",
-                    "CVE-2021-38382", i);
+                    "ORACLE-2021-38382", i);
                 oracle_state_violation_count++;
             }
         }
@@ -879,7 +879,7 @@ int oracle_check_rtsp(
                 oracle_add_violation(result, ORACLE_SEV_LOW,
                     ORACLE_CAT_DOS,
                     "RTSP: Oversized CSeq header (potential buffer overflow)",
-                    "CVE-2019-7314", i);
+                    "ORACLE-2019-7314", i);
             }
         }
     }
@@ -909,7 +909,7 @@ int oracle_check_rtsp(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTHZ_BYPASS,
                         "RTSP: Duplicate SETUP for same stream URL (UAF/double-free risk)",
-                        "CVE-2019-7314", i);
+                        "ORACLE-2019-7314", i);
                 }
                 last_setup_url = url;
                 last_setup_url_len = url_len;
@@ -934,7 +934,7 @@ int oracle_check_rtsp(
                     oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                         ORACLE_CAT_DOS,
                         "RTSP: Transport header with port=0 (potential DoS)",
-                        "CVE-2019-6256", i);
+                        "ORACLE-2019-6256", i);
                 }
                 /* Check for excessively long transport header (CVE-2018-4013: stack BO) */
                 const unsigned char *eol = memchr(transport, '\r', remaining);
@@ -942,7 +942,7 @@ int oracle_check_rtsp(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_DOS,
                         "RTSP: Overly long Transport header (stack buffer overflow risk)",
-                        "CVE-2018-4013", i);
+                        "ORACLE-2018-4013", i);
                 }
             }
         }
@@ -1026,7 +1026,7 @@ int oracle_check_sip(
             oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                 ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
                 "SIP: Excessive Via headers (loop/amplification attack)",
-                "CVE-2020-28361", i);
+                "ORACLE-2020-28361", i);
             oracle_dos_count++;
         }
 
@@ -1046,7 +1046,7 @@ int oracle_check_sip(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_AUTH_BYPASS,
                         "SIP: INVITE succeeded without authentication (toll fraud risk)",
-                        "CVE-2023-49323", i);
+                        "ORACLE-2023-49323", i);
                     oracle_auth_bypass_count++;
                 }
                 break;
@@ -1068,7 +1068,7 @@ int oracle_check_sip(
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_AUTH_BYPASS,
                         "SIP: MESSAGE accepted without Authorization (unauthorized messaging)",
-                        "CVE-2021-37624", i);
+                        "ORACLE-2021-37624", i);
                     oracle_auth_bypass_count++;
                 }
             }
@@ -1090,7 +1090,7 @@ int oracle_check_sip(
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_DOS,
                     "SIP: Oversized Authorization header (DoS/Crash risk)",
-                    "CVE-2023-28098", i);
+                    "ORACLE-2023-28098", i);
                 oracle_dos_count++;
             }
             /* Missing digest fields after "Digest " */
@@ -1099,7 +1099,7 @@ int oracle_check_sip(
                 oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                     ORACLE_CAT_STATE_VIOLATION,
                     "SIP: Malformed Digest auth header (missing nonce, potential parsing bug)",
-                    "CVE-2023-28098", i);
+                    "ORACLE-2023-28098", i);
             }
         }
     }
@@ -1116,7 +1116,7 @@ int oracle_check_sip(
             oracle_add_violation(result, ORACLE_SEV_HIGH,
                 ORACLE_CAT_INJECTION,
                 "SIP: SQL injection pattern in request headers",
-                "CVE-2008-6573", i);
+                "ORACLE-2008-6573", i);
         }
     }
 
@@ -1134,7 +1134,7 @@ int oracle_check_sip(
                     oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                         ORACLE_CAT_AUTHZ_BYPASS,
                         "SIP: INVITE with privileged From header (spoofing risk)",
-                        "CVE-2007-3347", i);
+                        "ORACLE-2007-3347", i);
                 }
             }
         }
@@ -1341,7 +1341,7 @@ int oracle_check_http(
                     oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                         ORACLE_CAT_PATH_TRAVERSAL,
                         "HTTP: Double-encoded path traversal succeeded (RCE risk if CGI enabled)",
-                        "CVE-2021-42013", i);
+                        "ORACLE-2021-42013", i);
                     oracle_path_traversal_count++;
                 }
             }
@@ -1359,7 +1359,7 @@ int oracle_check_http(
             oracle_add_violation(result, ORACLE_SEV_HIGH,
                 ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
                 "HTTP: CRLF injection with embedded HTTP response (response splitting)",
-                "CVE-2023-38709", i);
+                "ORACLE-2023-38709", i);
         }
     }
 
@@ -1385,7 +1385,7 @@ int oracle_check_http(
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
                             ORACLE_CAT_DOS,
                             "HTTP: Oversized chunk-size value (potential BO in chunk parser)",
-                            "CVE-2002-0392", i);
+                            "ORACLE-2002-0392", i);
                     }
                 }
             }
@@ -1405,7 +1405,7 @@ int oracle_check_http(
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_AUTH_BYPASS,
                     "HTTP: Auth bypass via URL encoding trick (%00 or ..;)",
-                    "CVE-2017-3167", i);
+                    "ORACLE-2017-3167", i);
                 oracle_auth_bypass_count++;
             }
         }
@@ -1585,7 +1585,7 @@ int oracle_check_mqtt(
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
                             ORACLE_CAT_AUTH_BYPASS | ORACLE_CAT_STATE_VIOLATION,
                             "MQTT: PUBLISH without CONNECT accepted by broker",
-                            "CVE-2023-34488", i);
+                            "ORACLE-2023-34488", i);
                         oracle_auth_bypass_count++;
                     }
                 }
@@ -1606,7 +1606,7 @@ int oracle_check_mqtt(
                     oracle_add_violation(result, ORACLE_SEV_INFO,
                         ORACLE_CAT_RESOURCE_EXHAUST,
                         "MQTT: Retained message (potential resource exhaustion)",
-                        "CVE-2023-3592", i);
+                        "ORACLE-2023-3592", i);
                 }
                 break;
             }
@@ -1644,7 +1644,7 @@ int oracle_check_mqtt(
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
                             ORACLE_CAT_AUTH_BYPASS | ORACLE_CAT_STATE_VIOLATION,
                             "MQTT: SUBSCRIBE without CONNECT accepted by broker",
-                            "CVE-2023-34488", i);
+                            "ORACLE-2023-34488", i);
                         oracle_auth_bypass_count++;
                     }
                 }
@@ -1722,7 +1722,7 @@ int oracle_check_mqtt(
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
                             ORACLE_CAT_DOS,
                             "MQTT: SUBSCRIBE with zero-length topic filter (broker crash risk)",
-                            "CVE-2019-5432", i);
+                            "ORACLE-2019-5432", i);
                         oracle_dos_count++;
                         break;
                     }
@@ -1749,7 +1749,7 @@ int oracle_check_mqtt(
             oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                 ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
                 "MQTT: Excessive v5 user-properties (CPU exhaustion risk)",
-                "CVE-2021-41039", -1);
+                "ORACLE-2021-41039", -1);
             oracle_dos_count++;
         }
     }
@@ -1779,7 +1779,7 @@ int oracle_check_mqtt(
                             oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                                 ORACLE_CAT_ISOLATION | ORACLE_CAT_AUTH_BYPASS,
                                 "MQTT: Empty ClientID with clean_session=0 (session hijack risk)",
-                                "CVE-2014-6116", i);
+                                "ORACLE-2014-6116", i);
                         }
                     }
                 }
