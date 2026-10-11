@@ -782,7 +782,10 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "- States with seeds_count=0: cannot be targeted, skip them\n"
         "- Prefer states with is_error=false AND highest productivity — they are most likely to yield new coverage\n"
         "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
-        "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "- Strategy A (suggested_request) is best when history shows unrecognized commands\n"
+        "- IMPORTANT: Always include at least one propose_mutations action alongside any\n"
+        "  set_target_state or prioritize_seeds. Pure scheduling redirection without new\n"
+        "  candidate proposals bypasses the admission validation pipeline entirely.\n\n"
         "%s"
         "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
         protocol_name,

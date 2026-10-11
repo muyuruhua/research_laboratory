@@ -3039,7 +3039,15 @@ static char *admission_collect_state_evidence(u8 executed,
 
   if (!executed || !extract_response_codes || !response_buf || response_buf_size <= 0) {
     seq = strdup("");
-    if (edge_seq_out) *edge_seq_out = strdup("");
+    /* edge_seq is released by admission_evidence_free() via ck_free, which
+     * reads the ck_alloc cookie header at ptr[-2] and frees ptr-ALLOC_OFF_HEAD.
+     * A strdup'd pointer has no cookie: ck_free would read out of bounds and
+     * free an interior pointer, corrupting the heap (surfaced as SIGSEGV at
+     * the next big alloc or glibc "free(): invalid pointer" abort). */
+    if (edge_seq_out) {
+      *edge_seq_out = (char *)ck_alloc(1);
+      ((char *)*edge_seq_out)[0] = '\0';
+    }
     return seq;
   }
 
@@ -3049,7 +3057,11 @@ static char *admission_collect_state_evidence(u8 executed,
   if (!states || state_count == 0) {
     if (states) ck_free(states);
     seq = strdup("");
-    if (edge_seq_out) *edge_seq_out = strdup("");
+    /* Same ownership constraint as above: must be ck_alloc'd. */
+    if (edge_seq_out) {
+      *edge_seq_out = (char *)ck_alloc(1);
+      ((char *)*edge_seq_out)[0] = '\0';
+    }
     return seq;
   }
 
@@ -3119,6 +3131,9 @@ typedef struct {
   u32  ipsm_edge_delta, ipsm_node_delta, bitmap_delta, favored_delta;
   u32  queued_delta, forced_queue_delta;
   u8   native_promoted;
+  /* v3.1: suffix-only U evaluation (expert P0-3 fix) */
+  u8   u_pass_prefix;    /* original whole-sequence U (for analysis) */
+  u32  u_suffix_count;   /* number of states in candidate's suffix */
   /* Trial-mode evidence (P0-1): non-destructive novelty probe result
    * (0=none, 1=hit-count-only, 2=new edge) and ledger-based state-novelty
    * counts that do not depend on retention. */
@@ -13352,7 +13367,10 @@ static void provisional_evict_oldest_if_needed(void) {
 
 /* Case B admission (paper §四): P∧U∧R∧¬G_code∧G_state → provisional queue
  * entry with a fixed, small validation budget (default 64 descendant
- * mutations or 30 s, whichever comes first). */
+ * mutations or 30 s, whichever comes first).
+ * v3.1 (expert P0-2 fix): the entry is tagged with scheduling priority
+ * so it gets fuzzed BEFORE the TTL expires. The per-execution budget
+ * hook in common_fuzz_stuff enforces the 64-descendant cap. */
 static u8 admission_provisional_queue_candidate(u32 target_sid,
                                                 u64 candidate_id) {
   if (!out_dir || !kl_messages) return 0;
@@ -13388,6 +13406,10 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
   q->prov_budget_left = provisional_budget_default;
   q->prov_admit_ms = get_cur_time();
   q->prov_deadline_ms = q->prov_admit_ms + provisional_ttl_ms_default;
+  /* v3.1: mark as favored so the scheduler picks it up quickly
+   * instead of letting it expire by TTL before being fuzzed */
+  q->favored = 1;
+  pending_favored++;
 
   provisional_admitted++;
   provisional_live++;
@@ -13535,6 +13557,19 @@ static u8 admission_run_llm_candidate(char **argv,
                                              source_state, target_sid,
                                              candidate, candidate_len, p_pass);
 
+  /* ── v3.1 Suffix-only U evaluation (expert feedback P0-3) ────────
+   * Whole-sequence U rejects 92-96% of candidates because seed prefixes
+   * almost always contain error responses. This fix separates:
+   *   u_pass_suffix = only the CANDIDATE's own responses are error-free
+   *   u_pass_prefix = whether the seed prefix is also error-free (logged)
+   * The admission gate uses u_pass_suffix for the provisional/durable
+   * decision, while u_pass_prefix is recorded for analysis. Crash and
+   * oracle evidence is retained independently regardless of U.
+   *
+   * Implementation: snapshot messages_sent before the trial; the states
+   * extracted after the trial that correspond to messages beyond that
+   * snapshot are the candidate's own responses. */
+  u32 messages_before_trial = messages_sent;
   admission_take_snapshot(&before);
 
   u8 use_trial_mode = (p_pass && candidate && candidate_len > 0 &&
@@ -13557,6 +13592,48 @@ static u8 admission_run_llm_candidate(char **argv,
   admission_evidence_t ev;
   admission_evaluate(&before, &after_common, &after_common, p_pass, executed,
                      target_sid, source_state, &ev);
+
+  /* v3.1: re-evaluate U using only the candidate's suffix states.
+   * The full state sequence includes the seed prefix's responses; we
+   * need to identify which states belong to the candidate itself. */
+  if (executed && p_pass && !ablation_no_admission) {
+    unsigned int suffix_count = 0;
+    unsigned int *suffix_states = NULL;
+    /* Extract states from the response_buf, counting only messages
+     * sent after the pre-trial snapshot */
+    if (extract_response_codes && response_buf && response_buf_size > 0) {
+      unsigned int all_count = 0;
+      unsigned int *all_states = (*extract_response_codes)(
+          (unsigned char *)response_buf, (unsigned int)response_buf_size, &all_count);
+      if (all_states && all_count > 0) {
+        /* The candidate appends 1+ messages; estimate how many response
+         * codes correspond to those messages by comparing messages_sent
+         * before and after the trial. At minimum the last response code
+         * belongs to the candidate. */
+        u32 delta_msgs = messages_sent - messages_before_trial;
+        if (delta_msgs == 0) delta_msgs = 1;  /* safety: at least 1 */
+        suffix_count = (delta_msgs <= all_count) ? delta_msgs : 1;
+        suffix_states = &all_states[all_count - suffix_count];
+      }
+    }
+    /* Compute suffix-only U */
+    u8 suffix_has_error = 0;
+    for (unsigned int i = 0; i < suffix_count; i++) {
+      if (classify_state_error_hint(suffix_states[i], protocol_name) == 1) {
+        suffix_has_error = 1;
+        break;
+      }
+    }
+    /* Store both variants for logging and decision */
+    ev.u_pass_prefix = ev.u_pass;  /* original whole-sequence U */
+    ev.u_pass = (p_pass && executed && last_common_fuzz_fault == FAULT_NONE &&
+                 suffix_count > 0 && !suffix_has_error);
+    ev.u_suffix_count = suffix_count;
+    /* Recompute disposition with the suffix-only U */
+    ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
+                           ev.g_code_pass, ev.g_state_pass };
+    ev.disposition = ec_decide_disposition(&pr);
+  }
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
 
