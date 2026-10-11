@@ -803,7 +803,7 @@ static u8   calibration_enabled = 0;        /* CHATAFL_CALIBRATION=1 → arm E *
 static double cal_gamma = EC_DEFAULT_GAMMA; /* CHATAFL_CAL_GAMMA (frozen) */
 static double cal_epsilon = EC_DEFAULT_EPSILON; /* CHATAFL_CAL_EPSILON */
 static u32  provisional_budget_default = 64;     /* descendant mutations */
-static u64  provisional_ttl_ms_default = 30000;  /* local validation window */
+static u64  provisional_ttl_ms_default = 600000; /* local validation window (10 min; v3.2) */
 static u32  provisional_max_live = 64;           /* live provisional cap */
 static u8   event_log_enabled = 1;               /* CHATAFL_EVENT_LOG=0 off */
 
@@ -4804,6 +4804,16 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
 
     if (state->seeds_count == 0)
       return NULL;
+
+    /* v3.2 (P0-2 fix): if a live provisional entry belongs to this state,
+     * select it FIRST so it gets descendant validation before TTL expiry. */
+    for (u32 pi = 0; pi < state->seeds_count; pi++) {
+      struct queue_entry *pe = state->seeds[pi];
+      if (pe && pe->is_provisional && !pe->prov_converted && !pe->prov_expired) {
+        state->selected_seed_index = pi;
+        return pe;
+      }
+    }
 
     switch (mode)
     {
@@ -20231,7 +20241,27 @@ retry_state_aware:
          * its code-progress reward) before a new selection is made. */
         cal_episode_finalize(0);
 
-        target_state_id = choose_target_state(effective_algo);
+        /* v3.2 (P0-2 fix): if a live provisional entry exists, force the
+         * next state selection to its generating state so the entry gets
+         * fuzzed BEFORE the TTL expires. This bypasses the normal weighted
+         * random selection once per provisional admission. */
+        u32 forced_prov_state = 0;
+        if (provisional_live > 0) {
+          for (struct queue_entry *q = queue; q; q = q->next) {
+            if (q->is_provisional && !q->prov_converted && !q->prov_expired) {
+              forced_prov_state = q->generating_state_id;
+              break;
+            }
+          }
+        }
+
+        if (forced_prov_state > 0) {
+          target_state_id = forced_prov_state;
+          fprintf(stderr, "[provisional-priority] forcing state %u for descendant validation\n",
+                  target_state_id);
+        } else {
+          target_state_id = choose_target_state(effective_algo);
+        }
         cal_episode_begin(target_state_id);
 
         /* Update favorites based on the selected state */
