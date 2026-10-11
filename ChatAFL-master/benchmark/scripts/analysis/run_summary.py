@@ -154,13 +154,24 @@ def read_status_metadata(results_dir: Path) -> dict[str, dict[str, str]]:
 
 
 def parse_cov_text(text: str) -> tuple[Optional[int], Optional[int]]:
-    lines = [line for line in text.splitlines() if line.strip()]
-    if len(lines) <= 1:
-        return None, None
-    last = lines[-1].split(",")
-    if len(last) < 5:
-        return None, None
-    return safe_int(last[2]), safe_int(last[4])
+    # Endpoint = row with the MAXIMUM l_abs, not the last row. Coverage is
+    # monotone non-decreasing by construction, but a corrupted or
+    # wrong-scale terminal row (e.g. a gcov recompute appended by the
+    # finishing script) must not override the real endpoint.
+    best: tuple[Optional[int], Optional[int]] | None = None
+    for line in text.splitlines():
+        if not line.strip() or line.startswith("Time"):
+            continue
+        fields = line.split(",")
+        if len(fields) < 5:
+            continue
+        l_abs = safe_int(fields[2])
+        b_abs = safe_int(fields[4])
+        if l_abs is None:
+            continue
+        if best is None or l_abs > best[0]:  # type: ignore[operator]
+            best = (l_abs, b_abs)
+    return best if best is not None else (None, None)
 
 
 def parse_plot_text(text: str) -> tuple[Optional[int], Optional[int]]:

@@ -49,7 +49,7 @@ for f in $(echo $folder/$testdir/*.raw); do
   
   wait
   cp /home/fuzzing/home/ubuntu/experiments/pure-ftpd-gcov/src/*.gcda /home/ubuntu/experiments/pure-ftpd-gcov/src/ > /dev/null 2>&1
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -79,7 +79,7 @@ for f in $(echo $folder/$testdir/id*); do
   count=$(expr $count + 1)
   rem=$(expr $count % $step)
   if [ "$rem" != "0" ]; then continue; fi
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -94,7 +94,7 @@ then
   time=$(stat -c %Y $f)
   [ "$time" -lt "$prev_t" ] && time=$prev_t
   prev_t=$time
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -107,12 +107,14 @@ fi
 end_ts=$(grep -a "^last_update" "$folder/fuzzer_stats" 2>/dev/null | head -1 | tr -dc '0-9')
 start_ts=$(grep -a "^start_time" "$folder/fuzzer_stats" 2>/dev/null | head -1 | tr -dc '0-9')
 if [ -n "$end_ts" ] && [ "$end_ts" -ge "$prev_t" ] 2>/dev/null; then
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
   b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
-  echo "$end_ts,$l_per,$l_abs,$b_per,$b_abs,$idx" >> $covfile
+  # v3.1 fix: terminal row goes to a sidecar file, never appended to the
+  # main series (a wrong-root gcovr here used to corrupt the endpoint).
+  echo "$end_ts,$l_per,$l_abs,$b_per,$b_abs,$idx" > "${covfile}.final"
 fi
 printf '{"cov_script_schema":"v3","n_replayed":%s,"first_mtime":%s,"last_mtime":%s,"campaign_start":%s,"campaign_end":%s,"step":%s,"fmode":%s}\n' \
   "$idx" "$first_t" "$prev_t" "$start_ts" "$end_ts" "$step" "$fmode" > "${covfile}.audit"

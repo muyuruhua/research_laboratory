@@ -1,5 +1,36 @@
 ---
 
+# 修复:零响应试验的 evidence 释放错配(strdup 分配 + ck_free 释放)→ 堆损坏 → SIGSEGV/SIGABORT(2026-10-11)
+
+- **现象**:forked-daapd direct 臂 `ablation_direct_20261010T215927` 于 362/1580 min 处 afl-fuzz
+  段错误(docker logs: `timeout: the monitored command dumped core` + `Segmentation fault`),但被
+  exec 脚本的 `[ $R -eq 139 ] && R=0` 掩码记成 exit 0/completed。Oct 8/9 各目标/各臂的 exit=134
+  (SIGABRT, glibc "free(): invalid pointer") 早死与 2026-10-01 kamailio "first LLM plateau" 事故
+  为同一根因的两种爆法。
+- **根因**(ASan 复现定位,forked-daapd direct + SMARTPL wedge 种子 + 强制 plateau 轮):
+  `admission_collect_state_evidence()` 的两个早退路径(试验无响应/零状态,`u_reason:"no response state"`)
+  用 `strdup("")` 分配 `edge_seq`,而唯一释放点 `admission_evidence_free()` 用 `ck_free`。
+  本仓库的 `ck_alloc` 指针带 8 字节 cookie 头,`ck_free` 会读 `ptr[-2]` 的 cookie 并 `free(ptr-ALLOC_OFF_HEAD)`:
+  - strdup 指针无 cookie → **越界读**(ASan: heap-buffer-overflow READ 4,左越界 8 字节,1 字节区域);
+  - `free(内部指针)` → glibc 检出则 abort(=134 家族),未检出则**静默污染 free list,
+    在下一个大额分配(如 ops 循环的 `ck_alloc(65536+512)`)处引爆 SIGSEGV。
+  崩溃栈(符号化):`fuzz_one:15135(plateau ops 循环) → admission_run_llm_candidate:13582(admission_evidence_free)
+  → DFL_ck_free(alloc-inl.h:188 越界读)`;分配栈:`admission_collect_state_evidence:3042(strdup(""))`。
+  与目标 wedge 强相关:仅零响应试验走 strdup 路径;响应正常的试验 edge_seq 为 ck_alloc,天然安全
+  (这解释了并行姐妹副本 3 次 force-promote 无事)。
+- **修复**(afl-fuzz.c,两个早退路径):`edge_seq` 改用 `ck_alloc(1)` + 手工置 `'\0'`,与释放点分配器对齐。
+  `state_seq` 保持 strdup/`free()` 不变(本就匹配)。
+- **验证**:同场景 ASan 复现——未修复版首次零响应试验即报 heap-buffer-overflow 并 abort;
+  修复版连续 2 次零响应试验 + force-promote 全程干净、fuzzer 存活、ASan 零报告。
+- **连带修复**:
+  1. `profuzzbench_exec_common_dev.sh`:移除 5 处 `[ $R -eq 139 ] && R=0` 退出码掩码
+     (仅保留 stateafl 分支——该掩码因 stateafl flaky 退出而引入,提交 2fe412778;其它 fuzzer 的
+     139 是真实段错误,必须让 POSTRUN 可见)。
+  2. `run_ablation.sh` POSTRUN:exit 139 → `SEGFAULT(exit=139:...)`,134 → `HEAP_ABORT(exit=134:...)` 专项标签。
+- **部署**:容器启动时从挂载源码自编译,新起战役自动携带修复;已运行容器需重启。
+
+---
+
 # 修复:过期 provisional 队列条目被选为 splice/region 供体 → afl-fuzz exit(1) 提前终止(2026-10-11)
 
 - **现象**:两级准入臂(gated_fixed/calibrated/cal_gamma*)随机提前终止,exit_code=1,
