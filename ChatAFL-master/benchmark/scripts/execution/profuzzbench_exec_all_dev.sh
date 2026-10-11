@@ -3,8 +3,18 @@
 # Volume挂载开发模式的执行包装脚本
 # 基于profuzzbench_exec_all.sh，但使用profuzzbench_exec_common_dev.sh
 
-export NUM_CONTAINERS="${NUM_CONTAINERS:-10}"
-export TIMEOUT="${TIMEOUT:-86400}"
+# 2026-10-10 防护：这两项不允许静默默认值。当天事故：run_dev.sh 在 104 个实例
+# 运行期间被原地编辑，bash 在长命令返回后从旧偏移重读到不带环境变量前缀的裸调用，
+# 旧默认值 10×86400s 逐波拉起 6 组 rogue 容器并写入旧 campaign 目录。
+# 强制显式传入后，任何裸调用（脚本重读/误敲/回放）都在此立即失败。
+if [[ -z "${NUM_CONTAINERS:-}" || -z "${TIMEOUT:-}" ]]; then
+    echo "[ERROR] NUM_CONTAINERS 和 TIMEOUT 必须显式设置，不再提供默认值。" >&2
+    echo "        通过 ./run_dev.sh <N> <minutes> <target> <fuzzer> 传入，或：" >&2
+    echo "        NUM_CONTAINERS=1 TIMEOUT=94800 $0 <target> <fuzzer>" >&2
+    exit 3
+fi
+export NUM_CONTAINERS
+export TIMEOUT
 export SKIPCOUNT="${SKIPCOUNT:-1}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
 export PROJECT_ROOT="${PROJECT_ROOT:-$PWD/..}"
@@ -22,6 +32,18 @@ fix_result_permissions() {
 # Generate timestamp for results directory
 # Allow caller to pre-set TIMESTAMP (e.g., ablation scripts inject label here)
 export TIMESTAMP=${TIMESTAMP:-$(date "+%b-%d_%H-%M-%S")}
+
+# 2026-10-10 防护：禁止复用已完成的同名结果目录。裸调用会带着残留的旧 TIMESTAMP
+# 静默写入并覆盖 out-*_N.tar.gz；确需同目录重跑时显式 export CHATAFL_ALLOW_RERUN=1。
+if [[ "${CHATAFL_ALLOW_RERUN:-0}" != "1" ]]; then
+    for _completed_dir in "${RESULTS_ROOT}"/results-*_"${TIMESTAMP}"; do
+        if [[ -d "$_completed_dir" && -f "$_completed_dir/run_summary.csv" ]]; then
+            echo "[ERROR] 结果目录已完成并存在归档标记：${_completed_dir}" >&2
+            echo "        拒绝以 TIMESTAMP=${TIMESTAMP} 重跑（会覆盖既有归档）。确需重跑：export CHATAFL_ALLOW_RERUN=1" >&2
+            exit 3
+        fi
+    done
+fi
 
 export TARGET_LIST=$1
 export FUZZER_LIST=$2

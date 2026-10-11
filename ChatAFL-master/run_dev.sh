@@ -2,6 +2,11 @@
 
 # Volume挂载开发模式运行脚本
 # 用法：./run_dev.sh NUM_CONTAINERS TIMEOUT_MINUTES TARGET FUZZER
+#
+# ⚠️ 严禁在仍有实例运行时原地编辑本文件（2026-10-10 事故：bash 按偏移增量读取
+#    脚本，22h 长命令返回后会执行被编辑移位的字节，拉起 6 波 10×24h rogue 容器）。
+#    修改前先 `pgrep -f run_dev.sh` 确认为空，或 cp 成新文件再改。
+#    下游 profuzzbench_exec_all_dev.sh 已强制显式参数、缺参即退出（双保险）。
 
 PFBENCH="$PWD/benchmark"
 cd $PFBENCH
@@ -174,6 +179,7 @@ PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   CHATAFL_NO_NESTIMB="${CHATAFL_NO_NESTIMB:-}" \
   CHATAFL_NO_TRANSPORTSAT="${CHATAFL_NO_TRANSPORTSAT:-}" \
   CHATAFL_NO_TUNNELSWITCH="${CHATAFL_NO_TUNNELSWITCH:-}" \
+  CHATAFL_KNOWLEDGE_LEVEL="${CHATAFL_KNOWLEDGE_LEVEL:-}" \
   KAMAILIO_TCP="${KAMAILIO_TCP:-}" \
   CHATAFL_CLEAN_CONTAINERS="${CHATAFL_CLEAN_CONTAINERS:-}" \
   CHATAFL_NO_ADAPTIVE="${CHATAFL_NO_ADAPTIVE:-}" \

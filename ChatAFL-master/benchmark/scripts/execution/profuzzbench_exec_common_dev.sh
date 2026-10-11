@@ -4,6 +4,13 @@ DOCIMAGE=$1   #name of the docker image
 RUNS=$2       #number of runs
 SAVETO=$3     #path to folder keeping the results
 
+# 2026-10-10 防护：参数不全或 RUNS 非正整数时立即退出。同日 rogue 事故中，
+# 裸调用靠下游默认值才拉起了 10 容器；此处兜底杜绝空/坏参数进入 seq 与 docker。
+if [[ $# -lt 8 || ! "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[ERROR] usage: $0 <image> <runs> <results-dir> <fuzzer> <outdir> <options> <timeout-s> <skipcount>" >&2
+    exit 2
+fi
+
 # Container retention (2026-09-25): fuzz containers are STOPPED but KEPT
 # after result collection by default so truncated archives / wedged runs
 # can be autopsied (docker cp & docker logs work on stopped containers).
@@ -882,6 +889,13 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_DEEP_STATE_EXPLORE:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_DEEP_STATE_EXPLORE=${CHATAFL_DEEP_STATE_EXPLORE}"
   [[ -n "${CHATAFL_DEEP_STATE_SEED_MAX:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_DEEP_STATE_SEED_MAX=${CHATAFL_DEEP_STATE_SEED_MAX}"
   [[ -n "${CHATAFL_PAYLOAD_GUARD:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_PAYLOAD_GUARD=${CHATAFL_PAYLOAD_GUARD}"
+
+  # De-injection (2026-10-10): unified knowledge level — the single
+  # control surface for all CVE-knowledge channels (see
+  # LoopFuzz/knowledge-level.h).  Forward it so paper arms can pin
+  # CHATAFL_KNOWLEDGE_LEVEL=1 (main) or =3 (L3 leakage upper bound,
+  # needs an L3=1 build); absence = level 0 (all channels off).
+  [[ -n "${CHATAFL_KNOWLEDGE_LEVEL:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_KNOWLEDGE_LEVEL=${CHATAFL_KNOWLEDGE_LEVEL}"
 
   # Per-container MQTT broker list: local broker + stable reference + multi-broker fleet
   MQTT_FLAGS=""
