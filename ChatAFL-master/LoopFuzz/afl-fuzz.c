@@ -891,6 +891,14 @@ static u64  provisional_censored = 0;
 static u64  cal_episodes_completed = 0;
 static u64  cal_episodes_zero_mut = 0;
 static u64  cal_episodes_interrupted = 0;
+/* P0-4: shadow validation counters (false negative rate measurement) */
+static u32  shadow_budget_default = 16;
+static u32  shadow_max_per_campaign = 20;
+static u64  shadow_validations_total = 0;
+static u64  shadow_new_edges_total = 0;
+static u64  shadow_false_negatives = 0;
+static u64  shadow_would_have_found = 0;
+
 static u64  admission_promoted_durable = 0;
 
 /* Per-candidate LLM linkage: filled when a plateau reply is accepted,
@@ -11502,6 +11510,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "cal_eps_completed     : %llu\n"
              "cal_eps_zero_mut      : %llu\n"
              "cal_eps_interrupted   : %llu\n"
+             "shadow_validations    : %llu\n"
+             "shadow_new_edges      : %llu\n"
+             "shadow_false_neg      : %llu\n"
+             "shadow_would_find     : %llu\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
              "admission_accounting : %u\n",
@@ -11546,6 +11558,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)cal_episodes_completed,
           (unsigned long long)cal_episodes_zero_mut,
           (unsigned long long)cal_episodes_interrupted,
+          (unsigned long long)shadow_validations_total,
+          (unsigned long long)shadow_new_edges_total,
+          (unsigned long long)shadow_false_negatives,
+          (unsigned long long)shadow_would_have_found,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
@@ -13536,6 +13552,10 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
   return 1;
 }
 
+/* P0-4 forward declaration */
+static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
+                                     admission_evidence_t *ev);
+
 static u8 admission_run_llm_candidate(char **argv,
                                       const char *source,
                                       const char *action_type,
@@ -13666,6 +13686,13 @@ static u8 admission_run_llm_candidate(char **argv,
                                 &before, &after_common, &after_final,
                                 &ev, p_reason, executed, common_ret,
                                 forced, durable, provisional);
+
+  /* P0-4: shadow-validate rejected candidates that had code or state
+   * evidence — measures the false negative rate of the admission gate */
+  if (!ablation_no_admission && !durable && !provisional && !forced) {
+    shadow_validate_rejected(argv, candidate, candidate_len, &ev);
+  }
+
   admission_evidence_free(&ev);
 
   /* Trial work (execution + any promotion) must stay out of the current
@@ -13673,6 +13700,133 @@ static u8 admission_run_llm_candidate(char **argv,
   cal_episode_rebase_after_trial();
 
   return common_ret;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * P0-4: Shadow validation for rejected candidates
+ *
+ * The expert requires: "对预先定义的候选集合进行 shadow validation,
+ * 保留候选血缘;相同执行预算下比较后代新边产出、执行开销、队列保留
+ * 时间及误拒率" — for rejected candidates, measure what WOULD have
+ * happened if they were admitted, using the same execution budget.
+ *
+ * This module runs a bounded set of havoc mutations on each rejected
+ * candidate that had G_code or G_state evidence, in shadow mode (no
+ * queue insertion, no virgin_bits update), and logs whether any
+ * descendant finds a new code edge. This directly measures the false
+ * negative rate of the admission gate.
+ * ══════════════════════════════════════════════════════════════════ */
+
+
+static void shadow_log_event(u64 candidate_id, const char *trigger,
+                             u32 budget, u32 new_edges, u64 latency_ms,
+                             u8 g_code_pass, u8 g_state_pass) {
+  if (!event_log_enabled) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("shadow_validation"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "candidate_id", candidate_id);
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  json_object_object_add(j, "trigger", json_object_new_string(trigger));
+  admission_json_add_u64(j, "shadow_budget", budget);
+  admission_json_add_u64(j, "shadow_new_edges", new_edges);
+  admission_json_add_u64(j, "latency_ms", latency_ms);
+  json_object_object_add(j, "g_code_pass", json_object_new_boolean(g_code_pass));
+  json_object_object_add(j, "g_state_pass", json_object_new_boolean(g_state_pass));
+  json_object_object_add(j, "would_have_found_edges",
+      json_object_new_boolean(new_edges > 0));
+  admission_json_add_u64(j, "cum_validations", shadow_validations_total);
+  admission_json_add_u64(j, "cum_new_edges", shadow_new_edges_total);
+  admission_json_add_u64(j, "cum_false_negatives", shadow_false_negatives);
+  admission_json_add_u64(j, "cum_would_have_found", shadow_would_have_found);
+  ec_append_jsonl("shadow-events.jsonl", j);
+  json_object_put(j);
+}
+
+/* Run shadow havoc mutations on a rejected candidate to measure
+ * what the admission gate might have missed (false negative rate).
+ * Uses the same non-destructive probe as trial mode (mode=1). */
+static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
+                                     admission_evidence_t *ev) {
+  if (!candidate || !len || !ev) return;
+  if (ev->disposition != EC_REJECT) return;
+  if (shadow_validations_total >= shadow_max_per_campaign) return;
+  /* Only shadow candidates with some evidence of potential value */
+  if (!ev->g_code_pass && !ev->g_state_pass) return;
+
+  shadow_validations_total++;
+  if (ev->g_code_pass) shadow_false_negatives++;
+
+  u64 t0 = get_cur_time();
+  u32 new_edges = 0;
+
+  /* Shadow buffer: candidate + headroom for insertions */
+  u32 buf_cap = len + 4096;
+  u8 *shadow_buf = ck_alloc_nozero(buf_cap);
+
+  for (u32 i = 0; i < shadow_budget_default && !stop_soon; i++) {
+    memcpy(shadow_buf, candidate, len);
+    u32 cur_len = len;
+
+    /* Apply 1-4 random havoc mutations (simplified from fuzz_one's havoc) */
+    u32 num_mut = 1 + UR(4);
+    for (u32 m = 0; m < num_mut; m++) {
+      switch (UR(6)) {
+      case 0: /* random byte flip */
+        if (cur_len > 0) shadow_buf[UR(cur_len)] ^= (1 << UR(8));
+        break;
+      case 1: /* random byte set */
+        if (cur_len > 0) shadow_buf[UR(cur_len)] = UR(256);
+        break;
+      case 2: /* interesting byte */
+        if (cur_len > 0) {
+          static const u8 interesting[] = {0, 1, 0xff, 0x7f, 0x80, '\r', '\n', ' ', 'A', 'z'};
+          shadow_buf[UR(cur_len)] = interesting[UR(sizeof(interesting))];
+        }
+        break;
+      case 3: /* block overwrite from candidate */
+        if (cur_len > 4) {
+          u32 pos = UR(cur_len - 2);
+          u32 blen = 1 + UR(MIN(16, cur_len - pos));
+          for (u32 b = 0; b < blen && pos + b < cur_len; b++)
+            shadow_buf[pos + b] = candidate[UR(len)];
+        }
+        break;
+      case 4: /* arithmetic adjust */
+        if (cur_len > 0) {
+          u32 pos = UR(cur_len);
+          shadow_buf[pos] += (u8)(1 + UR(35));
+        }
+        break;
+      case 5: /* no-op (keep some descendants closer to original) */
+        break;
+      }
+    }
+
+    /* Execute in shadow mode (no queue, no virgin update, probe only) */
+    last_trial_hnb = 0;
+    admission_trial_mode = 1;
+    common_fuzz_stuff(argv, shadow_buf, cur_len);
+    admission_trial_mode = 0;
+
+    if (last_trial_hnb == 2) new_edges++;
+  }
+
+  ck_free(shadow_buf);
+
+  if (new_edges > 0) shadow_would_have_found++;
+  shadow_new_edges_total += new_edges;
+
+  u64 latency = get_cur_time() - t0;
+  const char *trigger = ev->g_code_pass ?
+      "false-negative (G_code=1 but rejected)" :
+      "state-novel reject (G_state=1, G_code=0)";
+  shadow_log_event((u64)llm_cur_candidate_id, trigger,
+                   shadow_budget_default, new_edges, latency,
+                   ev->g_code_pass, ev->g_state_pass);
+
+  /* Rebase episode counters so shadow work doesn't pollute rewards */
+  cal_episode_rebase_after_trial();
 }
 
 /* Helper to choose random block len for block operations in fuzz_one().
@@ -19174,6 +19328,23 @@ static void evidence_env_parse(void) {
       if (cap <= 1000000) episode_energy_cap = cap;
     }
     OKF("EPISODE ENERGY: fixed havoc budget = %u executions per episode (0 = legacy variable)", episode_energy_cap);
+  }
+
+  /* P0-4: shadow validation parameters */
+  {
+    const char *sb = getenv("CHATAFL_SHADOW_BUDGET");
+    if (sb && *sb) {
+      u32 b = (u32)atoi(sb);
+      if (b > 0 && b <= 128) shadow_budget_default = b;
+    }
+    const char *sm = getenv("CHATAFL_SHADOW_MAX");
+    if (sm && *sm) {
+      u32 m = (u32)atoi(sm);
+      if (m > 0 && m <= 1000) shadow_max_per_campaign = m;
+    }
+    OKF("SHADOW VALIDATION: budget=%u mutations, max=%u per campaign "
+        "(false negative rate measurement)", shadow_budget_default,
+        shadow_max_per_campaign);
   }
 }
 
