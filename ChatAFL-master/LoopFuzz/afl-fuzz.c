@@ -349,6 +349,15 @@ struct queue_entry
   u64 prov_admit_ms;       /* admission timestamp */
   u32 prov_desc_execs;     /* descendant executions consumed so far */
   u32 prov_desc_code_gain; /* descendant code-gain events observed */
+
+  /* ── Lineage (paper §queue-pollution measurement) ────────────────
+   * 0 = ordinary havoc/splice entry (no LLM ancestry).  >0 = the
+   * candidate-events.jsonl id of the LLM candidate this entry descends
+   * from: set at admission (durable / provisional / forced) and
+   * inherited by every queue entry saved while fuzzing a lineage-bearing
+   * entry, so the downstream code-edge production of the admission
+   * channel vs the havoc channel is measurable from the logs alone. */
+  u32 llm_origin_candidate_id;
 };
 
 static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
@@ -898,6 +907,21 @@ static u64  shadow_validations_total = 0;
 static u64  shadow_new_edges_total = 0;
 static u64  shadow_false_negatives = 0;
 static u64  shadow_would_have_found = 0;
+
+/* ── v3.3 lineage + spin fixes (plan B, 2026-10-14) ─────────────────
+ * Lineage: llm_candidate_lineage_pin is armed around the LLM candidate's
+ * own execution (all arms — including arm C's normal-mode execution), and
+ * cur_fuzz_lineage_candidate_id mirrors the lineage of the queue entry
+ * currently being fuzzed.  add_to_queue() stamps whichever is active onto
+ * every new entry, so lineage propagates through descendant saves.
+ * Spin: the seed-reselection loop is bounded; these counters record how
+ * often the fallback paths were exercised. */
+static u32  llm_candidate_lineage_pin = 0;
+static u32  cur_fuzz_lineage_candidate_id = 0;
+static u64  llm_lineage_entries = 0;
+static u64  llm_lineage_edge_gains = 0;
+static u64  seed_fallback_used = 0;
+static u64  no_seed_stalls = 0;
 
 static u64  admission_promoted_durable = 0;
 
@@ -3493,9 +3517,34 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
   admission_json_add_u64(j, "conversion_time_ms",
       q->prov_converted ? get_cur_time() - q->prov_admit_ms : 0);
   admission_json_add_u64(j, "durable_promotion", q->prov_converted);
+  /* v3.3: how far past the wall-clock deadline the expiry actually landed
+   * (0 for on-time closure) — bounds the async-sweep delay from the data. */
+  {
+    u64 now_ms = get_cur_time();
+    admission_json_add_u64(j, "overdue_ms",
+        q->prov_converted ? 0 :
+        (now_ms > q->prov_deadline_ms ? now_ms - q->prov_deadline_ms : 0));
+  }
   if (reason)
     json_object_object_add(j, "reason", json_object_new_string(reason));
   ec_append_jsonl("provisional-events.jsonl", j);
+  json_object_put(j);
+}
+
+/* ── lineage event (queue-pollution measurement) ───────────────────
+ * Logged whenever a NEW-EDGE save (hnb==2) produces a queue entry with
+ * LLM ancestry: the admission channel's downstream code-edge production,
+ * joinable with candidate-events.jsonl by candidate_id. */
+static void lineage_log_event(u32 candidate_id, u32 queue_index) {
+  if (!event_log_enabled || !candidate_id) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("lineage_gain"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  admission_json_add_u64(j, "execs_done", total_execs);
+  admission_json_add_u64(j, "candidate_id", candidate_id);
+  admission_json_add_u64(j, "queue_entry", queue_index);
+  ec_append_jsonl("lineage-events.jsonl", j);
   json_object_put(j);
 }
 
@@ -4817,7 +4866,8 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
      * select it FIRST so it gets descendant validation before TTL expiry. */
     for (u32 pi = 0; pi < state->seeds_count; pi++) {
       struct queue_entry *pe = state->seeds[pi];
-      if (pe && pe->is_provisional && !pe->prov_converted && !pe->prov_expired) {
+      if (pe && pe->is_provisional && !pe->prov_converted && !pe->prov_expired &&
+          pe->region_count > 0) {
         state->selected_seed_index = pi;
         return pe;
       }
@@ -4911,6 +4961,28 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
   else
   {
     PFATAL("AFLNet - the states hashtable has no entries for state %d", target_state_id);
+  }
+
+  /* v3.3 (spin fix): the RANDOM / ROUND_ROBIN / small-state FAVOR branches
+   * do not filter invalidated entries, and expired provisionals stay in
+   * state->seeds[] after provisional_expire() (they are only unlinked on
+   * disk).  A state whose pool is dominated by such entries fed the
+   * unbounded re-selection loop in main().  Normalize here: whatever the
+   * branch above returned, hand back the next ELIGIBLE seed of this state
+   * (bounded scan), or NULL when the state has none — the caller's retry
+   * budget and queue-wide fallback then guarantee progress. */
+  if (result && (result->prov_expired || result->region_count == 0)) {
+    struct queue_entry *eligible = NULL;
+    for (u32 ri = 0; ri < state->seeds_count; ri++) {
+      u32 idx = (state->selected_seed_index + ri) % state->seeds_count;
+      struct queue_entry *re = state->seeds[idx];
+      if (re && !re->prov_expired && re->region_count > 0) {
+        eligible = re;
+        state->selected_seed_index = idx;
+        break;
+      }
+    }
+    result = eligible;
   }
 
   return result;
@@ -6930,6 +7002,17 @@ static void add_to_queue(u8 *fname, u32 len, u8 passed_det)
   q->generating_state_id = target_state_id;
   q->is_initial_seed = 0;
   q->unique_state_count = 0;
+
+  /* v3.3 lineage: an LLM candidate's own execution pins its id; a
+   * descendant save made while fuzzing a lineage-bearing entry inherits
+   * that lineage.  Admission paths overwrite this explicitly after the
+   * call, so the stamp here only fills the inheritance case. */
+  if (!q->llm_origin_candidate_id) {
+    if (llm_candidate_lineage_pin)
+      q->llm_origin_candidate_id = llm_candidate_lineage_pin;
+    else if (cur_fuzz_lineage_candidate_id)
+      q->llm_origin_candidate_id = cur_fuzz_lineage_candidate_id;
+  }
 
   if (q->depth > max_depth)
     max_depth = q->depth;
@@ -10876,6 +10959,14 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     if (hnb == 2) {
       code_gain_events++;
       last_native_save_index = queue_top->index;
+      /* v3.3 lineage: this new edge was produced by (a descendant of) an
+       * admitted LLM candidate — the admission channel's downstream
+       * code-edge production, separated from the havoc channel. */
+      if (queue_top->llm_origin_candidate_id) {
+        llm_lineage_edge_gains++;
+        lineage_log_event(queue_top->llm_origin_candidate_id,
+                          queue_top->index);
+      }
     }
 
     if (state_aware_mode)
@@ -11514,6 +11605,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "shadow_new_edges      : %llu\n"
              "shadow_false_neg      : %llu\n"
              "shadow_would_find     : %llu\n"
+             "llm_lineage_entries   : %llu\n"
+             "llm_lineage_edge_gains: %llu\n"
+             "seed_fallback_used    : %llu\n"
+             "no_seed_stalls        : %llu\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
              "admission_accounting : %u\n",
@@ -11562,6 +11657,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)shadow_new_edges_total,
           (unsigned long long)shadow_false_negatives,
           (unsigned long long)shadow_would_have_found,
+          (unsigned long long)llm_lineage_entries,
+          (unsigned long long)llm_lineage_edge_gains,
+          (unsigned long long)seed_fallback_used,
+          (unsigned long long)no_seed_stalls,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
@@ -13349,6 +13448,9 @@ static u8 admission_force_queue_candidate(u8 *candidate, u32 len) {
   ck_free(fn_replay);
 
   queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+  /* v3.3 lineage: arm C's force-admission channel. */
+  queue_top->llm_origin_candidate_id = (u32)llm_cur_candidate_id;
+  llm_lineage_entries++;
   return 1;
 }
 
@@ -13436,6 +13538,8 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
    * instead of letting it expire by TTL before being fuzzed */
   q->favored = 1;
   pending_favored++;
+  q->llm_origin_candidate_id = (u32)candidate_id;  /* v3.3 lineage */
+  llm_lineage_entries++;
 
   provisional_admitted++;
   provisional_live++;
@@ -13546,6 +13650,8 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
   q->has_new_cov = 1;
   queued_with_cov++;
   queued_discovered++;
+  q->llm_origin_candidate_id = (u32)llm_cur_candidate_id;  /* v3.3 lineage */
+  llm_lineage_entries++;
 
   admission_gain_events++;
   uninteresting_times = 0;   /* promoted candidate = real progress */
@@ -13608,7 +13714,13 @@ static u8 admission_run_llm_candidate(char **argv,
   if (p_pass && candidate && candidate_len > 0) {
     admission_trial_mode = use_trial_mode;
     executed = 1;
+    /* v3.3 lineage: arm C executes candidates in normal mode, so a native
+     * save_if_interesting() retention here IS the direct-admission channel
+     * — stamp it.  Gated arms run in trial mode (no retention), where the
+     * pin is simply inert. */
+    llm_candidate_lineage_pin = (u32)llm_cur_candidate_id;
     common_ret = common_fuzz_stuff(argv, candidate, candidate_len);
+    llm_candidate_lineage_pin = 0;
     admission_trial_mode = 0;
   } else {
     last_common_fuzz_saved = 0;
@@ -20379,7 +20491,26 @@ retry_state_aware:
       u8 skipped_fuzz;
       u64 episode_code_gains_before = code_gain_events;
 
+      /* v3.3 (TTL fix): sweep BEFORE selection as well.  The only other
+       * call site is after fuzz_one(); a long calibration/havoc cycle or
+       * several fruitless state selections used to leave expired entries
+       * live for far beyond their wall-clock deadline (observed up to
+       * ~11,000 s).  Sweeping here bounds the overdue time by one
+       * fuzz_one cycle. */
+      provisional_sweep_expired();
+
       struct queue_entry *selected_seed = NULL;
+      /* v3.3 (spin fix): bound state re-selection.  choose_seed() used to
+       * hand back invalidated (prov_expired) or region-less entries from
+       * its RANDOM / ROUND_ROBIN / small-FAVOR branches, and states whose
+       * pool consisted ONLY of such entries made this loop spin without
+       * ever calling fuzz_one — millions of zero-mutation episodes per
+       * campaign while the TTL sweep above never ran.  Retries are now
+       * capped; after the cap we fall back to the first eligible entry
+       * ANYWHERE in the queue (guaranteed progress), and if the entire
+       * queue is ineligible we stall briefly instead of burning CPU. */
+      u32 seed_retry = 0;
+      u32 seed_retry_cap = 2 * (state_ids_count ? state_ids_count : 1) + 8;
       while (!selected_seed || selected_seed->region_count == 0 ||
              selected_seed->prov_expired)
       {
@@ -20447,6 +20578,29 @@ retry_state_aware:
 
         selected_seed = choose_seed(target_state_id, seed_selection_algo);
         cal_episode_note_seed(selected_seed);
+
+        /* v3.3 (spin fix): retry budget exhausted — the weighted selector
+         * keeps landing on unservable states.  Take the first eligible
+         * entry queue-wide so fuzz_one() always gets reached; if nothing
+         * is eligible at all, wait briefly (the queue gains eligible
+         * entries via admissions/regions) and restart the budget. */
+        if (!selected_seed || selected_seed->region_count == 0 ||
+            selected_seed->prov_expired) {
+          if (++seed_retry >= seed_retry_cap) {
+            struct queue_entry *fb = NULL;
+            for (struct queue_entry *q = queue; q; q = q->next) {
+              if (!q->prov_expired && q->region_count > 0) { fb = q; break; }
+            }
+            if (fb) {
+              selected_seed = fb;
+              seed_fallback_used++;
+            } else {
+              no_seed_stalls++;
+              usleep(100000);  /* 100 ms — no eligible entry anywhere yet */
+              seed_retry = 0;
+            }
+          }
+        }
       }
 
       /* Seek to the selected seed */
@@ -20473,7 +20627,16 @@ retry_state_aware:
         }
       }
 
+      /* v3.3 lineage: mirror the entry's ancestry for the duration of its
+       * fuzz cycle so descendant saves in save_if_interesting()/add_to_queue
+       * inherit it (cleared right after so nothing leaks lineage into
+       * unrelated entries). */
+      cur_fuzz_lineage_candidate_id =
+          selected_seed ? selected_seed->llm_origin_candidate_id : 0;
+
       skipped_fuzz = fuzz_one(use_argv);
+
+      cur_fuzz_lineage_candidate_id = 0;
 
       /* Two-tier queue accounting: the per-exec hook already enforced the
        * budget/TTL before every descendant execution; this closes the
