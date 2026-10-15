@@ -200,6 +200,21 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     CURLcode res = CURLE_OK;
     char *answer = NULL;
 
+    /* v3.4 (expert P0-7): CHATAFL_NO_LLM=1 disables every LLM channel of
+     * this codebase (grammar templates, seed enrichment, plateau) with
+     * one switch — the same-codebase no-LLM control.  Intercepted here,
+     * at the single gateway entry, so all call sites inherit it through
+     * their existing NULL/error handling: no network, no retries, and
+     * llm_total_calls stays 0. */
+    {
+        static int no_llm_cached = -1;
+        if (no_llm_cached < 0) {
+            const char *nl = getenv("CHATAFL_NO_LLM");
+            no_llm_cached = (nl && *nl && strcmp(nl, "0") != 0) ? 1 : 0;
+        }
+        if (no_llm_cached) return NULL;
+    }
+
     /* Reset per-call token counters so a failed call yields 0. */
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;

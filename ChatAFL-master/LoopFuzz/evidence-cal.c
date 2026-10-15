@@ -134,7 +134,18 @@ double ec_selection_score(double frontier_score, double theta_sample,
 int ec_decide_disposition(const ec_predicates_t *pr) {
   if (!pr) return EC_REJECT;
   if (!pr->p_pass) return EC_REJECT;
-  if (!pr->u_pass) return EC_REJECT;
+  if (!pr->u_pass) {
+    /* v3.4 (expert P0-3): a candidate whose own responses violate the
+     * protocol-acceptability check may still carry NEW-CODE evidence
+     * (trial_hnb==2 / bitmap delta).  Hard-rejecting it discards code
+     * value on the word of the weakest predicate; route it to the
+     * provisional tier instead — it still has to earn durability via
+     * descendant validation (and the crash oracle ledger is unchanged,
+     * so U keeps its scheduling-waste role).  The caller gates this on
+     * CHATAFL_CODE_RETAIN and demotes to EC_REJECT when disabled. */
+    if (pr->r_pass && pr->g_code_pass) return EC_CODE_RETAIN;
+    return EC_REJECT;
+  }
   if (!pr->r_pass) return EC_REJECT;
   if (pr->g_code_pass) return EC_DURABLE;
   if (pr->g_state_pass) return EC_PROVISIONAL;
@@ -145,6 +156,7 @@ const char *ec_disposition_name(int d) {
   switch (d) {
     case EC_DURABLE:     return "durable";
     case EC_PROVISIONAL: return "provisional";
+    case EC_CODE_RETAIN: return "code-retain";
     default:             return "reject";
   }
 }

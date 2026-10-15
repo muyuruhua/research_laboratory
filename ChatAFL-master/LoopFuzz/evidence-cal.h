@@ -41,6 +41,10 @@
 #define EC_REJECT       0
 #define EC_PROVISIONAL  1
 #define EC_DURABLE      2
+#define EC_CODE_RETAIN  3  /* v3.4 (expert P0-3): U-fail but code evidence —
+                             * retained via the provisional tier instead of
+                             * a hard reject; crashes stay on the separate
+                             * bug/oracle ledger either way. */
 
 /* Frozen calibration defaults (paper §五: freeze after pilot, sensitivity
  * analysis only over γ ∈ {0.99, 0.995, 1.0} — do not widen). */

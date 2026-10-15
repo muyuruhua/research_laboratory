@@ -349,6 +349,7 @@ struct queue_entry
   u64 prov_admit_ms;       /* admission timestamp */
   u32 prov_desc_execs;     /* descendant executions consumed so far */
   u32 prov_desc_code_gain; /* descendant code-gain events observed */
+  u8  prov_code_retain;    /* v3.4: admitted via the P0-3 retention channel */
 
   /* ── Lineage (paper §queue-pollution measurement) ────────────────
    * 0 = ordinary havoc/splice entry (no LLM ancestry).  >0 = the
@@ -926,6 +927,11 @@ static u32  no_exec_rounds = 0;       /* consecutive zero-execution fuzz_one rou
 static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
+static u8   code_retain_enabled = 0;  /* CHATAFL_CODE_RETAIN (expert P0-3 policy) */
+static u8   test_force_code_retain = 0; /* CHATAFL_TEST_FORCE_CODE_RETAIN (test knob) */
+static u64  code_retain_admitted = 0;
+static u64  code_retain_converted = 0;
+static u8   llm_disabled = 0;         /* CHATAFL_NO_LLM (P0-7 same-code control) */
 
 static u64  admission_promoted_durable = 0;
 
@@ -3382,6 +3388,9 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   }
   /* Arm-defining switches (all, so the arm is fully reconstructable). */
   json_object_object_add(j, "no_admission", json_object_new_boolean(ablation_no_admission));
+  json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
+  json_object_object_add(j, "test_force_code_retain", json_object_new_boolean(test_force_code_retain));
+  json_object_object_add(j, "no_llm", json_object_new_boolean(llm_disabled));
   json_object_object_add(j, "calibration", json_object_new_boolean(calibration_enabled));
   json_object_object_add(j, "no_refinement", json_object_new_boolean(ablation_no_refinement));
   json_object_object_add(j, "no_frontier", json_object_new_boolean(ablation_no_frontier));
@@ -11646,6 +11655,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "seed_fallback_used    : %llu\n"
              "no_seed_stalls        : %llu\n"
              "churn_fallback_used   : %llu\n"
+             "code_retain_admitted  : %llu\n"
+             "code_retain_converted : %llu\n"
+             "no_llm_mode           : %u\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
              "admission_accounting : %u\n",
@@ -11699,6 +11711,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)seed_fallback_used,
           (unsigned long long)no_seed_stalls,
           (unsigned long long)churn_fallback_used,
+          (unsigned long long)code_retain_admitted,
+          (unsigned long long)code_retain_converted,
+          (u32)llm_disabled,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
@@ -13538,7 +13553,8 @@ static void provisional_evict_oldest_if_needed(void) {
  * so it gets fuzzed BEFORE the TTL expires. The per-execution budget
  * hook in common_fuzz_stuff enforces the 64-descendant cap. */
 static u8 admission_provisional_queue_candidate(u32 target_sid,
-                                                u64 candidate_id) {
+                                                u64 candidate_id,
+                                                const char *admit_reason) {
   if (!out_dir || !kl_messages) return 0;
   if (state_aware_mode == 0) return 0;  /* two-tier queue needs state pools */
   provisional_evict_oldest_if_needed();
@@ -13581,7 +13597,12 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
 
   provisional_admitted++;
   provisional_live++;
-  provisional_log_event("admit", q, "state-novelty-only evidence");
+  if (admit_reason && strcmp(admit_reason, "code-retain") == 0) {
+    q->prov_code_retain = 1;   /* v3.4 P0-3 retention channel marker */
+    code_retain_admitted++;
+  }
+  provisional_log_event("admit", q,
+      admit_reason ? admit_reason : "state-novelty-only evidence");
   return 1;
 }
 
@@ -13602,7 +13623,10 @@ static void provisional_account_after_fuzz(struct queue_entry *q,
     q->is_provisional = 0;
     if (provisional_live) provisional_live--;
     provisional_converted++;
-    provisional_log_event("convert", q, "descendant code gain");
+    if (q->prov_code_retain) code_retain_converted++;
+    provisional_log_event("convert", q,
+        q->prov_code_retain ? "descendant code gain (code-retain channel)"
+                            : "descendant code gain");
     return;
   }
 
@@ -13813,6 +13837,16 @@ static u8 admission_run_llm_candidate(char **argv,
     ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
                            ev.g_code_pass, ev.g_state_pass };
     ev.disposition = ec_decide_disposition(&pr);
+    /* v3.4 test knob: force any suffix-U failure through the retention
+     * channel so its full lifecycle is deterministically exercisable
+     * with weak (mock) candidates that never produce g_code evidence. */
+    if (test_force_code_retain && ev.p_pass && !ev.u_pass && ev.r_pass)
+      ev.disposition = EC_CODE_RETAIN;
+    /* Arm gate: the retention policy is opt-in (CHATAFL_CODE_RETAIN);
+     * demote to the legacy hard reject when disabled. */
+    if (ev.disposition == EC_CODE_RETAIN && !code_retain_enabled &&
+        !test_force_code_retain)
+      ev.disposition = EC_REJECT;
   }
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
@@ -13825,7 +13859,13 @@ static u8 admission_run_llm_candidate(char **argv,
       durable = admission_promote_durable(candidate, candidate_len);
     } else if (ev.disposition == EC_PROVISIONAL) {
       provisional = admission_provisional_queue_candidate(
-          target_sid, (u64)llm_cur_candidate_id);
+          target_sid, (u64)llm_cur_candidate_id, NULL);
+    } else if (ev.disposition == EC_CODE_RETAIN) {
+      /* v3.4 (expert P0-3): U-fail but code-bearing — retained in the
+       * provisional tier, earns durability only via descendant code
+       * gain (same budget/TTL; crash ledger unchanged). */
+      provisional = admission_provisional_queue_candidate(
+          target_sid, (u64)llm_cur_candidate_id, "code-retain");
     }
     /* EC_REJECT: no queue entry — execute-before-promote said no. */
   }
@@ -19476,6 +19516,25 @@ static void evidence_env_parse(void) {
     if (sr && *sr) {
       u32 s = (u32)atoi(sr);
       if (s > 0 && s <= 1000000) seed_retry_cap_env = s;
+    }
+    const char *cr = getenv("CHATAFL_CODE_RETAIN");
+    if (cr && *cr && strcmp(cr, "0") != 0) {
+      code_retain_enabled = 1;
+      OKF("P0-3 code-retain policy ENABLED: U-fail-but-code-bearing "
+          "candidates are retained via the provisional tier");
+    }
+    const char *fr = getenv("CHATAFL_TEST_FORCE_CODE_RETAIN");
+    if (fr && *fr && strcmp(fr, "0") != 0) {
+      test_force_code_retain = 1;
+      OKF("TEST: force code-retain channel for suffix-U failures");
+    }
+    {
+      const char *nl = getenv("CHATAFL_NO_LLM");
+      if (nl && *nl && strcmp(nl, "0") != 0) {
+        llm_disabled = 1;
+        OKF("P0-7 no-LLM control: all LLM channels disabled "
+            "(grammar/enrichment/plateau)");
+      }
     }
     const char *el = getenv("CHATAFL_EVENT_LOG");
     if (el && *el && strcmp(el, "0") == 0) {
