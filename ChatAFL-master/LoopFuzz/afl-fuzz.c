@@ -922,6 +922,10 @@ static u64  llm_lineage_entries = 0;
 static u64  llm_lineage_edge_gains = 0;
 static u64  seed_fallback_used = 0;
 static u64  no_seed_stalls = 0;
+static u32  no_exec_rounds = 0;       /* consecutive zero-execution fuzz_one rounds */
+static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
+static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
+static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
 
 static u64  admission_promoted_durable = 0;
 
@@ -4986,6 +4990,31 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
   }
 
   return result;
+}
+
+/* v3.3b: the last annotated region's reachable state — the state this
+ * entry can definitely serve in fuzz_one's M2 selection (guarantees the
+ * target-not-in-entry skip cannot fire for the fallback). */
+static u32 entry_last_annotated_state(struct queue_entry *q) {
+  if (!q) return 0;
+  for (s32 ri = (s32)q->region_count - 1; ri >= 0; ri--) {
+    if (q->regions && q->regions[ri].state_count > 0)
+      return q->regions[ri].state_sequence[q->regions[ri].state_count - 1];
+  }
+  return q->generating_state_id;
+}
+
+/* v3.3b: next eligible entry strictly after `from` (wraps to the queue
+ * head exactly once).  NULL when nothing eligible exists. */
+static struct queue_entry *next_executable_entry(struct queue_entry *from) {
+  u8 wrapped = 0;
+  struct queue_entry *q = from ? from->next : queue;
+  while (q) {
+    if (!q->prov_expired && q->region_count > 0) return q;
+    q = q->next;
+    if (!q && !wrapped) { q = queue; wrapped = 1; }
+  }
+  return NULL;
 }
 
 static u64 get_cur_time(void);
@@ -10948,6 +10977,13 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 
     /* We use the actual length of all messages (full_len), not the len of the mutated message subsequence (len)*/
     add_to_queue(fn, full_len, 0);
+    /* v3.3c lineage accounting: entries whose lineage was stamped by the
+     * pin (arm-C native save of the LLM candidate itself) or the mirror
+     * (a descendant save while fuzzing a lineage-bearing entry) are
+     * counted HERE; the three explicit admission paths count themselves,
+     * and trial-mode saves never reach this point, so there is no double
+     * counting.  Fixes the C-arm gap where gains=1 with entries=0. */
+    if (queue_top->llm_origin_candidate_id) llm_lineage_entries++;
 
     /* Native code-progress events, split by evidence strength (P0-4):
      * code_save_events counts EVERY coverage save (has_new_bits != 0,
@@ -11609,6 +11645,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "llm_lineage_edge_gains: %llu\n"
              "seed_fallback_used    : %llu\n"
              "no_seed_stalls        : %llu\n"
+             "churn_fallback_used   : %llu\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
              "admission_accounting : %u\n",
@@ -11661,6 +11698,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)llm_lineage_edge_gains,
           (unsigned long long)seed_fallback_used,
           (unsigned long long)no_seed_stalls,
+          (unsigned long long)churn_fallback_used,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
@@ -14799,8 +14837,14 @@ AFLNET_REGIONS_SELECTION:;
         }
         else
         {
-          // No annotation for this region
-          return 1;
+          /* v3.3b (spin fix, the real one): an un-annotated region before
+           * the target belongs to the M1 prefix — it is not an error.
+           * Returning 1 here made every state-pool entry with one
+           * un-classified region unfuzzable for that state, so the
+           * state-aware main loop re-selected + opened a zero-mutation
+           * episode + returned instantly, millions of times per hour
+           * (observed 33M episodes / 19.8 GB jsonl in 60 min). */
+          M2_start_region_ID++;
         }
       }
 
@@ -19419,6 +19463,20 @@ static void evidence_env_parse(void) {
       u32 m = (u32)atoi(pm);
       if (m > 0 && m <= 10000) provisional_max_live = m;
     }
+    /* v3.3b testability knob: threshold of consecutive zero-execution
+     * fuzz_one rounds before the linear-progress churn fallback fires
+     * (default 64; lower only for mechanism tests — e.g. =1 makes any
+     * region/target mismatch skip observable via churn_fallback_used). */
+    const char *cc = getenv("CHATAFL_CHURN_CAP");
+    if (cc && *cc) {
+      u32 c = (u32)atoi(cc);
+      if (c > 0 && c <= 1000000) churn_round_cap = c;
+    }
+    const char *sr = getenv("CHATAFL_SEED_RETRY_CAP");
+    if (sr && *sr) {
+      u32 s = (u32)atoi(sr);
+      if (s > 0 && s <= 1000000) seed_retry_cap_env = s;
+    }
     const char *el = getenv("CHATAFL_EVENT_LOG");
     if (el && *el && strcmp(el, "0") == 0) {
       event_log_enabled = 0;
@@ -20499,6 +20557,20 @@ retry_state_aware:
        * fuzz_one cycle. */
       provisional_sweep_expired();
 
+      /* v3.3b (spin fix, main path): when fuzz_one keeps returning
+       * WITHOUT executing anything (region/target mismatch skips in the
+       * M2 selection), the state-aware loop degenerates into open/close
+       * episode churn — observed 33M zero-mutation episodes in 60 min.
+       * After enough consecutive no-execution rounds, override the state
+       * selector once with the next executable queue entry, targeting a
+       * state that entry provably reaches. */
+      struct queue_entry *forced_progress_entry = NULL;
+      if (no_exec_rounds >= churn_round_cap) {
+        forced_progress_entry = next_executable_entry(queue_cur);
+        no_exec_rounds = 0;
+        if (forced_progress_entry) churn_fallback_used++;
+      }
+
       struct queue_entry *selected_seed = NULL;
       /* v3.3 (spin fix): bound state re-selection.  choose_seed() used to
        * hand back invalidated (prov_expired) or region-less entries from
@@ -20510,7 +20582,8 @@ retry_state_aware:
        * ANYWHERE in the queue (guaranteed progress), and if the entire
        * queue is ineligible we stall briefly instead of burning CPU. */
       u32 seed_retry = 0;
-      u32 seed_retry_cap = 2 * (state_ids_count ? state_ids_count : 1) + 8;
+      u32 seed_retry_cap = seed_retry_cap_env ? seed_retry_cap_env :
+          (2 * (state_ids_count ? state_ids_count : 1) + 8);
       while (!selected_seed || selected_seed->region_count == 0 ||
              selected_seed->prov_expired)
       {
@@ -20557,7 +20630,10 @@ retry_state_aware:
           }
         }
 
-        if (forced_prov_state > 0) {
+        if (forced_progress_entry) {
+          /* v3.3b: churn fallback — bypass the state selector entirely */
+          target_state_id = entry_last_annotated_state(forced_progress_entry);
+        } else if (forced_prov_state > 0) {
           target_state_id = forced_prov_state;
           fprintf(stderr, "[provisional-priority] forcing state %u for descendant validation\n",
                   target_state_id);
@@ -20578,6 +20654,11 @@ retry_state_aware:
 
         selected_seed = choose_seed(target_state_id, seed_selection_algo);
         cal_episode_note_seed(selected_seed);
+        if (forced_progress_entry) {
+          selected_seed = forced_progress_entry;
+          forced_progress_entry = NULL;
+          cal_episode_note_seed(selected_seed);
+        }
 
         /* v3.3 (spin fix): retry budget exhausted — the weighted selector
          * keeps landing on unservable states.  Take the first eligible
@@ -20594,6 +20675,7 @@ retry_state_aware:
             if (fb) {
               selected_seed = fb;
               seed_fallback_used++;
+              cal_episode_note_seed(fb);  /* keep episode attribution honest */
             } else {
               no_seed_stalls++;
               usleep(100000);  /* 100 ms — no eligible entry anywhere yet */
@@ -20634,9 +20716,16 @@ retry_state_aware:
       cur_fuzz_lineage_candidate_id =
           selected_seed ? selected_seed->llm_origin_candidate_id : 0;
 
+      u64 execs_before_fuzz = total_execs;
       skipped_fuzz = fuzz_one(use_argv);
 
       cur_fuzz_lineage_candidate_id = 0;
+
+      /* v3.3b churn detection: a fuzz_one round that executed nothing
+       * (silent region/target skip) is the spin fuel — count consecutive
+       * ones and let the fallback above break the degenerate cycle. */
+      if (total_execs == execs_before_fuzz) no_exec_rounds++;
+      else no_exec_rounds = 0;
 
       /* Two-tier queue accounting: the per-exec hook already enforced the
        * budget/TTL before every descendant execution; this closes the
