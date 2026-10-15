@@ -26,6 +26,15 @@
 #   7. Ablation/Arm:     direct | gated_fixed | calibrated | cal_gamma099/100
 #                        | wo_* 消融组 — fuzzer_stats 的 arm 字段为运行时真值,
 #                        /proc/1/environ 仅作回退 (与 run_ablation.sh 组名等价)
+#   8. 宿主机磁盘:       根分区 used/total/avail + 使用率, 超 DISK_WARN_PCT
+#                        (默认85%) 变黄、超 DISK_CRIT_PCT (默认92%) 变红加 ⚠
+#
+# 开闭原则 (系统总览区段注册表):
+#   print_system_overview 不再硬编码各指标行, 而是按 HOST_SECTIONS 数组
+#   依次调用 host_section_<name>() 渲染函数。新增系统指标 (如 inode、网络、
+#   GPU) 只需两步, 不改动渲染主流程:
+#     1. 按约定实现 host_section_<name>() — 自采集自格式化, 输出若干完整行
+#     2. 在 HOST_SECTIONS 数组末尾追加该函数名
 #
 # LLM 统计说明（2026-03 起）:
 #   monitor.sh 优先且仅使用 fuzzer_stats 内的 llm_* 字段，
@@ -55,6 +64,8 @@ ONCE=0
 OUT_DIR=""
 CSV_MODE=0
 FILTER=""           # 协议过滤器，空=全部
+DISK_WARN_PCT="${DISK_WARN_PCT:-85}"   # 根分区使用率黄色告警阈值 (%)
+DISK_CRIT_PCT="${DISK_CRIT_PCT:-92}"   # 根分区使用率红色告警阈值 (%)
 
 usage() {
     echo "Usage: $0 [PROTOCOL[,PROTOCOL...]] [-i interval_sec] [-o output_dir] [-1] [--csv] [-h]"
@@ -66,6 +77,9 @@ usage() {
     echo "  -1         单次采集后退出"
     echo "  --csv      同时生成CSV时间序列文件"
     echo "  -h         显示帮助"
+    echo ""
+    echo "Env:"
+    echo "  DISK_WARN_PCT=85  DISK_CRIT_PCT=92   根分区使用率黄/红告警阈值(%)"
     echo ""
     echo "Examples:"
     echo "  $0                     # 监控全部"
@@ -348,6 +362,14 @@ get_host_loadavg() {
     awk '{print $1, $2, $3}' /proc/loadavg
 }
 
+# 根分区磁盘使用统计 (GB): used total avail use_pct
+# df -BG 强制以 GB 为单位, 输出与本地化无关
+get_host_disk_stats() {
+    df -BG / | awk 'NR==2 {total=$2; used=$3; avail=$4; pct=$5;
+        gsub(/G/, "", total); gsub(/G/, "", used); gsub(/G/, "", avail); gsub(/%/, "", pct);
+        print used, total, avail, pct}'
+}
+
 get_host_uptime_human() {
     awk '{
         total=int($1);
@@ -359,49 +381,100 @@ get_host_uptime_human() {
     }' /proc/uptime
 }
 
-print_system_overview() {
-    local prev_cpu curr_cpu cpu_stats mem_stats load_stats
+# ─── 系统总览: 区段渲染函数 + 注册表 (开闭原则扩展点) ───────────────────────
+# 约定: 每个 host_section_<name>() 自采集、自格式化, 输出若干完整行,
+#       以 printf 收尾保证返回 0 (set -e 安全)。新增指标 = 实现新函数
+#       + 在 HOST_SECTIONS 末尾追加一行, 渲染主流程 print_system_overview
+#       不需要任何改动。
+
+host_section_identity() {
+    local load1 load5 load15 uptime_human host_name
+    read -r load1 load5 load15 <<< "$(get_host_loadavg)"
+    uptime_human="$(get_host_uptime_human)"
+    host_name="$(hostname)"
+    printf "  ${DIM}Host:${RST} %-12s  ${DIM}Uptime:${RST} %-12s  ${DIM}Load:${RST} %s\n" \
+        "$host_name" "$uptime_human" "${load1} / ${load5} / ${load15}"
+}
+
+host_section_cpu_mem() {
+    local prev_cpu curr_cpu cpu_stats mem_stats
     local cpu_total cpu_user cpu_system cpu_iowait
     local mem_used mem_total mem_used_pct swap_used swap_total swap_used_pct
-    local load1 load5 load15 uptime_human process_count docker_running top_cpu top_mem
-    local host_name cpu_line mem_line swap_line docker_line
+    local cpu_line mem_line
 
     prev_cpu="$(read_host_cpu_stat)"
     sleep 1
     curr_cpu="$(read_host_cpu_stat)"
     cpu_stats="$(calc_host_cpu_usage "$prev_cpu" "$curr_cpu")"
     mem_stats="$(get_host_mem_stats)"
-    load_stats="$(get_host_loadavg)"
 
     read -r cpu_total cpu_user cpu_system cpu_iowait <<< "$cpu_stats"
     read -r mem_used mem_total mem_used_pct swap_used swap_total swap_used_pct <<< "$mem_stats"
-    read -r load1 load5 load15 <<< "$load_stats"
-
-    uptime_human="$(get_host_uptime_human)"
-    process_count="$(ps -e --no-headers | wc -l | tr -d ' ')"
-    docker_running=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
-    top_cpu=$(ps -eo comm,%cpu --sort=-%cpu --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
-    top_mem=$(ps -eo comm,%mem --sort=-%mem --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
-    host_name="$(hostname)"
 
     cpu_line="${cpu_total}%  [user ${cpu_user}% | sys ${cpu_system}% | io ${cpu_iowait}%]"
     mem_line="${mem_used_pct}%  (${mem_used}/${mem_total} MB)"
-    swap_line="${swap_used_pct}%  (${swap_used}/${swap_total} MB)"
-    docker_line="${docker_running} running"
 
-    [[ -z "$top_cpu" ]] && top_cpu="-"
-    [[ -z "$top_mem" ]] && top_mem="-"
-
-    echo -e "${BOLD}  🖥️  系统资源总览:${RST}"
-    echo -e "  ${DIM}$(printf '─%.0s' {1..92})${RST}"
-    printf "  ${DIM}Host:${RST} %-12s  ${DIM}Uptime:${RST} %-12s  ${DIM}Load:${RST} %s\n" \
-        "$host_name" "$uptime_human" "${load1} / ${load5} / ${load15}"
     printf "  ${DIM}CPU:${RST}  %-34s  ${DIM}Memory:${RST} %s\n" \
         "$cpu_line" "$mem_line"
+}
+
+host_section_proc_docker() {
+    local swap_used swap_total swap_used_pct process_count docker_running
+    read -r _ _ _ swap_used swap_total swap_used_pct <<< "$(get_host_mem_stats)"
+    process_count="$(ps -e --no-headers | wc -l | tr -d ' ')"
+    docker_running=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
     printf "  ${DIM}Proc:${RST} %-12s  ${DIM}Docker:${RST} %-12s  ${DIM}Swap:${RST} %s\n" \
-        "$process_count" "$docker_line" "$swap_line"
+        "$process_count" "${docker_running} running" \
+        "${swap_used_pct}%  (${swap_used}/${swap_total} MB)"
+}
+
+# 根分区容量使用情况: 使用率超 DISK_WARN_PCT 变黄, 超 DISK_CRIT_PCT 变红加 ⚠
+# (2026-10-12 磁盘写满曾中断实验, 故纳入常驻监控)
+host_section_disk() {
+    local used total avail pct
+    read -r used total avail pct <<< "$(get_host_disk_stats)"
+    if [[ -z "$pct" ]]; then
+        used="-"; total="-"; avail="-"; pct="?"
+    fi
+    local color="$GREEN" alert=""
+    if [[ "$pct" =~ ^[0-9]+$ ]]; then
+        if   (( pct >= DISK_CRIT_PCT )); then
+            color="$RED";    alert="  ${RED}⚠ CRITICAL${RST}"
+        elif (( pct >= DISK_WARN_PCT )); then
+            color="$YELLOW"; alert="  ${YELLOW}⚠${RST}"
+        fi
+    fi
+    # alert 的颜色转义必须位于格式串内 (printf 不解释 %s 参数中的 \033)
+    printf "  ${DIM}Disk(/):${RST} ${color}%s%%${RST}  (%s/%s GB, %s GB free)${alert}\n" \
+        "$pct" "$used" "$total" "$avail"
+}
+
+host_section_top_procs() {
+    local top_cpu top_mem
+    top_cpu=$(ps -eo comm,%cpu --sort=-%cpu --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
+    top_mem=$(ps -eo comm,%mem --sort=-%mem --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
+    [[ -z "$top_cpu" ]] && top_cpu="-"
+    [[ -z "$top_mem" ]] && top_mem="-"
     printf "  ${DIM}Top CPU:${RST} %s\n" "$top_cpu"
     printf "  ${DIM}Top MEM:${RST} %s\n" "$top_mem"
+}
+
+# 区段注册表: 总览输出的构成与顺序在此声明。扩展点 — 追加即扩展。
+HOST_SECTIONS=(
+    host_section_identity      # Host / Uptime / Load
+    host_section_cpu_mem       # CPU / Memory (含 1s 采样)
+    host_section_proc_docker   # Proc / Docker / Swap
+    host_section_disk          # Disk(/): 根分区容量 + 阈值告警
+    host_section_top_procs     # Top CPU / Top MEM
+)
+
+print_system_overview() {
+    echo -e "${BOLD}  🖥️  系统资源总览:${RST}"
+    echo -e "  ${DIM}$(printf '─%.0s' {1..92})${RST}"
+    local sec
+    for sec in "${HOST_SECTIONS[@]}"; do
+        "$sec"
+    done
     echo ""
 }
 

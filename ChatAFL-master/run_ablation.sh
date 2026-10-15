@@ -61,7 +61,9 @@ TARGET="${REMAINING_ARGS[0]:-live555}"
 RUNS="${REMAINING_ARGS[1]:-5}"
 TIMEOUT="${REMAINING_ARGS[2]:-1470}"
 PRESET="${REMAINING_ARGS[3]:-${ABLATION_PRESET:-core}}"
-# 每组同时运行的消融组数（默认6=全并行，内存限制已移除，62GB主机安全）
+# 每组同时运行的消融组数（默认6）。多个目标脚本同时运行时会叠加
+# （2026-10-13 事故：89 个容器并发 → 实际内存冲破 62GB+swap，整机假死断电）。
+# 预检与每个批次前按"全机 fuzz 容器实际内存占用"（非 6G 上限）自动收敛本值。
 # 设1=串行（最安全最慢），设3=半并行
 ABLATION_PARALLEL="${ABLATION_PARALLEL:-6}"
 MEMORY_PER_FUZZER=6  # must match --memory in profuzzbench_exec_common_dev.sh
@@ -100,18 +102,46 @@ echo ""
 echo ""
 echo "[PREFLIGHT] System resource check:"
 echo "  Docker memory limit per fuzzer container: 6g (down from 8g, see profuzzbench_exec_common_dev.sh)"
+
+# 全局内存预算：fuzz 容器"实际占用"总和超过此值前自动限流（62GB 主机约 46GB）。
+# 关键区分：--memory 6g 只是防泄漏的硬上限，典型容器实际仅占 ~0.1-1.5GB。
+# 准入必须按实际用量计量（上限叠加会 6-10 倍高估，误杀正常并发）；
+# 上限仍保留作兜底：泄漏目标（如 forked-daapd）到 6G 会被 cgroup OOM 杀掉而不拖垮宿主机。
+TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "unknown")
+MEM_BUDGET_GB=$(( TOTAL_MEM_KB / 1024 / 1024 * 3 / 4 ))
+MEM_BUDGET_MB=$(( MEM_BUDGET_GB * 1024 ))
+ABLATION_MEM_EST_MB="${ABLATION_MEM_EST_MB:-1536}"   # 新容器未测量前的实际占用估算(MB)，可按目标调
+MEM_HEADROOM_GB=8                                    # 留给桌面/内核的底线
+# 读取所有运行中容器的 cgroup 实际内存（cgroup v1，含 page cache，略保守）。
+# 注意必须用 --no-trunc：cgroup 目录名是 64 位完整 ID，短 ID 永远匹配不上。
+fuzz_actual_usage_mb() {
+  local total_kb=0 id kb
+  for id in $(docker ps -q --no-trunc 2>/dev/null); do
+    kb=$(awk '{print int($1/1024)}' "/sys/fs/cgroup/memory/docker/${id}/memory.usage_in_bytes" 2>/dev/null)
+    [[ -n "${kb}" ]] && total_kb=$((total_kb + kb))
+  done
+  echo $(( total_kb / 1024 ))
+}
+RUNNING_CONTAINERS=$(docker ps -q 2>/dev/null | wc -l)
+USED_MB=$(fuzz_actual_usage_mb)
 AVAIL_MEM_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo "unknown")
 if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
   AVAIL_MEM_GB=$((AVAIL_MEM_KB / 1024 / 1024))
-  echo "  Host available memory: ~${AVAIL_MEM_GB} GB"
+  echo "  Host total/available memory: ~$(( TOTAL_MEM_KB / 1024 / 1024 )) GB / ~${AVAIL_MEM_GB} GB, fuzz budget: ${MEM_BUDGET_GB} GB (by actual usage)"
+  echo "  Already-running containers: ${RUNNING_CONTAINERS}, actual usage ≈$((USED_MB/1024)) GB (caps NOT counted)"
   TOTAL_CONTAINERS_EST=$((ABLATION_PARALLEL * RUNS))
-  NEEDED_GB=$((TOTAL_CONTAINERS_EST * MEMORY_PER_FUZZER + 2))
-  if [[ $AVAIL_MEM_GB -lt $NEEDED_GB ]]; then
-    echo "  ⚠️  WARNING: Estimated ~${TOTAL_CONTAINERS_EST} containers × ${MEMORY_PER_FUZZER}GB (batch size) + 2GB overhead = ~${NEEDED_GB} GB needed"
-    echo "  ⚠️  Available memory (${AVAIL_MEM_GB} GB) may be insufficient — expect OOM kills!"
-  else
-    echo "  ✓ Sufficient memory for ~${TOTAL_CONTAINERS_EST} containers"
+  NEEDED_MB=$(( TOTAL_CONTAINERS_EST * ABLATION_MEM_EST_MB ))
+  if (( USED_MB + NEEDED_MB > MEM_BUDGET_MB )); then
+    # 自动收敛并发：按剩余预算反解最大组数，宁可慢也不能把宿主机拖死
+    local_max=$(( (MEM_BUDGET_MB - USED_MB) / (RUNS * ABLATION_MEM_EST_MB) ))
+    (( local_max < 1 )) && local_max=1
+    if (( local_max < ABLATION_PARALLEL )); then
+      echo "  ⚠️  实际占用 ${USED_MB}MB + 新批次估算 ${NEEDED_MB}MB 超出预算 ${MEM_BUDGET_MB}MB，ABLATION_PARALLEL 自动下调 ${ABLATION_PARALLEL} → ${local_max}"
+      ABLATION_PARALLEL=$local_max
+    fi
   fi
+  TOTAL_CONTAINERS_EST=$((ABLATION_PARALLEL * RUNS))
+  echo "  ✓ 本批次计划并发 ${ABLATION_PARALLEL} 组 × ${RUNS} run = ${TOTAL_CONTAINERS_EST} 容器"
 fi
 echo "  SKIPCOUNT=${SKIPCOUNT:-'(not set, using default)'}"
 echo "  Docker images required: ${TARGET} (and brokers if MQTT)"
@@ -141,6 +171,27 @@ run_queued_groups() {
     GROUP_PIDS=()
     GROUP_LABELS=()
     batch_num=$((batch_num + 1))
+
+    # ── 批次门槛：按实际内存占用准入（多脚本叠加时也不会冲垮宿主机）──
+    while :; do
+      USED_MB=$(fuzz_actual_usage_mb)
+      AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 9999999)
+      local_max=$(( (MEM_BUDGET_MB - USED_MB) / (RUNS * ABLATION_MEM_EST_MB) ))
+      (( local_max < 1 )) && local_max=1
+      if (( local_max < ABLATION_PARALLEL )); then
+        echo "  [ABLATION] 运行中容器实际占用 $((USED_MB/1024))GB / 预算 ${MEM_BUDGET_GB}GB，本批并发收敛 ${ABLATION_PARALLEL} → ${local_max} 组"
+        ABLATION_PARALLEL=$local_max
+        break
+      fi
+      # 估算放得下时还要看真实水位：可用内存触底才等待（此时等待是对的，占用会随批次结束回落）
+      if (( AVAIL_MB < (MEM_HEADROOM_GB + 2) * 1024 )); then
+        echo "  [ABLATION] 宿主机可用内存 $((AVAIL_MB/1024))GB 低于底线，fuzz 实际占用 $((USED_MB/1024))GB，等待 60s ..."
+        sleep 60
+      else
+        break
+      fi
+    done
+
     local batch_end=$((start + ABLATION_PARALLEL))
     ((batch_end > total)) && batch_end=$total
 
