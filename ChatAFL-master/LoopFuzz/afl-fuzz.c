@@ -3391,6 +3391,11 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
   json_object_object_add(j, "test_force_code_retain", json_object_new_boolean(test_force_code_retain));
   json_object_object_add(j, "no_llm", json_object_new_boolean(llm_disabled));
+  {
+    const char *ssel2 = getenv("CHATAFL_STATE_SELECT");
+    json_object_object_add(j, "state_select_override",
+        json_object_new_string(ssel2 && *ssel2 ? ssel2 : "none"));
+  }
   json_object_object_add(j, "calibration", json_object_new_boolean(calibration_enabled));
   json_object_object_add(j, "no_refinement", json_object_new_boolean(ablation_no_refinement));
   json_object_object_add(j, "no_frontier", json_object_new_boolean(ablation_no_frontier));
@@ -20001,6 +20006,28 @@ int main(int argc, char **argv)
             "without CAP_SYS_ADMIN capability.\n You can set it by invoking "
             "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".",
             netns_name);
+  }
+
+  /* v3.5 (expert P1-10): CHATAFL_STATE_SELECT overrides the -q state
+   * selection algorithm AFTER getopt so the launcher's hardcoded "-q 3"
+   * (FAVOR) cannot clobber it — the random-state-selection control arm.
+   * Values: random | round_robin | favor.  Recorded in run-config. */
+  {
+    const char *ssel = getenv("CHATAFL_STATE_SELECT");
+    if (ssel && *ssel) {
+      if (strcasecmp(ssel, "random") == 0) {
+        state_selection_algo = RANDOM_SELECTION;
+        OKF("P1-10 control: RANDOM state selection armed (overrides -q)");
+      } else if (strcasecmp(ssel, "round_robin") == 0) {
+        state_selection_algo = ROUND_ROBIN;
+        OKF("State selection overridden to ROUND_ROBIN");
+      } else if (strcasecmp(ssel, "favor") == 0) {
+        state_selection_algo = FAVOR;
+        OKF("State selection overridden to FAVOR");
+      } else {
+        WARNF("CHATAFL_STATE_SELECT=%s unknown (random|round_robin|favor)", ssel);
+      }
+    }
   }
 
   setup_signal_handlers();
