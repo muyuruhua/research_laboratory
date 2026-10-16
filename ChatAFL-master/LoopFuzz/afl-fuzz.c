@@ -15416,7 +15416,13 @@ AFLNET_REGIONS_SELECTION:;
               }
             }
           }
-          llm_total_calls++;
+          /* v3.6 (counting-semantics fix): count SUCCESSFUL calls only, like
+           * the grammar (3879) and enrichment (8027) sites do.  The old
+           * unconditional increment counted every plateau ATTEMPT, so
+           * CHATAFL_NO_LLM runs (chat_with_llm short-circuits to NULL, zero
+           * tokens, no llm-calls.jsonl rows) still showed llm_total_calls>0.
+           * stall_message != NULL means the helper child produced a reply. */
+          if (stall_message) llm_total_calls++;
         }
 
         /* Candidate-LLM linkage (paper §十.2): everything executing from this
