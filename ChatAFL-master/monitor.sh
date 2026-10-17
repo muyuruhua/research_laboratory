@@ -66,6 +66,7 @@ CSV_MODE=0
 FILTER=""           # 协议过滤器，空=全部
 DISK_WARN_PCT="${DISK_WARN_PCT:-85}"   # 根分区使用率黄色告警阈值 (%)
 DISK_CRIT_PCT="${DISK_CRIT_PCT:-92}"   # 根分区使用率红色告警阈值 (%)
+MECH=0              # v3.5 机制面板（纯增量扩展：episode/兜底/生命周期/血缘/身份）
 
 usage() {
     echo "Usage: $0 [PROTOCOL[,PROTOCOL...]] [-i interval_sec] [-o output_dir] [-1] [--csv] [-h]"
@@ -76,6 +77,7 @@ usage() {
     echo "  -o DIR     输出目录 (默认仅终端输出)"
     echo "  -1         单次采集后退出"
     echo "  --csv      同时生成CSV时间序列文件"
+    echo "  --mech     追加LoopFuzz机制面板：episode/自旋/兜底计数/provisional/血缘/身份/告警"
     echo "  -h         显示帮助"
     echo ""
     echo "Env:"
@@ -95,6 +97,7 @@ while [[ $# -gt 0 ]]; do
         -o)   OUT_DIR="$2"; shift 2 ;;
         -1)   ONCE=1; shift ;;
         --csv) CSV_MODE=1; shift ;;
+        --mech) MECH=1; shift ;;
         -h|--help) usage ;;
         -*) echo "Unknown option: $1"; usage ;;
         *)  # 位置参数 → 协议过滤器
@@ -1004,6 +1007,11 @@ main() {
         print_system_overview
         print_table "${results[@]}"
 
+        # v3.5 机制面板（开闭扩展：仅新增钩子行，不改既有采集/打印逻辑）
+        if [[ $MECH -eq 1 ]]; then
+            mech_section "$container_list" || true
+        fi
+
         # CSV 输出
         if [[ $CSV_MODE -eq 1 && ${#results[@]} -gt 0 ]]; then
             write_csv "${results[@]}"
@@ -1020,6 +1028,83 @@ main() {
 }
 
 # ─── Ctrl+C 优雅退出 ───────────────────────────────────────────────────────
+
+# ════════════════════════════════════════════════════════════════════════════
+# v3.5 机制面板（开闭原则扩展区：以下全部为新增函数，未改动上方任何既有函数）
+#   覆盖三轮人工严查的全部机制指标 + 跨主机可比性身份核验 + 病态告警：
+#   episode/零变异（自旋）、churn/seed 兜底计数、provisional 生命周期、
+#   血缘条目/新边收益、code-retain 通道、no-LLM 真伪调用判别（计数语义
+#   bug 签名 = llm_calls>0 且 tokens==0）、run-config 臂身份。
+# ════════════════════════════════════════════════════════════════════════════
+
+# 单容器采集：一次 docker exec 取 fuzzer_stats 机制字段 + run-config 身份
+mech_collect_one() {
+    local cid="$1" cname payload
+    cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed -E 's/^\///; s/-loopfuzz-run.*//')
+    payload=$(docker exec "$cid" bash -c '
+        d=$(ls -d /home/ubuntu/experiments/*/out-* /home/ubuntu/experiments/*/*/out-* \
+             /home/ubuntu/experiments/*/*/*/out-* /home/ubuntu/experiments/*/*/*/*/out-* 2>/dev/null | head -1)
+        [ -z "$d" ] && exit 1
+        s="$d/fuzzer_stats"; r="$d/run-config.jsonl"
+        [ -f "$s" ] || exit 1
+        g(){ grep -m1 "^$1" "$s" 2>/dev/null | sed "s/.*: *//" | tr -d "[:space:]"; }
+        rc(){ grep -o "\"$1\": *[^,}]*" "$r" 2>/dev/null | head -1 | cut -d: -f2- | tr -d "\" "; }
+        printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n" \
+          "$(rc arm)" "$(rc fuzzer_commit)" "$(rc no_llm)" "$(rc code_retain)" "$(rc state_select_override)" \
+          "$(g execs_done)" "$(g paths_total)" "$(g cal_episodes)" "$(g cal_eps_zero_mut)" \
+          "$(g churn_fallback_used)" "$(g seed_fallback_used)" "$(g no_seed_stalls)" \
+          "$(g provisional_admitted)" "$(g provisional_converted)" "$(g provisional_expired)" \
+          "$(g llm_lineage_entries)" "$(g llm_lineage_edge_gains)" "$(g code_retain_admitted)" \
+          "$(g llm_total_calls)" "$(g llm_prompt_tokens)"
+    ' 2>/dev/null)
+    [[ -z "$payload" ]] && return 1
+    printf '%s|%s\n' "$cname" "$payload"
+}
+
+# 打印机制面板（含告警列）
+mech_print_table() {
+    echo ""
+    echo -e "${BOLD}── LoopFuzz Mechanism Panel (v3.5) ─────────────────────────────────────────────${RST}"
+    printf "  %-12s %-13s %7s %8s %7s %5s %5s %5s %5s %5s %5s %6s %5s %6s %-8s %s\n" \
+        TARGET ARM EXECs PATHS EPI ZERO CHURN SFB STALL PROV CONV LIN GAIN TOKENS COMMIT ALERTS
+    printf "  %-12s %-13s %7s %8s %7s %5s %5s %5s %5s %5s %5s %6s %5s %6s %-8s %s\n" \
+        ------ --- ----- ----- --- ---- ----- --- --- ----- ---- --- ---- ----- ------ ------
+    local row target arm execs paths epi zero churn sfb stall prov conv lin gain cr calls tokens commit flags
+    for row in "$@"; do
+        IFS='|' read -r target arm commit _ _ _ execs paths epi zero churn sfb stall prov conv _ lin gain _ calls tokens _ <<< "$row"
+        commit=${commit:--}; flags=""
+        flags=""
+        local e=${epi:-0} ch=${churn:-0} st=${stall:-0} cl=${calls:-0} tk=${tokens:-0}
+        (( e > 5000 ))    && flags="${flags}SPIN! "
+        (( ch > 1000 ))   && flags="${flags}CHURN-BURN! "
+        (( st > 0 ))      && flags="${flags}STALL! "
+        if (( cl > 0 )) && (( tk == 0 )); then flags="${flags}FAKE-LLM-CNT "; fi
+        [ -z "$flags" ] && flags="ok"
+        printf "  %-12s %-13s %7s %8s %7s %5s %5s %5s %5s %5s %5s %6s %5s %6s %-8s %b\n" \
+            "$target" "${arm:--}" "${execs:--}" "${paths:--}" "${epi:--}" "${zero:--}" \
+            "${churn:--}" "${sfb:--}" "${stall:--}" "${prov:--}" "${conv:--}" "${lin:--}" \
+            "${gain:--}" "$(( tk / 1000 ))k" "${commit:0:8}" "${flags}"
+        :
+    done
+    echo -e "  ${DIM}告警阈值: SPIN epi>5000 | CHURN>1000 | STALL>0 | FAKE-LLM calls>0且tokens=0（计数语义bug签名）${RST}"
+    return 0
+}
+
+mech_section() {
+    local rows=() row cid
+    for cid in $1; do
+        if row=$(mech_collect_one "$cid" 2>/dev/null); then
+            [[ -n "$row" ]] && rows+=("$row")
+        fi
+    done
+    if [[ ${#rows[@]} -gt 0 ]]; then
+        mech_print_table "${rows[@]}"
+    else
+        echo -e "${YELLOW}  [mech] no mechanism data collected (non-loopfuzz containers?)${RST}"
+    fi
+    return 0
+}
+
 trap 'echo -e "\n${YELLOW}Monitor stopped.${RST}"; exit 0' INT TERM
 
 main
