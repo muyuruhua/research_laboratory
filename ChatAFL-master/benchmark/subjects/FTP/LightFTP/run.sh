@@ -31,7 +31,16 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}/Source/Release
   echo "$WORKDIR/${TARGET_DIR}/Source/Release"
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/ftp.dict -o $OUTDIR -N tcp://127.0.0.1/2200 $OPTIONS -c ${WORKDIR}/ftpclean ./fftp fftp.conf 2200
+  # Phase-2: the fuzzer now VALIDATES the -c cleanup exit status (a failing
+  # reset aborts the campaign) and the historic image ftpclean is not
+  # idempotent on a fresh container (rm ~/fftplog exits 1 when the file does
+  # not exist). Prefer the staged idempotent runtime reset when the shared
+  # analysis mount is present; fall back to the image ftpclean otherwise.
+  CLEANUP="${WORKDIR}/ftpclean"
+  if [ -f /tmp/coverage-v4-src/reset_commands/lightftp-runtime.sh ]; then
+    CLEANUP="bash /tmp/coverage-v4-src/reset_commands/lightftp-runtime.sh"
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/ftp.dict -o $OUTDIR -N tcp://127.0.0.1/2200 $OPTIONS -c "$CLEANUP" ./fftp fftp.conf 2200
 
   STATUS=$?
 

@@ -27,6 +27,27 @@ Notes: the bftpd image ends its Dockerfile with `USER root`, so that script
 accepts root or ubuntu and uses absolute paths. All other subjects run as
 `ubuntu`. Scripts are safe to run from any cwd (absolute paths only).
 
+## Runtime (fuzzer-side) vs replay resets — do not mix them
+
+The fuzzer's `-c` cleanup script runs before the forkserver and before every
+target invocation, and phase-2 requires exit 0. Two constraints apply there:
+
+1. It must be idempotent on a fresh container (the historic lightftp
+   `ftpclean` exits 1 when `~/fftplog` does not exist, which aborts the
+   campaign at start).
+2. It must NEVER kill processes by target name: the AFL forkserver is itself
+   a copy of the target binary (e.g. `fftp`), so `pkill -x fftp` would kill
+   the forkserver mid-campaign.
+
+`*-runtime.sh` scripts are the fuzzer-side cleaners (file state only,
+forkserver-safe, exit-clean on fresh state). The five `<target>.sh` scripts
+above are coverage-replay resets: they may kill leftover server processes
+because the replay pipeline starts a fresh server per input and no forkserver
+exists in that context. `lightftp-runtime.sh` is wired into the subject
+`run.sh` via the shared analysis mount; the other subjects' existing `-c`
+scripts (bftpd `clean`, kamailio `run_pjsip`) are already exit-clean, and
+forked-daapd/lighttpd1 run without `-c`.
+
 ## Validation evidence (2026-10-21, in-container)
 
 For each target, on the local image, three tests were executed via
