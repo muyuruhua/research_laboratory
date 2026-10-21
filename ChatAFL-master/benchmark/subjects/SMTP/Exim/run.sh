@@ -31,7 +31,15 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}
   cp ./src/build-Linux-x86_64/exim /usr/exim/bin/exim
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c ${WORKDIR}/clean exim -bd -d -oX 25 -oP /var/lock/exim.pid
+  # Phase-2: the fuzzer validates the -c cleanup exit status; the image clean
+  # (bare `pkill -F /var/lock/exim.pid`) exits 1 on a fresh container or a
+  # stale pidfile and would abort the campaign. Prefer the staged idempotent
+  # runtime reset when the shared analysis mount is present.
+  CLEANUP="${WORKDIR}/clean"
+  if [ -f /tmp/coverage-v4-src/reset_commands/exim-runtime.sh ]; then
+    CLEANUP="bash /tmp/coverage-v4-src/reset_commands/exim-runtime.sh"
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c "$CLEANUP" exim -bd -d -oX 25 -oP /var/lock/exim.pid
 
   STATUS=$?
 

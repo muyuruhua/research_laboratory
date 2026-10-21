@@ -72,3 +72,23 @@ Results — all 5 targets × 3 tests PASS:
 These validate the reset commands themselves. The end-to-end replay
 (with real corpora and gcov collection) is exercised by the small-scale
 campaigns; any reset failure there stops the pipeline by design.
+
+## Fuzzer-side `-c` cleanup audit across all nine subjects (2026-10-21)
+
+Phase-2 requires the fuzzer `-c` cleanup to exit 0 on every invocation;
+a nonzero cleanup aborts the campaign. Fresh-state behavior verified
+in-container for every subject that passes `-c`:
+
+| subject | `-c` script | fresh-state exit | action |
+| --- | --- | --- | --- |
+| lightftp | ftpclean (`rm ~/fftplog`) | 1 — BROKEN | replaced by `lightftp-runtime.sh` (campaign-smoked) |
+| exim | clean (`pkill -F /var/lock/exim.pid`) | 1 — BROKEN (also on every stale pidfile) | replaced by `exim-runtime.sh` (4/4 in-container tests incl. forkserver-pid guard) |
+| bftpd | clean (`rm -rf ftpshare/*`) | 0 | none needed |
+| kamailio | run_pjsip | 0 | none needed |
+| proftpd | clean (`find ... -delete \|\| true`) | 0 | none needed |
+| pure-ftpd | clean (`rm -rf /home/fuzzing/*`) | 0 | none needed |
+| forked-daapd, lighttpd1, live555 | (no `-c`) | n/a | no fuzzer-side reset by design |
+
+`exim-runtime.sh` additionally honors `PHASE2_ALLOWED_FORKSERVER_PID`
+(exported by the fuzzer before every reset) so the pidfile can never cause
+the idle forkserver itself to be killed.
