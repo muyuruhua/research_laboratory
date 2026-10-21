@@ -635,7 +635,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     replay = sub.add_parser("replay")
-    replay.add_argument("--target", required=True, choices=("lightftp", "lighttpd1", "forked-daapd", "bftpd", "kamailio"))
+    replay.add_argument("--target", required=True, choices=("lightftp", "lighttpd1", "forked-daapd", "bftpd", "kamailio", "exim", "proftpd", "pure-ftpd", "live555"))
     replay.add_argument("--folder", required=True, type=Path)
     replay.add_argument("--port", required=True, type=int)
     replay.add_argument("--step", required=True, type=int)
