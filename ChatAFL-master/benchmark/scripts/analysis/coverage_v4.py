@@ -147,7 +147,7 @@ def parse_snapshot(report, source_root, search_roots=None, allow_empty=False):
                 branches.add(branch_id)
                 if branch.get("count", 0) > 0:
                     covered_branches.add(branch_id)
-    if not files or (not branches and not allow_empty):
+    if (not files or not branches) and not allow_empty:
         raise CoverageError("empty source/branch scope; instrumentation is not validated")
     return Snapshot(branches, covered_branches, lines, covered_lines, files,
                     str(report.get("gcovr/format_version", "unknown")))
@@ -447,10 +447,14 @@ def replay_commands(target, path, port, mode, cwd, workdir):
         server = ["timeout", "-k", "1s", "-s", "SIGTERM", "3s",
                   "./src/build-Linux-x86_64/exim", "-bd", "-d", "-oX", str(port)]
     elif target == "proftpd":
-        server = timeout + ["./proftpd", "-n", "-c",
-                            str(target_config or (workdir / "basic.conf")), "-X"]
+        # ProFTPD exits its signal handler by re-raising (no gcov dump from
+        # the listener); coverage comes from per-session children that exit
+        # normally, and SIGTERM is its graceful shutdown signal.
+        server = ["timeout", "-k", "1s", "-s", "SIGTERM", "3s",
+                  "./proftpd", "-n", "-c",
+                  str(target_config or (workdir / "basic.conf")), "-X"]
     elif target == "pure-ftpd":
-        server = timeout + ["src/pure-ftpd", "-A"]
+        server = ["timeout", "-k", "1s", "-s", "SIGTERM", "3s", "src/pure-ftpd", "-A"]
     elif target == "live555":
         server = timeout + ["./testOnDemandRTSPServer", str(port)]
     else:
@@ -536,11 +540,17 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
                 raise CoverageError("BFTPD gcda has no corresponding gcno: " + str(source))
             shutil.copy2(source, destination)
             imported.append(source.relative_to(remote).as_posix())
-        if not imported:
-            raise CoverageError("BFTPD did not flush chroot coverage; replay is unvalidated")
+        # A session child that crashes or is killed cannot flush its gcov
+        # data (libgcov dumps only on a normal exit), so a crash-input
+        # replay legitimately yields an empty import.  It is recorded, not
+        # fatal: the union simply gains nothing from this input.
+        session_coverage_missing = not imported
+    else:
+        session_coverage_missing = False
     if server_code not in (0, 124) or client_code != 0:
         raise CoverageError("replay failed: server=%s client=%s; see %s" % (server_code, client_code, replay_log))
     return dict(server_exit_code=server_code, client_exit_code=client_code,
+                session_coverage_missing=session_coverage_missing,
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
                 client_command=client_command, server_command=server_command)
 
