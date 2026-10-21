@@ -30,6 +30,12 @@ semantic correctness of a supplied reset script. A failing reset stops replay.
 `--allow-unverified-reset` is diagnostic only and is never added by the wrappers.
 The root experiment runner owns validated reset scripts and isolated containers.
 
+Validated per-target reset scripts are delivered in `reset_commands/` (see
+`reset_commands/README.md` for the state cleared per target and the in-container
+validation evidence). The execution layer injects them as the default
+`COVERAGE_V4_RESET_COMMAND_JSON` for lightftp, bftpd, forked-daapd, lighttpd1
+and kamailio; operator-supplied commands always take precedence.
+
 ## Inputs and Coordinates
 
 `queue-checkpoints.jsonl` in the fuzzer output directory must provide exactly one

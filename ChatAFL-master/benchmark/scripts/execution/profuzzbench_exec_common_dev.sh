@@ -527,6 +527,18 @@ if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
     if [[ -f "${PROJECT_ROOT}/benchmark/scripts/analysis/coverage_v4.py" ]]; then
       SUBJECT_MOUNT="${SUBJECT_MOUNT} -v ${PROJECT_ROOT}/benchmark/scripts/analysis:/tmp/coverage-v4-src:ro"
       SUBJECT_COPY+="mkdir -p ${WORKDIR}/coverage_v4 && cp -f /tmp/coverage-v4-src/coverage_v4.py ${WORKDIR}/coverage_v4/ && "
+      # Default verified per-input reset command for targets that have a
+      # validated reset script (COVERAGE_V4.md contract).  An operator-provided
+      # COVERAGE_V4_RESET_COMMAND_JSON always wins; no default is injected for
+      # targets without a script, so the pipeline keeps failing fast there.
+      case "$DOCIMAGE" in
+        lightftp|bftpd|forked-daapd|lighttpd1|kamailio)
+          if [[ -z "${COVERAGE_V4_RESET_COMMAND_JSON:-}" ]] \
+             && [[ -f "${PROJECT_ROOT}/benchmark/scripts/analysis/reset_commands/${DOCIMAGE}.sh" ]]; then
+            export COVERAGE_V4_RESET_COMMAND_JSON='["bash","/tmp/coverage-v4-src/reset_commands/'"${DOCIMAGE}"'.sh"]'
+          fi
+          ;;
+      esac
     fi
     if is_mqtt_target "$DOCIMAGE" && [[ -f "${SUBJECT_DIR}/mosquitto.conf" ]]; then
       SUBJECT_COPY+="cp -f /tmp/subject-src/mosquitto.conf ${WORKDIR}/mosquitto.conf && "

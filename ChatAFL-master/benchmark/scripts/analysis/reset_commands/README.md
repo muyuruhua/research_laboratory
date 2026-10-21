@@ -1,0 +1,53 @@
+# Verified per-input reset commands (coverage_v4)
+
+Per-target reset scripts fulfilling the `COVERAGE_V4_RESET_COMMAND_JSON`
+contract (COVERAGE_V4.md): run once before every replay input, 30 s limit,
+receiving `COVERAGE_V4_INPUT`; exit 0 only when the target-specific files,
+database and service state are actually cleared. Any failure stops replay.
+
+## Deployment
+
+`profuzzbench_exec_common_dev.sh` injects the default
+`COVERAGE_V4_RESET_COMMAND_JSON=["bash","/tmp/coverage-v4-src/reset_commands/<target>.sh"]`
+for these five targets when the operator has not supplied one; the analysis
+mount provides the scripts in-container. An operator-provided value always
+wins; targets without a validated script keep failing fast.
+
+## Per-target state cleared
+
+| target | process killed | persistent state removed | configuration verified |
+| --- | --- | --- | --- |
+| lightftp | `fftp` | `~/ftpshare/*`, `~/fftplog` | ftpshare empty + writable |
+| bftpd | `bftpd` | `/home/ubuntu/ftpshare/*` (chroot jail; pipeline re-stages gcov objects after reset) | `AUTO_CHDIR="/"`, `DO_CHROOT="yes"`, jail writable |
+| forked-daapd | `forked-daapd` | `db/songs3.db`, `db/cache.db` (+wal/shm), `forked-daapd.log`; MP3 media dir untouched | db dir writable, conf present |
+| lighttpd1 | `lighttpd` | none (docroot `/tmp`, no upload/log state in replay config) | `server.document-root = "/tmp"` |
+| kamailio | `kamailio` | `kamailio-gcov/runtime_dir/` (sockets, pids) | cfg + gcov tree present |
+
+Notes: the bftpd image ends its Dockerfile with `USER root`, so that script
+accepts root or ubuntu and uses absolute paths. All other subjects run as
+`ubuntu`. Scripts are safe to run from any cwd (absolute paths only).
+
+## Validation evidence (2026-10-21, in-container)
+
+For each target, on the local image, three tests were executed via
+`docker run --rm -v <analysis>:/tmp/coverage-v4-src:ro`:
+
+1. dirty state + planted leftover server process → reset must kill the
+   process, remove the state, exit 0;
+2. immediate clean re-run → exit 0 (idempotence);
+3. negative control (undeletable file / drifted config / missing config)
+   → reset must exit non-zero.
+
+Results — all 5 targets × 3 tests PASS:
+
+| target | image (sha256 id) | T1 kill+wipe | T2 idempotent | T3 negative |
+| --- | --- | --- | --- | --- |
+| lightftp | cf45182ed629 | PASS | PASS | PASS |
+| bftpd | c74adae74d06 | PASS | PASS | PASS |
+| forked-daapd | 2fc7b0f5106c | PASS | PASS | PASS |
+| lighttpd1 | 1abcf102caa7 | PASS | PASS | PASS |
+| kamailio | e98d280fe6c9 | PASS | PASS | PASS |
+
+These validate the reset commands themselves. The end-to-end replay
+(with real corpora and gcov collection) is exercised by the small-scale
+campaigns; any reset failure there stops the pipeline by design.
