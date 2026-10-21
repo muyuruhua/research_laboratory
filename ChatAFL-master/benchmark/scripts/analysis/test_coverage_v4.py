@@ -76,7 +76,9 @@ class CoverageFixtureTests(unittest.TestCase):
     def test_source_escape_fails(self):
         report = copy.deepcopy(self.report)
         report["files"][0]["file"] = "../unrelated.c"
-        with self.assertRaisesRegex(cov.CoverageError, "escapes"):
+        # A source outside every known root (escape or plain missing) must
+        # never be silently admitted into the measured universe.
+        with self.assertRaisesRegex(cov.CoverageError, "cannot be fingerprinted"):
             cov.parse_snapshot(report, self.root)
 
     def test_modern_explicit_branch_numbers(self):
@@ -179,7 +181,7 @@ class CoverageFixtureTests(unittest.TestCase):
                     "forked-daapd": (self.root / "forked-daapd-gcov",) * 2,
                     "kamailio": (self.root / "kamailio-gcov",) * 2,
                     "bftpd": (self.root, self.root),
-                    "exim": (self.root / "src", self.root / "src" / "build-Linux-x86_64"),
+                    "exim": (self.root / "src" / "build-Linux-x86_64",) * 2,
                     "proftpd": (self.root, self.root),
                     "pure-ftpd": (self.root, self.root),
                     "live555": (self.root.parent, self.root.parent)}
@@ -193,6 +195,11 @@ class CoverageFixtureTests(unittest.TestCase):
                                                        self.root, self.root)
         self.assertEqual(exim_client[:3], ["aflnet-replay", "input", "SMTP"])
         self.assertIn("-bd", exim_server)
+        (self.root / "src" / "src").mkdir(parents=True, exist_ok=True)
+        self.assertEqual(cov.source_search_roots("exim", self.root,
+                                                 self.root / "src" / "build-Linux-x86_64"),
+                         [self.root / "src" / "src"])
+        self.assertEqual(cov.source_search_roots("bftpd", self.root, self.root), [])
         proftpd_client, proftpd_server = cov.replay_commands("proftpd", "input", 21, 1,
                                                              self.root, self.root)
         self.assertEqual(proftpd_client[2], "FTP")

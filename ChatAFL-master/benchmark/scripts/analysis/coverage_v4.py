@@ -70,20 +70,42 @@ class Snapshot:
     covered_lines: set
     files: dict
     format_version: str
+    resolution: dict = dataclasses.field(default_factory=dict)
 
 
-def parse_snapshot(report, source_root):
-    """Read gcovr JSON 0.1 (4.2) and newer branch arrays, never summaries."""
+def parse_snapshot(report, source_root, search_roots=None):
+    """Read gcovr JSON 0.1 (4.2) and newer branch arrays, never summaries.
+
+    `search_roots` extends the fingerprint lookup for instrumented trees that
+    span directories (exim compiles .c copies inside its build directory but
+    #includes headers from the original source tree). The primary root still
+    defines the relative naming; every reported file must be found under at
+    least one root and the per-file root index is recorded so audits resolve
+    identically."""
+    roots = [Path(source_root).resolve()] + [Path(r).resolve() for r in (search_roots or [])]
     if not isinstance(report.get("files"), list):
         raise CoverageError("gcovr JSON must contain a files array")
-    branches, covered_branches, lines, covered_lines, files = set(), set(), set(), set(), {}
+    branches, covered_branches, lines, covered_lines, files, resolution = set(), set(), set(), set(), {}, {}
     for entry in report["files"]:
-        filename = relative_source(source_root, entry["file"])
+        # gcovr reports plain names for sources inside the primary root but
+        # dotdot-relative (or absolute) paths for entries outside it; try
+        # every root and take the first that both contains and holds the file.
+        raw = Path(entry["file"])
+        filename = source = None
+        for index, root in enumerate(roots):
+            candidate = raw.resolve() if raw.is_absolute() else (root / raw).resolve()
+            try:
+                name = candidate.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if candidate.is_file():
+                filename, source = name, candidate
+                resolution[filename] = index
+                break
+        if filename is None:
+            raise CoverageError("source content cannot be fingerprinted: " + entry["file"])
         if filename in files:
             raise CoverageError("duplicate gcovr source entry: " + filename)
-        source = Path(source_root).resolve() / filename
-        if not source.is_file():
-            raise CoverageError("source content cannot be fingerprinted: " + str(source))
         files[filename] = digest_file(source)
         for line in entry.get("lines", []):
             if line.get("gcovr/excl_line", False):
@@ -127,7 +149,8 @@ def scope_manifest(snapshot, notes, gcovr_version, gcov_version):
                  branch_ids=sorted(snapshot.branches), line_ids=sorted(snapshot.lines),
                  gcovr_format=snapshot.format_version, gcovr_version=gcovr_version,
                  gcov_version=gcov_version,
-                 branch_identity="relative filename, line_number, branchno/array ordinal")
+                 branch_identity="relative filename, line_number, branchno/array ordinal",
+                 source_resolution=snapshot.resolution)
     value["scope_sha256"] = digest_bytes(canonical(value).encode())
     return value
 
@@ -293,8 +316,12 @@ def audit_csv(path, manifest, expected_events=None):
 
 def collect_report(source_root, object_root, gcovr="gcovr", delete=False):
     # gcovr 4.x (the version inside the subject images) treats "--output -"
-    # as a literal file named "-" and prints NOTHING to stdout, so the report
-    # must go through an explicit temp file to stay version-agnostic.
+    # as a literal file named "-" and writes nothing to stdout, so the report
+    # must go through an explicit temp file to stay version-agnostic.  gcovr
+    # is also run with cwd == source_root: gcovr only relativizes source
+    # paths against --root when invoked from it, and otherwise emits
+    # absolute paths for every entry outside the invocation directory
+    # (observed on exim's split build/source tree).
     with tempfile.NamedTemporaryFile(prefix="coverage-v4-", suffix=".json", delete=False) as handle:
         report_path = handle.name
     try:
@@ -302,7 +329,8 @@ def collect_report(source_root, object_root, gcovr="gcovr", delete=False):
                    "--json", "--output", report_path, str(object_root)]
         if delete:
             command.append("--delete")
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True,
+                                cwd=str(source_root))
         try:
             with open(report_path) as source:
                 return json.load(source), result.stderr, command
@@ -323,9 +351,10 @@ def profile_paths(target, cwd):
     if target == "bftpd":
         return cwd, cwd
     if target == "exim":
-        # cov_script runs from exim-gcov; gcno and the server binary live in
-        # the per-OS build directory, sources in src/.
-        return cwd / "src", cwd / "src" / "build-Linux-x86_64"
+        # cov_script runs from exim-gcov.  gcovr resolves the instrumented
+        # build-tree copies correctly only when the gcovr root IS the build
+        # directory (a broader root mis-resolves the per-module sources).
+        return cwd / "src" / "build-Linux-x86_64", cwd / "src" / "build-Linux-x86_64"
     if target in ("proftpd", "pure-ftpd"):
         return cwd, cwd
     if target == "live555":
@@ -334,6 +363,17 @@ def profile_paths(target, cwd):
         # UsageEnvironment/testProgs).
         return cwd.parent, cwd.parent
     raise CoverageError("unsupported target: " + target)
+
+
+def source_search_roots(target, cwd, source_root):
+    """Extra fingerprint roots for trees whose instrumented sources span
+    directories. exim compiles .c copies inside build-Linux-x86_64 but
+    #includes headers (with their own inline branch data) from the original
+    src tree, which gcovr reports under the same relative names."""
+    if target == "exim":
+        original = Path(cwd).resolve() / "src" / "src"
+        return [original] if original.is_dir() and original != Path(source_root) else []
+    return []
 
 
 def replay_commands(target, path, port, mode, cwd, workdir):
@@ -480,6 +520,7 @@ def run_replay(args):
     if args.step < 1:
         raise CoverageError("step must be positive")
     source_root, object_root = profile_paths(args.target, cwd)
+    search_roots = source_search_roots(args.target, cwd, source_root)
     workdir = Path(os.environ.get("WORKDIR", str(cwd)))
     coordinates = load_coordinates(folder / "queue-checkpoints.jsonl")
     plan = plan_corpus(folder, args.mode, coordinates, args.require_coordinates)
@@ -492,9 +533,10 @@ def run_replay(args):
     # Delete through gcovr, then independently verify a zero baseline.
     _, reset_stderr, reset_command = collect_report(source_root, object_root, args.gcovr, delete=True)
     baseline_report, baseline_stderr, collection_command = collect_report(source_root, object_root, args.gcovr)
-    baseline = parse_snapshot(baseline_report, source_root)
+    baseline = parse_snapshot(baseline_report, source_root, search_roots)
     manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version)
-    manifest.update(source_root=str(source_root), object_root=str(object_root), target=args.target)
+    manifest.update(source_root=str(source_root), object_root=str(object_root), target=args.target,
+                    source_search_roots=[str(r) for r in search_roots])
     write_json(directory / "scope.json", manifest)
     write_json(directory / "baseline.json", baseline_report)
     union = CoverageUnion(baseline, manifest)
@@ -515,7 +557,7 @@ def run_replay(args):
             snapshot_path = directory / ("snapshot-%06d.json.gz" % index)
             with gzip.open(snapshot_path, "wb") as snapshot_output:
                 snapshot_output.write(raw)
-            event = union.add(parse_snapshot(report, source_root), record, digest_bytes(raw),
+            event = union.add(parse_snapshot(report, source_root, search_roots), record, digest_bytes(raw),
                               expected_counter_reset=args.target == "bftpd")
             event.update(replay=replay, reset=reset, gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
             events.write(canonical(event) + "\n")
@@ -550,8 +592,13 @@ def audit_artifacts(output, source_root=None):
     directory = Path(str(output) + ".v4")
     manifest = json.loads((directory / "scope.json").read_text())
     root = source_root or manifest["source_root"]
-    baseline = parse_snapshot(json.loads((directory / "baseline.json").read_text()), root)
+    # An explicit --source-root relocates the whole tree as a single root;
+    # otherwise the recorded multi-root resolution (e.g. exim's build copies
+    # plus original headers) is replayed exactly.
+    roots = [] if source_root else [Path(p) for p in manifest.get("source_search_roots", [])]
+    baseline = parse_snapshot(json.loads((directory / "baseline.json").read_text()), root, roots)
     if (baseline.files != manifest["sources"] or
+            baseline.resolution != manifest.get("source_resolution", baseline.resolution) or
             sorted(map(list, baseline.branches)) != manifest["branch_ids"] or
             sorted(map(list, baseline.lines)) != manifest["line_ids"]):
         raise CoverageError("baseline identities disagree with pinned scope")
@@ -568,7 +615,7 @@ def audit_artifacts(output, source_root=None):
                 snapshot_bytes = snapshot_source.read()
             if digest_bytes(snapshot_bytes) != saved["snapshot_sha256"]:
                 raise CoverageError("snapshot content hash mismatch")
-            event = union.add(parse_snapshot(json.loads(snapshot_bytes), root),
+            event = union.add(parse_snapshot(json.loads(snapshot_bytes), root, roots),
                               {key: saved[key] for key in coordinate_fields if key in saved},
                               saved["snapshot_sha256"], saved["expected_counter_reset"])
             for field in ("idx", "scope_sha256", "cumulative_covered_branches", "cumulative_covered_lines",
