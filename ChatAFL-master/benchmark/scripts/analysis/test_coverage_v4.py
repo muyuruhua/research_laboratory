@@ -178,12 +178,33 @@ class CoverageFixtureTests(unittest.TestCase):
                     "lighttpd1": (self.root / "src", self.root),
                     "forked-daapd": (self.root / "forked-daapd-gcov",) * 2,
                     "kamailio": (self.root / "kamailio-gcov",) * 2,
-                    "bftpd": (self.root, self.root)}
+                    "bftpd": (self.root, self.root),
+                    "exim": (self.root / "src", self.root / "src" / "build-Linux-x86_64"),
+                    "proftpd": (self.root, self.root),
+                    "pure-ftpd": (self.root, self.root),
+                    "live555": (self.root.parent, self.root.parent)}
         for target, roots in expected.items():
             self.assertEqual(cov.profile_paths(target, self.root), roots)
         with mock.patch.dict(os.environ, {"KAMAILIO_TCP": "1"}):
             with self.assertRaisesRegex(cov.CoverageError, "UDP substitution"):
                 cov.replay_commands("kamailio", "input", 5060, 1, self.root, self.root)
+        # New subjects: replay argv shapes must stay pinned.
+        exim_client, exim_server = cov.replay_commands("exim", "input", 25, 1,
+                                                       self.root, self.root)
+        self.assertEqual(exim_client[:3], ["aflnet-replay", "input", "SMTP"])
+        self.assertIn("-bd", exim_server)
+        proftpd_client, proftpd_server = cov.replay_commands("proftpd", "input", 21, 1,
+                                                             self.root, self.root)
+        self.assertEqual(proftpd_client[2], "FTP")
+        self.assertIn("./proftpd", proftpd_server)
+        _, pure_server = cov.replay_commands("pure-ftpd", "input", 21, 1,
+                                             self.root, self.root)
+        self.assertIn("src/pure-ftpd", pure_server)
+        live_client, live_server = cov.replay_commands("live555", "input", 8554, 1,
+                                                       self.root / "testProgs",
+                                                       self.root)
+        self.assertEqual(live_client[2], "RTSP")
+        self.assertIn("./testOnDemandRTSPServer", live_server)
 
     def test_target_config_override_is_forwarded_as_argv(self):
         config = self.root / "prepared config.conf"
@@ -211,7 +232,9 @@ class CoverageFixtureTests(unittest.TestCase):
         benchmark = Path(__file__).resolve().parents[2]
         targets = {"FTP/LightFTP": "lightftp", "HTTP/Lighttpd1": "lighttpd1",
                    "DAAP/forked-daapd": "forked-daapd", "FTP/BFTPD": "bftpd",
-                   "SIP/Kamailio": "kamailio"}
+                   "SIP/Kamailio": "kamailio", "SMTP/Exim": "exim",
+                   "FTP/ProFTPD": "proftpd", "FTP/PureFTPD": "pure-ftpd",
+                   "RTSP/Live555": "live555"}
         fake = self.root / "fake coverage module.py"
         fake.write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n")
         env = dict(os.environ, COVERAGE_V4_MODULE=str(fake), COVERAGE_V4_REQUIRE_COORDINATES="1")

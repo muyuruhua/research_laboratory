@@ -322,13 +322,25 @@ def profile_paths(target, cwd):
         return cwd / (target + "-gcov"), cwd / (target + "-gcov")
     if target == "bftpd":
         return cwd, cwd
+    if target == "exim":
+        # cov_script runs from exim-gcov; gcno and the server binary live in
+        # the per-OS build directory, sources in src/.
+        return cwd / "src", cwd / "src" / "build-Linux-x86_64"
+    if target in ("proftpd", "pure-ftpd"):
+        return cwd, cwd
+    if target == "live555":
+        # cov_script runs from live-gcov/testProgs; instrumented objects span
+        # the whole live555 tree (groupsock/liveMedia/BasicUsageEnvironment/
+        # UsageEnvironment/testProgs).
+        return cwd.parent, cwd.parent
     raise CoverageError("unsupported target: " + target)
 
 
 def replay_commands(target, path, port, mode, cwd, workdir):
     replayer = "aflnet-replay" if mode == 1 else "afl-replay"
     protocol = {"lightftp": "FTP", "bftpd": "FTP", "lighttpd1": "HTTP",
-                "forked-daapd": "HTTP", "kamailio": "SIP"}[target]
+                "forked-daapd": "HTTP", "kamailio": "SIP", "exim": "SMTP",
+                "proftpd": "FTP", "pure-ftpd": "FTP", "live555": "RTSP"}[target]
     client = [replayer, str(path), protocol, str(port), "1"]
     timeout = ["timeout", "-k", "1s", "-s", "SIGUSR1", "3s"]
     configured = os.environ.get("COVERAGE_V4_TARGET_CONFIG")
@@ -355,6 +367,19 @@ def replay_commands(target, path, port, mode, cwd, workdir):
                   "./kamailio-gcov/src/kamailio", "-f", "./kamailio-basic.cfg",
                   "-L", "./kamailio-gcov/src/modules", "-Y", "./kamailio-gcov/runtime_dir/",
                   "-n", "1", "-D", "-E"]
+    elif target == "exim":
+        # -d keeps the daemon in the foreground under the timeout wrapper;
+        # per-connection children exit normally and flush their own gcda.
+        client = [replayer, str(path), "SMTP", str(port), "100"]
+        server = ["timeout", "-k", "1s", "-s", "SIGTERM", "3s",
+                  "./src/build-Linux-x86_64/exim", "-bd", "-d", "-oX", str(port)]
+    elif target == "proftpd":
+        server = timeout + ["./proftpd", "-n", "-c",
+                            str(target_config or (workdir / "basic.conf")), "-X"]
+    elif target == "pure-ftpd":
+        server = timeout + ["src/pure-ftpd", "-A"]
+    elif target == "live555":
+        server = timeout + ["./testOnDemandRTSPServer", str(port)]
     else:
         server = ["timeout", "-k", "1s", "3s", "./bftpd", "-D", "-c",
                   str(workdir / "basic.conf")]
@@ -395,8 +420,13 @@ def run_reset(record, cwd, replay_log, allow_unverified):
 def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_root):
     client_command, server_command = replay_commands(target, record["path"], port, mode, cwd, workdir)
     env, remote = os.environ.copy(), None
-    if target == "bftpd":
-        prefix = Path("/home/ubuntu/ftpshare")
+    # Targets whose server chroots (bftpd into its jail, pure-ftpd into
+    # /home/fuzzing) cannot write gcda at the compiled-in absolute paths, so
+    # the object tree is mirrored under the chroot prefix via GCOV_PREFIX and
+    # the produced gcda are imported back after each replay.
+    chroot_prefixes = {"bftpd": "/home/ubuntu/ftpshare", "pure-ftpd": "/home/fuzzing"}
+    if target in chroot_prefixes:
+        prefix = Path(chroot_prefixes[target])
         remote = prefix / str(object_root).lstrip("/")
         remote.mkdir(parents=True, exist_ok=True)
         for note in object_root.rglob("*.gcno"):

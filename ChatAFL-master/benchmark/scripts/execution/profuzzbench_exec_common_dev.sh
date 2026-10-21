@@ -532,7 +532,7 @@ if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
       # COVERAGE_V4_RESET_COMMAND_JSON always wins; no default is injected for
       # targets without a script, so the pipeline keeps failing fast there.
       case "$DOCIMAGE" in
-        lightftp|bftpd|forked-daapd|lighttpd1|kamailio)
+        lightftp|bftpd|forked-daapd|lighttpd1|kamailio|exim|proftpd|pure-ftpd|live555)
           if [[ -z "${COVERAGE_V4_RESET_COMMAND_JSON:-}" ]] \
              && [[ -f "${PROJECT_ROOT}/benchmark/scripts/analysis/reset_commands/${DOCIMAGE}.sh" ]]; then
             export COVERAGE_V4_RESET_COMMAND_JSON='["bash","/tmp/coverage-v4-src/reset_commands/'"${DOCIMAGE}"'.sh"]'

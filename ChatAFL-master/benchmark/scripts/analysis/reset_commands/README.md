@@ -68,6 +68,17 @@ Results — all 5 targets × 3 tests PASS:
 | forked-daapd | 2fc7b0f5106c | PASS | PASS | PASS |
 | lighttpd1 | 1abcf102caa7 | PASS | PASS | PASS |
 | kamailio | e98d280fe6c9 | PASS | PASS | PASS |
+| exim | fc5d4df85fa8 | PASS | PASS | PASS |
+| proftpd | 0672ceb58fb9 | PASS | PASS | PASS |
+| pure-ftpd | 1fe402056dbd | PASS | PASS | PASS |
+| live555 | 876d852975a9 | PASS | PASS | PASS |
+
+The four 2026-10-21 additions (exim kills the pidfile daemon plus any
+name-match leftover; proftpd re-provisions gcov-dir ownership/permissions
+after clearing the jail; pure-ftpd wipes the /home/fuzzing chroot the
+pipeline re-stages; live555 terminates leftover `testOnDemandRTS*` servers).
+proftpd/pure-ftpd images end as USER root, so those scripts accept root or
+ubuntu and use absolute paths.
 
 These validate the reset commands themselves. The end-to-end replay
 (with real corpora and gcov collection) is exercised by the small-scale
