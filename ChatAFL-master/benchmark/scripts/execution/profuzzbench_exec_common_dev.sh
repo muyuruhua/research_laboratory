@@ -520,6 +520,14 @@ if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
     # NOTE: test the HOST path ($SUBJECT_DIR) — /tmp/subject-src only
     # exists INSIDE the container; a host-side -f on it is always false.
     if [[ -f "${SUBJECT_DIR}/cov_script.sh" ]]; then SUBJECT_COPY+="cp -f /tmp/subject-src/cov_script.sh ${WORKDIR}/cov_script && chmod +x ${WORKDIR}/cov_script && "; fi
+    # Phase-2 (#13): the rewritten cov_script.sh wrappers exec the coverage_v4
+    # measurement module from ${WORKDIR}/coverage_v4/coverage_v4.py (or
+    # COVERAGE_V4_MODULE).  Mount the shared analysis dir and stage the module
+    # so the in-container replay works without rebuilding the image.
+    if [[ -f "${PROJECT_ROOT}/benchmark/scripts/analysis/coverage_v4.py" ]]; then
+      SUBJECT_MOUNT="${SUBJECT_MOUNT} -v ${PROJECT_ROOT}/benchmark/scripts/analysis:/tmp/coverage-v4-src:ro"
+      SUBJECT_COPY+="mkdir -p ${WORKDIR}/coverage_v4 && cp -f /tmp/coverage-v4-src/coverage_v4.py ${WORKDIR}/coverage_v4/ && "
+    fi
     if is_mqtt_target "$DOCIMAGE" && [[ -f "${SUBJECT_DIR}/mosquitto.conf" ]]; then
       SUBJECT_COPY+="cp -f /tmp/subject-src/mosquitto.conf ${WORKDIR}/mosquitto.conf && "
     fi
@@ -826,12 +834,29 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_ADMISSION}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_NO_ADMISSION=1"
   [[ -n "${CHATAFL_ADMISSION_LOG}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMISSION_LOG=${CHATAFL_ADMISSION_LOG}"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
+  # Phase-2 factorial admission switches (expert #4/#5): native-retention
+  # control arm and gate/provisional/shadow factor isolation.  Absence keeps
+  # the fuzzer defaults (gate + provisional + shadow = arm D).
+  [[ -n "${CHATAFL_ADMISSION_MODE:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_ADMISSION_MODE=${CHATAFL_ADMISSION_MODE}"
+  [[ -n "${CHATAFL_PROVISIONAL:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL=${CHATAFL_PROVISIONAL}"
+  [[ -n "${CHATAFL_SHADOW:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_SHADOW=${CHATAFL_SHADOW}"
+  [[ -n "${CHATAFL_EXECUTION_LOG:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_EXECUTION_LOG=${CHATAFL_EXECUTION_LOG}"
+  [[ -n "${CHATAFL_SHADOW_BUDGET:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_BUDGET=${CHATAFL_SHADOW_BUDGET}"
+  [[ -n "${CHATAFL_SHADOW_MAX:-}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_MAX=${CHATAFL_SHADOW_MAX}"
 
   # Target-environment switches shared by ALL fuzzer containers (fairness:
   # environment arms must apply identically to loopfuzz/chatafl/cl1/cl2/aflnet,
   # unlike the loopfuzz-only ablation flags above).
   TARGET_ENV_FLAGS=""
   [[ -n "${KAMAILIO_TCP:-}" ]]             && TARGET_ENV_FLAGS+=" -e KAMAILIO_TCP=${KAMAILIO_TCP}"
+  # Phase-2 (#13): coverage_v4 replay controls consumed by the in-container
+  # cov_script wrapper.  COVERAGE_V4_RESET_COMMAND_JSON must be a validated
+  # per-target reset argv (JSON array); until it is supplied the wrapper's
+  # verified-replay mode fails fast instead of guessing.  Absent module /
+  # coordinates flags keep the wrapper defaults.
+  [[ -n "${COVERAGE_V4_RESET_COMMAND_JSON:-}" ]]   && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_RESET_COMMAND_JSON=${COVERAGE_V4_RESET_COMMAND_JSON}"
+  [[ -n "${COVERAGE_V4_MODULE:-}" ]]               && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_MODULE=${COVERAGE_V4_MODULE}"
+  [[ -n "${COVERAGE_V4_REQUIRE_COORDINATES:-}" ]]  && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_REQUIRE_COORDINATES=${COVERAGE_V4_REQUIRE_COORDINATES}"
 
   # Evidence-controller v2 (paper §五/§七): calibration arm switch and
   # two-tier admission parameters.  Absence = fuzzer defaults (arm D,

@@ -207,6 +207,8 @@ run_queued_groups() {
               CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
               CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
               CHATAFL_NO_ADMISSION \
+              CHATAFL_ADMISSION_MODE CHATAFL_PROVISIONAL CHATAFL_SHADOW \
+              CHATAFL_EXECUTION_LOG CHATAFL_SHADOW_BUDGET CHATAFL_SHADOW_MAX \
               CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP \
               CHATAFL_CALIBRATION CHATAFL_CAL_GAMMA CHATAFL_CAL_EPSILON \
               CHATAFL_PROVISIONAL_BUDGET CHATAFL_PROVISIONAL_TTL_MS \
@@ -225,7 +227,7 @@ run_queued_groups() {
         export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
 
         echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_${TIMESTAMP}/"
-        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive} CAL=${CHATAFL_CALIBRATION:-0} GAMMA=${CHATAFL_CAL_GAMMA:-0.995} PROV_BUDGET=${CHATAFL_PROVISIONAL_BUDGET:-64}"
+        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} MODE=${CHATAFL_ADMISSION_MODE:-default-gate} PROV=${CHATAFL_PROVISIONAL:-1} SHADOW=${CHATAFL_SHADOW:-1} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive} CAL=${CHATAFL_CALIBRATION:-0} GAMMA=${CHATAFL_CAL_GAMMA:-0.995} PROV_BUDGET=${CHATAFL_PROVISIONAL_BUDGET:-64}"
 
         cd "$BASE_DIR" || exit 1
         ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
@@ -327,6 +329,37 @@ launch_custom_groups() {
           "CHATAFL_CALIBRATION=1" \
           "CHATAFL_CAL_GAMMA=1.0"
         ;;
+      native)
+        # 专家 #4 公平对照：AFLNet/ChatAFL 原生保留规则 + 相同 LLM 候选。
+        # fuzzer 侧自动关闭 provisional/shadow（原生路径无两级队列）。
+        valid+=("$name")
+        queue_group "native" "CHATAFL_ADMISSION_MODE=native"
+        ;;
+      gate_only)
+        # 专家 #5 因子化消融 cell-1：仅准入门控（无 provisional/shadow）
+        valid+=("$name")
+        queue_group "gate_only" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=0" \
+          "CHATAFL_SHADOW=0"
+        ;;
+      gate_prov)
+        # 专家 #5 因子化消融 cell-2：gate + provisional（无 shadow）
+        valid+=("$name")
+        queue_group "gate_prov" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=0"
+        ;;
+      gate_prov_shadow)
+        # 专家 #5 因子化消融 cell-3：gate + provisional + shadow（= D，
+        # 因子显式钉死，保证与 cell-1/2 的差异只有这两个因子）
+        valid+=("$name")
+        queue_group "gate_prov_shadow" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1"
+        ;;
       wo_refinement)
         valid+=("$name")
         queue_group "wo_refinement" "CHATAFL_NO_REFINEMENT=1"
@@ -376,6 +409,9 @@ launch_custom_groups() {
         echo "        Paper-v2 因果 arm 组:"
         echo "          direct(=C), gated_fixed|wo_calibration(=D), calibrated(=E),"
         echo "          cal_gamma099, cal_gamma100 (γ 敏感性)"
+        echo "        Phase-2 因子化组 (专家 #4/#5):"
+        echo "          native (#4 原生保留+同LLM候选), gate_only, gate_prov,"
+        echo "          gate_prov_shadow (=D 因子显式)"
         ;;
     esac
   done
