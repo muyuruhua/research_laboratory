@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import tempfile
 import subprocess
 import sys
 import time
@@ -291,12 +292,24 @@ def audit_csv(path, manifest, expected_events=None):
 
 
 def collect_report(source_root, object_root, gcovr="gcovr", delete=False):
-    command = [gcovr, "--root", str(source_root), "--object-directory", str(object_root),
-               "--json", "--output", "-", str(object_root)]
-    if delete:
-        command.append("--delete")
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    return json.loads(result.stdout), result.stderr, command
+    # gcovr 4.x (the version inside the subject images) treats "--output -"
+    # as a literal file named "-" and prints NOTHING to stdout, so the report
+    # must go through an explicit temp file to stay version-agnostic.
+    with tempfile.NamedTemporaryFile(prefix="coverage-v4-", suffix=".json", delete=False) as handle:
+        report_path = handle.name
+    try:
+        command = [gcovr, "--root", str(source_root), "--object-directory", str(object_root),
+                   "--json", "--output", report_path, str(object_root)]
+        if delete:
+            command.append("--delete")
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        try:
+            with open(report_path) as source:
+                return json.load(source), result.stderr, command
+        except (OSError, ValueError) as error:
+            raise CoverageError("gcovr produced no parsable JSON report: " + str(error))
+    finally:
+        os.unlink(report_path)
 
 
 def profile_paths(target, cwd):
