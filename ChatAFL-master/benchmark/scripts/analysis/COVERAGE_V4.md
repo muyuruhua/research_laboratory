@@ -1,7 +1,8 @@
 # Source Coverage V4
 
 `coverage_v4.py` replaces summary-text extraction for LightFTP, Lighttpd1,
-Forked-daapd, BFTPD and Kamailio. The five subject `cov_script.sh` entry points
+Forked-daapd, BFTPD and Kamailio, Exim, ProFTPD, Pure-FTPd and Live555. The
+nine subject `cov_script.sh` entry points
 keep the existing five positional arguments. They require the shared module and
 complete discovery coordinates by default. Other subject scripts are unchanged.
 
@@ -143,13 +144,40 @@ python3 diagnostics/vscode_20261021/run_analysis.py \
 Tests cover schema-0.1 and modern branch identities, disjoint branch union,
 unexpected raw decreases, scope/source changes, duplicate identity/join rejection,
 mtime versus discovery order, missing execution coordinates, aggregate mismatch,
-output preservation and all five shell wrappers. Real local GCC/gcov/gcovr tests
+output preservation and all nine shell wrappers. Real local GCC/gcov/gcovr tests
 compile a harmless branch program, exercise two disjoint gcda runs and repeat one
 path, then exercise complete output generation and an independent corruption
 check. They launch no protocol target, socket, container, API call or long run.
 
 Current verified native tools: GCC/gcov 9.4.0 and gcovr 7.2. gcovr 4.2 JSON is
-covered by fixtures; its actual container integration has not been run here.
+covered by fixtures and by in-container integration on all nine subject images.
 Other target replay commands, reset validation, source instrumentation and
 environment identities must pass the parent experiment runner's checks before
 these outputs are accepted for scientific comparisons.
+
+## Subject Calibration and In-Container Verification (2026-10-21)
+
+Every subject's collection profile is calibrated against its image with real
+gcov data present, and every subject passed a full mock-LLM campaign smoke
+(fuzz -> ledger -> per-input verified reset replay -> fixed discovery
+coordinates -> terminal branch-ID union -> archive collection):
+
+- gcov roots: exim build-dir; forked-daapd/kamailio `<target>-gcov/src`;
+  live555 `testProgs` with the whole tree as a source search root; proftpd and
+  pure-ftpd use per-gcno-directory collection with dir-prefixed names (their
+  builds record bare source names).
+- Zero-gcda baselines: images that never executed the instrumented binary
+  have no gcda after the delete pass; the filesystem proof of zero gcda
+  admits an empty baseline (`zero_baseline_mode`) whose branch/line universe
+  is adopted from the first replayed checkpoint and binding thereafter.
+- Graceful server shutdown signals are per target (fftp/lighttpd/live555/
+  forked-daapd: SIGUSR1; exim/proftpd/pure-ftpd/kamailio: SIGTERM); proftpd
+  and exim coverage comes from per-session children.
+- Crash inputs: a server killed by a signal, a client aborting on the same
+  crash, or a session child that cannot flush its gcov data are recorded
+  (`server_crashed`, `session_coverage_missing`) and never abort measurement.
+- Ledger supersets: imported seeds without a structured replay form are
+  disclosed via `unreplayable-ledger-entries.json` and
+  `n_unreplayable_ledger_entries` instead of failing the join.
+- Reset commands for all nine subjects and the fuzzer-side `-c` audit are
+  documented with validation evidence in `reset_commands/README.md`.
