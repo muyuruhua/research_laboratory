@@ -210,6 +210,7 @@ run_queued_groups() {
               CHATAFL_ADMISSION_MODE CHATAFL_PROVISIONAL CHATAFL_SHADOW \
               CHATAFL_EXECUTION_LOG CHATAFL_SHADOW_BUDGET CHATAFL_SHADOW_MAX \
               CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP \
+              CHATAFL_STATE_SELECT \
               CHATAFL_CALIBRATION CHATAFL_CAL_GAMMA CHATAFL_CAL_EPSILON \
               CHATAFL_PROVISIONAL_BUDGET CHATAFL_PROVISIONAL_TTL_MS \
               CHATAFL_PROVISIONAL_MAX_LIVE CHATAFL_EVENT_LOG
@@ -329,6 +330,20 @@ launch_custom_groups() {
           "CHATAFL_CALIBRATION=1" \
           "CHATAFL_CAL_GAMMA=1.0"
         ;;
+      cal_ewma)
+        # 专家问题三简单基线：E 臂同构打分，θ̃ 换成 EWMA(0.05)
+        valid+=("$name")
+        queue_group "$name" \
+          "CHATAFL_CALIBRATION=1" \
+          "CHATAFL_STATE_SELECT=ewma"
+        ;;
+      cal_run_rate)
+        # 专家问题三简单基线：θ̃ 换成平滑经验报酬率
+        valid+=("$name")
+        queue_group "$name" \
+          "CHATAFL_CALIBRATION=1" \
+          "CHATAFL_STATE_SELECT=run_rate"
+        ;;
       native)
         # 专家 #4 公平对照：AFLNet/ChatAFL 原生保留规则 + 相同 LLM 候选。
         # fuzzer 侧自动关闭 provisional/shadow（原生路径无两级队列）。
@@ -412,6 +427,8 @@ launch_custom_groups() {
         echo "        Phase-2 因子化组 (专家 #4/#5):"
         echo "          native (#4 原生保留+同LLM候选), gate_only, gate_prov,"
         echo "          gate_prov_shadow (=D 因子显式)"
+        echo "        简单在线基线 (专家问题三):"
+        echo "          cal_ewma, cal_run_rate (E 臂同构，仅换 θ̃ 估计器)"
         ;;
     esac
   done

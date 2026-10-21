@@ -77,6 +77,12 @@ double   ec_thompson_sample(double alpha, double beta);
  * keeps low-sample states from starving forever). */
 double   ec_calibrated_factor(double theta_sample, double epsilon);
 
+/* Simple online baselines (paper §五, expert question 3): the same
+ * Score = Frontier · [ε+(1−ε)·θ̃] composition with θ̃ from a plain online
+ * estimator instead of the Thompson posterior. */
+double   ec_ewma_step(double previous, double alpha, double reward);
+double   ec_run_rate_estimate(unsigned int rewards, unsigned int episodes);
+
 /* Combined scheduling score (paper §五.4). */
 double   ec_selection_score(double frontier_score, double theta_sample,
                             double epsilon);

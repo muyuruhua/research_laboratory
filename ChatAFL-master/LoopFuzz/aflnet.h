@@ -41,6 +41,10 @@ typedef struct {
   double cal_beta;            /* posterior β, init 1.0 */
   u32 cal_episodes;           /* completed state-selection episodes */
   u32 cal_episode_rewards;    /* episodes that produced new code coverage */
+  double cal_ewma;            /* simple online baseline: EWMA of the binary
+                               * episode reward (init 0.5, α from config);
+                               * arms the ewma/run_rate comparison the
+                               * offline prequential analysis demanded */
   double last_sampled_theta;  /* Thompson sample used in last FAVOR selection (−1 = n/a) */
   double last_frontier_score; /* frontier component of last selection score */
   double last_selection_score;/* final selection score of last selection */

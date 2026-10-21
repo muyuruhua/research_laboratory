@@ -127,6 +127,18 @@ double ec_thompson_sample(double alpha, double beta) {
 
 /* ── Calibrated scheduling score ─────────────────────────────────── */
 
+double ec_ewma_step(double previous, double alpha, double reward) {
+  if (!(alpha > 0.0 && alpha < 1.0)) return previous;
+  if (reward < 0.0) reward = 0.0;
+  if (reward > 1.0) reward = 1.0;
+  return (1.0 - alpha) * previous + alpha * reward;
+}
+
+double ec_run_rate_estimate(unsigned int rewards, unsigned int episodes) {
+  /* Laplace-smoothed undiscounted empirical episode reward rate. */
+  return ((double)rewards + 1.0) / ((double)episodes + 2.0);
+}
+
 double ec_calibrated_factor(double theta_sample, double epsilon) {
   if (epsilon < 0.0) epsilon = 0.0;
   if (epsilon > 1.0) epsilon = 1.0;

@@ -151,11 +151,28 @@ static void test_gamma_extremes(void) {
   CHECK(g > 0.0, "clamped gamma(0.3) positive");
 }
 
+static void test_simple_online_baselines(void) {
+  /* EWMA: init 0.5, α=0.05, first rewarded episode. */
+  double e = ec_ewma_step(0.5, 0.05, 1.0);
+  CHECK(fabs(e - 0.525) < 1e-12, "ewma step arithmetic");
+  /* Clamps: bad alpha is a no-op, reward clipped into [0,1]. */
+  CHECK(ec_ewma_step(0.4, 0.0, 1.0) == 0.4, "ewma alpha clamp no-op");
+  CHECK(fabs(ec_ewma_step(0.4, 0.5, 9.0) - 0.7) < 1e-12, "ewma reward clip");
+  /* Convergence toward 1 under constant reward. */
+  double v = 0.5;
+  for (int i = 0; i < 200; i++) v = ec_ewma_step(v, 0.05, 1.0);
+  CHECK(v > 0.9999, "ewma convergence");
+  /* Run rate: Laplace-smoothed, undiscounted. */
+  CHECK(fabs(ec_run_rate_estimate(0, 0) - 0.5) < 1e-12, "run-rate prior 0.5");
+  CHECK(fabs(ec_run_rate_estimate(3, 9) - 4.0 / 11.0) < 1e-12, "run-rate arithmetic");
+}
+
 int main(void) {
   test_posterior_update();
   test_disposition();
   test_thompson_statistics();
   test_gamma_extremes();
+  test_simple_online_baselines();
 
   if (failures) {
     printf("evidence_selftest: %d FAILURE(S)\n", failures);

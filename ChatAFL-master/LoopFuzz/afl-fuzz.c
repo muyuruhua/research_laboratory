@@ -961,6 +961,13 @@ static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
 static u8   code_retain_enabled = 0;  /* CHATAFL_CODE_RETAIN (expert P0-3 policy) */
+/* Simple online baseline estimators (expert question 3): the E-family arm
+ * keeps Score = Frontier·[ε+(1−ε)·θ̃] but replaces the Thompson posterior
+ * sample with EWMA or the smoothed run rate, so the calibrated-vs-simple
+ * contrast stays a single-variable comparison. */
+static u8   cal_estimator = 0;        /* 0=thompson posterior, 1=ewma, 2=run_rate */
+static const char *cal_estimator_name = "thompson";
+static double cal_ewma_alpha = 0.05;  /* matches the offline prequential analysis */
 static u8   test_force_code_retain = 0; /* CHATAFL_TEST_FORCE_CODE_RETAIN (test knob) */
 static u64  code_retain_admitted = 0;
 static u64  code_retain_converted = 0;
@@ -3575,6 +3582,9 @@ static void run_config_log(const char *phase, const char *termination_reason) {
     const char *ssel2 = getenv("CHATAFL_STATE_SELECT");
     json_object_object_add(j, "state_select_override",
         json_object_new_string(ssel2 && *ssel2 ? ssel2 : "none"));
+    json_object_object_add(j, "cal_estimator",
+        json_object_new_string(cal_estimator_name));
+    admission_json_add_f64(j, "cal_ewma_alpha", cal_ewma_alpha);
   }
   json_object_object_add(j, "calibration", json_object_new_boolean(calibration_enabled));
   json_object_object_add(j, "no_refinement", json_object_new_boolean(ablation_no_refinement));
@@ -4985,7 +4995,11 @@ u32 update_scores_and_select_next_state(u8 mode)
          * log (pre-update values only — no information leakage). */
         double frontier_score = base * frontier_bonus;
         if (calibration_enabled) {
-          double theta_t = ec_thompson_sample(state->cal_alpha, state->cal_beta);
+          double theta_t =
+              cal_estimator == 1 ? state->cal_ewma :
+              cal_estimator == 2 ? ec_run_rate_estimate(state->cal_episode_rewards,
+                                                        state->cal_episodes) :
+              ec_thompson_sample(state->cal_alpha, state->cal_beta);
           double factor = ec_calibrated_factor(theta_t, cal_epsilon);
           double score = frontier_score * factor;
           state->score = !isfinite(score) || score <= 0.0 ? 0 :
@@ -5188,6 +5202,7 @@ static void cal_episode_finalize(u8 interrupted) {
     st->cal_beta = post.beta;
     st->cal_episodes++;
     if (reward > 0) st->cal_episode_rewards++;
+    st->cal_ewma = ec_ewma_step(st->cal_ewma, cal_ewma_alpha, reward > 0 ? 1.0 : 0.0);
     alpha_after = post.alpha;
     beta_after = post.beta;
     posterior_updated = 1;
@@ -5402,6 +5417,7 @@ static state_info_t *register_state(u32 state_id) {
   state->score = 1;
   state->error_hint = classify_state_error_hint(state_id, protocol_name);
   state->cal_alpha = state->cal_beta = 1.0;
+  state->cal_ewma = 0.5;
   state->last_sampled_theta = -1.0;
   int inserted;
   k = kh_put(hms, khms_states, state_id, &inserted);
@@ -20596,8 +20612,20 @@ int main(int argc, char **argv)
       } else if (strcasecmp(ssel, "favor") == 0) {
         state_selection_algo = FAVOR;
         OKF("State selection overridden to FAVOR");
+      } else if (strcasecmp(ssel, "calibrated") == 0) {
+        state_selection_algo = FAVOR;
+        cal_estimator = 0; cal_estimator_name = "thompson";
+        OKF("State selection: FAVOR with Thompson posterior (default E arm)");
+      } else if (strcasecmp(ssel, "ewma") == 0) {
+        state_selection_algo = FAVOR;
+        cal_estimator = 1; cal_estimator_name = "ewma";
+        OKF("Simple-online-baseline arm: FAVOR with EWMA(α=%.3f) estimator", cal_ewma_alpha);
+      } else if (strcasecmp(ssel, "run_rate") == 0) {
+        state_selection_algo = FAVOR;
+        cal_estimator = 2; cal_estimator_name = "run_rate";
+        OKF("Simple-online-baseline arm: FAVOR with smoothed run-rate estimator");
       } else {
-        WARNF("CHATAFL_STATE_SELECT=%s unknown (random|round_robin|favor)", ssel);
+        WARNF("CHATAFL_STATE_SELECT=%s unknown (random|round_robin|favor|calibrated|ewma|run_rate)", ssel);
       }
     }
   }
