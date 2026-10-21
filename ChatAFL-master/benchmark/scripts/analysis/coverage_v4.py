@@ -145,12 +145,20 @@ def load_coordinates(path):
             filename = record.get("filename")
             if not filename or Path(filename).name != filename:
                 raise CoverageError("checkpoint filename must be a basename at line " + str(number))
-            if filename in result:
-                raise CoverageError("queue checkpoint join is not unique: " + filename)
             current = record.get("campaign_id")
             if not current or (campaign is not None and campaign != current):
                 raise CoverageError("queue ledger has missing/mixed campaign identity")
             campaign = current
+            if record.get("kind") == "removal":
+                # Provisional-subtree expiry unlinks the corpus files; the
+                # ledger stays append-only, so the removal record closes the
+                # earlier discovery join instead of leaving a ghost basename.
+                if filename not in result:
+                    raise CoverageError("removal without a prior checkpoint: " + filename)
+                del result[filename]
+                continue
+            if filename in result:
+                raise CoverageError("queue checkpoint join is not unique: " + filename)
             for field in ("queue_id", "discovery_time_ms", "monotonic_ms", "discovery_execution_id"):
                 nonnegative_integer(record.get(field), field)
             result[filename] = record

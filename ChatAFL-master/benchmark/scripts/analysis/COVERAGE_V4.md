@@ -39,7 +39,13 @@ and kamailio; operator-supplied commands always take precedence.
 ## Inputs and Coordinates
 
 `queue-checkpoints.jsonl` in the fuzzer output directory must provide exactly one
-record per replay corpus basename, and exactly one basename per queue ID:
+record per replay corpus basename, and exactly one basename per queue ID. When a
+provisional subtree expires, the fuzzer unlinks its files and appends a
+`"kind":"removal"` checkpoint for every removed basename; the loader applies
+removals in order and a removal without a prior discovery is a corrupt ledger.
+The initial corpus scan does not emit discovery records for pre-pivot input
+names — `pivot_inputs` logs the definitive `initial-queue-name` checkpoint under
+the final queue basename:
 
 ```json
 {"schema_version":1,"campaign_id":"immutable-campaign-id","filename":"id:000001,src:000000","queue_id":1,"discovery_time_ms":1790000000000,"monotonic_ms":123450,"discovery_execution_id":100}

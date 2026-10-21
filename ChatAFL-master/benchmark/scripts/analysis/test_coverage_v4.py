@@ -129,6 +129,26 @@ class CoverageFixtureTests(unittest.TestCase):
         with self.assertRaisesRegex(cov.CoverageError, "not unique"):
             cov.load_coordinates(ledger)
 
+    def test_removal_records_close_expired_provisional_joins(self):
+        folder = self.make_corpus()
+        expired = self.coordinates(3)
+        removal = dict(schema_version=1, kind="removal", filename=expired["filename"],
+                       campaign_id=expired["campaign_id"], queue_id=3,
+                       discovery_time_ms=1999, monotonic_ms=2999, discovery_execution_id=99)
+        ledger = folder / "queue-checkpoints.jsonl"
+        entries = [self.coordinates(1), self.coordinates(2), expired, removal]
+        ledger.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+        coordinates = cov.load_coordinates(ledger)
+        self.assertEqual(set(coordinates), {"id:000001", "id:000002"})
+        plan = cov.plan_corpus(folder, 1, coordinates, True)
+        self.assertEqual(len(plan), 2)
+        # A removal without a prior discovery is a corrupt ledger, not a no-op.
+        orphan = dict(removal, filename="id:000009", queue_id=9)
+        ledger.write_text(json.dumps(self.coordinates(1)) + "\n" +
+                          json.dumps(orphan) + "\n")
+        with self.assertRaisesRegex(cov.CoverageError, "removal without"):
+            cov.load_coordinates(ledger)
+
     def test_nonmonotonic_execution_and_time_rejected(self):
         union = cov.CoverageUnion(self.baseline, self.manifest)
         union.add(self.snapshot(0), self.coordinates(2), "a")

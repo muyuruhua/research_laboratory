@@ -7352,7 +7352,14 @@ static void add_to_queue(u8 *fname, u32 len, u8 passed_det)
     q->lineage_parent_queue = queue_cur->index;
   }
   q->lineage_invocation_id = target_invocation_seq;
-  queue_checkpoint_log(q, "discovery");
+  /* Discovery coordinates are keyed by the FINAL queue basename.  During the
+   * initial corpus scan the entry still carries its pre-pivot input path, so
+   * logging here would emit the original seed name (e.g. enriched_*.raw)
+   * that never exists in queue/ or replayable-queue/ and breaks the
+   * coverage ledger's one-record-per-basename contract.  pivot_inputs()
+   * records the definitive "initial-queue-name" checkpoint after renaming. */
+  if (!corpus_read_or_sync || strstr((char *)q->fname, "/queue/"))
+    queue_checkpoint_log(q, "discovery");
 
   if (q->depth > max_depth)
     max_depth = q->depth;
@@ -14036,6 +14043,24 @@ static void provisional_remove_entry_files(struct queue_entry *q) {
                                  basename(q->fname));
     unlink((char *)fn_replay);
     ck_free(fn_replay);
+    /* The discovery checkpoint stays in the append-only ledger, so the file
+     * removal must be recorded too — otherwise coverage replay's
+     * one-record-per-basename join sees a corpus entry that no longer
+     * exists. */
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("queue_checkpoint"));
+    json_object_object_add(j, "kind", json_object_new_string("removal"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "queue_id", q->index);
+    json_object_object_add(j, "filename",
+                           json_object_new_string(basename(q->fname)));
+    admission_json_add_u64(j, "discovery_time_ms", get_cur_time());
+    admission_json_add_u64(j, "discovery_execution_id", total_execs);
+    admission_json_add_u64(j, "invocation_id", target_invocation_seq);
+    json_object_object_add(j, "candidate_id", q->llm_origin_candidate_id ?
+                           json_object_new_int64(q->llm_origin_candidate_id) : NULL);
+    ec_append_jsonl("queue-checkpoints.jsonl", j);
+    json_object_put(j);
   }
   queue_debit_pending(q);
   for (u32 i = 0; i < MAP_SIZE; i++) {
