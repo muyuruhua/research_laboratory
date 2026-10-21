@@ -162,6 +162,27 @@ class CoverageFixtureTests(unittest.TestCase):
         with self.assertRaisesRegex(cov.CoverageError, "removal without"):
             cov.load_coordinates(ledger)
 
+    def test_zero_gcda_baseline_bootstraps_from_first_checkpoint(self):
+        # Images that never ran the instrumented binary have no gcda, so
+        # gcovr 4.x reports an empty branch universe at baseline.
+        empty_report = copy.deepcopy(self.report)
+        empty_report["files"][0]["lines"][0]["branches"] = []
+        baseline = cov.parse_snapshot(empty_report, self.root, allow_empty=True)
+        self.assertEqual(baseline.branches, set())
+        manifest = cov.scope_manifest(baseline, {"main.gcno": "fixture"}, "4.2", "gcc fixture")
+        manifest["zero_baseline_mode"] = "filesystem-verified-no-gcda"
+        union = cov.CoverageUnion(baseline, manifest)
+        event = union.add(self.snapshot(0), self.coordinates(1), "a")
+        self.assertEqual(event["cumulative_covered_branches"], 1)
+        # The adopted universe is now binding: an unknown branch fails.
+        drifted = self.snapshot(0)
+        drifted.branches.add(("main.c", 99, 0))
+        with self.assertRaisesRegex(cov.CoverageError, "scope changed"):
+            union.add(drifted, self.coordinates(2), "b")
+        # allow_empty=False (the default) keeps rejecting empty universes.
+        with self.assertRaisesRegex(cov.CoverageError, "empty source/branch"):
+            cov.parse_snapshot(empty_report, self.root)
+
     def test_nonmonotonic_execution_and_time_rejected(self):
         union = cov.CoverageUnion(self.baseline, self.manifest)
         union.add(self.snapshot(0), self.coordinates(2), "a")

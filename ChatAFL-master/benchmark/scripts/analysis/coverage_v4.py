@@ -73,7 +73,7 @@ class Snapshot:
     resolution: dict = dataclasses.field(default_factory=dict)
 
 
-def parse_snapshot(report, source_root, search_roots=None):
+def parse_snapshot(report, source_root, search_roots=None, allow_empty=False):
     """Read gcovr JSON 0.1 (4.2) and newer branch arrays, never summaries.
 
     `search_roots` extends the fingerprint lookup for instrumented trees that
@@ -81,7 +81,9 @@ def parse_snapshot(report, source_root, search_roots=None):
     #includes headers from the original source tree). The primary root still
     defines the relative naming; every reported file must be found under at
     least one root and the per-file root index is recorded so audits resolve
-    identically."""
+    identically. `allow_empty` admits the zero-gcda baseline of trees whose
+    images never executed the instrumented binary (callers must first verify
+    on the filesystem that no gcda exist)."""
     roots = [Path(source_root).resolve()] + [Path(r).resolve() for r in (search_roots or [])]
     if not isinstance(report.get("files"), list):
         raise CoverageError("gcovr JSON must contain a files array")
@@ -102,6 +104,22 @@ def parse_snapshot(report, source_root, search_roots=None):
                 filename, source = name, candidate
                 resolution[filename] = index
                 break
+        if filename is None:
+            # Last resort: some gcov/gcovr combinations flatten recorded
+            # include paths (e.g. kamailio reports src/atomic_x86.h for
+            # src/core/atomic/atomic_x86.h).  Resolve by basename; ambiguous
+            # or absent basenames stay errors.
+            matches = sorted({m for r in roots for m in r.rglob(raw.name)})
+            if len(matches) == 1:
+                for index, r in enumerate(roots):
+                    try:
+                        name = matches[0].relative_to(r).as_posix()
+                    except ValueError:
+                        continue
+                    if (r / name).resolve() == matches[0].resolve():
+                        filename, source = name, matches[0]
+                        resolution[filename] = index
+                        break
         if filename is None:
             raise CoverageError("source content cannot be fingerprinted: " + entry["file"])
         if filename in files:
@@ -129,7 +147,7 @@ def parse_snapshot(report, source_root, search_roots=None):
                 branches.add(branch_id)
                 if branch.get("count", 0) > 0:
                     covered_branches.add(branch_id)
-    if not files or not branches:
+    if not files or (not branches and not allow_empty):
         raise CoverageError("empty source/branch scope; instrumentation is not validated")
     return Snapshot(branches, covered_branches, lines, covered_lines, files,
                     str(report.get("gcovr/format_version", "unknown")))
@@ -241,6 +259,16 @@ class CoverageUnion:
         self.previous_snapshot, self.events, self.previous_coordinates = set(), [], None
 
     def add(self, snapshot, coordinates, raw_sha256, expected_counter_reset=False):
+        if (self.manifest.get("zero_baseline_mode") and not self.baseline.branches
+                and snapshot.branches):
+            # Zero-gcda baseline: the first replayed checkpoint materializes
+            # the branch/line universe (gcovr 4.x reports structure only for
+            # objects that have gcda).  Coverage counts stay empty, so the
+            # zero-baseline invariant is preserved; every later checkpoint
+            # must then match the adopted universe exactly.
+            self.baseline = Snapshot(set(snapshot.branches), set(), set(snapshot.lines),
+                                     set(), dict(snapshot.files), snapshot.format_version,
+                                     dict(snapshot.resolution))
         for field in ("branches", "lines", "files", "format_version"):
             if getattr(snapshot, field) != getattr(self.baseline, field):
                 raise CoverageError("coverage source/branch scope changed: " + field)
@@ -544,10 +572,24 @@ def run_replay(args):
     # Delete through gcovr, then independently verify a zero baseline.
     _, reset_stderr, reset_command = collect_report(source_root, object_root, args.gcovr, delete=True)
     baseline_report, baseline_stderr, collection_command = collect_report(source_root, object_root, args.gcovr)
-    baseline = parse_snapshot(baseline_report, source_root, search_roots)
+    zero_baseline_mode = ""
+    try:
+        baseline = parse_snapshot(baseline_report, source_root, search_roots)
+    except CoverageError as error:
+        # gcovr 4.x only reports line/branch structure for objects that have
+        # gcda. Images that never executed the instrumented binary during
+        # build (live555, proftpd, kamailio, forked-daapd) therefore have an
+        # empty baseline universe. If the filesystem PROVES no gcda survive
+        # the delete pass, zero coverage holds by construction and the
+        # universe crystallizes from the first replayed checkpoint instead.
+        if "empty source/branch scope" not in str(error) or any(object_root.rglob("*.gcda")):
+            raise
+        baseline = parse_snapshot(baseline_report, source_root, search_roots, allow_empty=True)
+        zero_baseline_mode = "filesystem-verified-no-gcda"
     manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version)
     manifest.update(source_root=str(source_root), object_root=str(object_root), target=args.target,
-                    source_search_roots=[str(r) for r in search_roots])
+                    source_search_roots=[str(r) for r in search_roots],
+                    zero_baseline_mode=zero_baseline_mode)
     write_json(directory / "scope.json", manifest)
     write_json(directory / "baseline.json", baseline_report)
     union = CoverageUnion(baseline, manifest)
@@ -608,7 +650,8 @@ def audit_artifacts(output, source_root=None):
     # otherwise the recorded multi-root resolution (e.g. exim's build copies
     # plus original headers) is replayed exactly.
     roots = [] if source_root else [Path(p) for p in manifest.get("source_search_roots", [])]
-    baseline = parse_snapshot(json.loads((directory / "baseline.json").read_text()), root, roots)
+    baseline = parse_snapshot(json.loads((directory / "baseline.json").read_text()), root, roots,
+                              allow_empty=bool(manifest.get("zero_baseline_mode")))
     if (baseline.files != manifest["sources"] or
             baseline.resolution != manifest.get("source_resolution", baseline.resolution) or
             sorted(map(list, baseline.branches)) != manifest["branch_ids"] or

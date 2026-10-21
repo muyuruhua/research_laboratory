@@ -29,7 +29,10 @@ tarball_is_complete() {
   local listing
   listing=$(tar tzf "$tarball" 2>/dev/null) || return 1
   for req in $REQUIRED_FILES; do
-    if [[ "$listing" != *"$req"* ]]; then
+    # Exact member match: a substring test once accepted the sidecar
+    # directory name cov_over_time.csv.v4 as the file itself and masked
+    # failed coverage collection as a complete archive.
+    if ! printf '%s\n' "$listing" | grep -qE "(^|/)${req//./\\.}$"; then
       return 1
     fi
   done
