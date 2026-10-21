@@ -373,6 +373,34 @@ def collect_report(source_root, object_root, gcovr="gcovr", delete=False):
         os.unlink(report_path)
 
 
+# Some build systems (proftpd, pure-ftpd) record BARE source names in the
+# gcno, which gcov can only resolve when run from the directory holding the
+# gcno.  For those targets collection runs once per gcno directory and the
+# entries are prefixed with the directory path so names stay unique.
+SUBDIR_COLLECTION_TARGETS = ("proftpd", "pure-ftpd")
+
+
+def gcno_directories(object_root):
+    return sorted({path.parent for path in object_root.rglob("*.gcno")})
+
+
+def collect_report_multi(object_root, gcovr="gcovr", delete=False):
+    merged = {"gcovr/format_version": None, "files": []}
+    command = None
+    stderr = ""
+    base = Path(object_root).resolve()
+    for directory in gcno_directories(base):
+        report, run_stderr, command = collect_report(directory, directory, gcovr, delete)
+        stderr += run_stderr
+        if merged["gcovr/format_version"] is None:
+            merged["gcovr/format_version"] = report.get("gcovr/format_version")
+        for entry in report.get("files", []):
+            entry = dict(entry)
+            entry["file"] = directory.relative_to(base).joinpath(entry["file"]).as_posix()
+            merged["files"].append(entry)
+    return merged, stderr, command
+
+
 def profile_paths(target, cwd):
     cwd = Path(cwd).resolve()
     if target == "lightftp":
@@ -380,7 +408,10 @@ def profile_paths(target, cwd):
     if target == "lighttpd1":
         return cwd / "src", cwd
     if target in ("forked-daapd", "kamailio"):
-        return cwd / (target + "-gcov"), cwd / (target + "-gcov")
+        # gcov must run from the src directory holding the gcno: the build
+        # records source names that only resolve from there (calibrated in
+        # the subject images with real gcda present).
+        return cwd / (target + "-gcov") / "src", cwd / (target + "-gcov") / "src"
     if target == "bftpd":
         return cwd, cwd
     if target == "exim":
@@ -389,12 +420,15 @@ def profile_paths(target, cwd):
         # directory (a broader root mis-resolves the per-module sources).
         return cwd / "src" / "build-Linux-x86_64", cwd / "src" / "build-Linux-x86_64"
     if target in ("proftpd", "pure-ftpd"):
+        # bare source names in the gcno: collection is per gcno directory
+        # (see SUBDIR_COLLECTION_TARGETS); names are dir-prefixed, so the
+        # tree root resolves them.
         return cwd, cwd
     if target == "live555":
-        # cov_script runs from live-gcov/testProgs; instrumented objects span
-        # the whole live555 tree (groupsock/liveMedia/BasicUsageEnvironment/
-        # UsageEnvironment/testProgs).
-        return cwd.parent, cwd.parent
+        # cov_script runs from live-gcov/testProgs, the server's build dir;
+        # gcno there reference sibling trees relatively, resolved through
+        # the whole-tree search root.
+        return cwd, cwd
     raise CoverageError("unsupported target: " + target)
 
 
@@ -402,10 +436,14 @@ def source_search_roots(target, cwd, source_root):
     """Extra fingerprint roots for trees whose instrumented sources span
     directories. exim compiles .c copies inside build-Linux-x86_64 but
     #includes headers (with their own inline branch data) from the original
-    src tree, which gcovr reports under the same relative names."""
+    src tree, which gcovr reports under the same relative names; live555's
+    testProgs gcno reference the sibling trees via relative paths."""
     if target == "exim":
         original = Path(cwd).resolve() / "src" / "src"
         return [original] if original.is_dir() and original != Path(source_root) else []
+    if target == "live555":
+        whole = Path(source_root).resolve().parent
+        return [whole] if whole != Path(source_root) else []
     return []
 
 
@@ -547,10 +585,19 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
         session_coverage_missing = not imported
     else:
         session_coverage_missing = False
-    if server_code not in (0, 124) or client_code != 0:
+    # A server killed by a signal on a crash-input is a fuzzing FINDING,
+    # not a measurement failure: whatever coverage children flushed before
+    # the crash is kept and the exit code is recorded.
+    server_crashed = server_code is not None and server_code < 0
+    # When the server crashes on an input the client may legitimately fail
+    # too (connection reset); both are recorded as a crash finding.
+    client_aborted_on_crash = server_crashed and client_code != 0
+    if ((server_code not in (0, 124) and not server_crashed)
+            or (client_code != 0 and not client_aborted_on_crash)):
         raise CoverageError("replay failed: server=%s client=%s; see %s" % (server_code, client_code, replay_log))
     return dict(server_exit_code=server_code, client_exit_code=client_code,
                 session_coverage_missing=session_coverage_missing,
+                server_crashed=server_crashed,
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
                 client_command=client_command, server_command=server_command)
 
@@ -580,8 +627,11 @@ def run_replay(args):
     gcovr_version = subprocess.check_output([args.gcovr, "--version"], text=True).strip()
     gcov_version = subprocess.check_output(["gcov", "--version"], text=True).splitlines()[0]
     # Delete through gcovr, then independently verify a zero baseline.
-    _, reset_stderr, reset_command = collect_report(source_root, object_root, args.gcovr, delete=True)
-    baseline_report, baseline_stderr, collection_command = collect_report(source_root, object_root, args.gcovr)
+    collect = (lambda delete=False: collect_report_multi(object_root, args.gcovr, delete)) \
+        if args.target in SUBDIR_COLLECTION_TARGETS else \
+        (lambda delete=False: collect_report(source_root, object_root, args.gcovr, delete))
+    _, reset_stderr, reset_command = collect(delete=True)
+    baseline_report, baseline_stderr, collection_command = collect()
     zero_baseline_mode = ""
     try:
         baseline = parse_snapshot(baseline_report, source_root, search_roots)
@@ -615,7 +665,7 @@ def run_replay(args):
                                     directory / ("replay-%06d.log" % index), object_root)
             if instrument_identity(object_root) != notes:
                 raise CoverageError("instrumented objects changed during replay")
-            report, stderr, _ = collect_report(source_root, object_root, args.gcovr)
+            report, stderr, _ = collect()
             raw = canonical(report).encode()
             snapshot_path = directory / ("snapshot-%06d.json.gz" % index)
             with gzip.open(snapshot_path, "wb") as snapshot_output:

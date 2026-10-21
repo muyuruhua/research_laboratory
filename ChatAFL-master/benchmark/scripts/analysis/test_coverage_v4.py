@@ -210,13 +210,13 @@ class CoverageFixtureTests(unittest.TestCase):
     def test_target_roots_and_kamailio_scope_are_fixed(self):
         expected = {"lightftp": (self.root.parent, self.root),
                     "lighttpd1": (self.root / "src", self.root),
-                    "forked-daapd": (self.root / "forked-daapd-gcov",) * 2,
-                    "kamailio": (self.root / "kamailio-gcov",) * 2,
+                    "forked-daapd": (self.root / "forked-daapd-gcov" / "src",) * 2,
+                    "kamailio": (self.root / "kamailio-gcov" / "src",) * 2,
                     "bftpd": (self.root, self.root),
                     "exim": (self.root / "src" / "build-Linux-x86_64",) * 2,
                     "proftpd": (self.root, self.root),
                     "pure-ftpd": (self.root, self.root),
-                    "live555": (self.root.parent, self.root.parent)}
+                    "live555": (self.root, self.root)}
         for target, roots in expected.items():
             self.assertEqual(cov.profile_paths(target, self.root), roots)
         with mock.patch.dict(os.environ, {"KAMAILIO_TCP": "1"}):
