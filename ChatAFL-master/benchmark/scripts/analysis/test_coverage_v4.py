@@ -111,20 +111,21 @@ class CoverageFixtureTests(unittest.TestCase):
         os.utime(folder / "replayable-queue/id:000001", ns=(9000000000, 9000000000))
         os.utime(folder / "replayable-queue/id:000002", ns=(1000000000, 1000000000))
         coordinates = {r["filename"]: r for r in (self.coordinates(1), self.coordinates(2))}
-        plan = cov.plan_corpus(folder, 1, coordinates, True)
+        plan, unreplayable = cov.plan_corpus(folder, 1, coordinates, True)
         self.assertEqual([r["discovery_execution_id"] for r in plan], [10, 20])
+        self.assertEqual(unreplayable, [])
         self.assertGreater(plan[0]["original_mtime_ns"], plan[1]["original_mtime_ns"])
 
     def test_missing_coordinates_never_invent_execution_id(self):
         folder = self.make_corpus()
-        plan = cov.plan_corpus(folder, 1, {})
+        plan, _ = cov.plan_corpus(folder, 1, {})
         self.assertTrue(all("discovery_execution_id" not in row for row in plan))
         with self.assertRaisesRegex(cov.CoverageError, "no unique discovery"):
             cov.plan_corpus(folder, 1, {}, True)
 
     def test_partial_join_and_duplicate_ledger_are_rejected(self):
         folder = self.make_corpus()
-        with self.assertRaisesRegex(cov.CoverageError, "one-to-one"):
+        with self.assertRaisesRegex(cov.CoverageError, "partially joined"):
             cov.plan_corpus(folder, 1, {"id:000001": self.coordinates(1)})
         ledger = folder / "queue-checkpoints.jsonl"
         ledger.write_text((json.dumps(self.coordinates(1)) + "\n") * 2)
@@ -142,8 +143,18 @@ class CoverageFixtureTests(unittest.TestCase):
         ledger.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
         coordinates = cov.load_coordinates(ledger)
         self.assertEqual(set(coordinates), {"id:000001", "id:000002"})
-        plan = cov.plan_corpus(folder, 1, coordinates, True)
+        plan, dropped = cov.plan_corpus(folder, 1, coordinates, True)
         self.assertEqual(len(plan), 2)
+        self.assertEqual(dropped, [])
+        # Ledger names without a corpus file (imported seed never given a
+        # structured replay form) are permitted but must be reported.
+        extra = dict(self.coordinates(9), filename="id:000009")
+        ledger.write_text("".join(json.dumps(entry) + "\n"
+                                  for entry in entries[:2] + [extra]))
+        coordinates = cov.load_coordinates(ledger)
+        plan, dropped = cov.plan_corpus(folder, 1, coordinates, True)
+        self.assertEqual(len(plan), 2)
+        self.assertEqual(dropped, ["id:000009"])
         # A removal without a prior discovery is a corrupt ledger, not a no-op.
         orphan = dict(removal, filename="id:000009", queue_id=9)
         ledger.write_text(json.dumps(self.coordinates(1)) + "\n" +

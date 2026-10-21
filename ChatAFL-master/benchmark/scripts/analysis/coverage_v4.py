@@ -198,8 +198,13 @@ def plan_corpus(folder, mode, coordinates, require_coordinates=False):
     if not files:
         raise CoverageError("empty replay corpus")
     records, matched_queue_ids = [], set()
-    if coordinates and set(coordinates) != {path.name for path in files}:
-        raise CoverageError("ledger and replay corpus filenames do not match one-to-one")
+    corpus_names = {path.name for path in files}
+    # Every corpus file must carry a coordinate; a ledger name WITHOUT a
+    # corpus file is legitimate (e.g. imported seeds whose structured replay
+    # form was never materialized — replayable copies are written
+    # conditionally during the initial dry-run), but it is reported so the
+    # audit trail shows exactly what the replay did not cover.
+    unreplayable = sorted(set(coordinates) - corpus_names) if coordinates else []
     for path in files:
         record = dict(coordinates.get(path.name, {}))
         if record:
@@ -224,7 +229,7 @@ def plan_corpus(folder, mode, coordinates, require_coordinates=False):
                 if record[field] < previous[field]:
                     raise CoverageError("nonmonotonic discovery ledger: " + field)
         previous = record
-    return records
+    return records, unreplayable
 
 
 class CoverageUnion:
@@ -523,11 +528,17 @@ def run_replay(args):
     search_roots = source_search_roots(args.target, cwd, source_root)
     workdir = Path(os.environ.get("WORKDIR", str(cwd)))
     coordinates = load_coordinates(folder / "queue-checkpoints.jsonl")
-    plan = plan_corpus(folder, args.mode, coordinates, args.require_coordinates)
+    plan, unreplayable = plan_corpus(folder, args.mode, coordinates, args.require_coordinates)
     notes = instrument_identity(object_root)
     directory.mkdir(parents=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     write_json(directory / "replay-plan.json", plan)
+    if unreplayable:
+        # Ledger entries without a replayable corpus file (e.g. imported
+        # seeds whose structured form was never written).  Not an error, but
+        # the coverage endpoint must disclose what the union does NOT include.
+        write_json(directory / "unreplayable-ledger-entries.json",
+                   dict(count=len(unreplayable), filenames=unreplayable))
     gcovr_version = subprocess.check_output([args.gcovr, "--version"], text=True).strip()
     gcov_version = subprocess.check_output(["gcov", "--version"], text=True).splitlines()[0]
     # Delete through gcovr, then independently verify a zero baseline.
@@ -574,6 +585,7 @@ def run_replay(args):
         schema_version=SCHEMA, scope_sha256=manifest["scope_sha256"],
         covered_branch_ids=sorted(union.covered), covered_line_ids=sorted(union.covered_lines),
         n_replayed=len(plan), fixed_execution_coordinates_valid=bool(coordinates),
+        n_unreplayable_ledger_entries=len(unreplayable),
         all_reset_commands_succeeded=all(event["reset"]["command_succeeded"] for event in union.events),
         execution_coordinate_unit="fuzzer total_execs, not network requests",
         unexpected_snapshot_decrease=unexpected_drop, csv_audit=counts,
