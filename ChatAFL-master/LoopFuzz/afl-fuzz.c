@@ -349,6 +349,8 @@ struct queue_entry
   u64 prov_admit_ms;       /* admission timestamp */
   u32 prov_desc_execs;     /* descendant executions consumed so far */
   u32 prov_desc_code_gain; /* descendant code-gain events observed */
+  u32 prov_first_gain_queue;
+  u64 prov_first_gain_execution, prov_first_gain_invocation, prov_first_gain_ms;
   u8  prov_code_retain;    /* v3.4: admitted via the P0-3 retention channel */
 
   /* ── Lineage (paper §queue-pollution measurement) ────────────────
@@ -359,6 +361,10 @@ struct queue_entry
    * entry, so the downstream code-edge production of the admission
    * channel vs the havoc channel is measurable from the logs alone. */
   u32 llm_origin_candidate_id;
+  u32 lineage_parent_queue;
+  u8 lineage_parent_known;
+  u64 lineage_invocation_id;
+  u8 pending_accounted; /* Pending debit already made by fuzzing or expiry. */
 };
 
 static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
@@ -475,13 +481,17 @@ enum
   /* 02 */ FAULT_CRASH,
   /* 03 */ FAULT_ERROR,
   /* 04 */ FAULT_NOINST,
-  /* 05 */ FAULT_NOBITS
+  /* 05 */ FAULT_NOBITS,
+  /* 06 */ FAULT_RESOURCE_LIMIT /* no target invocation took place */
 };
 
 char **use_argv; /* argument to run the target program. In vanilla AFL, this is a local variable in main. */
 /* add these declarations here so we can call these functions earlier */
 static u8 run_target(char **argv, u32 timeout);
+static void provisional_expire(struct queue_entry *q, const char *reason);
+static void provisional_note_gain(u32 candidate_id, u32 queue_index);
 static inline u32 UR(u32 limit);
+static u8 entry_can_fuzz_state(struct queue_entry *q, u32 state_id);
 static inline u8 has_new_bits(u8 *virgin_map);
 static void mqtt_fix_message_length(message_t *m);
 static u8 mqtt_fix_length_enabled;
@@ -768,6 +778,9 @@ static u8 ablation_no_adaptive     = 0;
 static u8 ablation_no_state_prompt = 0;
 static u8 ablation_no_admission    = 0;
 static u8 admission_accounting_enabled = 0;
+static u8 admission_native_retention = 0;
+static u8 provisional_enabled = 1;
+static u8 shadow_enabled = 1;
 
 /* ============================================
  * LLM Cost Tracking
@@ -795,6 +808,7 @@ static u64 admission_forced_promoted = 0;
 /* Last common_fuzz_stuff() result, used by the LLM admission ledger. */
 static u8 last_common_fuzz_saved = 0;
 static u8 last_common_fuzz_fault = FAULT_NONE;
+static u8 last_common_fuzz_hnb = 0;
 
 /* ============================================
  * Evidence controller v2 (paper-aligned, 2026-09)
@@ -824,6 +838,24 @@ static u64  episode_seq = 0;
 static u64  bug_event_seq = 0;
 static u64  run_start_time_ms = 0;
 static u64  ec_rng_seed_value = 0;
+static u8 fixed_rng_seed_enabled = 0;
+static u32 afl_rng_seed_value = 0;
+static u64  target_invocation_seq = 0;
+static u64  execution_attempt_seq = 0;
+static const char *execution_kind = "other";
+static const char *last_execution_kind = "other";
+static u8 execution_log_enabled = 1;
+static u8 candidate_capture_armed = 0;
+static u8 *candidate_response = NULL;
+static u32 candidate_response_size = 0;
+static u32 candidate_message_first = 0, candidate_message_count = 0;
+static u32 candidate_messages_sent = 0;
+static u32 *candidate_response_ends = NULL;
+static u32 response_greeting_bytes = 0, candidate_greeting_bytes = 0;
+static u8 response_single_connection = 0, candidate_single_connection = 0;
+static u64 candidate_execution_id = 0, candidate_invocation_id = 0;
+static u32 candidate_observed_new_states = 0, candidate_observed_new_transitions = 0;
+static u8 candidate_observation_recorded = 0;
 
 static u64  admission_g_code_fail = 0;
 static u64  admission_g_state_fail = 0;
@@ -924,6 +956,7 @@ static u64  llm_lineage_edge_gains = 0;
 static u64  seed_fallback_used = 0;
 static u64  no_seed_stalls = 0;
 static u32  no_exec_rounds = 0;       /* consecutive zero-execution fuzz_one rounds */
+static u8 scheduler_integrity_failed = 0;
 static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
@@ -2917,6 +2950,7 @@ static const char *admission_fault_name(u8 fault) {
     case FAULT_ERROR: return "error";
     case FAULT_NOINST:return "noinst";
     case FAULT_NOBITS:return "nobits";
+    case FAULT_RESOURCE_LIMIT:return "resource-limit-not-executed";
     default:          return "unknown";
   }
 }
@@ -3024,6 +3058,7 @@ static void admission_ledger_observe(const unsigned int *states,
   if (new_states_out) *new_states_out = 0;
   if (new_trans_out) *new_trans_out = 0;
   if (!states || state_count == 0) return;
+  (void)source_state; /* Generation context is not an observed transition. */
 
   if (!observed_state_ledger) observed_state_ledger = kh_init(hs32);
   if (!observed_trans_ledger) observed_trans_ledger = kh_init(hs64);
@@ -3031,6 +3066,7 @@ static void admission_ledger_observe(const unsigned int *states,
   int absent = 0;
   for (unsigned int i = 0; i < state_count; i++) {
     u32 s = states[i];
+    if (s == 0) continue; /* Parser sentinel is not a server response. */
     kh_put(hs32, observed_state_ledger, s, &absent);
     if (!ipsm_has_state_node(s) && absent)
       if (new_states_out) (*new_states_out)++;
@@ -3039,15 +3075,9 @@ static void admission_ledger_observe(const unsigned int *states,
      * flags only states the campaign has never seen anywhere. */
   }
 
-  /* Transitions: consecutive pairs inside the observed sequence, plus the
-   * source_state→first edge when the generating seed's state is known. */
-  if (source_state) {
-    u64 key = ((u64)source_state << 32) | (u64)states[0];
-    kh_put(hs64, observed_trans_ledger, key, &absent);
-    if (!ipsm_has_state_transition(source_state, states[0]) && absent)
-      if (new_trans_out) (*new_trans_out)++;
-  }
+  /* Only consecutive, non-sentinel responses establish transitions. */
   for (unsigned int i = 1; i < state_count; i++) {
+    if (states[i - 1] == 0 || states[i] == 0) continue;
     u64 key = ((u64)states[i - 1] << 32) | (u64)states[i];
     kh_put(hs64, observed_trans_ledger, key, &absent);
     if (!ipsm_has_state_transition(states[i - 1], states[i]) && absent)
@@ -3079,7 +3109,10 @@ static char *admission_collect_state_evidence(u8 executed,
   if (obs_new_states_out) *obs_new_states_out = 0;
   if (obs_new_trans_out) *obs_new_trans_out = 0;
 
-  if (!executed || !extract_response_codes || !response_buf || response_buf_size <= 0) {
+  const u8 *evidence_buf = candidate_capture_armed ? candidate_response : (u8 *)response_buf;
+  u32 evidence_size = candidate_capture_armed ? candidate_response_size :
+      (response_buf_size > 0 ? (u32)response_buf_size : 0);
+  if (!executed || !extract_response_codes || !evidence_buf || !evidence_size) {
     seq = strdup("");
     /* edge_seq is released by admission_evidence_free() via ck_free, which
      * reads the ck_alloc cookie header at ptr[-2] and frees ptr-ALLOC_OFF_HEAD.
@@ -3093,8 +3126,8 @@ static char *admission_collect_state_evidence(u8 executed,
     return seq;
   }
 
-  states = (*extract_response_codes)((unsigned char *)response_buf,
-                                     (unsigned int)response_buf_size,
+  states = (*extract_response_codes)((unsigned char *)evidence_buf,
+                                     evidence_size,
                                      &state_count);
   if (!states || state_count == 0) {
     if (states) ck_free(states);
@@ -3109,8 +3142,23 @@ static char *admission_collect_state_evidence(u8 executed,
 
   /* Pre-registration: observe this executed trial's response sequence in
    * the ledger BEFORE any retention decision is taken (P0-1 fix 2). */
-  admission_ledger_observe(states, state_count, source_sid,
-                           obs_new_states_out, obs_new_trans_out);
+  if (candidate_capture_armed && candidate_observation_recorded) {
+    if (obs_new_states_out) *obs_new_states_out = candidate_observed_new_states;
+    if (obs_new_trans_out) *obs_new_trans_out = candidate_observed_new_transitions;
+  } else {
+    admission_ledger_observe(states, state_count, source_sid,
+                             obs_new_states_out, obs_new_trans_out);
+  }
+
+  unsigned int actual_count = 0;
+  for (unsigned int i = 0; i < state_count; i++)
+    if (states[i] != 0) states[actual_count++] = states[i];
+  state_count = actual_count;
+  if (!state_count) {
+    ck_free(states);
+    if (edge_seq_out) *edge_seq_out = (char *)ck_alloc(1);
+    return strdup("");
+  }
 
   if (state_count_out) *state_count_out = state_count;
   if (first_state_out) *first_state_out = states[0];
@@ -3120,7 +3168,7 @@ static char *admission_collect_state_evidence(u8 executed,
   for (unsigned int i = 0; i < state_count; i++) {
     if (classify_state_error_hint(states[i], protocol_name) == 1)
       has_error = 1;
-    if (states[i] == target_sid)
+    if (target_sid != 0 && states[i] == target_sid)
       target_hit = 1;
   }
   if (has_error_out) *has_error_out = has_error;
@@ -3146,9 +3194,27 @@ static void admission_json_add_f64(struct json_object *obj,
   json_object_object_add(obj, key, json_object_new_double(val));
 }
 
+static u64 evidence_monotonic_ms(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts)) PFATAL("clock_gettime");
+  return (u64)ts.tv_sec * 1000 + (u64)ts.tv_nsec / 1000000;
+}
+
+static const char *evidence_campaign_id(void) {
+  const char *configured = getenv("CHATAFL_CAMPAIGN_ID");
+  if (configured && *configured) return configured;
+  static char fallback[80];
+  snprintf(fallback, sizeof(fallback), "%llu-%ld",
+      (unsigned long long)run_start_time_ms, (long)getpid());
+  return fallback;
+}
+
 /* Append one JSON object as a line to <out_dir>/<rel_path>. */
 static void ec_append_jsonl(const char *rel_path, struct json_object *j) {
   if (!event_log_enabled || !out_dir || !j) return;
+  json_object_object_add(j, "campaign_id",
+      json_object_new_string(evidence_campaign_id()));
+  admission_json_add_u64(j, "monotonic_ms", evidence_monotonic_ms());
   u8 *fn = alloc_printf("%s/%s", out_dir, rel_path);
   FILE *f = fopen((char *)fn, "a");
   if (f) {
@@ -3158,8 +3224,30 @@ static void ec_append_jsonl(const char *rel_path, struct json_object *j) {
   ck_free(fn);
 }
 
+static void queue_checkpoint_log(struct queue_entry *q, const char *kind) {
+  if (!q || !q->fname) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("queue_checkpoint"));
+  json_object_object_add(j, "kind", json_object_new_string(kind));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "queue_id", q->index);
+  json_object_object_add(j, "filename", json_object_new_string(basename(q->fname)));
+  admission_json_add_u64(j, "discovery_time_ms", get_cur_time());
+  admission_json_add_u64(j, "discovery_execution_id", total_execs);
+  admission_json_add_u64(j, "invocation_id", target_invocation_seq);
+  json_object_object_add(j, "execution_definition", json_object_new_string(
+      "AFL total_execs counter; not physical network requests"));
+  admission_json_add_u64(j, "candidate_id", q->llm_origin_candidate_id);
+  if (q->lineage_parent_known)
+    admission_json_add_u64(j, "parent_queue_id", q->lineage_parent_queue);
+  else json_object_object_add(j, "parent_queue_id", NULL);
+  ec_append_jsonl("queue-checkpoints.jsonl", j);
+  json_object_put(j);
+}
+
 /* Paper §七 arm naming, derived from the effective ablation switches. */
 static const char *admission_arm_name(void) {
+  if (admission_native_retention) return "loopfuzz-native-retention";
   if (ablation_no_admission) return "loopfuzz-direct";         /* arm C */
   if (calibration_enabled)   return "loopfuzz-gated-calibrated";/* arm E */
   return "loopfuzz-gated-fixed";                               /* arm D */
@@ -3168,6 +3256,7 @@ static const char *admission_arm_name(void) {
 /* ── Evaluated trial evidence (computed once per candidate) ─────── */
 typedef struct {
   u8   p_pass, u_pass, r_pass, g_code_pass, g_state_pass, g_pass;
+  u8   trial_mode;
   u32  state_count, first_state, last_state;
   u8   has_error, target_hit;
   u32  ipsm_edge_delta, ipsm_node_delta, bitmap_delta, favored_delta;
@@ -3176,6 +3265,8 @@ typedef struct {
   /* v3.1: suffix-only U evaluation (expert P0-3 fix) */
   u8   u_pass_prefix;    /* original whole-sequence U (for analysis) */
   u32  u_suffix_count;   /* number of states in candidate's suffix */
+  u8   u_binding_valid;
+  u32  u_response_start, u_response_end;
   /* Trial-mode evidence (P0-1): non-destructive novelty probe result
    * (0=none, 1=hit-count-only, 2=new edge) and ledger-based state-novelty
    * counts that do not depend on retention. */
@@ -3190,6 +3281,90 @@ static void admission_evidence_free(admission_evidence_t *ev) {
   if (!ev) return;
   if (ev->state_seq) { free(ev->state_seq); ev->state_seq = NULL; }    /* strdup */
   if (ev->edge_seq)  { ck_free(ev->edge_seq);  ev->edge_seq  = NULL; } /* ck_alloc */
+}
+
+/* Cumulative byte boundaries from this execution bind M2 to its response
+ * interval. A truncated M2 or a malformed boundary abstains; no estimate
+ * based on a previous execution's message counter is permitted. */
+static u8 admission_response_span(const u32 *ends, u32 sent, u32 size,
+                                  u32 greeting, u32 first, u32 count,
+                                  u32 *start_out, u32 *end_out) {
+  if (!ends || !count || first >= sent || count > sent - first ||
+      greeting > size) return 0;
+  u32 previous = greeting;
+  for (u32 i = 0; i < first + count; i++) {
+    if (ends[i] < previous || ends[i] > size) return 0;
+    previous = ends[i];
+  }
+  u32 start = first ? ends[first - 1] : greeting;
+  u32 end = ends[first + count - 1];
+  if (start_out) *start_out = start;
+  if (end_out) *end_out = end;
+  return end > start;
+}
+
+static void admission_clear_response_capture(void) {
+  if (candidate_response) ck_free(candidate_response);
+  if (candidate_response_ends) ck_free(candidate_response_ends);
+  candidate_response = NULL;
+  candidate_response_ends = NULL;
+  candidate_response_size = candidate_messages_sent = 0;
+  candidate_message_first = candidate_message_count = 0;
+  candidate_single_connection = 0;
+  candidate_execution_id = candidate_invocation_id = 0;
+  candidate_observed_new_states = candidate_observed_new_transitions = 0;
+  candidate_observation_recorded = 0;
+}
+
+static void admission_capture_response(void) {
+  candidate_messages_sent = messages_sent;
+  candidate_response_size = response_buf_size > 0 ? response_buf_size : 0;
+  candidate_greeting_bytes = response_greeting_bytes;
+  candidate_single_connection = response_single_connection;
+  candidate_execution_id = total_execs;
+  candidate_invocation_id = target_invocation_seq;
+  if (candidate_response_size && response_buf) {
+    candidate_response = ck_alloc_nozero(candidate_response_size);
+    memcpy(candidate_response, response_buf, candidate_response_size);
+  }
+  if (messages_sent && response_bytes) {
+    candidate_response_ends = ck_alloc_nozero(messages_sent * sizeof(u32));
+    memcpy(candidate_response_ends, response_bytes, messages_sent * sizeof(u32));
+  }
+  /* Freeze novelty before native retention mutates the scheduler IPSM. */
+  if (extract_response_codes && candidate_response && candidate_response_size) {
+    u32 count = 0;
+    u32 *states = extract_response_codes(candidate_response, candidate_response_size, &count);
+    admission_ledger_observe(states, count, 0, &candidate_observed_new_states,
+                            &candidate_observed_new_transitions);
+    if (states) ck_free(states);
+  }
+  candidate_observation_recorded = 1;
+}
+
+static void admission_evaluate_candidate_u(admission_evidence_t *ev,
+                                           u8 executed) {
+  ev->u_pass_prefix = ev->u_pass;
+  ev->u_pass = 0;
+  if (!executed || !ev->p_pass || !candidate_single_connection ||
+      !extract_response_codes || !candidate_response ||
+      !admission_response_span(candidate_response_ends, candidate_messages_sent,
+          candidate_response_size, candidate_greeting_bytes,
+          candidate_message_first, candidate_message_count,
+          &ev->u_response_start, &ev->u_response_end)) return;
+  ev->u_binding_valid = 1;
+  u32 count = 0;
+  u32 *states = extract_response_codes(candidate_response + ev->u_response_start,
+      ev->u_response_end - ev->u_response_start, &count);
+  u8 error = 0;
+  for (u32 i = 0; states && i < count; i++) {
+    if (!states[i]) continue;
+    ev->u_suffix_count++;
+    if (classify_state_error_hint(states[i], protocol_name) == 1) error = 1;
+  }
+  if (states) ck_free(states);
+  ev->u_pass = (last_common_fuzz_fault == FAULT_NONE &&
+                 ev->u_suffix_count > 0 && !error);
 }
 
 /* Evaluate the P/U/R/G_code/G_state predicates on one bounded trial.
@@ -3234,14 +3409,12 @@ static void admission_evaluate(const admission_snapshot_t *before,
    * must not open the durable gate (nor fire the reward).  In the legacy
    * direct path (arm C) native promotion / bitmap deltas apply as before. */
   ev->g_code_pass = (p_pass && executed &&
-                     (ev->trial_hnb == 2 || ev->native_promoted ||
-                      ev->bitmap_delta > 0 || ev->favored_delta > 0));
+                     (ev->trial_hnb == 2 || last_common_fuzz_hnb == 2));
   /* G_state: IPSM state-machine novelty only — assessed from the observed
    * response sequence via the ledger (retention-independent), with the
    * graph deltas kept as the legacy signal for the direct path. */
   ev->g_state_pass = (p_pass && executed &&
-                      (ev->obs_new_states > 0 || ev->obs_new_transitions > 0 ||
-                       ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0));
+                      (ev->obs_new_states > 0 || ev->obs_new_transitions > 0));
   /* Legacy aggregate kept for backward-compatible counters. */
   ev->g_pass = (ev->g_code_pass || ev->g_state_pass);
 
@@ -3388,6 +3561,13 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   }
   /* Arm-defining switches (all, so the arm is fully reconstructable). */
   json_object_object_add(j, "no_admission", json_object_new_boolean(ablation_no_admission));
+  json_object_object_add(j, "admission_mode", json_object_new_string(
+      admission_native_retention ? "native" : (ablation_no_admission ? "direct" : "gate")));
+  json_object_object_add(j, "provisional_enabled", json_object_new_boolean(provisional_enabled));
+  json_object_object_add(j, "shadow_enabled", json_object_new_boolean(shadow_enabled));
+  json_object_object_add(j, "execution_log", json_object_new_boolean(execution_log_enabled));
+  json_object_object_add(j, "provisional_budget_scope", json_object_new_string(
+      "unconverted candidate subtree; every run_target call incl. calibration/hang retry; first hnb=2 makes subtree durable"));
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
   json_object_object_add(j, "test_force_code_retain", json_object_new_boolean(test_force_code_retain));
   json_object_object_add(j, "no_llm", json_object_new_boolean(llm_disabled));
@@ -3428,7 +3608,7 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "code_reward_semantics",
       json_object_new_string("new-edge-only-hnb2"));
   json_object_object_add(j, "trial_mode_admission",
-      json_object_new_boolean(ablation_no_admission ? 0 : 1));
+      json_object_new_boolean(!ablation_no_admission && !admission_native_retention));
   /* v3 (P0-2) identity pinning: binary / corpus / config hashes, container
    * image digest, and the effective (enforced) LLM campaign caps. */
   json_object_object_add(j, "fuzzer_sha256",
@@ -3464,6 +3644,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
         (ins && *ins) ? ins : "afl-bitmap(afl-gcc)+gcov(cov_script)"));
   }
   admission_json_add_u64(j, "rng_seed", ec_rng_seed_value);
+  admission_json_add_u64(j, "afl_rng_seed", afl_rng_seed_value);
+  json_object_object_add(j, "rng_fixed", json_object_new_boolean(fixed_rng_seed_enabled));
   admission_json_add_u64(j, "start_time_ms", run_start_time_ms);
   admission_json_add_u64(j, "end_time_ms", get_cur_time());
   if (termination_reason)
@@ -3479,8 +3661,8 @@ static s64 candidate_log_event(const char *source, const char *action_type,
                                u32 requested_target_state,
                                const u8 *candidate, u32 candidate_len,
                                u8 p_pass) {
-  if (!event_log_enabled) return 0;
   s64 cid = (s64)(++candidate_event_seq);
+  if (!event_log_enabled) return cid;
   struct json_object *j = json_object_new_object();
   json_object_object_add(j, "event", json_object_new_string("candidate"));
   admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
@@ -3531,9 +3713,14 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
   admission_json_add_u64(j, "descendant_execs", q->prov_desc_execs);
   admission_json_add_u64(j, "descendant_code_gain", q->prov_desc_code_gain);
   admission_json_add_u64(j, "first_productive_descendant",
-      q->prov_desc_code_gain ? last_native_save_index : 0);
+      q->prov_first_gain_queue);
+  admission_json_add_u64(j, "first_gain_execution_id", q->prov_first_gain_execution);
+  admission_json_add_u64(j, "first_gain_invocation_id", q->prov_first_gain_invocation);
+  admission_json_add_u64(j, "first_gain_time_ms", q->prov_first_gain_ms);
+  json_object_object_add(j, "budget_definition", json_object_new_string(
+      "run_target invocations across unconverted root subtree, including calibration and hang retry"));
   admission_json_add_u64(j, "conversion_time_ms",
-      q->prov_converted ? get_cur_time() - q->prov_admit_ms : 0);
+      q->prov_converted ? q->prov_first_gain_ms - q->prov_admit_ms : 0);
   admission_json_add_u64(j, "durable_promotion", q->prov_converted);
   /* v3.3: how far past the wall-clock deadline the expiry actually landed
    * (0 for on-time closure) — bounds the async-sweep delay from the data. */
@@ -3562,6 +3749,12 @@ static void lineage_log_event(u32 candidate_id, u32 queue_index) {
   admission_json_add_u64(j, "execs_done", total_execs);
   admission_json_add_u64(j, "candidate_id", candidate_id);
   admission_json_add_u64(j, "queue_entry", queue_index);
+  admission_json_add_u64(j, "invocation_id", target_invocation_seq);
+  struct queue_entry *saved = find_queue_entry_by_index(queue_index);
+  if (saved && saved->lineage_parent_known)
+    admission_json_add_u64(j, "parent_queue_id", saved->lineage_parent_queue);
+  else json_object_object_add(j, "parent_queue_id", NULL);
+  json_object_object_add(j, "execution_kind", json_object_new_string(last_execution_kind));
   ec_append_jsonl("lineage-events.jsonl", j);
   json_object_put(j);
 }
@@ -3699,6 +3892,7 @@ static void admission_log_candidate_event(const char *source,
   ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
                          ev.g_code_pass, ev.g_state_pass };
   const char *disposition_reason =
+      (disposition == EC_DURABLE && ev.native_promoted) ? "native AFL retention (hnb>0, independent of gate predicates)" :
       (disposition == EC_DURABLE && forced_promoted) ? "direct-force-admit (arm C)" :
       (disposition == EC_DURABLE && durable_promoted) ? "P^U^R^G_code (gated promote)" :
       (disposition == EC_DURABLE) ? "P^U^R^G_code" :
@@ -3726,11 +3920,29 @@ static void admission_log_candidate_event(const char *source,
     json_object_object_add(j, "p_pass", json_object_new_boolean(ev.p_pass));
     json_object_object_add(j, "p_reason", json_object_new_string(p_reason ? p_reason : ""));
     json_object_object_add(j, "u_pass", json_object_new_boolean(ev.u_pass));
+    json_object_object_add(j, "u_whole_session_pass", json_object_new_boolean(ev.u_pass_prefix));
+    json_object_object_add(j, "u_binding_valid", json_object_new_boolean(ev.u_binding_valid));
+    json_object_object_add(j, "u_binding_scope", json_object_new_string(
+        "same-execution M2 cumulative-response-byte window; asynchronous replies may remain ambiguous"));
+    admission_json_add_u64(j, "u_suffix_state_count", ev.u_suffix_count);
+    admission_json_add_u64(j, "candidate_response_start", ev.u_response_start);
+    admission_json_add_u64(j, "candidate_response_end", ev.u_response_end);
+    admission_json_add_u64(j, "candidate_message_first", candidate_message_first);
+    admission_json_add_u64(j, "candidate_message_count", candidate_message_count);
+    admission_json_add_u64(j, "messages_sent", candidate_messages_sent);
+    admission_json_add_u64(j, "response_bytes", candidate_response_size);
+    admission_json_add_u64(j, "trial_execution_id", candidate_execution_id);
+    admission_json_add_u64(j, "trial_invocation_id", candidate_invocation_id);
+    struct json_object *bounds = json_object_new_array();
+    for (u32 bi = 0; candidate_response_ends && bi < candidate_messages_sent; bi++)
+      json_object_array_add(bounds, json_object_new_int64(candidate_response_ends[bi]));
+    json_object_object_add(j, "response_boundaries", bounds);
     json_object_object_add(j, "u_reason", json_object_new_string(
         ev.u_pass ? "non-error response state observed" :
         (!executed ? "not executed" :
          (last_common_fuzz_fault != FAULT_NONE ? admission_fault_name(last_common_fuzz_fault) :
-          (ev.state_count == 0 ? "no response state" : "likely error response")))));
+          (!ev.u_binding_valid ? "candidate response binding unavailable" :
+           (ev.u_suffix_count == 0 ? "no candidate response state" : "candidate error response"))))));
     json_object_object_add(j, "r_pass", json_object_new_boolean(ev.r_pass));
     json_object_object_add(j, "r_reason", json_object_new_string(
         ev.r_pass ? "state transition or target reachability observed" :
@@ -3831,7 +4043,7 @@ static void admission_log_decision_event(const admission_evidence_t *ev,
   json_object_object_add(j, "seed_id", json_object_new_int(seed_id));
   json_object_object_add(j, "target_state_id", json_object_new_int((int)target_sid));
   json_object_object_add(j, "arm", json_object_new_string(admission_arm_name()));
-  json_object_object_add(j, "trial_mode", json_object_new_boolean(admission_trial_mode));
+  json_object_object_add(j, "trial_mode", json_object_new_boolean(ev->trial_mode));
   json_object_object_add(j, "p_pass", json_object_new_boolean(ev->p_pass));
   json_object_object_add(j, "u_pass", json_object_new_boolean(ev->u_pass));
   json_object_object_add(j, "r_pass", json_object_new_boolean(ev->r_pass));
@@ -4519,13 +4731,112 @@ void update_fuzzs()
   kh_destroy(hs32, khs_state_ids);
 }
 
-/* Return the index of the "region" containing a given value */
-u32 index_search(u32 *A, u32 n, u32 val)
+#define SCHEDULER_NO_STATE ((u32)-1)
+
+static const char *scheduler_selection_reason = "uninitialized";
+static u32 scheduler_eligible_states, scheduler_eligible_seeds;
+static u64 scheduler_weight_total, scheduler_random_draw;
+/* A provisional candidate is a complete session replay, rather than a
+ * state-0 prefix mutation. This flag is set only for the direct service path
+ * and is cleared immediately after that fuzz cycle. */
+static u8 full_session_m2_override = 0;
+
+static void scheduler_log_selection(struct queue_entry *q) {
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("scheduler_selection"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  json_object_object_add(j, "campaign_id", json_object_new_string(evidence_campaign_id()));
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  admission_json_add_u64(j, "execution_id", total_execs);
+  json_object_object_add(j, "reason", json_object_new_string(scheduler_selection_reason));
+  if (target_state_id != SCHEDULER_NO_STATE)
+    admission_json_add_u64(j, "selected_state", target_state_id);
+  else json_object_object_add(j, "selected_state", NULL);
+  if (q) admission_json_add_u64(j, "source_seed", q->index);
+  else json_object_object_add(j, "source_seed", NULL);
+  admission_json_add_u64(j, "eligible_states", scheduler_eligible_states);
+  admission_json_add_u64(j, "eligible_seeds", scheduler_eligible_seeds);
+  admission_json_add_u64(j, "weight_total", scheduler_weight_total);
+  admission_json_add_u64(j, "random_draw", scheduler_random_draw);
+  ec_append_jsonl("scheduler-selections.jsonl", j);
+  json_object_put(j);
+}
+
+/* Use the same M2 contract before selection and immediately before mutation. */
+static u8 entry_m2_range(struct queue_entry *q, u32 state_id,
+                         u32 *start_out, u32 *count_out) {
+  if (!q || q->prov_expired || !q->regions || !q->region_count) return 0;
+  if (full_session_m2_override && state_id == 0) {
+    for (u32 i = 0; i < q->region_count; i++) {
+      if (!q->regions[i].state_count || !q->regions[i].state_sequence)
+        return 0;
+    }
+    if (start_out) *start_out = 0;
+    if (count_out) *count_out = q->region_count;
+    return 1;
+  }
+  u32 start = 0, count = 0;
+  if (state_id != 0) {
+    for (u32 i = 0; i < q->region_count; i++) {
+      region_t *region = &q->regions[i];
+      if (region->state_count && !region->state_sequence) return 0;
+      start = i + 1;
+      if (region->state_count &&
+          region->state_sequence[region->state_count - 1] == state_id) break;
+    }
+    if (start >= q->region_count) return 0;
+  }
+  for (u32 i = start; i < q->region_count; i++) {
+    if (q->regions[i].state_count != q->regions[start].state_count) break;
+    count++;
+  }
+  if (!count) return 0;
+  if (start_out) *start_out = start;
+  if (count_out) *count_out = count;
+  return 1;
+}
+
+static u8 entry_can_fuzz_state(struct queue_entry *q, u32 state_id) {
+  return entry_m2_range(q, state_id, NULL, NULL);
+}
+
+static u8 entry_can_fuzz_full_session(struct queue_entry *q) {
+  if (!q || q->prov_expired || !q->regions || !q->region_count) return 0;
+  for (u32 i = 0; i < q->region_count; i++)
+    if (!q->regions[i].state_count || !q->regions[i].state_sequence) return 0;
+  return 1;
+}
+
+static u32 state_executable_seed_count(state_info_t *state, u32 state_id) {
+  u32 count = 0;
+  if (state && state->seeds)
+    for (u32 i = 0; i < state->seeds_count; i++)
+      count += entry_can_fuzz_state(state->seeds[i], state_id);
+  return count;
+}
+
+static u64 scheduler_draw_below(u64 bound) {
+  uint64_t draw;
+  if (!ec_rng_below(bound, &draw)) FATAL("Invalid scheduler random bound");
+  scheduler_random_draw = draw;
+  return draw;
+}
+
+static void scheduler_mark_unweighted(u32 state_id) {
+  khint_t k = kh_get(hms, khms_states, state_id);
+  if (k == kh_end(khms_states)) return;
+  state_info_t *state = kh_val(khms_states, k);
+  state->last_sampled_theta = -1.0;
+  state->last_frontier_score = state->last_selection_score = 0.0;
+}
+
+/* First cumulative weight strictly greater than a draw in [0,total). */
+u32 index_search(u64 *A, u32 n, u64 val)
 {
   u32 index = 0;
   for (index = 0; index < n; index++)
   {
-    if (val <= A[index])
+    if (val < A[index])
       break;
   }
   return index;
@@ -4534,14 +4845,17 @@ u32 index_search(u32 *A, u32 n, u32 val)
 /* Calculate state scores and select the next state */
 u32 update_scores_and_select_next_state(u8 mode)
 {
-  u32 result = 0, i;
+  u32 result = SCHEDULER_NO_STATE, i;
+  scheduler_eligible_states = scheduler_eligible_seeds = 0;
+  scheduler_weight_total = scheduler_random_draw = 0;
+  scheduler_selection_reason = "no-executable-state";
 
   if (state_ids_count == 0)
-    return 0;
+    return result;
 
-  u32 *state_scores = NULL;
-  state_scores = (u32 *)ck_alloc(state_ids_count * sizeof(u32));
-  if (!state_scores)
+  u64 *state_scores = ck_alloc(state_ids_count * sizeof(u64));
+  u32 *eligible_indices = ck_alloc(state_ids_count * sizeof(u32));
+  if (!state_scores || !eligible_indices)
     PFATAL("Cannot allocate memory for state_scores");
 
   khint_t k;
@@ -4555,6 +4869,7 @@ u32 update_scores_and_select_next_state(u8 mode)
     if (k != kh_end(khms_states))
     {
       state = kh_val(khms_states, k);
+      if (!state_executable_seed_count(state, state_id)) continue;
       switch (mode)
       {
       case FAVOR:
@@ -4672,10 +4987,13 @@ u32 update_scores_and_select_next_state(u8 mode)
         if (calibration_enabled) {
           double theta_t = ec_thompson_sample(state->cal_alpha, state->cal_beta);
           double factor = ec_calibrated_factor(theta_t, cal_epsilon);
-          state->score = (u32)(frontier_score * factor);
+          double score = frontier_score * factor;
+          state->score = !isfinite(score) || score <= 0.0 ? 0 :
+              (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
           state->last_sampled_theta = theta_t;
         } else {
-          state->score = (u32)frontier_score;
+          state->score = !isfinite(frontier_score) || frontier_score <= 0.0 ? 0 :
+              (frontier_score >= (double)((u32)-1) ? (u32)-1 : (u32)frontier_score);
           /* Arm D does not act on the posterior; record its mean purely for
            * counterfactual logging (what calibration would have said). */
           state->last_sampled_theta =
@@ -4688,63 +5006,90 @@ u32 update_scores_and_select_next_state(u8 mode)
         // other cases are reserved
       }
 
-      if (i == 0)
-      {
-        state_scores[i] = state->score;
-      }
-      else
-      {
-        state_scores[i] = state_scores[i - 1] + state->score;
-      }
+      scheduler_weight_total += state->score;
+      eligible_indices[scheduler_eligible_states] = i;
+      state_scores[scheduler_eligible_states++] = scheduler_weight_total;
     }
   }
 
-  u32 randV = UR(state_scores[state_ids_count - 1]);
-  u32 idx = index_search(state_scores, state_ids_count, randV);
-  result = state_ids[idx];
+  if (scheduler_eligible_states) {
+    u32 idx;
+    if (scheduler_weight_total) {
+      idx = index_search(state_scores, scheduler_eligible_states,
+                         scheduler_draw_below(scheduler_weight_total));
+      scheduler_selection_reason = "weighted-eligible";
+    } else {
+      idx = scheduler_draw_below(scheduler_eligible_states);
+      scheduler_selection_reason = "zero-weight-eligible-uniform";
+    }
+    if (idx >= scheduler_eligible_states) FATAL("Scheduler cumulative weight mismatch");
+    result = state_ids[eligible_indices[idx]];
+    k = kh_get(hms, khms_states, result);
+    scheduler_eligible_seeds = state_executable_seed_count(kh_val(khms_states, k), result);
+  }
 
   if (state_scores)
     ck_free(state_scores);
+  ck_free(eligible_indices);
   return result;
 }
 
 /* Select a target state at which we do state-aware fuzzing */
 unsigned int choose_target_state(u8 mode)
 {
-  u32 result = 0;
-
-  switch (mode)
-  {
-  case RANDOM_SELECTION: // Random state selection
-    selected_state_index = UR(state_ids_count);
-    result = state_ids[selected_state_index];
-    break;
-  case ROUND_ROBIN: // Round-robin state selection
-    result = state_ids[selected_state_index];
-    selected_state_index++;
-    if (selected_state_index == state_ids_count)
-      selected_state_index = 0;
-    break;
-  case FAVOR:
-    /* Do ROUND_ROBIN for a few cycles to get enough statistical information*/
-    if (state_cycles < 5)
-    {
-      result = state_ids[selected_state_index];
-      selected_state_index++;
-      if (selected_state_index == state_ids_count)
-      {
-        selected_state_index = 0;
-        state_cycles++;
-      }
-      break;
-    }
-
-    result = update_scores_and_select_next_state(FAVOR);
-    break;
-  default:
-    break;
+  if (mode == FAVOR && state_cycles >= 5)
+    return update_scores_and_select_next_state(FAVOR);
+  scheduler_eligible_states = scheduler_eligible_seeds = 0;
+  scheduler_weight_total = scheduler_random_draw = 0;
+  scheduler_selection_reason = "no-executable-state";
+  if (mode != RANDOM_SELECTION && mode != ROUND_ROBIN && mode != FAVOR) {
+    scheduler_selection_reason = "invalid-selection-mode";
+    return SCHEDULER_NO_STATE;
   }
-
+  if (!state_ids_count) return SCHEDULER_NO_STATE;
+  u32 result = SCHEDULER_NO_STATE;
+  selected_state_index %= state_ids_count;
+  if (mode == RANDOM_SELECTION) {
+    for (u32 i = 0; i < state_ids_count; i++) {
+      khint_t k = kh_get(hms, khms_states, state_ids[i]);
+      if (k != kh_end(khms_states) &&
+          state_executable_seed_count(kh_val(khms_states, k), state_ids[i]))
+        scheduler_eligible_states++;
+    }
+    if (!scheduler_eligible_states) return SCHEDULER_NO_STATE;
+    u32 ordinal = scheduler_draw_below(scheduler_eligible_states);
+    for (u32 i = 0; i < state_ids_count; i++) {
+      khint_t k = kh_get(hms, khms_states, state_ids[i]);
+      if (k == kh_end(khms_states)) continue;
+      u32 seeds = state_executable_seed_count(kh_val(khms_states, k), state_ids[i]);
+      if (!seeds || ordinal--) continue;
+      selected_state_index = (i + 1) % state_ids_count;
+      scheduler_eligible_seeds = seeds;
+      scheduler_selection_reason = "random-eligible";
+      scheduler_mark_unweighted(state_ids[i]);
+      return state_ids[i];
+    }
+    FATAL("Scheduler eligible state count mismatch");
+  }
+  u32 start = selected_state_index;
+  for (u32 offset = 0; offset < state_ids_count; offset++) {
+    u32 index = (start + offset) % state_ids_count;
+    u32 id = state_ids[index];
+    khint_t k = kh_get(hms, khms_states, id);
+    if (k == kh_end(khms_states)) continue;
+    u32 seeds = state_executable_seed_count(kh_val(khms_states, k), id);
+    if (!seeds) continue;
+    scheduler_eligible_states++;
+    if (result != SCHEDULER_NO_STATE) continue;
+    result = id;
+    scheduler_eligible_seeds = seeds;
+    selected_state_index = (index + 1) % state_ids_count;
+    if (mode == FAVOR && (index < start || index + 1 == state_ids_count)) state_cycles++;
+  }
+  if (result != SCHEDULER_NO_STATE) {
+    scheduler_selection_reason = mode == FAVOR ? "warmup-eligible" : "round-robin-eligible";
+    scheduler_mark_unweighted(result);
+  }
   return result;
 }
 
@@ -4877,15 +5222,17 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
   {
     state = kh_val(khms_states, k);
 
-    if (state->seeds_count == 0)
+    u32 executable_seeds = state_executable_seed_count(state, target_state_id);
+    if (!executable_seeds)
       return NULL;
+    state->selected_seed_index %= state->seeds_count;
 
     /* v3.2 (P0-2 fix): if a live provisional entry belongs to this state,
      * select it FIRST so it gets descendant validation before TTL expiry. */
     for (u32 pi = 0; pi < state->seeds_count; pi++) {
       struct queue_entry *pe = state->seeds[pi];
       if (pe && pe->is_provisional && !pe->prov_converted && !pe->prov_expired &&
-          pe->region_count > 0) {
+          entry_can_fuzz_state(pe, target_state_id)) {
         state->selected_seed_index = pi;
         return pe;
       }
@@ -4894,8 +5241,18 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
     switch (mode)
     {
     case RANDOM_SELECTION: // Random seed selection
-      state->selected_seed_index = UR(state->seeds_count);
-      result = state->seeds[state->selected_seed_index];
+      {
+        uint64_t seed_draw;
+        if (!ec_rng_below(executable_seeds, &seed_draw)) FATAL("Invalid seed random bound");
+        u32 ordinal = seed_draw;
+        for (u32 i = 0; i < state->seeds_count; i++) {
+          if (!entry_can_fuzz_state(state->seeds[i], target_state_id)) continue;
+          if (ordinal--) continue;
+          state->selected_seed_index = i;
+          result = state->seeds[i];
+          break;
+        }
+      }
       break;
     case ROUND_ROBIN: // Round-robin seed selection
       result = state->seeds[state->selected_seed_index];
@@ -4922,7 +5279,7 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
 
           // Skip expired provisional entries — they were invalidated by the
           // two-tier admission controller and must not consume energy.
-          if (result->prov_expired)
+          if (!entry_can_fuzz_state(result, target_state_id))
             continue;
 
           // Skip this seed with high probability if it is neither an initial seed nor a seed generated while the
@@ -4989,12 +5346,12 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
    * branch above returned, hand back the next ELIGIBLE seed of this state
    * (bounded scan), or NULL when the state has none — the caller's retry
    * budget and queue-wide fallback then guarantee progress. */
-  if (result && (result->prov_expired || result->region_count == 0)) {
+  if (!entry_can_fuzz_state(result, target_state_id)) {
     struct queue_entry *eligible = NULL;
     for (u32 ri = 0; ri < state->seeds_count; ri++) {
       u32 idx = (state->selected_seed_index + ri) % state->seeds_count;
       struct queue_entry *re = state->seeds[idx];
-      if (re && !re->prov_expired && re->region_count > 0) {
+      if (entry_can_fuzz_state(re, target_state_id)) {
         eligible = re;
         state->selected_seed_index = idx;
         break;
@@ -5006,32 +5363,56 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
   return result;
 }
 
-/* v3.3b: the last annotated region's reachable state — the state this
- * entry can definitely serve in fuzz_one's M2 selection (guarantees the
- * target-not-in-entry skip cannot fire for the fallback). */
+/* Deepest annotated state with a real mutation suffix; state 0 uses the
+ * full session when the final annotated state has no remaining region. */
 static u32 entry_last_annotated_state(struct queue_entry *q) {
-  if (!q) return 0;
-  for (s32 ri = (s32)q->region_count - 1; ri >= 0; ri--) {
-    if (q->regions && q->regions[ri].state_count > 0)
-      return q->regions[ri].state_sequence[q->regions[ri].state_count - 1];
+  if (!entry_can_fuzz_state(q, 0)) return SCHEDULER_NO_STATE;
+  for (u32 ri = q->region_count - 1; ri > 0; ri--) {
+    region_t *region = &q->regions[ri - 1];
+    if (!region->state_count || !region->state_sequence) continue;
+    u32 candidate = region->state_sequence[region->state_count - 1];
+    if (entry_can_fuzz_state(q, candidate)) return candidate;
   }
-  return q->generating_state_id;
+  return 0;
 }
 
 /* v3.3b: next eligible entry strictly after `from` (wraps to the queue
  * head exactly once).  NULL when nothing eligible exists. */
 static struct queue_entry *next_executable_entry(struct queue_entry *from) {
-  u8 wrapped = 0;
   struct queue_entry *q = from ? from->next : queue;
-  while (q) {
-    if (!q->prov_expired && q->region_count > 0) return q;
-    q = q->next;
-    if (!q && !wrapped) { q = queue; wrapped = 1; }
+  for (; q; q = q->next)
+    if (entry_can_fuzz_state(q, 0)) return q;
+  if (!from) return NULL;
+  for (q = queue; q; q = q->next) {
+    if (entry_can_fuzz_state(q, 0)) return q;
+    if (q == from) break;
   }
   return NULL;
 }
 
 static u64 get_cur_time(void);
+
+/* Annotation and graph discovery must share one persistent state object. */
+static state_info_t *register_state(u32 state_id) {
+  khint_t k = kh_get(hms, khms_states, state_id);
+  if (k != kh_end(khms_states)) return kh_val(khms_states, k);
+  state_info_t *state = ck_alloc(sizeof(*state));
+  state->id = state_id;
+  state->is_covered = 1;
+  state->score = 1;
+  state->error_hint = classify_state_error_hint(state_id, protocol_name);
+  state->cal_alpha = state->cal_beta = 1.0;
+  state->last_sampled_theta = -1.0;
+  int inserted;
+  k = kh_put(hms, khms_states, state_id, &inserted);
+  if (inserted < 0) FATAL("Unable to register state %u", state_id);
+  kh_val(khms_states, k) = state;
+  state_ids = ck_realloc(state_ids, (state_ids_count + 1) * sizeof(*state_ids));
+  state_ids[state_ids_count++] = state_id;
+  if (fuzzed_map_states < state_ids_count)
+    expand_was_fuzzed_map(state_ids_count - fuzzed_map_states, 0);
+  return state;
+}
 
 
 /* Update state-aware variables */
@@ -5088,40 +5469,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           else
             agset(from, "color", "red");
 
-          // Insert this newly discovered state into the states hashtable
-          state_info_t *newState_From = (state_info_t *)ck_alloc(sizeof(state_info_t));
-          newState_From->id = prevStateID;
-          newState_From->is_covered = 1;
-          newState_From->paths = 0;
-          newState_From->paths_discovered = 0;
-          newState_From->selected_times = 0;
-          newState_From->fuzzs = 0;
-          newState_From->score = 1;
-          newState_From->selected_seed_index = 0;
-          newState_From->seeds = NULL;
-          newState_From->seeds_count = 0;
-          /* Fix-19: Initialize acceptability fields */
-          newState_From->error_hint = classify_state_error_hint(prevStateID, protocol_name);
-          newState_From->productivity = 0.0;
-          /* Online calibration: θ_s ~ Beta(1,1) prior */
-          newState_From->cal_alpha = 1.0;
-          newState_From->cal_beta = 1.0;
-          newState_From->cal_episodes = 0;
-          newState_From->cal_episode_rewards = 0;
-          newState_From->last_sampled_theta = -1.0;
-          newState_From->last_frontier_score = 0.0;
-          newState_From->last_selection_score = 0.0;
-
-          k = kh_put(hms, khms_states, prevStateID, &discard);
-          kh_value(khms_states, k) = newState_From;
-
-          // Insert this into the state_ids array too
-          state_ids = (u32 *)ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
-          state_ids[state_ids_count++] = prevStateID;
-
-          if (prevStateID != 0)
-            expand_was_fuzzed_map(1, 0);
         }
+        register_state(prevStateID);
 
         to = agnode(ipsm, toState, FALSE);
         if (!to)
@@ -5133,40 +5482,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           else
             agset(to, "color", "red");
 
-          // Insert this newly discovered state into the states hashtable
-          state_info_t *newState_To = (state_info_t *)ck_alloc(sizeof(state_info_t));
-          newState_To->id = curStateID;
-          newState_To->is_covered = 1;
-          newState_To->paths = 0;
-          newState_To->paths_discovered = 0;
-          newState_To->selected_times = 0;
-          newState_To->fuzzs = 0;
-          newState_To->score = 1;
-          newState_To->selected_seed_index = 0;
-          newState_To->seeds = NULL;
-          newState_To->seeds_count = 0;
-          /* Fix-19: Initialize acceptability fields */
-          newState_To->error_hint = classify_state_error_hint(curStateID, protocol_name);
-          newState_To->productivity = 0.0;
-          /* Online calibration: θ_s ~ Beta(1,1) prior */
-          newState_To->cal_alpha = 1.0;
-          newState_To->cal_beta = 1.0;
-          newState_To->cal_episodes = 0;
-          newState_To->cal_episode_rewards = 0;
-          newState_To->last_sampled_theta = -1.0;
-          newState_To->last_frontier_score = 0.0;
-          newState_To->last_selection_score = 0.0;
-
-          k = kh_put(hms, khms_states, curStateID, &discard);
-          kh_value(khms_states, k) = newState_To;
-
-          // Insert this into the state_ids array too
-          state_ids = (u32 *)ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
-          state_ids[state_ids_count++] = curStateID;
-
-          if (curStateID != 0)
-            expand_was_fuzzed_map(1, 0);
         }
+        register_state(curStateID);
 
         // Check if an edge from->to exists
         edge = agedge(ipsm, from, to, NULL, FALSE);
@@ -5252,40 +5569,10 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
         // To completely fix this, we should fix all causes leading to potential undeterminism
         // For now, we just add the state into the hashtable
 
-        state_info_t *newState = (state_info_t *)ck_alloc(sizeof(state_info_t));
-        newState->id = reachable_state_id;
-        newState->is_covered = 1;
-        newState->paths = 0;
-        newState->paths_discovered = 0;
-        newState->selected_times = 0;
-        newState->fuzzs = 0;
-        newState->score = 1;
-        newState->selected_seed_index = 0;
-        newState->seeds = NULL;
-        newState->seeds = (void **)ck_realloc(newState->seeds, sizeof(void *));
-        newState->seeds[0] = (void *)q;
-        newState->seeds_count = 1;
-        /* Fix-19: Initialize acceptability fields */
-        newState->error_hint = classify_state_error_hint(reachable_state_id, protocol_name);
-        newState->productivity = 0.0;
-        /* Online calibration: θ_s ~ Beta(1,1) prior */
-        newState->cal_alpha = 1.0;
-        newState->cal_beta = 1.0;
-        newState->cal_episodes = 0;
-        newState->cal_episode_rewards = 0;
-        newState->last_sampled_theta = -1.0;
-        newState->last_frontier_score = 0.0;
-        newState->last_selection_score = 0.0;
-
-        k = kh_put(hms, khms_states, reachable_state_id, &discard);
-        kh_value(khms_states, k) = newState;
-
-        // Insert this into the state_ids array too
-        state_ids = (u32 *)ck_realloc(state_ids, (state_ids_count + 1) * sizeof(u32));
-        state_ids[state_ids_count++] = reachable_state_id;
-
-        if (reachable_state_id != 0)
-          expand_was_fuzzed_map(1, 0);
+        state = register_state(reachable_state_id);
+        state->seeds = ck_realloc(state->seeds, sizeof(void *));
+        state->seeds[0] = q;
+        state->seeds_count = 1;
       }
 
       was_fuzzed_map[get_state_index(reachable_state_id)][q->index] = 0; // Mark it as reachable but not fuzzed
@@ -5477,10 +5764,8 @@ int send_over_network()
   struct sockaddr_in serv_addr;
   struct sockaddr_in local_serv_addr;
 
-  // Clean up the server if needed
-  // (Skip in persistent mode — server state is preserved across execs.)
-  if (cleanup_script && !mqtt_persistent_skip_kill)
-    system(cleanup_script);
+  /* Reset is checked before starting a target in run_target(), never
+   * while the current target already has its files/database open. */
 
   // Wait a bit for the server initialization
   // A1-fix: Use adaptive wait — full sleep only on first exec or after
@@ -5530,6 +5815,8 @@ int send_over_network()
   timeout.tv_usec = socket_timeout_usecs;
   kliter_t(lms) *it;
   messages_sent = 0;
+  response_greeting_bytes = 0;
+  response_single_connection = 0;
 
   const mp_driver_t *mp_drv = mp_driver_for_protocol(protocol_name);
 
@@ -6183,7 +6470,11 @@ MP_SINGLE_FD_FALLBACK:
     adaptive_wait_usecs = 0;
 
     // retrieve early server response if needed
-    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
+    response_single_connection = 1;
+    int greeting_rc = net_recv(sockfd, timeout, poll_wait_msecs,
+                               &response_buf, &response_buf_size);
+    response_greeting_bytes = response_buf_size;
+    if (greeting_rc)
       goto HANDLE_RESPONSES;
 
     // write the request messages
@@ -6603,8 +6894,8 @@ static u64 get_cur_time_us(void)
 
 static inline u32 UR(u32 limit)
 {
-
-  if (unlikely(!rand_cnt--))
+  if (!limit) FATAL("Invalid zero random bound");
+  if (!fixed_rng_seed_enabled && unlikely(!rand_cnt--))
   {
 
     u32 seed[2];
@@ -7050,12 +7341,18 @@ static void add_to_queue(u8 *fname, u32 len, u8 passed_det)
    * descendant save made while fuzzing a lineage-bearing entry inherits
    * that lineage.  Admission paths overwrite this explicitly after the
    * call, so the stamp here only fills the inheritance case. */
-  if (!q->llm_origin_candidate_id) {
+  if (!corpus_read_or_sync && !q->llm_origin_candidate_id) {
     if (llm_candidate_lineage_pin)
       q->llm_origin_candidate_id = llm_candidate_lineage_pin;
     else if (cur_fuzz_lineage_candidate_id)
       q->llm_origin_candidate_id = cur_fuzz_lineage_candidate_id;
   }
+  if (queue_cur && !corpus_read_or_sync) {
+    q->lineage_parent_known = 1;
+    q->lineage_parent_queue = queue_cur->index;
+  }
+  q->lineage_invocation_id = target_invocation_seq;
+  queue_checkpoint_log(q, "discovery");
 
   if (q->depth > max_depth)
     max_depth = q->depth;
@@ -7127,6 +7424,13 @@ static void add_to_queue(u8 *fname, u32 len, u8 passed_det)
     // Also add a new row (for state 0) if needed
     expand_was_fuzzed_map(1, 1);
   }
+}
+
+static void admission_add_to_queue(u8 *fname, u32 len) {
+  u32 old_pin = llm_candidate_lineage_pin;
+  llm_candidate_lineage_pin = (u32)llm_cur_candidate_id;
+  add_to_queue(fname, len, 0);
+  llm_candidate_lineage_pin = old_pin;
 }
 
 /* Destroy the entire queue. */
@@ -7579,6 +7883,8 @@ static void minimize_bits(u8 *dst, u8 *src)
 static void update_bitmap_score(struct queue_entry *q)
 {
 
+  if (!q || q->prov_expired) return;
+
   u32 i;
   u64 fav_factor = q->exec_us * q->len;
 
@@ -7664,7 +7970,8 @@ static void cull_queue(void)
      If yes, and if it has a top_rated[] contender, let's use it. */
 
   for (i = 0; i < MAP_SIZE; i++)
-    if (top_rated[i] && (temp_v[i >> 3] & (1 << (i & 7))))
+    if (top_rated[i] && !top_rated[i]->prov_expired &&
+        (temp_v[i >> 3] & (1 << (i & 7))))
     {
 
       u32 j = MAP_SIZE >> 3;
@@ -7688,7 +7995,7 @@ static void cull_queue(void)
 
   while (q)
   {
-    mark_as_redundant(q, !q->favored);
+    if (!q->prov_expired) mark_as_redundant(q, !q->favored);
     q = q->next;
   }
 }
@@ -9210,7 +9517,7 @@ static crash_category_t classify_crash(u8 *buf, u32 buflen, int signal) {
 /* Execute target application, monitoring for timeouts. Return status
    information. The called program will update trace_bits[]. */
 
-static u8 run_target(char **argv, u32 timeout)
+static u8 run_target_impl(char **argv, u32 timeout)
 {
 
   static struct itimerval it;
@@ -9798,6 +10105,168 @@ static u8 run_target(char **argv, u32 timeout)
   return FAULT_NONE;
 }
 
+static struct queue_entry *provisional_root_for_candidate(u32 candidate_id) {
+  if (!candidate_id) return NULL;
+  for (struct queue_entry *q = queue; q; q = q->next)
+    if (q->prov_candidate_id == candidate_id) return q;
+  return NULL;
+}
+
+static void execution_log_event(const char *event, u64 attempt_id,
+                                u64 invocation_id, u64 before, u8 fault,
+                                u32 candidate_id, struct queue_entry *root) {
+  if (!event_log_enabled || !execution_log_enabled || !out_dir) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string(event));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  json_object_object_add(j, "campaign_id", json_object_new_string(evidence_campaign_id()));
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  admission_json_add_u64(j, "monotonic_ms", evidence_monotonic_ms());
+  admission_json_add_u64(j, "attempt_id", attempt_id);
+  admission_json_add_u64(j, "invocation_id", invocation_id);
+  admission_json_add_u64(j, "execution_id_before", before);
+  admission_json_add_u64(j, "execution_id_after", total_execs);
+  json_object_object_add(j, "execution_kind", json_object_new_string(execution_kind));
+  admission_json_add_u64(j, "candidate_id", candidate_id);
+  if (queue_cur && !corpus_read_or_sync && strcmp(execution_kind, "sync"))
+    admission_json_add_u64(j, "parent_queue_id", queue_cur->index);
+  else json_object_object_add(j, "parent_queue_id", NULL);
+  json_object_object_add(j, "fault", json_object_new_string(admission_fault_name(fault)));
+  json_object_object_add(j, "executed", json_object_new_boolean(fault != FAULT_RESOURCE_LIMIT));
+  if (root) {
+    admission_json_add_u64(j, "provisional_root_queue_id", root->index);
+    admission_json_add_u64(j, "budget_left", root->prov_budget_left);
+    admission_json_add_u64(j, "charged_invocations", root->prov_desc_execs);
+  }
+  static FILE *stream = NULL;
+  if (!stream) {
+    u8 *path = alloc_printf("%s/execution-events.jsonl", out_dir);
+    stream = fopen((char *)path, "a");
+    ck_free(path);
+    if (!stream) PFATAL("Unable to create execution ledger");
+  }
+  if (fprintf(stream, "%s\n", json_object_to_json_string(j)) < 0 || fflush(stream))
+    PFATAL("Unable to flush execution ledger");
+  json_object_put(j);
+}
+
+static u8 reset_completed_before_forkserver = 0;
+
+/* Reset the target-owned external state before the forkserver is created or
+ * before a subsequent invocation. The validator receives the forkserver PID
+ * only when it is already idle; it must never be asked to bless an active
+ * target process. */
+static u8 phase2_target_reset(const char *stage, u64 attempt_id) {
+  if (stop_soon) return 0;
+  if (!cleanup_script || (mqtt_persistent_mode && mqtt_persistent_active &&
+                          !mqtt_in_calibration)) return 1;
+  char allowed[32];
+  snprintf(allowed, sizeof(allowed), "%d", forksrv_pid > 0 ? forksrv_pid : 0);
+  if (setenv("PHASE2_ALLOWED_FORKSERVER_PID", allowed, 1))
+    PFATAL("Unable to declare idle forkserver for reset validation");
+  /* system() ignores SIGINT in the caller while waiting. Keep the fuzzer's
+   * stop handler active and allow the reset child to finish before shutdown. */
+  pid_t reset_pid = fork();
+  if (reset_pid < 0) PFATAL("Unable to start target reset");
+  if (!reset_pid) {
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+    execl("/bin/sh", "sh", "-c", (char *)cleanup_script, (char *)NULL);
+    _exit(127);
+  }
+  int reset_status = 0;
+  pid_t waited;
+  do {
+    waited = waitpid(reset_pid, &reset_status, 0);
+  } while (waited < 0 && errno == EINTR);
+  if (waited < 0) PFATAL("Unable to wait for target reset");
+  struct json_object *reset = json_object_new_object();
+  json_object_object_add(reset, "event", json_object_new_string("target_reset"));
+  admission_json_add_u64(reset, "schema_version", EC_SCHEMA_VERSION);
+  json_object_object_add(reset, "campaign_id", json_object_new_string(evidence_campaign_id()));
+  json_object_object_add(reset, "stage", json_object_new_string(stage ? stage : "invocation"));
+  admission_json_add_u64(reset, "attempt_id", attempt_id);
+  admission_json_add_u64(reset, "execution_id", total_execs);
+  admission_json_add_u64(reset, "time_ms", get_cur_time());
+  json_object_object_add(reset, "system_status", json_object_new_int(reset_status));
+  json_object_object_add(reset, "success", json_object_new_boolean(reset_status == 0));
+  json_object_object_add(reset, "cancelled", json_object_new_boolean(stop_soon != 0));
+  ec_append_jsonl("reset-events.jsonl", reset);
+  json_object_put(reset);
+  unsetenv("PHASE2_ALLOWED_FORKSERVER_PID");
+  if (reset_status != 0 && !stop_soon)
+    FATAL("Target reset failed before execution (status %d)", reset_status);
+  return !stop_soon;
+}
+
+static u8 execution_ready(struct queue_entry *root) {
+  if (stop_soon) return 0;
+  if (root && !root->prov_converted) {
+    if (root->prov_expired) return 0;
+    if (!root->prov_budget_left) {
+      provisional_budget_exhausted_stop = 1;
+      provisional_expire(root, "budget-exhausted");
+      return 0;
+    }
+    if (get_cur_time() >= root->prov_deadline_ms) {
+      provisional_ttl_stop = 1;
+      provisional_expire(root, "ttl-expired");
+      return 0;
+    }
+  }
+  if (!strcmp(execution_kind, "mutation") && cal_episode_active &&
+      episode_energy_cap && episode_havoc_phase) {
+    if (!episode_energy_left) {
+      episode_energy_exhausted = 1;
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static u8 execution_admit(struct queue_entry *root) {
+  if (!execution_ready(root)) return 0;
+  if (!strcmp(execution_kind, "mutation") && cal_episode_active &&
+      episode_energy_cap && episode_havoc_phase)
+    episode_energy_left--;
+  if (root && !root->prov_converted) {
+    root->prov_budget_left--;
+    root->prov_desc_execs++;
+  }
+  return 1;
+}
+
+/* Every target invocation, including nested calibration and timeout retry,
+ * passes this single debit point. Refusal is an explicit non-execution. */
+static u8 run_target(char **argv, u32 timeout) {
+  u64 attempt_id = ++execution_attempt_seq, before = total_execs;
+  u32 cid = (corpus_read_or_sync || !strcmp(execution_kind, "sync")) ? 0 :
+      (llm_candidate_lineage_pin ? llm_candidate_lineage_pin : cur_fuzz_lineage_candidate_id);
+  struct queue_entry *root = provisional_root_for_candidate(cid);
+  if (!execution_ready(root)) goto refused;
+  if (!reset_completed_before_forkserver &&
+      !phase2_target_reset("invocation", attempt_id)) goto refused;
+  reset_completed_before_forkserver = 0;
+  if (!execution_admit(root)) goto refused;
+  u64 invocation_id = ++target_invocation_seq;
+  execution_log_event("invocation_start", attempt_id, invocation_id,
+      before, FAULT_NONE, cid, root);
+#ifdef LOOPFUZZ_EXECUTION_TEST_DRIVER
+  u8 fault = LOOPFUZZ_EXECUTION_TEST_DRIVER(argv, timeout);
+#else
+  u8 fault = run_target_impl(argv, timeout);
+#endif
+  last_execution_kind = execution_kind;
+  execution_log_event("invocation_end", attempt_id, invocation_id,
+      before, fault, cid, root);
+  return fault;
+refused:
+  reset_completed_before_forkserver = 0;
+  execution_log_event("invocation_refused", attempt_id, 0, before,
+      FAULT_RESOURCE_LIMIT, cid, root);
+  return FAULT_RESOURCE_LIMIT;
+}
+
 /* Write modified data to file for testing. If out_file is set, the old file
    is unlinked and a new one is created. Otherwise, out_fd is rewound and
    truncated. */
@@ -9863,8 +10332,14 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
   /* Make sure the forkserver is up before we do anything, and let's not
      count its spin-up time toward binary calibration. */
 
-  if (dumb_mode != 1 && !no_forkserver && !forksrv_pid)
+  if (dumb_mode != 1 && !no_forkserver && !forksrv_pid) {
+    if (!phase2_target_reset("pre-forkserver", ++execution_attempt_seq)) {
+      fault = FAULT_RESOURCE_LIMIT;
+      goto abort_calibration;
+    }
+    reset_completed_before_forkserver = 1;
     init_forkserver(argv);
+  }
 
   if (q->exec_cksum)
     memcpy(first_trace, trace_bits, MAP_SIZE);
@@ -9881,7 +10356,10 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
 
     write_to_testcase(use_mem, q->len);
 
+    const char *old_kind = execution_kind;
+    execution_kind = "calibration";
     fault = run_target(argv, use_tmout);
+    execution_kind = old_kind;
 
     /* stop_soon is set by the handler for Ctrl+C. When it's pressed,
        we want to bail out quickly. */
@@ -9901,6 +10379,10 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
     {
 
       u8 hnb = has_new_bits(virgin_bits);
+      if (hnb == 2 && q->llm_origin_candidate_id) {
+        provisional_note_gain(q->llm_origin_candidate_id, q->index);
+        lineage_log_event(q->llm_origin_candidate_id, q->index);
+      }
       if (hnb > new_bits)
         new_bits = hnb;
 
@@ -10826,6 +11308,7 @@ static void pivot_inputs(void)
     link_or_copy(q->fname, nfn);
     ck_free(q->fname);
     q->fname = nfn;
+    queue_checkpoint_log(q, "initial-queue-name");
 
     /* Make sure that the passed_det value carries over, too. */
 
@@ -10975,6 +11458,7 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       mqtt_record_state_stall();
       return 0;
     }
+    last_common_fuzz_hnb = hnb;
 
 #ifndef SIMPLE_FILES
 
@@ -11009,6 +11493,8 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     if (hnb == 2) {
       code_gain_events++;
       last_native_save_index = queue_top->index;
+      provisional_note_gain(queue_top->llm_origin_candidate_id,
+                            queue_top->index);
       /* v3.3 lineage: this new edge was produced by (a descendant of) an
        * admitted LLM candidate — the admission channel's downstream
        * code-edge production, separated from the havoc channel. */
@@ -11112,7 +11598,11 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 
       u8 new_fault;
       write_to_testcase(mem, len);
+      const char *old_kind = execution_kind;
+      execution_kind = "hang-retry";
       new_fault = run_target(argv, hang_tmout);
+      execution_kind = old_kind;
+      if (new_fault == FAULT_RESOURCE_LIMIT) return keeping;
 
       /* A corner case that one user reported bumping into: increasing the
          timeout actually uncovers a crash. Make sure we don't discard it if
@@ -13162,6 +13652,7 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   last_common_fuzz_saved = 0;
   last_common_fuzz_fault = FAULT_NONE;
+  last_common_fuzz_hnb = 0;
 
   /* ── Per-execution gates (P0-1 fix 3 / P0-4 fixed energy) ────────
    * Checked BEFORE every descendant execution.  LLM trial executions are
@@ -13170,21 +13661,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
    * fault and abandons the entry, so no execution can overshoot a
    * provisional budget or the episode's havoc energy. */
   if (!admission_trial_mode) {
-    /* (a) Provisional validation: budget and TTL are consumed here, one
-     *     execution at a time, before the execution happens. */
-    if (queue_cur && queue_cur->is_provisional &&
-        !queue_cur->prov_converted && !queue_cur->prov_expired) {
-      if (queue_cur->prov_budget_left == 0) {
-        provisional_budget_exhausted_stop = 1;
-        return 1;
-      }
-      if (get_cur_time() >= queue_cur->prov_deadline_ms) {
-        provisional_ttl_stop = 1;
-        return 1;
-      }
-      queue_cur->prov_budget_left--;
-      queue_cur->prov_desc_execs++;
-    }
+    /* Provisional subtree budget and TTL are enforced in run_target,
+     * after parsing/post-processing and for nested executions as well. */
     /* (b) Fixed episode energy: havoc/splice-phase executions only —
      *     deterministic stages are one-time per seed and stay outside the
      *     energy definition (prespecified; see run-config
@@ -13194,7 +13672,6 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
         episode_energy_exhausted = 1;
         return 1;
       }
-      episode_energy_left--;
     }
   }
 
@@ -13324,8 +13801,29 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   /* End of AFLNet code */
 
+  if (candidate_capture_armed && !candidate_invocation_id) {
+    u32 prefix = 0, count = 0;
+    u8 inside = (M2_prev == NULL);
+    for (kliter_t(lms) *ci = kl_begin(kl_messages);
+         ci != kl_end(kl_messages); ci = kl_next(ci)) {
+      if (ci == M2_next) break;
+      if (inside) count++;
+      else prefix++;
+      if (ci == M2_prev) inside = 1;
+    }
+    candidate_message_first = prefix;
+    candidate_message_count = count;
+  }
+
+  const char *old_execution_kind = execution_kind;
+  if (strcmp(execution_kind, "candidate") && strcmp(execution_kind, "shadow"))
+    execution_kind = "mutation";
   fault = run_target(argv, exec_tmout);
+  execution_kind = old_execution_kind;
   last_common_fuzz_fault = fault;
+  if (fault == FAULT_RESOURCE_LIMIT) return 1;
+  if (candidate_capture_armed && !candidate_response)
+    admission_capture_response();
 
   /* Crash-channel recall fix (2026-08-17): run_target flagged a fatal
    * signal during deliberate-SIGTERM teardown without recognized
@@ -13495,7 +13993,12 @@ static u8 admission_force_queue_candidate(u8 *candidate, u32 len) {
 #endif
 
   u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
-  add_to_queue(fn, full_len ? full_len : len, 0);
+  if (!full_len) {
+    unlink((char *)fn);
+    ck_free(fn);
+    return 0;
+  }
+  admission_add_to_queue(fn, full_len);
 
   if (state_aware_mode)
     update_state_aware_variables(queue_top, 0);
@@ -13516,13 +14019,14 @@ static u8 admission_force_queue_candidate(u8 *candidate, u32 len) {
 
 /* Invalidate a provisional entry: remove its files so it stops polluting
  * the durable corpus, and mark it skipped for all future scheduling. */
-static void provisional_expire(struct queue_entry *q, const char *reason) {
-  if (!q || q->prov_expired || !q->is_provisional) return;
-  q->prov_expired = 1;
-  q->is_provisional = 0;
-  if (provisional_live) provisional_live--;
-  provisional_expired_total++;
+static void queue_debit_pending(struct queue_entry *q) {
+  if (!q || q->pending_accounted || q->was_fuzzed) return;
+  q->pending_accounted = 1;
+  if (pending_not_fuzzed) pending_not_fuzzed--;
+  if (q->favored && pending_favored) pending_favored--;
+}
 
+static void provisional_remove_entry_files(struct queue_entry *q) {
   if (q->fname) {
     unlink((char *)q->fname);
     u8 *fn_regions = alloc_printf("%s/regions/%s", out_dir, basename(q->fname));
@@ -13533,10 +14037,90 @@ static void provisional_expire(struct queue_entry *q, const char *reason) {
     unlink((char *)fn_replay);
     ck_free(fn_replay);
   }
-  /* It will never be fuzzed — keep pending_not_fuzzed honest. */
-  if (!q->was_fuzzed && pending_not_fuzzed) pending_not_fuzzed--;
+  queue_debit_pending(q);
+  for (u32 i = 0; i < MAP_SIZE; i++) {
+    if (top_rated[i] != q) continue;
+    top_rated[i] = NULL;
+    if (q->tc_ref) q->tc_ref--;
+  }
+  if (!q->tc_ref && q->trace_mini) {
+    ck_free(q->trace_mini);
+    q->trace_mini = NULL;
+  }
+  if (q->favored && queued_favored) queued_favored--;
+  q->favored = 0;
+  score_changed = 1;
+}
+
+static void provisional_expire(struct queue_entry *q, const char *reason) {
+  if (!q || q->prov_expired || !q->is_provisional) return;
+  q->prov_expired = 1;
+  q->is_provisional = 0;
+  if (provisional_live) provisional_live--;
+  provisional_expired_total++;
+  provisional_remove_entry_files(q);
+
+  /* Before conversion, hit-count-only saves remain in the same bounded
+   * validation subtree. Expiry closes every queue route into that subtree. */
+  for (struct queue_entry *d = queue; d; d = d->next) {
+    if (d == q || d->prov_expired ||
+        d->llm_origin_candidate_id != q->prov_candidate_id) continue;
+    d->prov_expired = 1;
+    provisional_remove_entry_files(d);
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("lineage_invalidation"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "candidate_id", q->prov_candidate_id);
+    admission_json_add_u64(j, "root_queue_id", q->index);
+    admission_json_add_u64(j, "queue_entry", d->index);
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    json_object_object_add(j, "reason", json_object_new_string(reason));
+    ec_append_jsonl("lineage-events.jsonl", j);
+    json_object_put(j);
+  }
 
   provisional_log_event("expire", q, reason);
+}
+
+static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
+  struct queue_entry *q = provisional_root_for_candidate(candidate_id);
+  if (!q || !q->is_provisional || q->prov_converted || q->prov_expired) return;
+  q->prov_first_gain_queue = queue_index;
+  q->prov_first_gain_execution = total_execs;
+  q->prov_first_gain_invocation = target_invocation_seq;
+  q->prov_first_gain_ms = get_cur_time();
+  q->prov_desc_code_gain = 1;
+  q->prov_converted = 1;
+  q->is_provisional = 0;
+  if (provisional_live) provisional_live--;
+  provisional_converted++;
+  if (q->prov_code_retain) code_retain_converted++;
+  provisional_log_event("convert", q, "first native new-edge save; subtree becomes durable");
+}
+
+/* Return the candidate itself and a state whose M2 suffix can execute.
+ * The caller must use both outputs directly instead of choosing another
+ * seed from the state pool. One validation subtree has at most B calls. */
+static struct queue_entry *provisional_select_service(u32 *state_out) {
+  struct queue_entry *best = NULL;
+  for (struct queue_entry *q = queue; q; q = q->next) {
+    if (!q->is_provisional || q->prov_converted || q->prov_expired) continue;
+    if (!q->prov_budget_left) {
+      provisional_expire(q, "budget-exhausted");
+      continue;
+    }
+    if (get_cur_time() >= q->prov_deadline_ms) {
+      provisional_expire(q, "ttl-expired");
+      continue;
+    }
+    if (!entry_can_fuzz_full_session(q)) {
+      provisional_expire(q, "no-executable-M2");
+      continue;
+    }
+    if (!best || q->prov_deadline_ms < best->prov_deadline_ms) best = q;
+  }
+  if (best && state_out) *state_out = 0; /* replay and mutate the full session */
+  return best;
 }
 
 /* Evict the oldest live provisional entry when the live cap is hit. */
@@ -13560,7 +14144,7 @@ static void provisional_evict_oldest_if_needed(void) {
 static u8 admission_provisional_queue_candidate(u32 target_sid,
                                                 u64 candidate_id,
                                                 const char *admit_reason) {
-  if (!out_dir || !kl_messages) return 0;
+  if (!provisional_enabled || !out_dir || !kl_messages) return 0;
   if (state_aware_mode == 0) return 0;  /* two-tier queue needs state pools */
   provisional_evict_oldest_if_needed();
 
@@ -13576,7 +14160,7 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
     ck_free(fn);
     return 0;
   }
-  add_to_queue(fn, full_len, 0);
+  admission_add_to_queue(fn, full_len);
   struct queue_entry *q = queue_top;
 
   if (state_aware_mode)
@@ -13620,20 +14204,10 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
  * expires the entry. */
 static void provisional_account_after_fuzz(struct queue_entry *q,
                                            u8 code_gain) {
+  (void)code_gain; /* Only the exact native-save hook can establish a gain. */
+  if (q && !q->prov_candidate_id)
+    q = provisional_root_for_candidate(q->llm_origin_candidate_id);
   if (!q || !q->is_provisional || q->prov_converted) return;
-
-  if (code_gain) {
-    q->prov_desc_code_gain++;
-    q->prov_converted = 1;
-    q->is_provisional = 0;
-    if (provisional_live) provisional_live--;
-    provisional_converted++;
-    if (q->prov_code_retain) code_retain_converted++;
-    provisional_log_event("convert", q,
-        q->prov_code_retain ? "descendant code gain (code-retain channel)"
-                            : "descendant code gain");
-    return;
-  }
 
   if (q->prov_budget_left == 0) {
     provisional_expire(q, "budget-exhausted");
@@ -13702,7 +14276,7 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
     ck_free(fn);
     return 0;
   }
-  add_to_queue(fn, full_len, 0);
+  admission_add_to_queue(fn, full_len);
   struct queue_entry *q = queue_top;
 
   if (state_aware_mode)
@@ -13760,33 +14334,25 @@ static u8 admission_run_llm_candidate(char **argv,
                                              source_state, target_sid,
                                              candidate, candidate_len, p_pass);
 
-  /* ── v3.1 Suffix-only U evaluation (expert feedback P0-3) ────────
-   * Whole-sequence U rejects 92-96% of candidates because seed prefixes
-   * almost always contain error responses. This fix separates:
-   *   u_pass_suffix = only the CANDIDATE's own responses are error-free
-   *   u_pass_prefix = whether the seed prefix is also error-free (logged)
-   * The admission gate uses u_pass_suffix for the provisional/durable
-   * decision, while u_pass_prefix is recorded for analysis. Crash and
-   * oracle evidence is retained independently regardless of U.
-   *
-   * Implementation: snapshot messages_sent before the trial; the states
-   * extracted after the trial that correspond to messages beyond that
-   * snapshot are the candidate's own responses. */
-  u32 messages_before_trial = messages_sent;
+  admission_clear_response_capture();
+  candidate_capture_armed = 1;
   admission_take_snapshot(&before);
 
   u8 use_trial_mode = (p_pass && candidate && candidate_len > 0 &&
-                       !ablation_no_admission) ? 1 : 0;
+                       !ablation_no_admission && !admission_native_retention) ? 1 : 0;
   last_trial_hnb = 0;
   if (p_pass && candidate && candidate_len > 0) {
     admission_trial_mode = use_trial_mode;
-    executed = 1;
     /* v3.3 lineage: arm C executes candidates in normal mode, so a native
      * save_if_interesting() retention here IS the direct-admission channel
      * — stamp it.  Gated arms run in trial mode (no retention), where the
      * pin is simply inert. */
     llm_candidate_lineage_pin = (u32)llm_cur_candidate_id;
+    const char *old_kind = execution_kind;
+    execution_kind = "candidate";
     common_ret = common_fuzz_stuff(argv, candidate, candidate_len);
+    execution_kind = old_kind;
+    executed = candidate_invocation_id != 0;
     llm_candidate_lineage_pin = 0;
     admission_trial_mode = 0;
   } else {
@@ -13801,43 +14367,10 @@ static u8 admission_run_llm_candidate(char **argv,
   admission_evidence_t ev;
   admission_evaluate(&before, &after_common, &after_common, p_pass, executed,
                      target_sid, source_state, &ev);
+  ev.trial_mode = use_trial_mode;
 
-  /* v3.1: re-evaluate U using only the candidate's suffix states.
-   * The full state sequence includes the seed prefix's responses; we
-   * need to identify which states belong to the candidate itself. */
-  if (executed && p_pass && !ablation_no_admission) {
-    unsigned int suffix_count = 0;
-    unsigned int *suffix_states = NULL;
-    /* Extract states from the response_buf, counting only messages
-     * sent after the pre-trial snapshot */
-    if (extract_response_codes && response_buf && response_buf_size > 0) {
-      unsigned int all_count = 0;
-      unsigned int *all_states = (*extract_response_codes)(
-          (unsigned char *)response_buf, (unsigned int)response_buf_size, &all_count);
-      if (all_states && all_count > 0) {
-        /* The candidate appends 1+ messages; estimate how many response
-         * codes correspond to those messages by comparing messages_sent
-         * before and after the trial. At minimum the last response code
-         * belongs to the candidate. */
-        u32 delta_msgs = messages_sent - messages_before_trial;
-        if (delta_msgs == 0) delta_msgs = 1;  /* safety: at least 1 */
-        suffix_count = (delta_msgs <= all_count) ? delta_msgs : 1;
-        suffix_states = &all_states[all_count - suffix_count];
-      }
-    }
-    /* Compute suffix-only U */
-    u8 suffix_has_error = 0;
-    for (unsigned int i = 0; i < suffix_count; i++) {
-      if (classify_state_error_hint(suffix_states[i], protocol_name) == 1) {
-        suffix_has_error = 1;
-        break;
-      }
-    }
-    /* Store both variants for logging and decision */
-    ev.u_pass_prefix = ev.u_pass;  /* original whole-sequence U */
-    ev.u_pass = (p_pass && executed && last_common_fuzz_fault == FAULT_NONE &&
-                 suffix_count > 0 && !suffix_has_error);
-    ev.u_suffix_count = suffix_count;
+  if (executed && p_pass) {
+    admission_evaluate_candidate_u(&ev, executed);
     /* Recompute disposition with the suffix-only U */
     ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
                            ev.g_code_pass, ev.g_state_pass };
@@ -13853,12 +14386,17 @@ static u8 admission_run_llm_candidate(char **argv,
         !test_force_code_retain)
       ev.disposition = EC_REJECT;
   }
+  if (!provisional_enabled &&
+      (ev.disposition == EC_PROVISIONAL || ev.disposition == EC_CODE_RETAIN))
+    ev.disposition = EC_REJECT;
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
 
   if (executed && !common_ret && !last_common_fuzz_saved &&
       last_common_fuzz_fault == FAULT_NONE && !stop_soon) {
-    if (ablation_no_admission) {
+    if (admission_native_retention) {
+      /* Native save_if_interesting already made the retention decision. */
+    } else if (ablation_no_admission) {
       forced = admission_force_queue_candidate(candidate, candidate_len);
     } else if (ev.disposition == EC_DURABLE) {
       durable = admission_promote_durable(candidate, candidate_len);
@@ -13884,11 +14422,14 @@ static u8 admission_run_llm_candidate(char **argv,
 
   /* P0-4: shadow-validate rejected candidates that had code or state
    * evidence — measures the false negative rate of the admission gate */
-  if (!ablation_no_admission && !durable && !provisional && !forced) {
+  candidate_capture_armed = 0;
+  if (shadow_enabled && !ablation_no_admission && !admission_native_retention &&
+      !durable && !provisional && !forced) {
     shadow_validate_rejected(argv, candidate, candidate_len, &ev);
   }
 
   admission_evidence_free(&ev);
+  admission_clear_response_capture();
 
   /* Trial work (execution + any promotion) must stay out of the current
    * episode's reward/mutation accounting (paper §五.1 attribution). */
@@ -13915,6 +14456,7 @@ static u8 admission_run_llm_candidate(char **argv,
 
 static void shadow_log_event(u64 candidate_id, const char *trigger,
                              u32 budget, u32 new_edges, u64 latency_ms,
+                             u64 actual_invocations,
                              u8 g_code_pass, u8 g_state_pass) {
   if (!event_log_enabled) return;
   struct json_object *j = json_object_new_object();
@@ -13924,6 +14466,7 @@ static void shadow_log_event(u64 candidate_id, const char *trigger,
   admission_json_add_u64(j, "time_ms", get_cur_time());
   json_object_object_add(j, "trigger", json_object_new_string(trigger));
   admission_json_add_u64(j, "shadow_budget", budget);
+  admission_json_add_u64(j, "actual_invocations", actual_invocations);
   admission_json_add_u64(j, "shadow_new_edges", new_edges);
   admission_json_add_u64(j, "latency_ms", latency_ms);
   json_object_object_add(j, "g_code_pass", json_object_new_boolean(g_code_pass));
@@ -13953,6 +14496,7 @@ static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
   if (ev->g_code_pass) shadow_false_negatives++;
 
   u64 t0 = get_cur_time();
+  u64 invocations_before = target_invocation_seq;
   u32 new_edges = 0;
 
   /* Shadow buffer: candidate + headroom for insertions */
@@ -14000,9 +14544,16 @@ static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
 
     /* Execute in shadow mode (no queue, no virgin update, probe only) */
     last_trial_hnb = 0;
+    u8 old_trial_mode = admission_trial_mode;
+    const char *old_kind = execution_kind;
+    u32 old_pin = llm_candidate_lineage_pin;
     admission_trial_mode = 1;
+    execution_kind = "shadow";
+    llm_candidate_lineage_pin = (u32)llm_cur_candidate_id;
     common_fuzz_stuff(argv, shadow_buf, cur_len);
-    admission_trial_mode = 0;
+    llm_candidate_lineage_pin = old_pin;
+    execution_kind = old_kind;
+    admission_trial_mode = old_trial_mode;
 
     if (last_trial_hnb == 2) new_edges++;
   }
@@ -14018,6 +14569,7 @@ static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
       "state-novel reject (G_state=1, G_code=0)";
   shadow_log_event((u64)llm_cur_candidate_id, trigger,
                    shadow_budget_default, new_edges, latency,
+                   target_invocation_seq - invocations_before,
                    ev->g_code_pass, ev->g_state_pass);
 
   /* Rebase episode counters so shadow work doesn't pollute rewards */
@@ -14843,68 +15395,8 @@ AFLNET_REGIONS_SELECTION:;
 
   if (state_aware_mode)
   {
-    /* In state aware mode, select M2 based on the targeted state ID */
-    u32 total_region = queue_cur->region_count;
-    if (total_region == 0)
-      PFATAL("0 region found for %s", queue_cur->fname);
-
-    if (target_state_id == 0)
-    {
-      // No prefix subsequence (M1 is empty)
-      M2_start_region_ID = 0;
-      M2_region_count = 0;
-
-      // To compute M2_region_count, we identify the first region which has a different annotation
-      // Now we quickly compare the state count, we could make it more fine grained by comparing the exact response codes
-      for (i = 0; i < queue_cur->region_count; i++)
-      {
-        if (queue_cur->regions[i].state_count != queue_cur->regions[0].state_count)
-          break;
-        M2_region_count++;
-      }
-    }
-    else
-    {
-      // M1 is unlikely to be empty
-      M2_start_region_ID = 0;
-
-      // Identify M2_start_region_ID first based on the target_state_id
-      for (i = 0; i < queue_cur->region_count; i++)
-      {
-        u32 regionalStateCount = queue_cur->regions[i].state_count;
-        if (regionalStateCount > 0)
-        {
-          // reachableStateID is the last ID in the state_sequence
-          u32 reachableStateID = queue_cur->regions[i].state_sequence[regionalStateCount - 1];
-          M2_start_region_ID++;
-          if (reachableStateID == target_state_id)
-            break;
-        }
-        else
-        {
-          /* v3.3b (spin fix, the real one): an un-annotated region before
-           * the target belongs to the M1 prefix — it is not an error.
-           * Returning 1 here made every state-pool entry with one
-           * un-classified region unfuzzable for that state, so the
-           * state-aware main loop re-selected + opened a zero-mutation
-           * episode + returned instantly, millions of times per hour
-           * (observed 33M episodes / 19.8 GB jsonl in 60 min). */
-          M2_start_region_ID++;
-        }
-      }
-
-      // Then identify M2_region_count
-      for (i = M2_start_region_ID; i < queue_cur->region_count; i++)
-      {
-        if (queue_cur->regions[i].state_count != queue_cur->regions[M2_start_region_ID].state_count)
-          break;
-        M2_region_count++;
-      }
-
-      // Handle corner case(s) and skip the current queue entry
-      if (M2_start_region_ID >= queue_cur->region_count)
-        return 1;
-    }
+    if (!entry_m2_range(queue_cur, target_state_id,
+                        &M2_start_region_ID, &M2_region_count)) return 1;
   }
   else
   {
@@ -15697,10 +16189,9 @@ AFLNET_REGIONS_SELECTION:;
             splicing_with = -1;
             if (!stop_soon && !queue_cur->cal_failed && !queue_cur->was_fuzzed)
             {
+              queue_debit_pending(queue_cur);
               queue_cur->was_fuzzed = 1;
               was_fuzzed_map[get_state_index(target_state_id)][queue_cur->index] = 1;
-              pending_not_fuzzed--;
-              if (queue_cur->favored) pending_favored--;
             }
 
             free(stall_message);
@@ -17968,11 +18459,9 @@ abandon_entry:
 
   if (!stop_soon && !queue_cur->cal_failed && !queue_cur->was_fuzzed)
   {
+    queue_debit_pending(queue_cur);
     queue_cur->was_fuzzed = 1;
     was_fuzzed_map[get_state_index(target_state_id)][queue_cur->index] = 1;
-    pending_not_fuzzed--;
-    if (queue_cur->favored)
-      pending_favored--;
   }
 
   // munmap(orig_in, queue_cur->len);
@@ -18112,7 +18601,10 @@ static void sync_fuzzers(char **argv)
         regions = (*extract_requests)(mem, st.st_size, &region_count);
         kl_messages = construct_kl_messages(path, regions, region_count);
 
+        const char *old_kind = execution_kind;
+        execution_kind = "sync";
         fault = run_target(argv, exec_tmout);
+        execution_kind = old_kind;
 
         if (stop_soon)
           return;
@@ -19457,6 +19949,43 @@ static void evidence_env_parse(void) {
         "(arm C: loopfuzz-direct, parseable→durable force-admit)");
   }
   {
+    const char *mode = getenv("CHATAFL_ADMISSION_MODE");
+    if (mode && *mode) {
+      if (!strcmp(mode, "native")) {
+        admission_native_retention = 1;
+        ablation_no_admission = 0;
+      } else if (!strcmp(mode, "direct")) {
+        admission_native_retention = 0;
+        ablation_no_admission = 1;
+      } else if (!strcmp(mode, "gate")) {
+        admission_native_retention = ablation_no_admission = 0;
+      } else FATAL("CHATAFL_ADMISSION_MODE must be native, direct, or gate");
+    }
+    const char *prov = getenv("CHATAFL_PROVISIONAL");
+    if (prov && *prov) {
+      if (strcmp(prov, "0") && strcmp(prov, "1"))
+        FATAL("CHATAFL_PROVISIONAL must be 0 or 1");
+      provisional_enabled = !strcmp(prov, "1");
+    }
+    const char *shadow = getenv("CHATAFL_SHADOW");
+    if (shadow && *shadow) {
+      if (strcmp(shadow, "0") && strcmp(shadow, "1"))
+        FATAL("CHATAFL_SHADOW must be 0 or 1");
+      shadow_enabled = !strcmp(shadow, "1");
+    }
+    if (admission_native_retention || ablation_no_admission)
+      provisional_enabled = shadow_enabled = 0;
+    const char *exec_log = getenv("CHATAFL_EXECUTION_LOG");
+    if (exec_log && *exec_log) {
+      if (strcmp(exec_log, "0") && strcmp(exec_log, "1"))
+        FATAL("CHATAFL_EXECUTION_LOG must be 0 or 1");
+      execution_log_enabled = !strcmp(exec_log, "1");
+    }
+    OKF("ADMISSION FACTORS: mode=%s provisional=%u shadow=%u execution_log=%u",
+        admission_native_retention ? "native" : (ablation_no_admission ? "direct" : "gate"),
+        provisional_enabled, shadow_enabled, execution_log_enabled);
+  }
+  {
     /* Paper v2: admission accounting is ON by default so every candidate's
      * disposition is auditable.  CHATAFL_ADMISSION_LOG=0 is the explicit
      * opt-out (gating still applies; only the JSONL trail is dropped). */
@@ -19607,7 +20136,7 @@ int main(int argc, char **argv)
   doc_path = access(DOC_PATH, F_OK) ? "docs" : DOC_PATH;
 
   gettimeofday(&tv, &tz);
-  srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
+  afl_rng_seed_value = tv.tv_sec ^ tv.tv_usec ^ getpid();
 
   /* Evidence-cal controller RNG: deterministic stream derived from the same
    * entropy source as AFL's RNG, but independent of it so Thompson sampling
@@ -19615,6 +20144,18 @@ int main(int argc, char **argv)
    * run-config.jsonl for replay. */
   run_start_time_ms = get_cur_time();
   ec_rng_seed_value = (u64)tv.tv_sec ^ (u64)tv.tv_usec << 16 ^ (u64)getpid();
+  const char *fixed_seed = getenv("CHATAFL_RNG_SEED");
+  if (fixed_seed && *fixed_seed) {
+    char *end = NULL;
+    errno = 0;
+    unsigned long long seed = strtoull(fixed_seed, &end, 0);
+    if (errno || !end || *end || *fixed_seed == '-')
+      FATAL("CHATAFL_RNG_SEED must be an unsigned 64-bit integer");
+    ec_rng_seed_value = seed;
+    afl_rng_seed_value = (u32)(seed ^ (seed >> 32));
+    fixed_rng_seed_enabled = 1;
+  }
+  srandom(afl_rng_seed_value);
   ec_rng_seed(ec_rng_seed_value);
 
   while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
@@ -20658,8 +21199,15 @@ retry_state_aware:
        * state that entry provably reaches. */
       struct queue_entry *forced_progress_entry = NULL;
       if (no_exec_rounds >= churn_round_cap) {
+        if (no_exec_rounds >= 2 * churn_round_cap) {
+          scheduler_selection_reason = "no-execution-progress-limit";
+          scheduler_log_selection(NULL);
+          scheduler_integrity_failed = 1;
+          stop_soon = 2;
+          WARNF("No execution progress after bounded executable-seed fallback");
+          break;
+        }
         forced_progress_entry = next_executable_entry(queue_cur);
-        no_exec_rounds = 0;
         if (forced_progress_entry) churn_fallback_used++;
       }
 
@@ -20676,9 +21224,9 @@ retry_state_aware:
       u32 seed_retry = 0;
       u32 seed_retry_cap = seed_retry_cap_env ? seed_retry_cap_env :
           (2 * (state_ids_count ? state_ids_count : 1) + 8);
-      while (!selected_seed || selected_seed->region_count == 0 ||
-             selected_seed->prov_expired)
+      while (!entry_can_fuzz_state(selected_seed, target_state_id))
       {
+        if (stop_soon) break;
         /* Track node stagnation */
         u32 cur_nodes = agnnodes(ipsm);
         if (cur_nodes > prev_node_count_loop) {
@@ -20712,44 +21260,29 @@ retry_state_aware:
          * next state selection to its generating state so the entry gets
          * fuzzed BEFORE the TTL expires. This bypasses the normal weighted
          * random selection once per provisional admission. */
-        u32 forced_prov_state = 0;
-        if (provisional_live > 0) {
-          for (struct queue_entry *q = queue; q; q = q->next) {
-            if (q->is_provisional && !q->prov_converted && !q->prov_expired) {
-              forced_prov_state = q->generating_state_id;
-              break;
-            }
-          }
-        }
-
-        if (forced_progress_entry) {
-          /* v3.3b: churn fallback — bypass the state selector entirely */
+        u32 service_state = SCHEDULER_NO_STATE;
+        struct queue_entry *service = provisional_select_service(&service_state);
+        if (service) {
+          selected_seed = service;
+          target_state_id = service_state;
+          full_session_m2_override = 1;
+          scheduler_selection_reason = "forced-provisional-candidate";
+        } else if (forced_progress_entry) {
+          full_session_m2_override = 0;
           target_state_id = entry_last_annotated_state(forced_progress_entry);
-        } else if (forced_prov_state > 0) {
-          target_state_id = forced_prov_state;
-          fprintf(stderr, "[provisional-priority] forcing state %u for descendant validation\n",
-                  target_state_id);
-        } else {
-          target_state_id = choose_target_state(effective_algo);
-        }
-        cal_episode_begin(target_state_id);
-
-        /* Update favorites based on the selected state */
-        cull_queue();
-
-        /* Update number of times a state has been selected for targeted fuzzing */
-        khint_t k = kh_get(hms, khms_states, target_state_id);
-        if (k != kh_end(khms_states))
-        {
-          kh_val(khms_states, k)->selected_times++;
-        }
-
-        selected_seed = choose_seed(target_state_id, seed_selection_algo);
-        cal_episode_note_seed(selected_seed);
-        if (forced_progress_entry) {
           selected_seed = forced_progress_entry;
           forced_progress_entry = NULL;
-          cal_episode_note_seed(selected_seed);
+          scheduler_selection_reason = "executable-seed-progress-fallback";
+        } else {
+          full_session_m2_override = 0;
+          target_state_id = choose_target_state(effective_algo);
+          if (target_state_id != SCHEDULER_NO_STATE)
+            selected_seed = choose_seed(target_state_id, seed_selection_algo);
+        }
+        if (service || !strcmp(scheduler_selection_reason, "executable-seed-progress-fallback")) {
+          scheduler_mark_unweighted(target_state_id);
+          scheduler_eligible_states = scheduler_eligible_seeds = 1;
+          scheduler_weight_total = scheduler_random_draw = 0;
         }
 
         /* v3.3 (spin fix): retry budget exhausted — the weighted selector
@@ -20757,25 +21290,47 @@ retry_state_aware:
          * entry queue-wide so fuzz_one() always gets reached; if nothing
          * is eligible at all, wait briefly (the queue gains eligible
          * entries via admissions/regions) and restart the budget. */
-        if (!selected_seed || selected_seed->region_count == 0 ||
-            selected_seed->prov_expired) {
+        if (!entry_can_fuzz_state(selected_seed, target_state_id)) {
           if (++seed_retry >= seed_retry_cap) {
-            struct queue_entry *fb = NULL;
-            for (struct queue_entry *q = queue; q; q = q->next) {
-              if (!q->prov_expired && q->region_count > 0) { fb = q; break; }
-            }
+            struct queue_entry *fb = next_executable_entry(queue_cur);
             if (fb) {
               selected_seed = fb;
+              target_state_id = entry_last_annotated_state(fb);
+              scheduler_mark_unweighted(target_state_id);
+              scheduler_selection_reason = "seed-retry-executable-fallback";
+              scheduler_eligible_states = scheduler_eligible_seeds = 1;
+              scheduler_weight_total = scheduler_random_draw = 0;
               seed_fallback_used++;
-              cal_episode_note_seed(fb);  /* keep episode attribution honest */
             } else {
               no_seed_stalls++;
-              usleep(100000);  /* 100 ms — no eligible entry anywhere yet */
-              seed_retry = 0;
+              target_state_id = SCHEDULER_NO_STATE;
+              scheduler_selection_reason = "no-executable-seed";
+              scheduler_log_selection(NULL);
+              scheduler_integrity_failed = 1;
+              stop_soon = 2;
+              WARNF("No executable state-seed pair; ending campaign explicitly");
+              break;
             }
           }
         }
       }
+      if (stop_soon || !selected_seed) break;
+      if (!full_session_m2_override && target_state_id == 0 &&
+          !entry_can_fuzz_state(selected_seed, target_state_id)) {
+        scheduler_selection_reason = "state-zero-no-executable-prefix";
+        scheduler_log_selection(NULL);
+        scheduler_integrity_failed = 1;
+        stop_soon = 2;
+        WARNF("State zero has no executable M2 prefix");
+        break;
+      }
+      scheduler_log_selection(selected_seed);
+      cal_episode_begin(target_state_id);
+      cal_episode_note_seed(selected_seed);
+      cull_queue();
+      khint_t selection_key = kh_get(hms, khms_states, target_state_id);
+      if (selection_key != kh_end(khms_states))
+        kh_val(khms_states, selection_key)->selected_times++;
 
       /* Seek to the selected seed */
       if (selected_seed)
@@ -20818,6 +21373,7 @@ retry_state_aware:
        * ones and let the fallback above break the degenerate cycle. */
       if (total_execs == execs_before_fuzz) no_exec_rounds++;
       else no_exec_rounds = 0;
+      full_session_m2_override = 0;
 
       /* Two-tier queue accounting: the per-exec hook already enforced the
        * budget/TTL before every descendant execution; this closes the
@@ -20967,6 +21523,7 @@ stop_fuzzing:
   provisional_censor_all_at_shutdown();
   if (run_config_logged) {
     const char *reason =
+        scheduler_integrity_failed ? "scheduler-integrity-failure" :
         stop_soon == 2 ? "exit_1" :
         (unique_crashes && !queue_cycle ? "early-crash" : "signal-or-timeout");
     run_config_log("end", reason);
@@ -21012,7 +21569,7 @@ stop_fuzzing:
 
   OKF("We're done here. Have a nice day!\n");
 
-  _exit(0);
+  _exit(scheduler_integrity_failed ? 70 : 0);
 }
 
 #endif /* !AFL_LIB */

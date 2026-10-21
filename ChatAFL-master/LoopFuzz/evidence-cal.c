@@ -73,6 +73,15 @@ static inline uint64_t ec_rng_next(void) {
   return result;
 }
 
+int ec_rng_below(uint64_t bound, uint64_t *out) {
+  if (!bound || !out) return 0;
+  uint64_t threshold = (uint64_t)(-bound) % bound;
+  uint64_t draw;
+  do { draw = ec_rng_next(); } while (draw < threshold);
+  *out = draw % bound;
+  return 1;
+}
+
 double ec_uniform01(void) {
   /* 53-bit uniform in [0,1) */
   return (double)(ec_rng_next() >> 11) * (1.0 / 9007199254740992.0);

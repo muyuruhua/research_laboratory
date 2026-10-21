@@ -127,6 +127,23 @@ hot_replay_test: hot_replay_test.c
 evidence_selftest: evidence_selftest.c evidence-cal.c evidence-cal.h
 	$(CC) $(CFLAGS) -o $@ evidence_selftest.c evidence-cal.c -lm
 
+# Contract tests include the production translation unit under AFL_LIB.  Keep
+# these separate from `all`: they are mandatory pre-experiment gates and do
+# not launch a target, forkserver, network client, or LLM request.
+scheduler_contract_selftest: scheduler_contract_selftest.c afl-fuzz.c evidence-cal.c evidence-cal.h $(COMM_HDR)
+	$(CC) -D_GNU_SOURCE -O1 -g -ffunction-sections -fdata-sections -Wno-pointer-sign -Wno-unused-result \
+		-o $@ scheduler_contract_selftest.c -Wl,--gc-sections -lcgraph -lm
+
+gating_contract_selftest: gating_contract_selftest.c afl-fuzz.c aflnet.o evidence-cal.o $(COMM_HDR)
+	$(CC) -D_GNU_SOURCE -O1 -g -ffunction-sections -fdata-sections -Wno-pointer-sign -Wno-unused-result \
+		-o $@ gating_contract_selftest.c aflnet.o evidence-cal.o -Wl,--gc-sections \
+		-lcgraph -lm -ljson-c -lpcre2-8 -lcurl -lpthread
+
+phase2_selftests: scheduler_contract_selftest gating_contract_selftest evidence_selftest
+	./scheduler_contract_selftest
+	./gating_contract_selftest
+	./evidence_selftest
+
 grammar-hypothesis.o: grammar-hypothesis.c grammar-hypothesis.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c grammar-hypothesis.c -o grammar-hypothesis.o
 

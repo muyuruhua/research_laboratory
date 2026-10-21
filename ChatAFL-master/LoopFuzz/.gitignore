@@ -23,3 +23,9 @@ afl-llvm-rt-64.o
 afl-llvm-rt.o
 aflnet-client
 evidence_selftest
+
+# Phase-2 contract selftest binaries (sources are tracked)
+scheduler_contract_selftest
+scheduler_contract_selftest_asan
+gating_contract_selftest
+gating_contract_selftest_asan

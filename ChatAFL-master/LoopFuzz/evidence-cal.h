@@ -34,8 +34,10 @@
  * v3 (2026-10-05, first-batch fidelity fixes): admission decision event added
  * (pre-action gate log), trial_hnb / obs_new_states / obs_new_transitions
  * fields, episode completed/posterior_updated/energy fields, provisional
- * "censor" kind, run-config episode_energy_cap + code_reward_semantics. */
-#define EC_SCHEMA_VERSION 3
+ * "censor" kind, run-config episode_energy_cap + code_reward_semantics.
+ * v4 (2026-10-21): executable state/seed selection, persistent state identity,
+ * observed transition evidence, actual-invocation budgets and gain lineage. */
+#define EC_SCHEMA_VERSION 4
 
 /* Candidate dispositions after the bounded trial (paper §四). */
 #define EC_REJECT       0
@@ -65,6 +67,8 @@ double   ec_posterior_var(const ec_posterior_t *p);
 /* Deterministic RNG stream (xoshiro256**), separate from AFL's RNG so
  * Thompson sampling never disturbs existing fuzzing trajectories. */
 void     ec_rng_seed(uint64_t seed);
+/* Unbiased scheduler draw; returns 0 for a zero bound or NULL output. */
+int      ec_rng_below(uint64_t bound, uint64_t *out);
 double   ec_uniform01(void);
 double   ec_gamma_sample(double shape);       /* Marsaglia–Tsang, shape ≥ 1 */
 double   ec_thompson_sample(double alpha, double beta);
