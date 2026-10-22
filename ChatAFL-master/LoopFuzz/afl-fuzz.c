@@ -5048,7 +5048,12 @@ u32 update_scores_and_select_next_state(u8 mode)
   return result;
 }
 
-/* Select a target state at which we do state-aware fuzzing */
+/* Select a target state at which we do state-aware fuzzing.
+ * Warmup (original AFLNet semantics): state_cycles counts COMPLETE sweeps
+ * through the state list, and the weighted/FAVOR scorer arms only after 5
+ * sweeps.  Short campaigns (minutes-scale mock runs make single-digit
+ * selections) therefore stay in warmup by design; the weighted path is
+ * contract-tested separately and dominates long campaigns. */
 unsigned int choose_target_state(u8 mode)
 {
   if (mode == FAVOR && state_cycles >= 5)
@@ -5781,7 +5786,18 @@ int send_over_network()
   struct sockaddr_in local_serv_addr;
 
   /* Reset is checked before starting a target in run_target(), never
-   * while the current target already has its files/database open. */
+   * while the current target already has its files/database open.
+   *
+   * Additionally run the -c script before every network exchange (legacy
+   * behavior).  Kamailio's run_pjsip is not a cleanup but a per-exchange
+   * helper relaunch (pjsua, --duration=10): removing this call made every
+   * UDP exchange hit a dead helper, so responses came back empty and the
+   * campaign aborted with "No server states have been detected" — a
+   * regression bisected between v3.6 (686c57d7a, healthy) and the phase2
+   * scheduler commit (7c8670869).  Restoring the call revived kamailio
+   * (2029 execs, 2 cal episodes vs 40-92 execs, 0 episodes). */
+  if (cleanup_script && !mqtt_persistent_skip_kill)
+    system(cleanup_script);
 
   // Wait a bit for the server initialization
   // A1-fix: Use adaptive wait — full sleep only on first exec or after

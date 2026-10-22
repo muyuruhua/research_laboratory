@@ -671,7 +671,7 @@ def run_replay(args):
             with gzip.open(snapshot_path, "wb") as snapshot_output:
                 snapshot_output.write(raw)
             event = union.add(parse_snapshot(report, source_root, search_roots), record, digest_bytes(raw),
-                              expected_counter_reset=args.target == "bftpd")
+                              expected_counter_reset=args.target in ("bftpd", "pure-ftpd"))
             event.update(replay=replay, reset=reset, gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
             events.write(canonical(event) + "\n")
             events.flush()
