@@ -15,9 +15,30 @@ identified as load-bearing:
 - richer grammar-template and seed-session replies
 Reply contract identical to llm_mock_v2 (chat completions on :8099).
 """
-import base64, json, http.server, socketserver, random
+import base64, json, http.server, socketserver, random, os
 
 reqs = {"templates": 0, "plateau": 0, "seed": 0}
+
+# Candidate-class mix (percent weights, sum 100): the "valuable share p"
+# scan variable.  deep = code-bearing valuable candidates; rare = state-
+# novelty probes (provisional tier); bad = hard-U-fail junk; mut = seed
+# mutations.  Default reproduces the original v3 behaviour.
+def _parse_mix(raw):
+    mix = {}
+    for part in raw.split(","):
+        k, _, v = part.partition("=")
+        mix[k.strip()] = float(v)
+    total = sum(mix.values())
+    if abs(total - 100.0) > 0.01 or set(mix) != {"deep", "rare", "bad", "mut"}:
+        raise SystemExit("CHATAFL_MOCK_MIX must be deep=,rare=,bad=,mut= summing to 100")
+    return mix
+MIX = _parse_mix(os.environ.get("CHATAFL_MOCK_MIX", "deep=40,rare=25,bad=15,mut=20"))
+_MIX_ORDER = ["mut", "bad", "rare", "deep"]
+_MIX_CUM = []
+_acc = 0.0
+for _k in _MIX_ORDER:
+    _acc += MIX[_k]
+    _MIX_CUM.append((_acc, _k))
 proto_counts = {}
 
 DIRS = ["tmp", "pub", "upload", "a", "b/c", "incoming", "share"]
@@ -182,8 +203,13 @@ def reply_for(prompt):
         reqs["plateau"] += 1
         i = reqs["plateau"]
         rnd = random.Random(20261021 * 1000 + i)   # deterministic per candidate
-        roll = rnd.random()
-        if roll < 0.20:  # seed mutation via actions[]
+        roll = rnd.random() * 100.0
+        kind = _MIX_ORDER[-1]
+        for _edge, _k in _MIX_CUM:
+            if roll < _edge:
+                kind = _k
+                break
+        if kind == "mut":  # seed mutation via actions[]
             ins = bank["mut"](rnd)
             return json.dumps({
                 "analysis": f"mock-v3: mutate seed ({proto})",
@@ -194,9 +220,9 @@ def reply_for(prompt):
                     {"type": "set_target_state", "state_id": 0},
                     {"type": "prioritize_seeds", "seed_ids": [0]},
                 ]})
-        if roll < 0.35:
+        if kind == "bad":
             candidate = bank["bad"](rnd)      # realistic U-reject stream
-        elif roll < 0.60:
+        elif kind == "rare":
             candidate = bank["rare"](rnd)     # state-novelty probes
         else:
             candidate = bank["deep"](rnd, i)  # code-bearing sessions
