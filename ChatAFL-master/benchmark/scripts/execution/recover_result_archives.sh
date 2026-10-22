@@ -63,9 +63,15 @@ collect_from_container() {
     sleep "$attempt"
   done
 
-  # Strategy 2: copy the raw output directory and tar it locally
+  # Strategy 2: copy the raw output directory and tar it locally.  The
+  # outdir is relative to the subject's build directory, not always to
+  # WORKDIR (e.g. lightftp's run.sh cds into LightFTP/Source/Release), so
+  # locate it inside the container first.
   extracted_root=$(mktemp -d "${TMPDIR:-/tmp}/recover-${outdir}-XXXXXX")
-  if docker cp "${container_id}:${WORKDIR}/${outdir}" "${extracted_root}/" >/dev/null 2>&1; then
+  local remote_dir
+  remote_dir=$(docker exec "$container_id" sh -c \
+    "for p in \"${WORKDIR}/${outdir}\" \"${WORKDIR}\"/*/*/${outdir} \"${WORKDIR}\"/*/${outdir}; do [ -d \"\$p\" ] && { echo \"\$p\"; exit 0; }; done" 2>/dev/null | tr -d '\r')
+  if [[ -n "$remote_dir" ]] && docker cp "${container_id}:${remote_dir}" "${extracted_root}/" >/dev/null 2>&1; then
     tar -czf "$tmp_file" -C "$extracted_root" "$outdir"
     mv "$tmp_file" "$destination"
     rm -rf "$extracted_root"
@@ -75,6 +81,10 @@ collect_from_container() {
 
   rm -rf "$extracted_root"
   rm -f "$tmp_file"
+  # Post-mortem preservation: the container holds the only copy of the
+  # measurements and of the failure's error text; dump its logs next to the
+  # destination so the cause survives any later container removal.
+  docker logs "$container_id" > "${destination}.container-$(printf '%s' "$container_id" | cut -c1-12).log" 2>&1 || true
   return 1
 }
 

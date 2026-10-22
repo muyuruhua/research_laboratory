@@ -31,7 +31,10 @@ keep_or_clean_container() {
   local cid="$1"
   [ -z "$cid" ] && return 0
   docker stop "$cid" >/dev/null 2>&1 || true
-  if [[ "$CLEAN_CONTAINERS" == "1" ]]; then
+  # Data preservation: when the recovery helper could NOT collect the
+  # archive, the container holds the ONLY copy of the measurements — remove
+  # it only after successful collection, regardless of CHATAFL_CLEAN_CONTAINERS.
+  if [[ "$CLEAN_CONTAINERS" == "1" && "$COLLECTION_COMPLETE" == "1" ]]; then
     docker rm -f "$cid" >/dev/null 2>&1 || true
   fi
 }
@@ -67,6 +70,7 @@ RESULT_MANIFEST="${SAVETO}/.result_manifest.tsv"
 STATUS_DIR="${SAVETO}/.sample_status"
 FORENSICS_DIR="${SAVETO}/.forensics"
 COLLECTION_DONE=0
+COLLECTION_COMPLETE=0
 CLEANUP_DONE=0
 RUN_COMPLETED=0
 WATCHDOG_DONE=0
@@ -249,6 +253,8 @@ collect_results_with_recovery() {
     helper_status=$?
     if [[ $helper_status -ne 0 ]]; then
       printf "\n${LOG_TAG}: [WARN] Recovery helper reported missing outputs; containers are kept for manual inspection"
+    else
+      COLLECTION_COMPLETE=1
     fi
   else
     printf "\n${LOG_TAG}: [WARN] Recovery helper or manifest missing; skipping result collection"
