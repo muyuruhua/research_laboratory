@@ -57,6 +57,20 @@ collect_from_container() {
         fix_result_permissions "$destination"
         return 0
       fi
+      # Hour-scale archives take minutes to gzip; wait for the inner tar
+      # to STOP GROWING before judging incompleteness (settle check).
+      local s1 s2 settled=0
+      for _ in 1 2 3 4 5 6; do
+        s1=$(stat -c %s "$inner" 2>/dev/null || echo 0)
+        sleep 10
+        s2=$(stat -c %s "$inner" 2>/dev/null || echo 0)
+        if [[ "$s1" == "$s2" ]]; then settled=1; break; fi
+      done
+      if [[ "$settled" == "1" ]] && docker cp "${container_id}:${WORKDIR}/${archive_name}" "$tmp_file" >/dev/null 2>&1 && tarball_is_complete "$tmp_file"; then
+        mv "$tmp_file" "$destination"
+        fix_result_permissions "$destination"
+        return 0
+      fi
       echo "[recover] [WARN] inner tar.gz exists but is incomplete, retrying..." >&2
       rm -f "$tmp_file"
     fi
@@ -68,10 +82,16 @@ collect_from_container() {
   # WORKDIR (e.g. lightftp's run.sh cds into LightFTP/Source/Release), so
   # locate it inside the container first.
   extracted_root=$(mktemp -d "${TMPDIR:-/tmp}/recover-${outdir}-XXXXXX")
+  # docker exec does not work on STOPPED containers, but docker cp supports
+  # glob patterns on the source path - try the known outdir layouts directly.
   local remote_dir
-  remote_dir=$(docker exec "$container_id" sh -c \
-    "for p in \"${WORKDIR}/${outdir}\" \"${WORKDIR}\"/*/*/${outdir} \"${WORKDIR}\"/*/${outdir}; do [ -d \"\$p\" ] && { echo \"\$p\"; exit 0; }; done" 2>/dev/null | tr -d '\r')
-  if [[ -n "$remote_dir" ]] && docker cp "${container_id}:${remote_dir}" "${extracted_root}/" >/dev/null 2>&1; then
+  for pattern in "${WORKDIR}/${outdir}" "${WORKDIR}"/*/*/"${outdir}" "${WORKDIR}"/*/"${outdir}"; do
+    if docker cp "${container_id}:${pattern}" "${extracted_root}/" >/dev/null 2>&1; then
+      remote_dir="$outdir"
+      break
+    fi
+  done
+  if [[ -n "$remote_dir" ]]; then
     tar -czf "$tmp_file" -C "$extracted_root" "$outdir"
     mv "$tmp_file" "$destination"
     rm -rf "$extracted_root"
