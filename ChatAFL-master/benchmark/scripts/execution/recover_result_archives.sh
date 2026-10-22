@@ -57,21 +57,23 @@ collect_from_container() {
         fix_result_permissions "$destination"
         return 0
       fi
-      # Hour-scale archives take minutes to gzip; wait for the inner tar
-      # to STOP GROWING before judging incompleteness (settle check).
-      local s1 s2 settled=0
-      for _ in 1 2 3 4 5 6; do
-        s1=$(stat -c %s "$inner" 2>/dev/null || echo 0)
+      # Hour-scale archives take minutes to gzip: poll the FETCHED copy until
+      # it stops growing on two consecutive polls AND passes completeness
+      # (up to ~5 minutes), then accept.
+      local prev=-1 stable=0 cur
+      for _ in $(seq 1 30); do
+        docker cp "${container_id}:${WORKDIR}/${outdir}.tar.gz" "$tmp_file" >/dev/null 2>&1 || { sleep 10; continue; }
+        cur=$(stat -c %s "$tmp_file" 2>/dev/null || echo 0)
+        if [[ "$cur" == "$prev" && "$cur" -gt 0 ]]; then stable=$((stable+1)); else stable=0; fi
+        prev="$cur"
+        if [[ "$stable" -ge 2 ]] && tarball_is_complete "$tmp_file"; then
+          mv "$tmp_file" "$destination"
+          fix_result_permissions "$destination"
+          return 0
+        fi
         sleep 10
-        s2=$(stat -c %s "$inner" 2>/dev/null || echo 0)
-        if [[ "$s1" == "$s2" ]]; then settled=1; break; fi
       done
-      if [[ "$settled" == "1" ]] && docker cp "${container_id}:${WORKDIR}/${archive_name}" "$tmp_file" >/dev/null 2>&1 && tarball_is_complete "$tmp_file"; then
-        mv "$tmp_file" "$destination"
-        fix_result_permissions "$destination"
-        return 0
-      fi
-      echo "[recover] [WARN] inner tar.gz exists but is incomplete, retrying..." >&2
+      echo "[recover] [WARN] inner tar.gz exists but is incomplete after settle polling, retrying..." >&2
       rm -f "$tmp_file"
     fi
     sleep "$attempt"
@@ -85,7 +87,7 @@ collect_from_container() {
   # docker exec does not work on STOPPED containers, but docker cp supports
   # glob patterns on the source path - try the known outdir layouts directly.
   local remote_dir
-  for pattern in "${WORKDIR}/${outdir}" "${WORKDIR}"/*/*/"${outdir}" "${WORKDIR}"/*/"${outdir}"; do
+  for pattern in "${WORKDIR}/${outdir}" "${WORKDIR}"/*/"${outdir}" "${WORKDIR}"/*/*/"${outdir}" "${WORKDIR}"/*/*/*/"${outdir}"; do
     if docker cp "${container_id}:${pattern}" "${extracted_root}/" >/dev/null 2>&1; then
       remote_dir="$outdir"
       break
