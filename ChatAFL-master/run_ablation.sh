@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# ═══ SAFETY WARNING ═════════════════════════════════════════════════
+# NEVER run: rm -rf benchmark/results-*_phase2_*  while campaigns are
+# active or their containers are retained. This has caused data loss.
+# Use the specific full timestamp path when cleaning up completed runs.
+# Use salvage_from_container.sh for manual container data recovery.
+# ═══════════════════════════════════════════════════════════════════
 # ============================================================
 # run_ablation.sh — 严谨版消融实验启动器
 #

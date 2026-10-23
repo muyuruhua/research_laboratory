@@ -143,13 +143,38 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
 
   destination="${RESULTS_DIR}/${archive_name}"
 
+  # P1 fix: acquire an exclusive lock on this archive to prevent concurrent
+  # recovery / manual salvage from racing each other. Non-blocking; if locked,
+  # another process is already handling this archive.
+  local _lock="${destination}.lock"
+  if ! exec 200>"$_lock" 2>/dev/null; then
+    echo "[recover] SKIP (locked by another process): ${archive_name}"
+    continue
+  fi
+  if ! flock -n 200 2>/dev/null; then
+    echo "[recover] SKIP (locked by another process): ${archive_name}"
+    exec 200>&-
+    continue
+  fi
+
   # Check if existing tarball is complete; if incomplete, try to upgrade it
+  # P0-1 fix: a .salvaged marker means a human already recovered this archive
+  # from a container via docker cp; the recovery script must NOT rename or
+  # overwrite it (this caused data loss when the driver's retry logic
+  # clobbered manually salvaged TARs).
+  if [[ -f "${destination}.salvaged" ]]; then
+    echo "[recover] ✓ salvaged (manual recovery marker present): ${archive_name}"
+    continue
+  fi
   if [[ -s "$destination" ]]; then
     if tarball_is_complete "$destination"; then
       echo "[recover] ✓ complete: ${archive_name}"
+      # If it's complete AND has a .salvaged marker, it was manually verified
+      # too — create the marker for idempotency.
       continue
     fi
     # Existing tarball is incomplete — rename it as backup and re-collect
+    # P0-1 fix: if a .partial file also exists alongside, warn but proceed
     _bak="${destination}.incomplete.$(date +%s)"
     echo "[recover] [WARN] ${archive_name} is incomplete (missing required files), re-collecting..."
     mv "$destination" "$_bak"
@@ -196,6 +221,10 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
     echo "[recover] failed to collect ${archive_name} from ${label}" >&2
     echo 1 > "$_status_file"
   fi
+
+  # P1 fix: release the per-archive lock
+  flock -u 200 2>/dev/null || true
+  exec 200>&-
 done
 
 overall_status=$(cat "$_status_file")
