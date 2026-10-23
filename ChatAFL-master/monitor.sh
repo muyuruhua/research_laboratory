@@ -202,12 +202,59 @@ resolve_ablation_label() {
         read -r _no_hyp _no_refine _no_frontier _no_adaptive _no_sp _no_adm _cal _cgamma _thr <<< "$env_flags"
     fi
 
-    # admission/calibration 两轴: arm 字段为运行时真值, 优先于 env;
+    # Phase-2 arm 解析: arm 字段为运行时真值, 优先于 env;
     # arm 缺失 (旧版 loopfuzz / 非 loopfuzz) 时回退到启动环境变量
     local no_admission=0 calibration=0 gamma=""
+    # Phase-2 新增维度: admission_mode / provisional / shadow / estimator / code_retain
+    local _adm_mode="-" _prov="-" _shadow="-" _state_sel="-" _retain=0
+    if [[ "$env_flags" != "NONE" && -n "$env_flags" ]]; then
+        read -r _ _ _ _ _ _ _ _ _ _adm_mode _prov _shadow _state_sel _retain <<< "$env_flags"
+    fi
+
+    # ── Phase-2 精确臂识别 (arm_name + env 双源交叉) ──
+    # native: arm 标签或 env 的 admission_mode
+    if [[ "$arm_name" == "loopfuzz-native-retention" || "$_adm_mode" == "native" ]]; then
+        echo "native"; return
+    fi
+
+    # code_retain: gate + U 旁路
+    if [[ "$_retain" == "1" ]]; then
+        echo "code_retain"; return
+    fi
+
+    # calibrated 族 (先检查, 因为 adm_mode 也是 gate): 通过 state_select 区分估计器
+    if [[ "$arm_name" == "loopfuzz-gated-calibrated" || "$cal_flag" == "1" || "$_cal" == "1" ]]; then
+        if [[ "$_state_sel" == "ewma" ]]; then
+            echo "cal_ewma"; return
+        elif [[ "$_state_sel" == "run_rate" ]]; then
+            echo "cal_run_rate"; return
+        fi
+        # 默认 Thompson: 按 γ 细分
+        gamma="$gamma_fs"
+        if [[ -z "$gamma" || "$gamma" == "-" ]]; then gamma="$_cgamma"; fi
+        local label="calibrated"
+        if [[ "$gamma" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            if   awk "BEGIN{exit !($gamma <= 0.993)}"; then label="cal_gamma099"
+            elif awk "BEGIN{exit !($gamma >= 0.999)}"; then label="cal_gamma100"
+            fi
+        fi
+        echo "$label"; return
+    fi
+
+    # gate 族 (calibrated 已在上面返回): 通过 provisional/shadow 开关区分
+    if [[ "$arm_name" == "loopfuzz-gated-fixed" || "$_adm_mode" == "gate" ]]; then
+        if [[ "$_prov" == "0" && "$_shadow" == "0" ]]; then
+            echo "gate_only"; return
+        elif [[ "$_prov" == "1" && "$_shadow" == "0" ]]; then
+            echo "gate_prov"; return
+        else
+            echo "gate"; return   # prov=1 shadow=1 (or unspecified = default)
+        fi
+    fi
+
+    # ── 旧版回退 (arm_name 为空时用 env 推断) ──
     if [[ -n "$arm_name" ]]; then
         [[ "$arm_name" == "loopfuzz-direct" ]] && no_admission=1
-        [[ "$arm_name" == "loopfuzz-gated-calibrated" ]] && calibration=1
         gamma="$gamma_fs"
     else
         no_admission=$_no_adm
@@ -631,6 +678,7 @@ collect_one() {
         fi
         no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; no_admission=0
         cal=0; cal_gamma="-"; threshold="-"
+        adm_mode="-"; prov="-"; shadow="-"; state_sel="-"; retain=0
         while IFS="=" read -r k v; do
             case "$k" in
                 CHATAFL_HYPOTHESIS)         [[ "$v" == "0" ]] && no_hyp=1 ;;
@@ -642,9 +690,14 @@ collect_one() {
                 CHATAFL_CALIBRATION)        [[ "$v" == "1" ]] && cal=1 ;;
                 CHATAFL_CAL_GAMMA)          [[ -n "$v" ]] && cal_gamma="$v" ;;
                 CHATAFL_ABLATION_THRESHOLD) [[ -n "$v" ]] && threshold="$v" ;;
+                CHATAFL_ADMISSION_MODE)     adm_mode="$v" ;;
+                CHATAFL_PROVISIONAL)        prov="$v" ;;
+                CHATAFL_SHADOW)             shadow="$v" ;;
+                CHATAFL_STATE_SELECT)       state_sel="$v" ;;
+                CHATAFL_CODE_RETAIN)        [[ "$v" == "1" ]] && retain=1 ;;
             esac
         done <<< "$env_vars"
-        echo "$no_hyp $no_refine $no_frontier $no_adaptive $no_sp $no_admission $cal $cal_gamma $threshold"
+        echo "$no_hyp $no_refine $no_frontier $no_adaptive $no_sp $no_admission $cal $cal_gamma $threshold $adm_mode $prov $shadow $state_sel $retain"
     ' 2>/dev/null || echo "NONE")
     env_flags="${env_flags:-NONE}"
 
