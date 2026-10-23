@@ -222,6 +222,11 @@ resolve_ablation_label() {
         echo "code_retain"; return
     fi
 
+    # direct: C 臂 (arm 标签或显式 ADMISSION_MODE=direct)
+    if [[ "$arm_name" == "loopfuzz-direct" || "$_adm_mode" == "direct" ]]; then
+        echo "direct"; return
+    fi
+
     # calibrated 族 (先检查, 因为 adm_mode 也是 gate): 通过 state_select 区分估计器
     if [[ "$arm_name" == "loopfuzz-gated-calibrated" || "$cal_flag" == "1" || "$_cal" == "1" ]]; then
         if [[ "$_state_sel" == "ewma" ]]; then
