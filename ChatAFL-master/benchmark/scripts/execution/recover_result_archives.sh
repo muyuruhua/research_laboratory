@@ -146,7 +146,7 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   # P1 fix: acquire an exclusive lock on this archive to prevent concurrent
   # recovery / manual salvage from racing each other. Non-blocking; if locked,
   # another process is already handling this archive.
-  local _lock="${destination}.lock"
+  _lock="${destination}.lock"
   if ! exec 200>"$_lock" 2>/dev/null; then
     echo "[recover] SKIP (locked by another process): ${archive_name}"
     continue
