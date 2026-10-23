@@ -151,7 +151,7 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
     echo "[recover] SKIP (locked by another process): ${archive_name}"
     continue
   fi
-  if ! flock -n 200 2>/dev/null; then
+  if ! flock -w 300 200 2>/dev/null; then
     echo "[recover] SKIP (locked by another process): ${archive_name}"
     exec 200>&-
     continue
