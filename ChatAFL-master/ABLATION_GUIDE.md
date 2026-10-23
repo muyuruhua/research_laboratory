@@ -2,51 +2,147 @@
 
 本指南基于当前 `LoopFuzz` 的实现，定义消融矩阵设计、运行方式和结果解读。
 
-> 代码核对状态（2026-05）：已按当前 `LoopFuzz/afl-fuzz.c`、`run_ablation.sh`、
-> `monitor.sh`、`benchmark/scripts/execution/profuzzbench_exec_common*.sh` 的真实行为校对。
+> 代码核对状态（2026-10-23）：已按当前 `LoopFuzz/afl-fuzz.c`、`run_ablation.sh`、
+> `benchmark/scripts/execution/profuzzbench_exec_common_dev.sh` 的真实行为校对。
+> Phase-2 新增臂（native/gate_only/gate_prov/cal_ewma/cal_run_rate/code_retain）
+> 已全部通过 81 格验证矩阵（9 协议 × 9 臂）。
 
 ---
 
-## 一、消融矩阵
+## 一、全量臂定义（Phase-2 完整版，2026-10-23）
 
-### 设计原则
+### 机制层级图
 
-**严格单变量消融**：消融矩阵中每组与 `full` 仅差一个开关。任意两组之间的性能差异可直接归因于该单一策略的净贡献，消除多变量混淆。
+```
+Level 0: direct (C)     无门控、无验证、无调度学习
+         ↓ +准入门控
+Level 1: gate_only      仅门控（P∧U∧R∧G_code 硬过滤）
+         ↓ +临时验证队列
+Level 2: gate_prov      门控 + provisional（状态新颖候选入临时队列）
+         ↓ +shadow 误拒测量
+Level 3: gate (D)       完整准入系统（门控+provisional+shadow）
+         ↓ +Thompson 后验调度
+Level 4: calibrated (E) ★ 满效果 = 论文提出的完整系统
+```
 
-### 8 组定义
+### 全部 11 臂
 
-| 组名 | 关闭的策略 | 环境变量 |
-|------|-----------|---------|
-| **wo_all** | 全部四个需求 | `CHATAFL_HYPOTHESIS=0`, `NO_REFINEMENT=1`, `NO_FRONTIER=1`, `NO_ADAPTIVE=1`, `NO_STATE_PROMPT=1`, `THRESHOLD=512` |
-| **full** | （无，全开） | （不设任何 `NO_*` 标志） |
-| **wo_hypothesis** | 需求1+2+3 | `CHATAFL_HYPOTHESIS=0` |
-| **wo_admission** | runtime admission gate | `NO_ADMISSION=1` |
-| **wo_refinement** | 需求3 CEGAR | `NO_REFINEMENT=1` |
-| **wo_frontier** | 需求4 稀有状态优先 | `NO_FRONTIER=1` |
-| **wo_adaptive** | 需求4 自适应阈值 | `NO_ADAPTIVE=1`, `THRESHOLD=512` |
-| **wo_state_prompt** | 需求4 状态感知 prompt | `NO_STATE_PROMPT=1` |
+| 臂名 | run_config arm 标签 | 开启机制 | 关闭机制 | 一句话 |
+|------|---------------------|---------|---------|--------|
+| **direct** | loopfuzz-direct | — | 全关 | 可解析候选直接入队（Arm C 基线） |
+| **native** | loopfuzz-native-retention | AFLNet 原生保留 | 准入/验证/调度 | save_if_interesting 决定去留（#4 公平对照） |
+| **gate_only** | loopfuzz-gated-fixed | 准入门控 | provisional, shadow, 调度 | 仅 P∧U∧R∧G_code 硬过滤 |
+| **gate_prov** | loopfuzz-gated-fixed | 准入+provisional | shadow, 调度 | 加状态新颖候选临时验证队列 |
+| **gate** | loopfuzz-gated-fixed | 准入+provisional+shadow | 调度 | 完整准入系统（Arm D） |
+| **calibrated** | loopfuzz-gated-calibrated | 准入+provisional+shadow+Thompson | — | ★满效果（Arm E = 论文完整方法） |
+| **cal_ewma** | loopfuzz-gated-calibrated | 同 E，θ̃=EWMA | Thompson | 简单基线（专家 Q3 核心对比） |
+| **cal_run_rate** | loopfuzz-gated-calibrated | 同 E，θ̃=经验率 | Thompson | 更简单基线（可省） |
+| **code_retain** | loopfuzz-gated-fixed | 同 D + U 旁路 | 调度 | 有代码证据但 U 失败的候选不被拒（#8） |
+| **cal_gamma099** | loopfuzz-gated-calibrated | 同 E，γ=0.99 | — | γ 敏感性（可推迟） |
+| **cal_gamma100** | loopfuzz-gated-calibrated | 同 E，γ=1.0 | — | γ 敏感性（可推迟） |
 
-### Paper-v2 因果 arm 组（2026-09 新增）
+### ★ 满效果臂：`calibrated` (E)
 
-对应论文《When Protocol States Mislead》§七 的 5-arm 矩阵（A=aflnet、
-B=chatafl 为既有 fuzzer，C/D/E 为 LoopFuzz 内 arm）：
+`calibrated` 是论文提出的完整方法——所有机制全开：
+```
+calibrated = 准入门控 + provisional 验证 + shadow 测量 + Thompson 后验调度
+```
 
-| 组名 | = 论文 arm | 与相邻 arm 的唯一差异 | 环境变量 |
-|------|-----------|---------------------|---------|
-| **direct** | C (loopfuzz-direct) | parseable 候选直接 durable 队列 | `NO_ADMISSION=1`（= wo_admission 别名） |
-| **gated_fixed** / **full** | D (loopfuzz-gated-fixed) | C + execute-before-promote + provisional 两级队列 + 固定 state policy | （默认，无开关） |
-| **calibrated** | E (loopfuzz-gated-calibrated) | D + 在线后验调度（固定 penalty → Thompson 校准） | `CALIBRATION=1` |
-| **wo_calibration** | D 显式别名 | — | （无开关，语义自述组名） |
-| **cal_gamma099 / cal_gamma100** | E 的 γ 敏感性 | 仅 γ ∈ {0.99, 1.0}（默认 0.995） | `CALIBRATION=1`, `CAL_GAMMA=…` |
+### 对比逻辑：三条链，不是全部跟 E 比
 
-关键因果比较：**D vs C** 隔离 admission 收益；**E vs D** 隔离 calibration
-收益（二者 prompt/LLM 输出/trigger/repair 配置完全一致，仅调度项不同）。
-运行：
+**不是所有臂都跟满效果比。对比分三条链：**
+
+#### 链 1：消融链（从满效果逐步去掉机制）
+
+```
+calibrated (E, 满效果)
+  vs gate (D)         → 去掉 Thompson → 调度的贡献是什么？（Q3）
+  vs gate_prov        → 再去掉 shadow → shadow 的贡献是什么？
+  vs gate_only        → 再去掉 provisional → provisional 的贡献是什么？（Q2）
+  vs direct (C)       → 全部去掉 → 整个系统的总贡献是什么？（Q1）
+```
+
+#### 链 2：公平对照链（满效果 vs 替代方案）
+
+```
+calibrated (E, 满效果)
+  vs native           → 比原生保留好多少？（#4 公平性）
+  vs direct (C)       → 比不过滤好多少？
+  vs cal_ewma         → Thompson 比 EWMA 好多少？（⭐ Q3 最关键对比）
+  vs cal_run_rate     → Thompson 比 running average 好多少？（可省）
+```
+
+#### 链 3：敏感性/特殊通道
+
+```
+calibrated (E)
+  vs cal_gamma099/100 → γ 遗忘率敏感性（可推迟）
+
+gate (D)
+  vs code_retain      → 加 U 旁路 → 被拒的有价值候选损失多少？（#8）
+```
+
+### 精简建议：6 臂最小集
+
+| 精简掉的臂 | 原因 | 影响 |
+|-----------|------|------|
+| gate_prov | shadow 只做测量不改变准入行为 | gate_only vs gate 已分离 provisional 贡献 |
+| cal_run_rate | cal_ewma 已是足够简单的基线 | 一个简单基线够了 |
+| cal_gamma099/100 | 参数分析，先看机制是否有效再决定 | 推迟到 phase 3 |
+| code_retain | 视 gate 的 shadow 误拒数据决定 | 条件性需要 |
+
+**最小集（回答全部三个关键问题 + 三条论文发现）：**
+```
+direct, native, gate_only, gate, calibrated, cal_ewma   （6 个）
+```
+
+### 每个对比回答哪个问题
+
+| 对比 | 回答的问题 |
+|------|-----------|
+| gate vs direct | Q1：门控省了多少执行？ |
+| gate vs native | Q1：比原生保留好多少？ |
+| gate vs gate_only | Q2：provisional 贡献了什么？ |
+| calibrated vs gate | Q3：调度学习有没有用？ |
+| **calibrated vs cal_ewma** | **Q3：Thompson 比 EWMA 好多少？（⭐最关键）** |
+| gate 内部账本 | Q2：provisional 候选 vs 普通候选的 Productivity@64 |
+| gate 的 admission-events | 发现1：G_state 与 G_code 不可互换 |
+| gate vs gate_only + code_retain | 发现2：证据分离有价值 |
+| gate 的 execution-events | 发现3：验证/工作量/调度三方权衡 |
+
+---
+
+## 二、运行命令
+
+### Phase-2 命令格式（2026-10-23 起生效）
 
 ```bash
-sudo -E ./run_ablation.sh bftpd 1 1580 -g direct,gated_fixed,calibrated
-sudo -E ./run_ablation.sh bftpd 1 1580 -g calibrated,cal_gamma099,cal_gamma100
+# 新格式：./run_ablation.sh <runs> <minutes> <target> custom <arms>
+# 旧格式：./run_ablation.sh <target> <runs> <minutes> -g <groups>  [已弃用]
+
+# 最小实验（6 臂，回答全部关键问题）
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && \
+export KEY="sk-你的密钥" && \
+export SKIPCOUNT=100 && \
+export CHATAFL_MAX_TOKENS=4096 && \
+export CHATAFL_LLM_TIMEOUT_MS=300000 && \
+ABLATION_SHUFFLE=1 ./run_ablation.sh 1 1540 lightftp custom direct,native,gate_only,gate,calibrated,cal_ewma
+
+# 全量实验（11 臂）
+ABLATION_SHUFFLE=1 ./run_ablation.sh 1 1540 lightftp custom \
+  direct,native,gate_only,gate_prov,gate,calibrated,cal_ewma,cal_run_rate,code_retain,cal_gamma099,cal_gamma100
 ```
+
+### 旧命令 → 新命令对照
+
+| 旧版 | 新版 | 变更 |
+|------|------|------|
+| `run_ablation.sh lightftp 1 1540 -g direct,gated_fixed,calibrated` | `run_ablation.sh 1 1540 lightftp custom direct,gate,calibrated` | 参数顺序+`-g`改`custom` |
+| `gated_fixed` | `gate` | 臂改名 |
+| — | `native` | 新增（#4） |
+| — | `gate_only,gate_prov` | 新增（#5 因子化） |
+| — | `cal_ewma,cal_run_rate` | 新增（Q3 简单基线） |
+| — | `code_retain` | 新增（#8） |
 
 ### 各组回答的问题
 
