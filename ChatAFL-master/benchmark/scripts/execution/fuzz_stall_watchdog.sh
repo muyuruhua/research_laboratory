@@ -57,6 +57,16 @@ get_fuzzer_stat() {
   docker exec "$CONTAINER_ID" /bin/bash -lc "grep '^${key}[[:space:]]*:' '${WORKDIR}/${OUTDIR}/fuzzer_stats' 2>/dev/null | head -n1 | awk -F: '{print \$2}' | tr -d ' '" 2>/dev/null
 }
 
+# True while the fuzzing stage is live.  Once afl-fuzz exits, run.sh has
+# moved on to cov_script / tar collection: fuzzer_stats freezes by design
+# during that phase, and the replay can legitimately take many minutes on
+# large queues (O(queue) inputs per checkpoint, each with reset+replay).
+# Treating that freeze as a stall killed containers mid-replay and left
+# truncated inner tarballs (observed on pure-ftpd/kamailio, 2026-10-22).
+fuzzer_process_alive() {
+  docker exec "$CONTAINER_ID" /bin/bash -lc "pgrep -x afl-fuzz >/dev/null 2>&1" 2>/dev/null
+}
+
 collect_forensics() {
   local stale_seconds="$1"
   local reason="${2:-fuzzer_no_progress_confirmed}"
@@ -164,7 +174,15 @@ while true; do
       now_epoch="$(date +%s)"
       stale_for=$((now_epoch - last_change_epoch))
       if (( stale_for >= STALL_SEC )); then
+        # Post-fuzz phase (cov_script / tar): stats frozen by design and
+        # afl-fuzz is gone — stop monitoring, never stop the container.
+        if ! fuzzer_process_alive; then
+          exit 0
+        fi
         if confirm_stall "$current_update" "$current_execs"; then
+          if ! fuzzer_process_alive; then
+            exit 0
+          fi
           collect_forensics "$stale_for" "fuzzer_no_progress_confirmed"
           if [[ "$STALL_ACTION" == "stop" ]]; then
             stop_frozen_container

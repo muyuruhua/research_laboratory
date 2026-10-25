@@ -585,21 +585,49 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
         session_coverage_missing = not imported
     else:
         session_coverage_missing = False
-    # A server killed by a signal on a crash-input is a fuzzing FINDING,
-    # not a measurement failure: whatever coverage children flushed before
-    # the crash is kept and the exit code is recorded.
-    server_crashed = server_code is not None and server_code < 0
-    # When the server crashes on an input the client may legitimately fail
-    # too (connection reset); both are recorded as a crash finding.
-    client_aborted_on_crash = server_crashed and client_code != 0
-    if ((server_code not in (0, 124) and not server_crashed)
-            or (client_code != 0 and not client_aborted_on_crash)):
-        raise CoverageError("replay failed: server=%s client=%s; see %s" % (server_code, client_code, replay_log))
+    flags = classify_replay_exit(server_code, client_code)
     return dict(server_exit_code=server_code, client_exit_code=client_code,
                 session_coverage_missing=session_coverage_missing,
-                server_crashed=server_crashed,
+                server_crashed=flags["server_crashed"],
+                replay_anomaly=flags["replay_anomaly"],
+                anomaly_kind=flags["anomaly_kind"],
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
                 client_command=client_command, server_command=server_command)
+
+
+def classify_replay_exit(server_code, client_code):
+    """Classify one replay's process exits.
+
+    A server killed by a signal on a crash-input is a fuzzing FINDING, not a
+    measurement failure: whatever coverage children flushed before the crash
+    is kept and the exit code is recorded.  A client failing on the same
+    crashed server (connection reset) is part of that finding.
+
+    A single input ending with an unexpected POSITIVE server exit (observed:
+    pure-ftpd session supervisors exit 252 after a normal "221 Logout") or a
+    lone client failure used to abort the whole campaign replay, leaving no
+    terminal.json at all.  It is now recorded as a per-input anomaly: the
+    flushed coverage still enters the union, the anomaly is counted in
+    terminal.json, and only an ALL-anomalous replay (a broken harness) fails.
+    """
+    server_crashed = server_code is not None and server_code < 0
+    client_aborted_on_crash = server_crashed and client_code != 0
+    server_anomalous = server_code is not None and server_code not in (0, 124) and not server_crashed
+    client_anomalous = client_code is not None and client_code != 0 and not client_aborted_on_crash
+    if server_crashed:
+        kind = "server-crash-finding"
+    elif server_anomalous:
+        kind = "server-exit-%s" % server_code
+    elif client_anomalous:
+        kind = "client-exit-%s" % client_code
+    else:
+        kind = ""
+    return dict(server_crashed=server_crashed,
+                client_aborted_on_crash=client_aborted_on_crash,
+                server_anomalous_exit=server_anomalous,
+                client_anomalous_exit=client_anomalous,
+                replay_anomaly=kind != "" and kind != "server-crash-finding",
+                anomaly_kind=kind)
 
 
 def run_replay(args):
@@ -654,6 +682,7 @@ def run_replay(args):
     write_json(directory / "baseline.json", baseline_report)
     union = CoverageUnion(baseline, manifest)
     unexpected_drop = False
+    anomaly_kinds = {}
     with output.open("x", newline="") as csv_output, (directory / "checkpoints.jsonl").open("x") as events:
         writer = csv.DictWriter(csv_output, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -663,6 +692,8 @@ def run_replay(args):
             reset = run_reset(record, cwd, directory / ("reset-%06d.log" % index), args.allow_unverified_reset)
             replay = run_one_replay(args.target, record, args.port, args.mode, cwd, workdir,
                                     directory / ("replay-%06d.log" % index), object_root)
+            if replay.get("replay_anomaly"):
+                anomaly_kinds[replay["anomaly_kind"]] = anomaly_kinds.get(replay["anomaly_kind"], 0) + 1
             if instrument_identity(object_root) != notes:
                 raise CoverageError("instrumented objects changed during replay")
             report, stderr, _ = collect()
@@ -683,11 +714,15 @@ def run_replay(args):
     counts = audit_csv(output, manifest, union.events)
     if counts["terminal_branches"] != len(union.covered):
         raise CoverageError("terminal aggregate disagrees with branch-ID union")
+    if plan and sum(anomaly_kinds.values()) == len(plan):
+        raise CoverageError("every replay was anomalous (%s); harness is broken, refusing to emit a union"
+                            % anomaly_kinds)
     write_json(directory / "terminal.json", dict(
         schema_version=SCHEMA, scope_sha256=manifest["scope_sha256"],
         covered_branch_ids=sorted(union.covered), covered_line_ids=sorted(union.covered_lines),
         n_replayed=len(plan), fixed_execution_coordinates_valid=bool(coordinates),
         n_unreplayable_ledger_entries=len(unreplayable),
+        replay_anomalies=dict(total=sum(anomaly_kinds.values()), kinds=anomaly_kinds),
         all_reset_commands_succeeded=all(event["reset"]["command_succeeded"] for event in union.events),
         execution_coordinate_unit="fuzzer total_execs, not network requests",
         unexpected_snapshot_decrease=unexpected_drop, csv_audit=counts,

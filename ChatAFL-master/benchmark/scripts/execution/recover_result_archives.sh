@@ -39,6 +39,24 @@ tarball_is_complete() {
   return 0
 }
 
+# Explicit remote candidates for the campaign output directory.
+# Rationale: this docker daemon's `docker cp` does NOT expand globs on the
+# remote path (the previous glob-based strategy-2 never matched anything),
+# and the outdir lives at subject-specific depth. Table keyed by the target
+# name embedded in outdir (out-<target>-loopfuzz). Order matters: cheapest
+# (flattest) first.
+outdir_remote_candidates() {
+  local outdir="$1" target
+  target=$(printf '%s' "$outdir" | sed -E 's/^out-//; s/-loopfuzz$//')
+  case "$target" in
+    lightftp)       printf '%s\n' "LightFTP/Source/Release" ;;
+    live555)        printf '%s\n' "live/testProgs" ;;
+    *)              printf '%s\n' "$target" ;;
+  esac
+  # generic fallbacks
+  printf '%s\n' "" ".."
+}
+
 collect_from_container() {
   local container_id="$1"
   local outdir="$2"
@@ -46,34 +64,71 @@ collect_from_container() {
   local tmp_file="${destination}.partial"
   local extracted_root=""
 
+  # Atomic swap-in: rotate any existing final to a timestamped .incomplete
+  # backup ONLY after the replacement on $1 has verified complete, then move
+  # the replacement into place. Interrupting anywhere between the two mv's
+  # leaves either the old or the new final present, never neither.
+  swap_in() {
+    if [[ -s "$destination" && ! -f "${destination}.salvaged" ]]; then
+      mv "$destination" "${destination}.incomplete.$(date +%s)" 2>/dev/null || true
+    fi
+    mv "$1" "$destination"
+    fix_result_permissions "$destination"
+  }
+
   rm -f "$tmp_file"
 
+  # A stopped container's inner tar.gz is frozen: fetch it once and check
+  # completeness immediately. The settle-polling loop below only helps while
+  # the container is still gzipping (i.e. running) — on a dead container it
+  # burns 3 × ~5 min per archive for bytes that can never change.
+  local container_running
+  container_running=$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || echo unknown)
+  local attempts=3
+  [[ "$container_running" != "true" ]] && attempts=1
+
   # Strategy 1: copy the container-internal tar.gz produced by the run script
-  # (this is the most reliable source — created after fuzzing + cov_script complete)
+  # (this is the most reliable source — created after fuzzing + cov_script complete).
+  # Try the root location plus each subject-specific parent (explicit paths:
+  # this daemon's docker cp does not glob remote paths).
+  local attempt parent_cand
   for attempt in 1 2 3; do
-    if docker cp "${container_id}:${WORKDIR}/${outdir}.tar.gz" "$tmp_file" >/dev/null 2>&1; then
-      if tarball_is_complete "$tmp_file"; then
-        mv "$tmp_file" "$destination"
-        fix_result_permissions "$destination"
-        return 0
-      fi
-      # Hour-scale archives take minutes to gzip: poll the FETCHED copy until
-      # it stops growing on two consecutive polls AND passes completeness
-      # (up to ~5 minutes), then accept.
-      local prev=-1 stable=0 cur
-      for _ in $(seq 1 30); do
-        docker cp "${container_id}:${WORKDIR}/${outdir}.tar.gz" "$tmp_file" >/dev/null 2>&1 || { sleep 10; continue; }
-        cur=$(stat -c %s "$tmp_file" 2>/dev/null || echo 0)
-        if [[ "$cur" == "$prev" && "$cur" -gt 0 ]]; then stable=$((stable+1)); else stable=0; fi
-        prev="$cur"
-        if [[ "$stable" -ge 2 ]] && tarball_is_complete "$tmp_file"; then
-          mv "$tmp_file" "$destination"
-          fix_result_permissions "$destination"
+    [[ "$attempt" -gt "$attempts" ]] && break
+    for parent_cand in "" $(outdir_remote_candidates "$outdir"); do
+      if docker cp "${container_id}:${WORKDIR}/${parent_cand:+$parent_cand/}${outdir}.tar.gz" "$tmp_file" >/dev/null 2>&1; then
+        if tarball_is_complete "$tmp_file"; then
+          swap_in "$tmp_file"
           return 0
         fi
-        sleep 10
-      done
-      echo "[recover] [WARN] inner tar.gz exists but is incomplete after settle polling, retrying..." >&2
+        if [[ "$container_running" != "true" ]]; then
+          # Frozen yet incomplete inner tar (container died mid-gzip): retrying
+          # and polling cannot change the bytes. Try the next location, then
+          # fall through to strategy 2.
+          continue
+        fi
+        break  # running container: settle-poll this location
+      fi
+    done
+    if [[ -s "$tmp_file" ]]; then
+      if [[ "$container_running" == "true" ]]; then
+        # Hour-scale archives take minutes to gzip: poll the FETCHED copy until
+        # it stops growing on two consecutive polls AND passes completeness
+        # (up to ~5 minutes), then accept.
+        local prev=-1 stable=0 cur
+        for _ in $(seq 1 30); do
+          cur=$(stat -c %s "$tmp_file" 2>/dev/null || echo 0)
+          if [[ "$cur" == "$prev" && "$cur" -gt 0 ]]; then stable=$((stable+1)); else stable=0; fi
+          prev="$cur"
+          if [[ "$stable" -ge 2 ]] && tarball_is_complete "$tmp_file"; then
+            swap_in "$tmp_file"
+            return 0
+          fi
+          sleep 10
+        done
+        echo "[recover] [WARN] inner tar.gz exists but is incomplete after settle polling, retrying..." >&2
+      else
+        echo "[recover] inner tar.gz frozen-incomplete on stopped container, using raw-dir fallback" >&2
+      fi
       rm -f "$tmp_file"
     fi
     sleep "$attempt"
@@ -82,22 +137,31 @@ collect_from_container() {
   # Strategy 2: copy the raw output directory and tar it locally.  The
   # outdir is relative to the subject's build directory, not always to
   # WORKDIR (e.g. lightftp's run.sh cds into LightFTP/Source/Release), so
-  # locate it inside the container first.
+  # probe the explicit candidate parents — this daemon's docker cp does NOT
+  # expand remote globs, the previous glob-based probing never matched.
   extracted_root=$(mktemp -d "${TMPDIR:-/tmp}/recover-${outdir}-XXXXXX")
-  # docker exec does not work on STOPPED containers, but docker cp supports
-  # glob patterns on the source path - try the known outdir layouts directly.
-  local remote_dir
-  for pattern in "${WORKDIR}/${outdir}" "${WORKDIR}"/*/"${outdir}" "${WORKDIR}"/*/*/"${outdir}" "${WORKDIR}"/*/*/*/"${outdir}"; do
-    if docker cp "${container_id}:${pattern}" "${extracted_root}/" >/dev/null 2>&1; then
+  # NOTE: remote_dir must be initialized — an unset local under `set -u`
+  # aborts the whole loop subshell on the [[ -n ]] test (this was the
+  # invisible crash behind every "silent" recovery failure).
+  local remote_dir=""
+  for parent_cand in $(outdir_remote_candidates "$outdir"); do
+    if docker cp "${container_id}:${WORKDIR}/${parent_cand:+$parent_cand/}${outdir}" "${extracted_root}/" >/dev/null 2>&1; then
       remote_dir="$outdir"
       break
     fi
   done
   if [[ -n "$remote_dir" ]]; then
     tar -czf "$tmp_file" -C "$extracted_root" "$outdir"
-    mv "$tmp_file" "$destination"
     rm -rf "$extracted_root"
-    fix_result_permissions "$destination"
+    if tarball_is_complete "$tmp_file"; then
+      swap_in "$tmp_file"
+      return 0
+    fi
+    # Raw-dir fallback produced the same incompleteness (e.g. coverage never
+    # ran): still better than nothing — swap it in so the dir keeps its best
+    # available archive, and let the caller's patch path try to fill holes.
+    echo "[recover] [WARN] raw-dir fallback also missing required files" >&2
+    swap_in "$tmp_file"
     return 0
   fi
 
@@ -146,13 +210,20 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   # P1 fix: acquire an exclusive lock on this archive to prevent concurrent
   # recovery / manual salvage from racing each other. Non-blocking; if locked,
   # another process is already handling this archive.
+  # ROOT FIX: `exec N>file 2>/dev/null` without a command makes EVERY
+  # redirection on the line permanent for the shell — the 2>/dev/null was
+  # silencing all later stderr (xtrace, "failed to collect", docker errors),
+  # hiding collection failures. Scope it to a group so only the exec's own
+  # diagnostics are suppressed.
   _lock="${destination}.lock"
-  if ! exec 200>"$_lock" 2>/dev/null; then
-    echo "[recover] SKIP (locked by another process): ${archive_name}"
+  if ! { exec 200>"$_lock"; } 2>/dev/null; then
+    echo "[recover] SKIP (cannot open lock): ${archive_name}"
+    printf '%s\n' "$archive_name" >> "${RESULTS_DIR}/.collect-pending"
     continue
   fi
   if ! flock -w 300 200 2>/dev/null; then
-    echo "[recover] SKIP (locked by another process): ${archive_name}"
+    echo "[recover] SKIP (locked by another process): ${archive_name} — queued for retry"
+    printf '%s\n' "$archive_name" >> "${RESULTS_DIR}/.collect-pending"
     exec 200>&-
     continue
   fi
@@ -173,11 +244,13 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
       # too — create the marker for idempotency.
       continue
     fi
-    # Existing tarball is incomplete — rename it as backup and re-collect
-    # P0-1 fix: if a .partial file also exists alongside, warn but proceed
-    _bak="${destination}.incomplete.$(date +%s)"
-    echo "[recover] [WARN] ${archive_name} is incomplete (missing required files), re-collecting..."
-    mv "$destination" "$_bak"
+    # Existing final is incomplete: fetch a REPLACEMENT first; the old copy is
+    # only rotated to a .incomplete.<ts> backup inside the atomic swap, after
+    # the new copy has verified complete. A failed fetch therefore never
+    # leaves the dir without its best-available archive (the old code renamed
+    # the final away up front — combined with a failed fetch the dir ended up
+    # with NO final at all).
+    echo "[recover] [WARN] ${archive_name} is incomplete (missing required files), fetching replacement..."
   fi
 
   label="$container_id"
@@ -200,9 +273,19 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
             _tmp_extract=$(mktemp -d)
             tar xzf "$destination" -C "$_tmp_extract"
             cp "$_tmp_file" "$_tmp_extract/${outdir}/${req}"
-            tar czf "$destination" -C "$_tmp_extract" "$outdir"
+            # Re-tar to a temp file and swap atomically — rewriting the
+            # destination in place truncates it if interrupted here.
+            _tmp_tar=$(mktemp)
+            tar czf "$_tmp_tar" -C "$_tmp_extract" "$outdir"
             rm -rf "$_tmp_extract"
-            echo "[recover] patched ${req} into ${archive_name}"
+            if [[ -s "$_tmp_tar" ]]; then
+              if [[ -s "$destination" && ! -f "${destination}.salvaged" ]]; then
+                mv "$destination" "${destination}.incomplete.$(date +%s)" 2>/dev/null || true
+              fi
+              mv "$_tmp_tar" "$destination"
+              fix_result_permissions "$destination"
+              echo "[recover] patched ${req} into ${archive_name}"
+            fi
           fi
           rm -f "$_tmp_file"
         fi
@@ -222,9 +305,13 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
     echo 1 > "$_status_file"
   fi
 
-  # P1 fix: release the per-archive lock
+  # P1 fix: release the per-archive lock; on success drop any stale retry note
   flock -u 200 2>/dev/null || true
   exec 200>&-
+  if [[ -f "${RESULTS_DIR}/.collect-pending" ]] && tarball_is_complete "$destination" 2>/dev/null; then
+    grep -vxF "$archive_name" "${RESULTS_DIR}/.collect-pending" > "${RESULTS_DIR}/.collect-pending.tmp" 2>/dev/null \
+      && mv "${RESULTS_DIR}/.collect-pending.tmp" "${RESULTS_DIR}/.collect-pending" || rm -f "${RESULTS_DIR}/.collect-pending.tmp"
+  fi
 done
 
 overall_status=$(cat "$_status_file")

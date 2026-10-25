@@ -68,6 +68,27 @@ TARGET="${REMAINING_ARGS[0]:-live555}"
 RUNS="${REMAINING_ARGS[1]:-5}"
 TIMEOUT="${REMAINING_ARGS[2]:-1470}"
 PRESET="${REMAINING_ARGS[3]:-${ABLATION_PRESET:-core}}"
+
+# ── 新格式兼容（ABLATION_GUIDE.md 文档格式）──────────────────────
+# 支持 <runs> <minutes> <target> custom <arms>（指南新格式）
+# 与   <target> <runs> <minutes> custom <arms>（旧顺序）两种写法。
+if [[ "${REMAINING_ARGS[0]:-}" =~ ^[0-9]+$ && "${REMAINING_ARGS[1]:-}" =~ ^[0-9]+$ \
+      && -n "${REMAINING_ARGS[2]:-}" && ! "${REMAINING_ARGS[2]:-}" =~ ^[0-9]+$ ]]; then
+  RUNS="${REMAINING_ARGS[0]}"
+  TIMEOUT="${REMAINING_ARGS[1]}"
+  TARGET="${REMAINING_ARGS[2]}"
+  PRESET="${REMAINING_ARGS[3]:-core}"
+fi
+if [[ "$PRESET" == "custom" ]]; then
+  if [[ -n "${REMAINING_ARGS[4]:-}" ]]; then
+    CUSTOM_GROUPS="${REMAINING_ARGS[4]}"
+    PRESET=""
+  else
+    echo "[ERROR] custom 预置需要第 5 个位置参数提供臂列表："
+    echo "        ./run_ablation.sh <target> <runs> <minutes> custom direct,gate,..."
+    exit 1
+  fi
+fi
 # 每组同时运行的消融组数（默认6）。多个目标脚本同时运行时会叠加
 # （2026-10-13 事故：89 个容器并发 → 实际内存冲破 62GB+swap，整机假死断电）。
 # 预检与每个批次前按"全机 fuzz 容器实际内存占用"（非 6G 上限）自动收敛本值。
@@ -310,9 +331,13 @@ launch_custom_groups() {
         queue_group "$name" ""
         ;;
       wo_admission|direct)
-        # arm C (loopfuzz-direct): parseable 候选直接 durable 队列
+        # arm C (loopfuzz-direct): parseable 候选直接 durable 队列。
+        # ADMISSION_MODE=direct 与 n=5 mock 波次驱动器完全一致（NO_ADMISSION=1
+        # 为等价的历史路径，双设保证 run-config 的 mode 标签一致）
         valid+=("$name")
-        queue_group "$name" "CHATAFL_NO_ADMISSION=1"
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=direct" \
+          "CHATAFL_NO_ADMISSION=1"
         ;;
       gated_fixed|wo_calibration)
         # arm D (loopfuzz-gated-fixed): 证据门控 + provisional 两级队列 +
@@ -373,14 +398,27 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL=1" \
           "CHATAFL_SHADOW=0"
         ;;
-      gate_prov_shadow)
+      gate|gate_prov_shadow)
         # 专家 #5 因子化消融 cell-3：gate + provisional + shadow（= D，
-        # 因子显式钉死，保证与 cell-1/2 的差异只有这两个因子）
+        # 因子显式钉死，保证与 cell-1/2 的差异只有这两个因子）。
+        # "gate" 是 D 臂的短别名（与 monitor.sh / n=5 波次命名一致）
         valid+=("$name")
         queue_group "gate_prov_shadow" \
           "CHATAFL_ADMISSION_MODE=gate" \
           "CHATAFL_PROVISIONAL=1" \
           "CHATAFL_SHADOW=1"
+        ;;
+      code_retain)
+        # 专家 P0-3 保留策略臂：D + CHATAFL_CODE_RETAIN=1。
+        # P∧R∧¬U 的候选走 code-retain 通道而非硬拒绝；与 D 的差异仅
+        # CODE_RETAIN 一个因子（EC_CODE_RETAIN 在 PROVISIONAL=0 时会被
+        # 降级为 reject，故本臂必须钉死 PROVISIONAL=1）
+        valid+=("$name")
+        queue_group "code_retain" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1" \
+          "CHATAFL_CODE_RETAIN=1"
         ;;
       wo_refinement)
         valid+=("$name")
@@ -433,7 +471,7 @@ launch_custom_groups() {
         echo "          cal_gamma099, cal_gamma100 (γ 敏感性)"
         echo "        Phase-2 因子化组 (专家 #4/#5):"
         echo "          native (#4 原生保留+同LLM候选), gate_only, gate_prov,"
-        echo "          gate_prov_shadow (=D 因子显式)"
+        echo "          gate|gate_prov_shadow (=D 因子显式), code_retain (D+保留策略)"
         echo "        简单在线基线 (专家问题三):"
         echo "          cal_ewma, cal_run_rate (E 臂同构，仅换 θ̃ 估计器)"
         ;;
@@ -564,7 +602,7 @@ else
       ;;
     *)
       echo "[ERROR] 未知 PRESET: ${PRESET}"
-      echo "        可选：core | threshold | appendix | legacy"
+      echo "        可选：core | threshold | appendix | legacy | custom <臂列表>"
       echo "        或使用 --groups name1,name2,... 指定消融组"
       exit 1
       ;;

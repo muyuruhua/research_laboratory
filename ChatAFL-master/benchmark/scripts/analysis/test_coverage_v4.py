@@ -43,6 +43,32 @@ class CoverageFixtureTests(unittest.TestCase):
                     discovery_time_ms=1000 + index, monotonic_ms=2000 + index,
                     discovery_execution_id=index * 10, coordinate_source="queue-checkpoints.jsonl")
 
+
+    def test_replay_exit_classification_tolerates_pureftpd_252(self):
+        # pure-ftpd session supervisors exit 252 after a normal logout;
+        # this must be a recorded per-input anomaly, not a campaign abort.
+        f = cov.classify_replay_exit(252, 0)
+        self.assertTrue(f["replay_anomaly"])
+        self.assertEqual(f["anomaly_kind"], "server-exit-252")
+        self.assertFalse(f["server_crashed"])
+        self.assertFalse(f["client_anomalous_exit"])
+
+    def test_replay_exit_classification_normal_and_crash(self):
+        self.assertFalse(cov.classify_replay_exit(0, 0)["replay_anomaly"])
+        self.assertFalse(cov.classify_replay_exit(124, 0)["replay_anomaly"])
+        crash = cov.classify_replay_exit(-11, 1)
+        self.assertTrue(crash["server_crashed"])
+        self.assertFalse(crash["replay_anomaly"])  # crash finding, not anomaly
+        self.assertEqual(crash["anomaly_kind"], "server-crash-finding")
+
+    def test_replay_exit_classification_lone_client_failure(self):
+        f = cov.classify_replay_exit(0, 1)
+        self.assertTrue(f["replay_anomaly"])
+        self.assertEqual(f["anomaly_kind"], "client-exit-1")
+        # client failure on a crashed server is part of the crash finding
+        f2 = cov.classify_replay_exit(-15, 1)
+        self.assertFalse(f2["replay_anomaly"])
+
     def test_disjoint_bftpd_snapshots_are_unioned_not_maxed(self):
         union = cov.CoverageUnion(self.baseline, self.manifest)
         first = union.add(self.snapshot(0), self.coordinates(1), "a", expected_counter_reset=True)
