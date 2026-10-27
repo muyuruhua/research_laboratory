@@ -239,6 +239,7 @@ run_queued_groups() {
               CHATAFL_EXECUTION_LOG CHATAFL_SHADOW_BUDGET CHATAFL_SHADOW_MAX \
               CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP \
               CHATAFL_STATE_SELECT \
+              CHATAFL_SALVAGE CHATAFL_PLAINTEXT_WRAP \
               CHATAFL_CALIBRATION CHATAFL_CAL_GAMMA CHATAFL_CAL_EPSILON \
               CHATAFL_PROVISIONAL_BUDGET CHATAFL_PROVISIONAL_TTL_MS \
               CHATAFL_PROVISIONAL_MAX_LIVE CHATAFL_EVENT_LOG
@@ -460,6 +461,49 @@ launch_custom_groups() {
           "CHATAFL_NO_ADAPTIVE=1" \
           "CHATAFL_ABLATION_THRESHOLD=${thr}"
         ;;
+      salvage8|salvage16|salvage32|salvage64|salvage150|salvage200|salvage300|salvage512)
+        # Q1 证据回收臂（处理组）：D + SALVAGE + PLAINTEXT_WRAP + 固定阈值 N。
+        # 与 wrapgateN 的差异仅 SALVAGE 一个因子；与 wrapdirectN 的差异是
+        # 整个准入策略。阈值入组变量（臂隔离会清父 shell 导出）。
+        valid+=("$name")
+        local thr="${name#salvage}"
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1" \
+          "CHATAFL_SALVAGE=1" \
+          "CHATAFL_PLAINTEXT_WRAP=1" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=${thr}" \
+          "CHATAFL_PROVISIONAL_TTL_MS=3600000"
+        ;;
+      wrapgate8|wrapgate16|wrapgate32|wrapgate64|wrapgate150|wrapgate200|wrapgate300|wrapgate512)
+        # Q1 对照组1：D + PLAINTEXT_WRAP + 固定阈值 N（无 salvage）。
+        # 与 salvageN 单因子差异 = SALVAGE。
+        valid+=("$name")
+        local thr="${name#wrapgate}"
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1" \
+          "CHATAFL_PLAINTEXT_WRAP=1" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=${thr}" \
+          "CHATAFL_PROVISIONAL_TTL_MS=3600000"
+        ;;
+      wrapdirect8|wrapdirect16|wrapdirect32|wrapdirect64|wrapdirect150|wrapdirect200|wrapdirect300|wrapdirect512)
+        # Q1 对照组2：C(direct) + PLAINTEXT_WRAP + 固定阈值 N。
+        # 可解析候选全收（parseable→durable）。与 salvageN 的差异 =
+        # 完整准入策略；与原生 direct 组的差异 = WRAP+固定阈值（剂量对齐）。
+        valid+=("$name")
+        local thr="${name#wrapdirect}"
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=direct" \
+          "CHATAFL_NO_ADMISSION=1" \
+          "CHATAFL_PLAINTEXT_WRAP=1" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=${thr}"
+        ;;
       *)
         echo "[ERROR] 未知消融组: '$name'"
         echo "        可用枚举值（与 monitor.sh Ablation 等价）:"
@@ -474,6 +518,9 @@ launch_custom_groups() {
         echo "          gate|gate_prov_shadow (=D 因子显式), code_retain (D+保留策略)"
         echo "        简单在线基线 (专家问题三):"
         echo "          cal_ewma, cal_run_rate (E 臂同构，仅换 θ̃ 估计器)"
+        echo "        Q1 证据回收组 (salvage):"
+        echo "          salvageN / wrapgateN / wrapdirectN, N∈{8,16,32,64,150,200,300,512}"
+        echo "          三臂对比: -g wrapdirect8,wrapgate8,salvage8"
         ;;
     esac
   done
@@ -646,6 +693,13 @@ if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
   fi
 fi
 echo ""
+
+# Check the actual client once before starting any experiment containers.
+# A nonempty KEY alone does not establish valid gateway authentication.
+if ! "${BASE_DIR}/scripts/check_llm.sh"; then
+  echo "[ERROR] LLM 预检失败；未启动本批消融实验。请核对当前 KEY、LLM_MODEL 和 CHATAFL_LLM_BASE。" >&2
+  exit 1
+fi
 
 # ── Execute queued groups in batches ──
 run_queued_groups

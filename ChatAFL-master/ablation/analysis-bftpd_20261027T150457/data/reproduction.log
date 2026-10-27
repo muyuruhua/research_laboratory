@@ -1,0 +1,91 @@
+wrapdirect8 1 exec 20896 {'no_tracked_candidate_ancestry': 20537, 'llm_lineage': 359} gains 0 candidates 52 disposition {'durable': 52} mut-nogain 291 llm {'rows': 223, 'statuses': {'ok': 217, 'transport-error': 6}, 'prompt_tokens': 128436, 'completion_tokens': 115392, 'latency_sum_ms': 1711238, 'latency_union_ms': 719373, 'unique_seq': 198} prov {}
+wrapdirect8 2 exec 19922 {'no_tracked_candidate_ancestry': 19872, 'llm_lineage': 50} gains 1 candidates 42 disposition {'durable': 42} mut-nogain 0 llm {'rows': 226, 'statuses': {'ok': 215, 'transport-error': 11}, 'prompt_tokens': 121367, 'completion_tokens': 113804, 'latency_sum_ms': 1778989, 'latency_union_ms': 807588, 'unique_seq': 203} prov {}
+wrapdirect8 3 exec 19860 {'no_tracked_candidate_ancestry': 19434, 'llm_lineage': 426} gains 0 candidates 47 disposition {'durable': 47} mut-nogain 339 llm {'rows': 224, 'statuses': {'ok': 217, 'transport-error': 7}, 'prompt_tokens': 129438, 'completion_tokens': 114699, 'latency_sum_ms': 1673446, 'latency_union_ms': 834845, 'unique_seq': 198} prov {}
+wrapgate8 1 exec 22734 {'no_tracked_candidate_ancestry': 22572, 'llm_lineage': 162} gains 0 candidates 50 disposition {'reject': 48, 'provisional': 2} mut-nogain 0 llm {'rows': 222, 'statuses': {'ok': 218, 'transport-error': 4}, 'prompt_tokens': 126534, 'completion_tokens': 101691, 'latency_sum_ms': 1542246, 'latency_union_ms': 680716, 'unique_seq': 196} prov {'admit': 2, 'expire': 2}
+wrapgate8 2 exec 20386 {'no_tracked_candidate_ancestry': 20157, 'llm_lineage': 229} gains 0 candidates 53 disposition {'reject': 52, 'provisional': 1} mut-nogain 0 llm {'rows': 231, 'statuses': {'ok': 220, 'transport-error': 11}, 'prompt_tokens': 128512, 'completion_tokens': 119974, 'latency_sum_ms': 1826906, 'latency_union_ms': 872852, 'unique_seq': 203} prov {'admit': 1, 'expire': 1}
+wrapgate8 3 exec 19899 {'no_tracked_candidate_ancestry': 19771, 'llm_lineage': 128} gains 0 candidates 48 disposition {'reject': 47, 'provisional': 1} mut-nogain 0 llm {'rows': 223, 'statuses': {'ok': 217, 'transport-error': 6}, 'prompt_tokens': 123565, 'completion_tokens': 110566, 'latency_sum_ms': 1579366, 'latency_union_ms': 743180, 'unique_seq': 198} prov {'admit': 1, 'expire': 1}
+salvage8 1 exec 20569 {'no_tracked_candidate_ancestry': 20462, 'llm_lineage': 107} gains 0 candidates 43 disposition {'reject': 40, 'provisional': 3} mut-nogain 0 llm {'rows': 218, 'statuses': {'ok': 214, 'transport-error': 4}, 'prompt_tokens': 118661, 'completion_tokens': 107402, 'latency_sum_ms': 1654471, 'latency_union_ms': 737015, 'unique_seq': 196} prov {'admit': 3, 'expire': 3}
+salvage8 2 exec 22405 {'no_tracked_candidate_ancestry': 22255, 'llm_lineage': 150} gains 0 candidates 54 disposition {'reject': 53, 'provisional': 1} mut-nogain 0 llm {'rows': 231, 'statuses': {'ok': 221, 'transport-error': 9, 'api-error': 1}, 'prompt_tokens': 135154, 'completion_tokens': 113213, 'latency_sum_ms': 1727778, 'latency_union_ms': 840757, 'unique_seq': 201} prov {'admit': 1, 'expire': 1}
+salvage8 3 exec 22580 {'no_tracked_candidate_ancestry': 22349, 'llm_lineage': 231} gains 0 candidates 55 disposition {'reject': 54, 'provisional': 1} mut-nogain 0 llm {'rows': 228, 'statuses': {'ok': 221, 'transport-error': 6, 'api-error': 1}, 'prompt_tokens': 135543, 'completion_tokens': 122234, 'latency_sum_ms': 1746267, 'latency_union_ms': 903819, 'unique_seq': 197} prov {'admit': 1, 'expire': 1}
+wrapdirect8 1 trials 52 {'durable': 52} prov {} {} lineage_gain 0 statsgain 0 codegain 51
+ exec {'ordinary_ancestry/calibration': 5288, 'ordinary_ancestry/mutation': 15249, 'llm_ancestry/candidate': 52, 'llm_ancestry/mutation': 291, 'llm_ancestry/calibration': 16}
+ prov []
+duplicate candidates {} trials {}
+wrapdirect8 2 trials 42 {'durable': 42} prov {} {} lineage_gain 1 statsgain 1 codegain 52
+ exec {'ordinary_ancestry/calibration': 5128, 'ordinary_ancestry/mutation': 14744, 'llm_ancestry/candidate': 42, 'llm_ancestry/calibration': 8}
+ prov []
+duplicate candidates {} trials {}
+wrapdirect8 3 trials 47 {'durable': 47} prov {} {} lineage_gain 0 statsgain 0 codegain 46
+ exec {'ordinary_ancestry/calibration': 4896, 'ordinary_ancestry/mutation': 14538, 'llm_ancestry/candidate': 47, 'llm_ancestry/calibration': 40, 'llm_ancestry/mutation': 339}
+ prov []
+duplicate candidates {} trials {}
+wrapgate8 1 trials 50 {'reject': 48, 'provisional': 2} prov {'admit': 2, 'expire': 2} {'state-novelty-only evidence': 2, 'no-executable-M2': 2} lineage_gain 0 statsgain 0 codegain 48
+ exec {'ordinary_ancestry/calibration': 5078, 'ordinary_ancestry/mutation': 17494, 'llm_ancestry/candidate': 50, 'llm_ancestry/shadow': 112}
+ prov [{'campaign_id': '1793084713011-187', 'candidate_id': 13, 'queue_entry': 390, 'admit_reason': 'state-novelty-only evidence', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 89179, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [True], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 198}, {'campaign_id': '1793084713011-187', 'candidate_id': 42, 'queue_entry': 560, 'admit_reason': 'state-novelty-only evidence', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 125576, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [True], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 202}]
+duplicate candidates {} trials {}
+wrapgate8 2 trials 53 {'reject': 52, 'provisional': 1} prov {'admit': 1, 'expire': 1} {'state-novelty-only evidence': 1, 'no-executable-M2': 1} lineage_gain 0 statsgain 0 codegain 45
+ exec {'ordinary_ancestry/calibration': 4672, 'ordinary_ancestry/mutation': 15485, 'llm_ancestry/candidate': 53, 'llm_ancestry/shadow': 176}
+ prov [{'campaign_id': '1793084718726-187', 'candidate_id': 17, 'queue_entry': 395, 'admit_reason': 'state-novelty-only evidence', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 67650, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [True], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 182}]
+duplicate candidates {} trials {}
+wrapgate8 3 trials 48 {'reject': 47, 'provisional': 1} prov {'admit': 1, 'expire': 1} {'state-novelty-only evidence': 1, 'no-executable-M2': 1} lineage_gain 0 statsgain 0 codegain 47
+ exec {'ordinary_ancestry/calibration': 5049, 'ordinary_ancestry/mutation': 14722, 'llm_ancestry/candidate': 48, 'llm_ancestry/shadow': 80}
+ prov [{'campaign_id': '1793084724060-204', 'candidate_id': 24, 'queue_entry': 473, 'admit_reason': 'state-novelty-only evidence', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 76231, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [True], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 237}]
+duplicate candidates {} trials {}
+salvage8 1 trials 43 {'reject': 40, 'provisional': 3} prov {'admit': 3, 'expire': 3} {'salvage': 3, 'no-executable-M2': 3} lineage_gain 0 statsgain 0 codegain 55
+ exec {'ordinary_ancestry/calibration': 5480, 'ordinary_ancestry/mutation': 14982, 'llm_ancestry/candidate': 43, 'llm_ancestry/shadow': 64}
+ prov [{'campaign_id': '1793084712991-187', 'candidate_id': 9, 'queue_entry': 356, 'admit_reason': 'salvage', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 152055, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [False], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 238}, {'campaign_id': '1793084712991-187', 'candidate_id': 10, 'queue_entry': 368, 'admit_reason': 'salvage', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 167669, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [False], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 239}, {'campaign_id': '1793084712991-187', 'candidate_id': 41, 'queue_entry': 560, 'admit_reason': 'salvage', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 480571, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [False], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 228}]
+duplicate candidates {} trials {}
+salvage8 2 trials 54 {'reject': 53, 'provisional': 1} prov {'admit': 1, 'expire': 1} {'salvage': 1, 'no-executable-M2': 1} lineage_gain 0 statsgain 0 codegain 50
+ exec {'ordinary_ancestry/calibration': 5056, 'ordinary_ancestry/mutation': 17199, 'llm_ancestry/candidate': 54, 'llm_ancestry/shadow': 96}
+ prov [{'campaign_id': '1793084718985-186', 'candidate_id': 3, 'queue_entry': 295, 'admit_reason': 'salvage', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 93463, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [False], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 105}]
+duplicate candidates {} trials {}
+salvage8 3 trials 55 {'reject': 54, 'provisional': 1} prov {'admit': 1, 'expire': 1} {'state-novelty-only evidence': 1, 'no-executable-M2': 1} lineage_gain 0 statsgain 0 codegain 50
+ exec {'ordinary_ancestry/calibration': 5048, 'ordinary_ancestry/mutation': 17301, 'llm_ancestry/candidate': 55, 'llm_ancestry/shadow': 176}
+ prov [{'campaign_id': '1793084723995-204', 'candidate_id': 53, 'queue_entry': 570, 'admit_reason': 'state-novelty-only evidence', 'events': ['admit', 'expire'], 'close_reason': 'no-executable-M2', 'descendant_execs': 0, 'descendant_code_gain': 0, 'budget_left': 64, 'age_ms': 70214, 'overdue_ms': 0, 'candidate_trials': 1, 'trial_dispositions': ['provisional'], 'trial_g_code': [False], 'trial_u_pass': [True], 'ledger_counts': {'candidate': 1}, 'ledger_elapsed_ms': 201}]
+duplicate candidates {} trials {}
+{
+  "output": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/analysis-bftpd_20261027T150457/scripts/../data/coverage",
+  "wall_horizon_s": 5699.997,
+  "execution_horizon": 19859,
+  "terminal": {
+    "wrapdirect8": {
+      "n": 3,
+      "values": [
+        198,
+        198,
+        197
+      ],
+      "mean": 197.66666666666666,
+      "sample_sd": 0.5773502691896257,
+      "minimum": 197,
+      "maximum": 198
+    },
+    "wrapgate8": {
+      "n": 3,
+      "values": [
+        198,
+        198,
+        198
+      ],
+      "mean": 198,
+      "sample_sd": 0.0,
+      "minimum": 198,
+      "maximum": 198
+    },
+    "salvage8": {
+      "n": 3,
+      "values": [
+        198,
+        198,
+        198
+      ],
+      "mean": 198,
+      "sample_sd": 0.0,
+      "minimum": 198,
+      "maximum": 198
+    }
+  },
+  "missing_gcda": 5035,
+  "n_replayed": 5300
+}
+{"checked_archives": 9, "complete_statuses": 9, "replay_inputs": 5300, "missing_gcda": 5035, "provisional": 9, "warmup": 332}

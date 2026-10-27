@@ -1,8 +1,12 @@
-# LoopFuzz 消融实验指南（11 臂版）
+# LoopFuzz 消融实验指南（11 臂 + Q1 证据回收 3 族）
 
 本指南定义当前 `LoopFuzz` 消融矩阵的 **11 个臂**、运行方式与结果解读。
 旧版 wo_\*/full/fixed\* 消融组已废弃，本文档不再包含。
 
+> 代码核对状态（2026-10-27）：salvage/wrap 已入 C 代码
+> （`LoopFuzz/afl-fuzz.c`，`CHATAFL_SALVAGE`/`CHATAFL_PLAINTEXT_WRAP`，
+> 默认关闭）并注册为 run_ablation.sh 正式臂族（salvageN/wrapgateN/
+> wrapdirectN）；两变量已入臂隔离 unset 清单与 docker -e 白名单。
 > 代码核对状态（2026-10-24）：臂定义与 `run_ablation.sh`、
 > `LoopFuzz/afl-fuzz.c` 的真实环境变量逐一核对通过；
 > `gate` 别名与 `code_retain` 臂已实装（此前仅存在于文档）。
@@ -23,6 +27,10 @@ Level 2: gate_prov      门控 + provisional（状态新颖候选入临时队列
 Level 3: gate (D)       完整准入系统（门控+provisional+shadow）
          ↓ +Thompson 后验调度
 Level 4: calibrated (E) ★ 满效果 = 论文提出的完整系统
+
+Q1 侧支（与 E 正交，叠加在 D/C 之上）：
+Level D': salvageN      D + 证据回收（被拒候保留无错消息前缀入 provisional）
+                          + 纯文本回复包装（真实网关剂量）+ 固定阈值 N
 ```
 
 ### 臂表
@@ -40,6 +48,9 @@ Level 4: calibrated (E) ★ 满效果 = 论文提出的完整系统
 | **code_retain** | `ADMISSION_MODE=gate` `PROVISIONAL=1` `SHADOW=1` `CODE_RETAIN=1` | D + U 旁路：P∧R∧¬U 候选不被拒（#8） |
 | **cal_gamma099** | `CALIBRATION=1` `CAL_GAMMA=0.99` | E 的 γ 敏感性 |
 | **cal_gamma100** | `CALIBRATION=1` `CAL_GAMMA=1.0` | E 的 γ 敏感性 |
+| **salvageN** | `MODE=gate PROV=1 SHADOW=1 SALVAGE=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 处理组：D+证据回收+文本包装+固定阈值（N∈{8..512}） |
+| **wrapgateN** | `MODE=gate PROV=1 SHADOW=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 对照1：与 salvageN 单因子差 SALVAGE |
+| **wrapdirectN** | `MODE=direct NO_ADMISSION=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 对照2：可解析全收（C+WRAP+阈值对齐） |
 
 说明：
 - E 系臂（calibrated/cal_ewma/cal_run_rate/cal_gamma\*）继承 D 的完整准入
@@ -77,7 +88,14 @@ calibrated (E)
   vs cal_run_rate → Thompson 比 running average 好多少？
 ```
 
-**链 3：敏感性/特殊通道**
+**链 2.5：Q1 证据回收链（真实网关，固定阈值）
+
+wrapdirectN (C+wrap)
+  vs salvageN   → 全收 vs 证据回收分配：Q1"避免无效分配"
+  vs wrapgateN  → 全收 vs 纯拒绝：隔离"拒绝"动作本身
+salvageN vs wrapgateN       → 回收挽回了多少被拒价值？（⭐ Q1 核心单因子）
+
+链 3：敏感性/特殊通道**
 
 ```
 calibrated (E) vs cal_gamma099/100 → γ 遗忘率敏感性
@@ -97,6 +115,27 @@ gate (D)       vs code_retain      → 加 U 旁路，被拒的有价值候选�
 | gate 的 admission-events | 发现1：G_state 与 G_code 不可互换 |
 | gate vs gate_only + code_retain | 发现2：证据分离有价值 |
 | gate 的 execution-events | 发现3：验证/工作量/调度三方权衡 |
+| **salvageN vs wrapgateN** | **Q1：证据回收挽回多少被拒价值？（⭐ 真实网关核心）** |
+| salvageN vs wrapdirectN | Q1：证据分配 vs 全收（真实流 87-95% 垃圾时全收浪费最大） |
+| salvageN 的 provisional-events | Q1：`reason:"salvage"` 的 admit→convert 生命周期 |
+
+### Q1 证据回收组（2026-10-27 新增，真实网关验证用）
+
+| 臂名 | 环境变量 | 一句话 |
+|------|----------|--------|
+| **salvageN** | `gate + PROV=1 + SHADOW=1 + SALVAGE=1 + WRAP=1 + 固定阈值N` | 处理组：被拒候选保留无错消息前缀进 provisional；纯文本回复包装过 P 校验 |
+| **wrapgateN** | `gate + PROV=1 + SHADOW=1 + WRAP=1 + 固定阈值N` | 对照1：与 salvageN 单因子差 SALVAGE |
+| **wrapdirectN** | `direct + NO_ADMISSION=1 + WRAP=1 + 固定阈值N` | 对照2：可解析全收；与 salvageN 差整个准入策略 |
+
+- N∈{8,16,32,64,150,200,300,512}；固定阈值保证短窗真实网关的准入剂量
+  （自适应阈值下 60-run 战役实测零候选）。
+- WRAP 三臂同开（plateau 解析层共享，不开则真实网关纯文本回复死于 P 校验，
+  全臂零剂量）。
+- 验收物：`fuzzer_stats` 的 `plaintext_wraps / salvage_attempted /
+  salvage_succeeded`，provisional-events 中 `reason:"salvage"` 的 convert 事件。
+- 三臂对比：`-g wrapdirect8,wrapgate8,salvage8`；CHATAFL_SALVAGE /
+  CHATAFL_PLAINTEXT_WRAP 已入臂隔离 unset 清单，父 shell 导出不再穿透，
+  臂语义完全自含。
 
 ### 精简建议：6 臂最小集
 
@@ -145,6 +184,27 @@ ABLATION_SHUFFLE=1 ./run_ablation.sh 1 1540 lightftp custom \
   direct,native,gate_only,gate,calibrated,cal_ewma
 ```
 
+### Q1 证据回收组（真实网关，salvage8 三臂）
+
+```bash
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && \
+export KEY="sk-有效KEY" SKIPCOUNT=100 CHATAFL_MAX_TOKENS=4096 \
+       CHATAFL_LLM_TIMEOUT_MS=300000 LLM_MODEL=codex-auto-review
+
+# 单臂机制验证（看 plaintext_wraps / salvage_attempted / provisional convert）
+./run_ablation.sh bftpd 1 95 -g salvage8
+
+# 三臂对比（runs=3 即 3 种子）
+./run_ablation.sh bftpd 3 95 -g wrapdirect8,wrapgate8,salvage8
+```
+
+注意事项：
+- 前置：镜像需含 salvage 构建（`bftpd:base` 为原版备份，`bftpd:latest`
+  已替换；其它目标需同样 `docker cp` 二进制后 `docker commit`）；
+- KEY 失效时所有调用 api-error（llm-calls.jsonl 可查），三臂全空转；
+- 开跑 15 分钟自检：llm-calls 状态应含 `ok`、fuzzer_stats 的
+  `plaintext_wraps` 应 > 0。
+
 ### Mock 网关运行（机制验证/无真实网关时）
 
 ```bash
@@ -181,6 +241,8 @@ export CHATAFL_LLM_BASE=http://172.17.0.1:8099/v1/chat/completions
 | `CHATAFL_PROVISIONAL` | 0/1，两级暂存队列开关（code_retain 臂必须为 1） |
 | `CHATAFL_SHADOW` | 0/1，拒绝候选影子验证测量开关 |
 | `CHATAFL_CODE_RETAIN` | 0/1，P∧R∧¬U 保留通道（EC_CODE_RETAIN 否则降级为 reject） |
+| `CHATAFL_SALVAGE` | 0/1，证据回收：被拒候选(P∧executed∧REJECT)保留无错消息前缀进 provisional（Q1；默认关） |
+| `CHATAFL_PLAINTEXT_WRAP` | 0/1，纯文本 plateau 回复包装为 suggested_request 过 P 校验（真实网关剂量；默认关） |
 | `CHATAFL_CALIBRATION` | 0/1，在线状态效用调度总开关 |
 | `CHATAFL_STATE_SELECT` | `calibrated`(Thompson) / `ewma` / `run_rate` |
 | `CHATAFL_CAL_GAMMA` | 校准 γ（默认 0.995；敏感性臂用 0.99/1.0） |
@@ -210,6 +272,9 @@ docker logs <容器ID> 2>&1 | grep -E "ADMISSION FACTORS|ADMISSION MODE"
 # 期望: mode=direct|native|gate provisional=0|1 shadow=0|1
 docker exec <容器ID> grep -o '"admission_mode[^,]*' \
   <outdir>/run-config.jsonl   # 持久化的最终配置
+# salvage/wrap 臂追加核验：
+docker exec <容器ID> grep -oE '"(salvage_enabled|plaintext_wrap_enabled)": *[a-z]+' \
+  <outdir>/run-config.jsonl   # 期望两者均 true（salvageN 臂）
 ```
 
 ---

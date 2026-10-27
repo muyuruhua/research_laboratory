@@ -1,0 +1,135 @@
+{
+  "wrapdirect8": {
+    "n": 3,
+    "trials": 141,
+    "dispositions": {
+      "durable": 141
+    },
+    "provisional_kinds": {},
+    "provisional_reasons": {},
+    "execution_counts": {
+      "ordinary_ancestry/calibration": 15312,
+      "ordinary_ancestry/mutation": 44531,
+      "llm_ancestry/candidate": 141,
+      "llm_ancestry/mutation": 630,
+      "llm_ancestry/calibration": 64
+    },
+    "execution_elapsed_ms": {
+      "ordinary_ancestry/calibration": 3355331,
+      "ordinary_ancestry/mutation": 9451167,
+      "llm_ancestry/candidate": 28159,
+      "llm_ancestry/mutation": 184250,
+      "llm_ancestry/calibration": 22342
+    },
+    "lineage_gain_events": 1,
+    "provisional_descendant_execs": 0,
+    "provisional_descendant_code_gain": 0,
+    "shadow_validations": 0,
+    "shadow_positive_candidates": 0,
+    "shadow_hnb2_invocations": 0,
+    "code_gain_events": 149,
+    "salvage_attempts": 0,
+    "salvage_successful_admissions": 0
+  },
+  "wrapgate8": {
+    "n": 3,
+    "trials": 151,
+    "dispositions": {
+      "reject": 147,
+      "provisional": 4
+    },
+    "provisional_kinds": {
+      "admit": 4,
+      "expire": 4
+    },
+    "provisional_reasons": {
+      "state-novelty-only evidence": 4,
+      "no-executable-M2": 4
+    },
+    "execution_counts": {
+      "ordinary_ancestry/calibration": 14799,
+      "ordinary_ancestry/mutation": 47701,
+      "llm_ancestry/candidate": 151,
+      "llm_ancestry/shadow": 368
+    },
+    "execution_elapsed_ms": {
+      "ordinary_ancestry/calibration": 3348018,
+      "ordinary_ancestry/mutation": 10405210,
+      "llm_ancestry/candidate": 31339,
+      "llm_ancestry/shadow": 78906
+    },
+    "lineage_gain_events": 0,
+    "provisional_descendant_execs": 0,
+    "provisional_descendant_code_gain": 0,
+    "shadow_validations": 23,
+    "shadow_positive_candidates": 2,
+    "shadow_hnb2_invocations": 11,
+    "code_gain_events": 140,
+    "salvage_attempts": 0,
+    "salvage_successful_admissions": 0
+  },
+  "salvage8": {
+    "n": 3,
+    "trials": 152,
+    "dispositions": {
+      "reject": 147,
+      "provisional": 5
+    },
+    "provisional_kinds": {
+      "admit": 5,
+      "expire": 5
+    },
+    "provisional_reasons": {
+      "salvage": 4,
+      "no-executable-M2": 5,
+      "state-novelty-only evidence": 1
+    },
+    "execution_counts": {
+      "ordinary_ancestry/calibration": 15584,
+      "ordinary_ancestry/mutation": 49482,
+      "llm_ancestry/candidate": 152,
+      "llm_ancestry/shadow": 336
+    },
+    "execution_elapsed_ms": {
+      "ordinary_ancestry/calibration": 3285619,
+      "ordinary_ancestry/mutation": 9925681,
+      "llm_ancestry/candidate": 30155,
+      "llm_ancestry/shadow": 67028
+    },
+    "lineage_gain_events": 0,
+    "provisional_descendant_execs": 0,
+    "provisional_descendant_code_gain": 0,
+    "shadow_validations": 21,
+    "shadow_positive_candidates": 2,
+    "shadow_hnb2_invocations": 16,
+    "code_gain_events": 155,
+    "salvage_attempts": 151,
+    "salvage_successful_admissions": 4
+  },
+  "_semantics": {
+    "ancestry": "candidate_id 0 means no tracked LLM candidate ancestry; it can still include initially enriched seeds.",
+    "code_gain_events": "native hnb==2 new-edge SAVE EVENTS, not a count of unique source-code branches",
+    "shadow_hnb2_invocations": "In local source, shadow_new_edges counts shadow invocations with last_trial_hnb==2. The virgin bitmap is not updated, so the same unseen bitmap edge may count repeatedly. This is not unique edges, source branches, provisional conversion, or durable retention.",
+    "provisional": "all observed lifecycles terminate without validation execution because no-executable-M2; zero conversions is structural, not 64-call negative validation evidence."
+  },
+  "_validation": {
+    "campaign_id_collisions": {
+      "1793084713180-187": 1,
+      "1793084718721-187": 1,
+      "1793084723993-204": 1,
+      "1793084713011-187": 1,
+      "1793084718726-187": 1,
+      "1793084724060-204": 1,
+      "1793084712991-187": 1,
+      "1793084718985-186": 1,
+      "1793084723995-204": 1
+    },
+    "json_parse_errors": 0,
+    "candidate_duplicate_keys": 0,
+    "trial_duplicate_keys": 0,
+    "execution_duplicate_start_ids": 0,
+    "execution_duplicate_end_ids": 0,
+    "execution_unpaired_starts": 0,
+    "execution_unpaired_ends": 0
+  }
+}

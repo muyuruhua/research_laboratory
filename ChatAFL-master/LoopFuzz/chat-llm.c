@@ -5,6 +5,9 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <limits.h>
+#include <math.h>
 
 #include "chat-llm.h"
 #include "knowledge-level.h"
@@ -25,16 +28,18 @@ struct MemoryStruct
 
 static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, void *userp)
 {
-    size_t realsize = size * nmemb;
     struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-    if (mem->memory == NULL)
+    if (size && nmemb > SIZE_MAX / size) return 0;
+    size_t realsize = size * nmemb;
+    if (mem->size == SIZE_MAX || realsize > SIZE_MAX - mem->size - 1) return 0;
+    char *grown = realloc(mem->memory, mem->size + realsize + 1);
+    if (grown == NULL)
     {
         /* out of memory! */
         printf("not enough memory (realloc returned NULL)\n");
         return 0;
     }
+    mem->memory = grown;
 
     memcpy(&(mem->memory[mem->size]), contents, realsize);
     mem->size += realsize;
@@ -69,7 +74,7 @@ __thread unsigned long long llm_last_completion_tokens = 0;
  * provide.  Caps: CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP are
  * enforced centrally here (-1 / unset = unlimited), so a recorded cap
  * is a real cap, not a declaration. */
-char llm_last_served_model[128] = {0};
+__thread char llm_last_served_model[128] = {0};
 static char chat_llm_calls_path[4096] = {0};
 static char chat_llm_archive_dir[4096] = {0};  /* full req/resp sidecars */
 static unsigned long long llm_calls_seq = 0;
@@ -93,8 +98,18 @@ void chat_llm_set_calls_log(const char *path) {
         snprintf(chat_llm_calls_path, sizeof(chat_llm_calls_path), "%s", path);
 }
 
-unsigned long long chat_llm_cum_calls(void)  { return llm_cum_calls; }
-unsigned long long chat_llm_cum_tokens(void) { return llm_cum_tokens; }
+unsigned long long chat_llm_cum_calls(void) {
+    pthread_mutex_lock(&g_llm_calls_mutex);
+    unsigned long long value = llm_cum_calls;
+    pthread_mutex_unlock(&g_llm_calls_mutex);
+    return value;
+}
+unsigned long long chat_llm_cum_tokens(void) {
+    pthread_mutex_lock(&g_llm_calls_mutex);
+    unsigned long long value = llm_cum_tokens;
+    pthread_mutex_unlock(&g_llm_calls_mutex);
+    return value;
+}
 long chat_llm_cap_calls(void)   { return llm_cap_total_calls; }
 long chat_llm_cap_tokens(void)  { return llm_cap_total_tokens; }
 
@@ -134,17 +149,23 @@ static void chat_llm_log_call(const char *status, const char *model_req,
     FILE *f = fopen(chat_llm_calls_path, "a");
     if (f) {
         seq = ++llm_calls_seq;
-        fprintf(f,
-            "{\"seq\":%llu,\"time_ms\":%llu,\"status\":\"%s\","
-            "\"model_requested\":\"%s\",\"model_served\":\"%s\","
-            "\"latency_ms\":%ld,\"prompt_tokens\":%llu,"
-            "\"completion_tokens\":%llu,\"endpoint\":\"%s\","
-            "\"cum_calls\":%llu,\"cum_tokens\":%llu,\"archived\":%s}\n",
-            seq, chat_llm_now_ms(), status ? status : "unknown",
-            model_req ? model_req : "", llm_last_served_model[0] ? llm_last_served_model : "",
-            latency_ms, pt, ct, endpoint ? endpoint : "",
-            llm_cum_calls, llm_cum_tokens,
-            chat_llm_archive_dir[0] ? "true" : "false");
+        json_object *record = json_object_new_object();
+        if (record) {
+            json_object_object_add(record, "seq", json_object_new_int64(seq));
+            json_object_object_add(record, "time_ms", json_object_new_int64(chat_llm_now_ms()));
+            json_object_object_add(record, "status", json_object_new_string(status ? status : "unknown"));
+            json_object_object_add(record, "model_requested", json_object_new_string(model_req ? model_req : ""));
+            json_object_object_add(record, "model_served", json_object_new_string(llm_last_served_model));
+            json_object_object_add(record, "latency_ms", json_object_new_int64(latency_ms));
+            json_object_object_add(record, "prompt_tokens", json_object_new_int64(pt));
+            json_object_object_add(record, "completion_tokens", json_object_new_int64(ct));
+            json_object_object_add(record, "endpoint", json_object_new_string(endpoint ? endpoint : ""));
+            json_object_object_add(record, "cum_calls", json_object_new_int64(llm_cum_calls));
+            json_object_object_add(record, "cum_tokens", json_object_new_int64(llm_cum_tokens));
+            json_object_object_add(record, "archived", json_object_new_boolean(chat_llm_archive_dir[0] != 0));
+            fprintf(f, "%s\n", json_object_to_json_string_ext(record, JSON_C_TO_STRING_PLAIN));
+            json_object_put(record);
+        }
         fclose(f);
     }
     pthread_mutex_unlock(&g_llm_calls_mutex);
@@ -194,250 +215,238 @@ void chat_llm_apply_sampling_env(void) {
     }
 }
 
+/* Parse the entire document, including trailing bytes, before sending it. */
+static json_object *chat_llm_parse_json(const char *text)
+{
+    if (!text || strlen(text) >= INT_MAX) return NULL;
+    struct json_tokener *tok = json_tokener_new();
+    if (!tok) return NULL;
+    json_tokener_set_flags(tok, JSON_TOKENER_STRICT);
+    json_object *value = json_tokener_parse_ex(tok, text, (int)strlen(text) + 1);
+    if (json_tokener_get_error(tok) != json_tokener_success) {
+        if (value) json_object_put(value);
+        value = NULL;
+    }
+    json_tokener_free(tok);
+    return value;
+}
+
+static int chat_llm_retryable_transport(CURLcode result)
+{
+    switch (result) {
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_RESOLVE_PROXY:
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_OPERATION_TIMEDOUT:
+    case CURLE_SSL_CONNECT_ERROR:
+    case CURLE_SEND_ERROR:
+    case CURLE_RECV_ERROR:
+    case CURLE_GOT_NOTHING:
+    case CURLE_PARTIAL_FILE:
+    case CURLE_HTTP2:
+    case CURLE_HTTP2_STREAM:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* Reserve every attempt, including retries, under the enrichment-worker lock. */
+static int chat_llm_reserve_call(void)
+{
+    pthread_mutex_lock(&g_llm_calls_mutex);
+    int allowed = (llm_cap_total_calls < 0 || llm_cum_calls < (unsigned long long)llm_cap_total_calls) &&
+                  (llm_cap_total_tokens < 0 || llm_cum_tokens < (unsigned long long)llm_cap_total_tokens);
+    if (allowed) ++llm_cum_calls;
+    pthread_mutex_unlock(&g_llm_calls_mutex);
+    return allowed;
+}
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
-    CURL *curl;
-    CURLcode res = CURLE_OK;
-    char *answer = NULL;
-
-    /* v3.4 (expert P0-7): CHATAFL_NO_LLM=1 disables every LLM channel of
-     * this codebase (grammar templates, seed enrichment, plateau) with
-     * one switch — the same-codebase no-LLM control.  Intercepted here,
-     * at the single gateway entry, so all call sites inherit it through
-     * their existing NULL/error handling: no network, no retries, and
-     * llm_total_calls stays 0. */
-    {
-        static int no_llm_cached = -1;
-        if (no_llm_cached < 0) {
-            const char *nl = getenv("CHATAFL_NO_LLM");
-            no_llm_cached = (nl && *nl && strcmp(nl, "0") != 0) ? 1 : 0;
-        }
-        if (no_llm_cached) return NULL;
-    }
-
-    /* Reset per-call token counters so a failed call yields 0. */
+    /* Keep the public signature: the campaign model is resolved at init. */
+    (void)model;
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;
-    /* Endpoint: default gateway, overridable via CHATAFL_LLM_BASE for
-     * (a) auditable/reproducible LLM replay against a recorded mock, and
-     * (b) mechanism-level integration tests without live-gateway latency.
-     * The effective endpoint is persisted in run-config.jsonl. */
+    llm_last_served_model[0] = '\0';
+    g_llm_last_req[0] = g_llm_last_resp[0] = '\0';
+    const char *no_llm = getenv("CHATAFL_NO_LLM");
+    if (no_llm && *no_llm && strcmp(no_llm, "0") != 0) return NULL;
+    if (tries <= 0 || !isfinite(temperature)) return NULL;
+
     const char *env_base = getenv("CHATAFL_LLM_BASE");
     const char *url = (env_base && *env_base) ? env_base
                     : "https://www.cctq.ai/v1/chat/completions";
     const char *api_key = getenv("KEY");
-    if (!api_key || api_key[0] == '\0') {
-        static int key_warning_shown = 0;
-        if (!key_warning_shown) {
-            fprintf(stderr, "\n[LLM] ⚠ KEY environment variable is %s!\n"
-                            "[LLM]   All LLM features (grammar, enrichment, plateau) are DISABLED.\n"
-                            "[LLM]   Fix: export KEY=\"sk-...\" before launching.\n\n",
-                    !api_key ? "not set" : "empty");
-        key_warning_shown = 1;
-        }
+    if (!api_key || !*api_key) {
+        fprintf(stderr, "[LLM] KEY is not set or is empty; request skipped.\n");
         return NULL;
     }
-    /* v3: campaign-wide caps are enforced centrally, before any request
-     * is sent — a recorded cap is a real cap (P1-7). */
-    if ((llm_cap_total_calls >= 0 && (long long)llm_cum_calls >= (long long)llm_cap_total_calls) ||
-        (llm_cap_total_tokens >= 0 && (long long)llm_cum_tokens >= (long long)llm_cap_total_tokens)) {
-        chat_llm_log_call("cap-refused", llm_active_model(), 0, 0, 0, url);
+    if (strpbrk(api_key, "\r\n")) {
+        fprintf(stderr, "[LLM] KEY contains an invalid newline; request skipped.\n");
         return NULL;
     }
-    char auth_header[256];
-    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
-    char *content_header = "Content-Type: application/json";
-    char *accept_header = "Accept: application/json";
-    /* Model sent to the API.  The `model` argument is kept for call-site
-     * compatibility, but the actual model name is resolved here:
-     *   1. LLM_MODEL env var  — survives provider-side model retirement
-     *      without a recompile (root cause of the Aug-17 regression: the
-     *      hardcoded "codex-auto-review" was delisted by the provider and every
-     *      chat_with_llm() call returned an error, disabling grammar,
-     *      enrichment and plateau features for the whole campaign).
-     *   2. "gpt-5.4"/"codex-auto-review" passed as model  — mapped to the default.
-     * Default LLM_DEFAULT_MODEL must exist on the endpoint; verify with:
-     *   curl -sS -H "Authorization: Bearer $KEY" https://www.cctq.ai/v1/models
-     */
-    const char *llm_model = getenv("LLM_MODEL");
-    if (!llm_model || llm_model[0] == '\0')
-        llm_model = LLM_DEFAULT_MODEL;
-    /* top_p / max_tokens were resolved once in chat_llm_global_init() (the
-     * enrichment worker threads call this function concurrently, so env
-     * parsing must not happen per-call).  All calls in a campaign share
-     * identical sampling parameters (paper §九). */
-    char *data = NULL;
-    asprintf(&data, "{\"model\": \"%s\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f, \"top_p\": %f}",
-             llm_active_model(), prompt, llm_cfg_max_tokens, temperature, llm_cfg_top_p);
-    
-    // DEBUG: Print request data for hypothesis system debugging
-    if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
-        fprintf(stderr, "\n=== LLM REQUEST DEBUG ===\n");
-        fprintf(stderr, "URL: %s\n", url);
-        fprintf(stderr, "Data length: %zu bytes\n", strlen(data));
-        fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
-        fprintf(stderr, "========================\n\n");
+
+    json_object *messages = chat_llm_parse_json(prompt);
+    if (!messages || !json_object_is_type(messages, json_type_array) ||
+        json_object_array_length(messages) == 0) {
+        fprintf(stderr, "[LLM] Prompt must be a nonempty JSON messages array; request skipped.\n");
+        if (messages) json_object_put(messages);
+        return NULL;
     }
-    do
-    {
-        snprintf(g_llm_last_req, sizeof(g_llm_last_req), "%s", data ? data : "");
-        g_llm_last_resp[0] = 0;
-        struct MemoryStruct chunk;
+    json_object *request = json_object_new_object();
+    if (!request) {
+        json_object_put(messages);
+        return NULL;
+    }
+    const char *llm_model = llm_active_model();
+    json_object_object_add(request, "model", json_object_new_string(llm_model));
+    json_object_object_add(request, "messages", messages);
+    json_object_object_add(request, "max_tokens", json_object_new_int(llm_cfg_max_tokens));
+    json_object_object_add(request, "temperature", json_object_new_double(temperature));
+    json_object_object_add(request, "top_p", json_object_new_double(llm_cfg_top_p));
+    const char *data = json_object_to_json_string_ext(request, JSON_C_TO_STRING_PLAIN);
 
-        chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
-        chunk.size = 0;           /* no data at this point */
-
-        curl = curl_easy_init();
-        if (curl)
-        {
-            struct curl_slist *headers = NULL;
-            headers = curl_slist_append(headers, auth_header);
-            headers = curl_slist_append(headers, content_header);
-            headers = curl_slist_append(headers, accept_header);
-
-            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
-            curl_easy_setopt(curl, CURLOPT_URL, url);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-            
-            // Set timeouts to prevent hanging
-            /* Total request timeout: 120 s by default (paper §六 Table:
-             * "120 s request").  CHATAFL_LLM_TIMEOUT_MS overrides it for
-             * slow gateways WITHOUT changing the documented default —
-             * the override, when used, is recorded in the environment
-             * provenance rather than the paper config. */
-            {
-                long llm_timeout_s = 120L;
-                const char *lt = getenv("CHATAFL_LLM_TIMEOUT_MS");
-                if (lt && *lt) {
-                    long ms = atol(lt);
-                    if (ms >= 10000 && ms <= 900000) llm_timeout_s = ms / 1000;
-                }
-                curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);   // REQUIRED for multi-threaded: disable SIGALRM-based timeout
-                curl_easy_setopt(curl, CURLOPT_TIMEOUT, llm_timeout_s);
-            }
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);  // Abort if < 1 byte/sec
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);  // ... for 60 seconds
-
-            unsigned long long _t0 = chat_llm_now_ms();
-            res = curl_easy_perform(curl);
-            long _lat = (long)(chat_llm_now_ms() - _t0);
-            if (chunk.memory)
-                snprintf(g_llm_last_resp, sizeof(g_llm_last_resp), "%s", chunk.memory);
-
-            if (res == CURLE_OK)
-            {
-                json_object *jobj = json_tokener_parse(chunk.memory);
-
-                /* v3 (P0-2): record the model version the SERVICE says it
-                 * used — the requested name alone does not pin identity. */
-                {
-                    json_object *jm = NULL;
-                    if (json_object_object_get_ex(jobj, "model", &jm) && jm) {
-                        const char *sm = json_object_get_string(jm);
-                        if (sm && *sm)
-                            snprintf(llm_last_served_model, sizeof(llm_last_served_model), "%s", sm);
-                    }
-                }
-                llm_cum_calls++;
-
-                // Check if the "choices" key exists
-                if (json_object_object_get_ex(jobj, "choices", NULL))
-                {
-                    json_object *choices = json_object_object_get(jobj, "choices");
-                    json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    const char *data;
-
-                    // The answer begins with a newline character, so we remove it
-                    /* All calls now go through /v1/chat/completions; the
-                     * legacy /v1/completions "text" branch was removed
-                     * together with the hardcoded model names. */
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
-                        data = jobj5 ? json_object_get_string(jobj5) : NULL;
-                    }
-
-                    /* ---- Extract token usage FIRST (before any early-exit) ---- */
-                    /* Even if content extraction fails below, the API has
-                     * already billed for this request.  Record usage now. */
-                    json_object *jusage = NULL;
-                    if (json_object_object_get_ex(jobj, "usage", &jusage)) {
-                        json_object *jpt = NULL, *jct = NULL;
-                        if (json_object_object_get_ex(jusage, "prompt_tokens", &jpt))
-                            llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(jpt);
-                        if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
-                            llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
-                    }
-                    llm_cum_tokens += llm_last_prompt_tokens + llm_last_completion_tokens;
-
-                    if (data == NULL) {
-                        printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
-                        chat_llm_log_call("empty-content", llm_active_model(), _lat,
-                                          llm_last_prompt_tokens, llm_last_completion_tokens, url);
-                        json_object_put(jobj);
-                        sleep(2);
-                        continue;
-                    }
-                    if (data[0] == '\n')
-                        data++;
-                    answer = strdup(data);
-                    chat_llm_log_call("ok", llm_active_model(), _lat,
-                                      llm_last_prompt_tokens, llm_last_completion_tokens, url);
-                }
-                else
-                {
-                    printf("Error response is: %s\n", chunk.memory);
-                    chat_llm_log_call("api-error", llm_active_model(), _lat, 0, 0, url);
-                    /* Detect fatal provider-side errors and abort immediately
-                     * instead of burning all retries (each retry sleeps 2 s
-                     * and re-sends the full prompt — pure waste when the
-                     * model does not exist on the endpoint). */
-                    int fatal_err = chunk.memory && (
-                        /* bad API key */
-                        strstr(chunk.memory, "无效的令牌") ||
-                        strstr(chunk.memory, "invalid_api_key") ||
-                        strstr(chunk.memory, "Unauthorized") ||
-                        strstr(chunk.memory, "401") ||
-                        /* delisted/unknown model — this exact signature
-                         * ("model_not_found"/"无可用渠道") silently disabled
-                         * all LLM features during the Aug-17 regression */
-                        strstr(chunk.memory, "model_not_found") ||
-                        strstr(chunk.memory, "无可用渠道") ||
-                        strstr(chunk.memory, "does not exist") ||
-                        strstr(chunk.memory, "model_not_exists"));
-                    if (fatal_err) {
-                        fprintf(stderr, "[LLM] Fatal error from provider (key or model: \"%s\") — aborting retries. "
-                                        "Check KEY / LLM_MODEL env variables.\n", llm_model);
-                        free(chunk.memory);
-                        if (data) free(data);
-                        return NULL;
-                    }
-                    sleep(2); // Sleep for a small amount of time to ensure that the service can recover
-                }
-                json_object_put(jobj);
-            }
-            else
-            {
-                printf("Error: %s\n", curl_easy_strerror(res));
-                llm_cum_calls++;
-                chat_llm_log_call("transport-error", llm_active_model(), _lat, 0, 0, url);
-            }
-
+    char *auth_header = NULL;
+    if (asprintf(&auth_header, "Authorization: Bearer %s", api_key) < 0) {
+        json_object_put(request);
+        return NULL;
+    }
+    struct curl_slist *headers = NULL;
+    const char *header_values[] = {auth_header, "Content-Type: application/json", "Accept: application/json"};
+    for (size_t i = 0; i < sizeof(header_values) / sizeof(header_values[0]); ++i) {
+        struct curl_slist *next = curl_slist_append(headers, header_values[i]);
+        if (!next) {
             curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
+            free(auth_header);
+            json_object_put(request);
+            return NULL;
         }
-
-        free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
-
-    if (data != NULL)
-    {
-        free(data);
+        headers = next;
     }
+    free(auth_header);
 
+    if (strstr(prompt, "protocol") && strstr(prompt, "templates")) {
+        fprintf(stderr, "\n=== LLM REQUEST DEBUG ===\nURL: %s\nData length: %zu bytes\n"
+                        "First 500 chars of data:\n%.500s\n========================\n\n",
+                url, strlen(data), data);
+    }
+    char *answer = NULL;
+    for (int attempt = 0; attempt < tries; ++attempt) {
+        snprintf(g_llm_last_req, sizeof(g_llm_last_req), "%s", data);
+        g_llm_last_resp[0] = '\0';
+        llm_last_prompt_tokens = llm_last_completion_tokens = 0;
+        llm_last_served_model[0] = '\0';
+        struct MemoryStruct chunk = {calloc(1, 1), 0};
+        CURL *curl = curl_easy_init();
+        if (!chunk.memory || !curl) {
+            free(chunk.memory);
+            if (curl) curl_easy_cleanup(curl);
+            break;
+        }
+        char curl_error[CURL_ERROR_SIZE] = {0};
+        long timeout_ms = 120000L;
+        const char *lt = getenv("CHATAFL_LLM_TIMEOUT_MS");
+        if (lt && *lt) {
+            long ms = atol(lt);
+            if (ms >= 10000 && ms <= 900000) timeout_ms = ms;
+        }
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)strlen(data));
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk);
+        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_error);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+        if (!chat_llm_reserve_call()) {
+            curl_easy_cleanup(curl);
+            free(chunk.memory);
+            chat_llm_log_call("cap-refused", llm_model, 0, 0, 0, url);
+            break;
+        }
+        unsigned long long started = chat_llm_now_ms();
+        CURLcode res = curl_easy_perform(curl);
+        long latency = (long)(chat_llm_now_ms() - started);
+        long http_status = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+        snprintf(g_llm_last_resp, sizeof(g_llm_last_resp), "%s", chunk.memory);
+
+        const char *call_status = "transport-error";
+        int retry = 0;
+        if (res != CURLE_OK) {
+            fprintf(stderr, "[LLM] Transport error (curl=%d, HTTP=%ld): %s\n",
+                    res, http_status, *curl_error ? curl_error : curl_easy_strerror(res));
+            retry = chat_llm_retryable_transport(res);
+        } else {
+            json_object *response = chat_llm_parse_json(chunk.memory);
+            int is_object = json_object_is_type(response, json_type_object);
+            json_object *value = NULL, *usage = NULL;
+            if (is_object && json_object_object_get_ex(response, "model", &value) &&
+                json_object_is_type(value, json_type_string))
+                snprintf(llm_last_served_model, sizeof(llm_last_served_model), "%s", json_object_get_string(value));
+            if (is_object && json_object_object_get_ex(response, "usage", &usage) &&
+                json_object_is_type(usage, json_type_object)) {
+                if (json_object_object_get_ex(usage, "prompt_tokens", &value) &&
+                    json_object_is_type(value, json_type_int) && json_object_get_int64(value) >= 0)
+                    llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(value);
+                if (json_object_object_get_ex(usage, "completion_tokens", &value) &&
+                    json_object_is_type(value, json_type_int) && json_object_get_int64(value) >= 0)
+                    llm_last_completion_tokens = (unsigned long long)json_object_get_int64(value);
+            }
+            pthread_mutex_lock(&g_llm_calls_mutex);
+            llm_cum_tokens += llm_last_prompt_tokens + llm_last_completion_tokens;
+            pthread_mutex_unlock(&g_llm_calls_mutex);
+
+            json_object *api_error = NULL;
+            int has_error = is_object && json_object_object_get_ex(response, "error", &api_error) && api_error;
+            if (http_status < 200 || http_status >= 300 || has_error) {
+                call_status = "api-error";
+                fprintf(stderr, "[LLM] API error (HTTP=%ld): %s\n", http_status, chunk.memory);
+                retry = http_status == 408 || http_status == 429 || http_status == 500 ||
+                        http_status == 502 || http_status == 503 || http_status == 504;
+            } else if (!is_object) {
+                call_status = "invalid-response";
+                fprintf(stderr, "[LLM] Invalid JSON response (HTTP=%ld): %s\n", http_status, chunk.memory);
+            } else {
+                json_object *choices = NULL, *message = NULL, *content = NULL;
+                if (json_object_object_get_ex(response, "choices", &choices) &&
+                    json_object_is_type(choices, json_type_array) && json_object_array_length(choices) > 0) {
+                    json_object *first = json_object_array_get_idx(choices, 0);
+                    if (json_object_is_type(first, json_type_object) &&
+                        json_object_object_get_ex(first, "message", &message) &&
+                        json_object_is_type(message, json_type_object) &&
+                        json_object_object_get_ex(message, "content", &content) &&
+                        json_object_is_type(content, json_type_string)) {
+                        const char *text = json_object_get_string(content);
+                        if (*text == '\n') ++text;
+                        if (*text) answer = strdup(text);
+                    }
+                }
+                call_status = answer ? "ok" : "empty-content";
+                if (!answer)
+                    fprintf(stderr, "[LLM] Missing or invalid choices[0].message.content (HTTP=%ld): %s\n",
+                            http_status, chunk.memory);
+            }
+            if (response) json_object_put(response);
+        }
+        chat_llm_log_call(call_status, llm_model, latency,
+                          llm_last_prompt_tokens, llm_last_completion_tokens, url);
+        /* Every path releases the handle and buffer before retrying or returning. */
+        curl_easy_cleanup(curl);
+        free(chunk.memory);
+        if (answer || !retry || attempt + 1 == tries) break;
+        sleep(2);
+    }
+    curl_slist_free_all(headers);
+    json_object_put(request);
     return answer;
 }
 

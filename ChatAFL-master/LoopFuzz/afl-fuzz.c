@@ -961,6 +961,21 @@ static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
 static u8   code_retain_enabled = 0;  /* CHATAFL_CODE_RETAIN (expert P0-3 policy) */
+static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidates
+                                       * keep their error-free messages via the
+                                       * provisional tier instead of being
+                                       * dropped. Offline replay: rejected
+                                       * streams carry descendant value
+                                       * (45.2 vs 28.4 lines/64-exec, p=0.002). */
+static u64  salvage_attempted = 0;
+static u64  salvage_succeeded = 0;
+static u8   plaintext_wrap_enabled = 0;  /* CHATAFL_PLAINTEXT_WRAP: wrap
+                                       * plain-text plateau replies into the
+                                       * {"suggested_request": ...} form so
+                                       * they reach a real admission trial
+                                       * instead of dying at json schema
+                                       * validation (p_fail before execute). */
+static u64  plaintext_wraps = 0;
 /* Simple online baseline estimators (expert question 3): the E-family arm
  * keeps Score = Frontier·[ε+(1−ε)·θ̃] but replaces the Thompson posterior
  * sample with EWMA or the smoothed run rate, so the calibrated-vs-simple
@@ -3576,6 +3591,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "provisional_budget_scope", json_object_new_string(
       "unconverted candidate subtree; every run_target call incl. calibration/hang retry; first hnb=2 makes subtree durable"));
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
+  json_object_object_add(j, "salvage_enabled", json_object_new_boolean(salvage_enabled));
+  json_object_object_add(j, "plaintext_wrap_enabled", json_object_new_boolean(plaintext_wrap_enabled));
   json_object_object_add(j, "test_force_code_retain", json_object_new_boolean(test_force_code_retain));
   json_object_object_add(j, "no_llm", json_object_new_boolean(llm_disabled));
   {
@@ -12191,6 +12208,11 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "churn_fallback_used   : %llu\n"
              "code_retain_admitted  : %llu\n"
              "code_retain_converted : %llu\n"
+             "salvage_enabled       : %u\n"
+             "salvage_attempted     : %llu\n"
+             "salvage_succeeded     : %llu\n"
+             "plaintext_wrap_enabled: %u\n"
+             "plaintext_wraps       : %llu\n"
              "no_llm_mode           : %u\n"
              "ipsm_new_edge_events  : %llu\n"
              "ablation_no_admission : %u\n"
@@ -12247,6 +12269,11 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)churn_fallback_used,
           (unsigned long long)code_retain_admitted,
           (unsigned long long)code_retain_converted,
+          salvage_enabled,
+          (unsigned long long)salvage_attempted,
+          (unsigned long long)salvage_succeeded,
+          plaintext_wrap_enabled,
+          (unsigned long long)plaintext_wraps,
           (u32)llm_disabled,
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
@@ -14198,9 +14225,108 @@ static void provisional_evict_oldest_if_needed(void) {
  * v3.1 (expert P0-2 fix): the entry is tagged with scheduling priority
  * so it gets fuzzed BEFORE the TTL expires. The per-execution budget
  * hook in common_fuzz_stuff enforces the 64-descendant cap. */
-static u8 admission_provisional_queue_candidate(u32 target_sid,
-                                                u64 candidate_id,
-                                                const char *admit_reason) {
+static u32 salvage_clean_window_idx[64];
+
+/* Q1 salvage: per-message error classification over the candidate window
+ * [candidate_message_first, +candidate_message_count) using the SAME
+ * response-span evidence as the U predicate (candidate_response_ends[]).
+ * Strip-anywhere policy (offline-validated 24.8-72.5% recovery; the
+ * error-free PREFIX alone is usually <2 msgs under real gateways).
+ * Fills salvage_clean_window_idx, returns clean count. */
+static u32 salvage_collect_clean(void) {
+  if (!candidate_response || !candidate_response_ends) return 0;
+  if (!extract_response_codes) return 0;
+  if (candidate_message_first >= candidate_messages_sent) return 0;
+  u32 count = candidate_message_count;
+  if (candidate_message_first + count > candidate_messages_sent)
+    count = candidate_messages_sent - candidate_message_first;
+  if (count > 64) count = 64;
+  u32 prev = candidate_message_first
+      ? candidate_response_ends[candidate_message_first - 1]
+      : candidate_greeting_bytes;
+  u32 n_clean = 0;
+  for (u32 k = 0; k < count; k++) {
+    u32 end = candidate_response_ends[candidate_message_first + k];
+    u8 error = 1;                     /* no response captured = drop */
+    if (end > prev && end <= candidate_response_size) {
+      error = 0;
+      u32 n = 0;
+      u32 *states = extract_response_codes(candidate_response + prev,
+                                           end - prev, &n);
+      for (u32 j = 0; states && j < n; j++)
+        if (classify_state_error_hint(states[j], protocol_name) == 1) {
+          error = 1; break;
+        }
+      if (states) ck_free(states);
+      prev = end;
+    }
+    if (!error) salvage_clean_window_idx[n_clean++] = k;
+  }
+  return n_clean;
+}
+
+/* Indexed save: only kl_messages entries at absolute index
+ * candidate_message_first + salvage_clean_window_idx[i]. */
+static u32 salvage_save_messages(const u8 *fname, u32 n_idx, u8 replay_enabled) {
+  s32 fd = open((const char *)fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return 0;
+  u8 *mem = NULL;
+  u32 len = 0, idx = 0, written = 0;
+  kliter_t(lms) *it;
+  for (it = kl_begin(kl_messages);
+       it != kl_end(kl_messages) && written < n_idx;
+       it = kl_next(it), idx++) {
+    if (idx < candidate_message_first) continue;
+    u32 rel = idx - candidate_message_first;
+    u8 want = 0;
+    for (u32 j = 0; j < n_idx; j++)
+      if (salvage_clean_window_idx[j] == rel) { want = 1; break; }
+    if (!want) continue;
+    u32 msize = kl_val(it)->msize;
+    if (replay_enabled) {
+      mem = (u8 *)ck_realloc(mem, 4 + len + msize);
+      u32 *psize = (u32 *)&mem[len];
+      *psize = msize;
+      memcpy(&mem[len + 4], kl_val(it)->mdata, msize);
+      len = 4 + len + msize;
+    } else {
+      mem = (u8 *)ck_realloc(mem, len + msize);
+      memcpy(&mem[len], kl_val(it)->mdata, msize);
+      len += msize;
+    }
+    written++;
+  }
+  if (len) ck_write(fd, mem, len, (const char *)fname);
+  else unlink((char *)fname);
+  close(fd);
+  if (mem) ck_free(mem);
+  return len;
+}
+
+static u8 admission_provisional_queue_candidate_n(u32 target_sid,
+                                                  u64 candidate_id,
+                                                  const char *admit_reason,
+                                                  u32 skip_msgs,
+                                                  u32 n_msgs);
+
+/* Salvage entry point: queue the clean messages of a rejected candidate
+ * into the provisional tier. Returns 1 if queued. */
+static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
+  u32 keep = salvage_collect_clean();
+  salvage_attempted++;
+  if (keep < 2) return 0;
+  u8 ok = admission_provisional_queue_candidate_n(
+      target_sid, candidate_id, "salvage", 0, keep);
+  if (ok) salvage_succeeded++;
+  return ok;
+}
+
+static u8 admission_provisional_queue_candidate_n(u32 target_sid,
+                                                  u64 candidate_id,
+                                                  const char *admit_reason,
+                                                  u32 skip_msgs,
+                                                  u32 n_msgs) {
+  (void)skip_msgs;   /* window origin lives in candidate_message_first */
   if (!provisional_enabled || !out_dir || !kl_messages) return 0;
   if (state_aware_mode == 0) return 0;  /* two-tier queue needs state pools */
   provisional_evict_oldest_if_needed();
@@ -14211,7 +14337,11 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
   u8 *fn = alloc_printf("%s/queue/id_%06u_prov", out_dir, queued_paths);
 #endif
 
-  u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
+  u32 full_len;
+  if (admit_reason && strcmp(admit_reason, "salvage") == 0)
+    full_len = salvage_save_messages(fn, n_msgs, 0);
+  else
+    full_len = save_kl_messages_to_file(kl_messages, fn, 0, n_msgs);
   if (!full_len) {
     unlink((char *)fn);
     ck_free(fn);
@@ -14225,7 +14355,10 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
 
   u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
                                out_dir, basename(q->fname));
-  save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+  if (admit_reason && strcmp(admit_reason, "salvage") == 0)
+    salvage_save_messages(fn_replay, n_msgs, 1);
+  else
+    save_kl_messages_to_file(kl_messages, fn_replay, 1, n_msgs);
   ck_free(fn_replay);
 
   q->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
@@ -14250,6 +14383,13 @@ static u8 admission_provisional_queue_candidate(u32 target_sid,
   provisional_log_event("admit", q,
       admit_reason ? admit_reason : "state-novelty-only evidence");
   return 1;
+}
+
+static u8 admission_provisional_queue_candidate(u32 target_sid,
+                                                u64 candidate_id,
+                                                const char *admit_reason) {
+  return admission_provisional_queue_candidate_n(
+      target_sid, candidate_id, admit_reason, 0, messages_sent);
 }
 
 /* Lifecycle accounting for a provisional entry after one fuzz_one() cycle.
@@ -14371,6 +14511,7 @@ static u8 admission_run_llm_candidate(char **argv,
                                       const char *p_reason) {
   admission_snapshot_t before, after_common, after_final;
   u8 common_ret = 0, executed = 0, forced = 0, provisional = 0, durable = 0;
+  u8 salvage_ret = 0;
 
   /* Paper v2 default: admission is ALWAYS execute-before-promote.  Every
    * candidate runs one bounded trial on the live target; the gate
@@ -14466,8 +14607,17 @@ static u8 admission_run_llm_candidate(char **argv,
        * gain (same budget/TTL; crash ledger unchanged). */
       provisional = admission_provisional_queue_candidate(
           target_sid, (u64)llm_cur_candidate_id, "code-retain");
+    } else if (salvage_enabled && ev.p_pass && executed &&
+               ev.disposition == EC_REJECT) {
+      /* Q1 evidence salvage: keep the candidate's error-free messages
+       * (strip-anywhere, per-message response evidence) in the
+       * provisional tier instead of discarding the whole candidate. */
+      salvage_ret = admission_salvage_candidate(
+          target_sid, (u64)llm_cur_candidate_id);
+      if (salvage_ret) provisional = 1;
     }
-    /* EC_REJECT: no queue entry — execute-before-promote said no. */
+    /* EC_REJECT (salvage off): no queue entry — execute-before-promote
+     * said no. */
   }
 
   admission_take_snapshot(&after_final);
@@ -15994,6 +16144,21 @@ AFLNET_REGIONS_SELECTION:;
         {
           char *raw_stall_message = stall_message;
           jroot = validate_and_parse_llm_json(stall_message);
+          if (!jroot && plaintext_wrap_enabled && stall_message &&
+              *stall_message) {
+            /* Plain-text reply (typical under real gateways): wrap into
+             * the suggested_request form so the candidate reaches a real
+             * trial. Evidence still decides admission at trial time. */
+            char *formatted = format_request_message(stall_message);
+            if (formatted && *formatted) {
+              struct json_object *jwrap = json_object_new_object();
+              json_object_object_add(jwrap, "suggested_request",
+                                     json_object_new_string(formatted));
+              jroot = jwrap;
+              plaintext_wraps++;
+              free(formatted);
+            }
+          }
           if (!jroot) {
             if (event_log_enabled) {
               llm_cur_candidate_id = candidate_log_event(
@@ -20119,6 +20284,18 @@ static void evidence_env_parse(void) {
       code_retain_enabled = 1;
       OKF("P0-3 code-retain policy ENABLED: U-fail-but-code-bearing "
           "candidates are retained via the provisional tier");
+    }
+    const char *sv = getenv("CHATAFL_SALVAGE");
+    if (sv && *sv && strcmp(sv, "0") != 0) {
+      salvage_enabled = 1;
+      OKF("Q1 evidence-salvage ENABLED: rejected candidates keep their "
+          "error-free messages via the provisional tier");
+    }
+    const char *pw = getenv("CHATAFL_PLAINTEXT_WRAP");
+    if (pw && *pw && strcmp(pw, "0") != 0) {
+      plaintext_wrap_enabled = 1;
+      OKF("Q1 plaintext-wrap ENABLED: plain-text plateau replies are "
+          "wrapped as suggested_request and admitted to a real trial");
     }
     const char *fr = getenv("CHATAFL_TEST_FORCE_CODE_RETAIN");
     if (fr && *fr && strcmp(fr, "0") != 0) {

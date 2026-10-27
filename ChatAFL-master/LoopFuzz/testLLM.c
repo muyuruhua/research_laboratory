@@ -1,191 +1,228 @@
-#define _GNU_SOURCE // asprintf
-#include <stdio.h>
 #include <curl/curl.h>
-#include <string.h>
-#include <ctype.h>
-#include <dirent.h>
-#include <unistd.h>
 #include <json-c/json.h>
-
-//#include "chat-llm.h"
-#include "alloc-inl.h"
-#include "hash.h"
-
-// -lcurl -ljson-c -lpcre2-8
-// apt install libcurl4-openssl-dev libjson-c-dev libpcre2-dev libpcre2-8-0
-
-#define MAX_TOKENS 2048
-#define CONFIDENT_TIMES 3
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 /*
-大模型调用示例
-导入大模型key：export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI"
-执行命令：gcc -I/opt/homebrew/include -L/opt/homebrew/lib -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
-执行命令：gcc -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
-*/
+ * export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI"
+ * Optional: LLM_MODEL and CHATAFL_LLM_BASE (the complete chat endpoint URL).
+ * gcc -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
+ */
+#define MAX_TOKENS 2048
+#define DEFAULT_MODEL "codex-auto-review"
+#define DEFAULT_URL "https://www.cctq.ai/v1/chat/completions"
 
-struct MemoryStruct
-{
+struct MemoryStruct {
     char *memory;
     size_t size;
 };
 
-static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, void *userp)
+static size_t receive_response(void *contents, size_t size, size_t nmemb,
+                               void *userp)
 {
-    size_t realsize = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-    if (mem->memory == NULL)
-    {
-        /* out of memory! */
-        printf("not enough memory (realloc returned NULL)\n");
+    struct MemoryStruct *mem = userp;
+    if (size && nmemb > SIZE_MAX / size)
         return 0;
-    }
-
-    memcpy(&(mem->memory[mem->size]), contents, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
-
-    return realsize;
+    size_t length = size * nmemb;
+    if (mem->size == SIZE_MAX || length > SIZE_MAX - mem->size - 1)
+        return 0;
+    char *grown = realloc(mem->memory, mem->size + length + 1);
+    if (!grown)
+        return 0;
+    mem->memory = grown;
+    memcpy(mem->memory + mem->size, contents, length);
+    mem->size += length;
+    mem->memory[mem->size] = '\0';
+    return length;
 }
 
-char *chat_with_llm(const char *prompt, const char *model, int tries, float temperature)
+static int retryable_transport(CURLcode result)
 {
-    CURL *curl;
-    CURLcode res = CURLE_OK;
-    char *answer = NULL;
-    char *url = NULL;
-    printf("[DEBUG] model: %s\n", model);
-    printf("[DEBUG] prompt: %s\n", prompt);
-    if (strcmp(model, "gpt-5.4") == 0)
-    {
-        url = "https://code.b886.top/v1/completions";
+    switch (result) {
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_RESOLVE_PROXY:
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_OPERATION_TIMEDOUT:
+    case CURLE_SSL_CONNECT_ERROR:
+    case CURLE_SEND_ERROR:
+    case CURLE_RECV_ERROR:
+    case CURLE_GOT_NOTHING:
+    case CURLE_PARTIAL_FILE:
+    case CURLE_HTTP2:
+    case CURLE_HTTP2_STREAM:
+        return 1;
+    default:
+        return 0;
     }
-    else
-    {
-        url = "https://code.b886.top/v1/chat/completions";
+}
+
+static long request_timeout_ms(void)
+{
+    const char *setting = getenv("CHATAFL_LLM_TIMEOUT_MS");
+    if (setting && *setting) {
+        char *end;
+        long value = strtol(setting, &end, 10);
+        if (!*end && value > 0 && value <= 900000)
+            return value;
     }
-    const char *api_key = getenv("KEY");
-    if (!api_key) {
-        fprintf(stderr, "KEY not set\n");
+    return 120000L;
+}
+
+char *chat_with_llm(const char *prompt, const char *model, int tries,
+                    float temperature)
+{
+    const char *key = getenv("KEY");
+    if (!key || !*key) {
+        fprintf(stderr, "KEY is not set or is empty.\n");
         return NULL;
     }
-    char auth_header[256];
-    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
-    char *content_header = "Content-Type: application/json";
-    char *accept_header = "Accept: application/json";
-    char *data = NULL;
-    if (strcmp(model, "gpt-5.4") == 0)
-    {
-        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+    if (strpbrk(key, "\r\n")) {
+        fprintf(stderr, "KEY contains an invalid newline.\n");
+        return NULL;
     }
-    else
-    {
-        asprintf(&data, "{\"model\": \"codex-auto-review\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+    const char *url = getenv("CHATAFL_LLM_BASE");
+    if (!url || !*url)
+        url = DEFAULT_URL;
+
+    json_object *messages = json_tokener_parse(prompt);
+    if (!messages || !json_object_is_type(messages, json_type_array) ||
+        !json_object_array_length(messages)) {
+        fprintf(stderr, "Prompt must be a nonempty JSON messages array.\n");
+        if (messages)
+            json_object_put(messages);
+        return NULL;
     }
-    printf("[DEBUG] url: %s\n", url);
-    printf("[DEBUG] data: %s\n", data);
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    do
-    {
-        struct MemoryStruct chunk;
+    json_object *request = json_object_new_object();
+    if (!request) {
+        json_object_put(messages);
+        return NULL;
+    }
+    /* Serialize objects with json-c: messages is an array, not a quoted string. */
+    json_object_object_add(request, "model", json_object_new_string(model));
+    json_object_object_add(request, "messages", messages);
+    json_object_object_add(request, "max_tokens", json_object_new_int(MAX_TOKENS));
+    json_object_object_add(request, "temperature", json_object_new_double(temperature));
+    const char *body = json_object_to_json_string_ext(request, JSON_C_TO_STRING_PLAIN);
 
-        chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
-        chunk.size = 0;           /* no data at this point */
-
-        curl = curl_easy_init();
-        if (curl)
-        {
-            struct curl_slist *headers = NULL;
-            headers = curl_slist_append(headers, auth_header);
-            headers = curl_slist_append(headers, content_header);
-            headers = curl_slist_append(headers, accept_header);
-
-            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
-            curl_easy_setopt(curl, CURLOPT_URL, url);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-
-
-            res = curl_easy_perform(curl);
-            printf("[DEBUG] curl_easy_perform result: %d (%s)\n", res, curl_easy_strerror(res));
-
-            if (chunk.memory && chunk.size > 0) {
-                printf("[DEBUG] API raw response: %s\n", chunk.memory);
-            } else {
-                printf("[DEBUG] No response received from API.\n");
-            }
-            if (res == CURLE_OK)
-            {
-                json_object *jobj = json_tokener_parse(chunk.memory);
-                if (!jobj) {
-                    printf("[DEBUG] Failed to parse JSON response.\n");
-                }
-                // Check if the "choices" key exists
-                if (jobj && json_object_object_get_ex(jobj, "choices", NULL))
-                {
-                    json_object *choices = json_object_object_get(jobj, "choices");
-                    json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    const char *data;
-
-                    // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "instruct") == 0)
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "text");
-                        data = json_object_get_string(jobj4);
-                    }
-                    else
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = json_object_object_get(jobj4, "content");
-                        data = json_object_get_string(jobj5);
-                    }
-                    if (data && data[0] == '\n')
-                        data++;
-                    answer = strdup(data);
-                    printf("[DEBUG] Parsed answer: %s\n", answer);
-                }
-                else
-                {
-                    printf("[DEBUG] Error response is: %s\n", chunk.memory);
-                    sleep(2); // Sleep for a small amount of time to ensure that the service can recover
-                }
-                if (jobj) json_object_put(jobj);
-            }
-            else
-            {
-                printf("[DEBUG] Error: %s\n", curl_easy_strerror(res));
-            }
-            fflush(stdout);
-
+    const char prefix[] = "Authorization: Bearer ";
+    size_t auth_size = sizeof(prefix) + strlen(key);
+    char *authorization = malloc(auth_size);
+    if (!authorization) {
+        json_object_put(request);
+        return NULL;
+    }
+    snprintf(authorization, auth_size, "%s%s", prefix, key);
+    struct curl_slist *headers = NULL;
+    const char *header_values[] = {authorization, "Content-Type: application/json",
+                                   "Accept: application/json"};
+    for (size_t i = 0; i < sizeof(header_values) / sizeof(header_values[0]); ++i) {
+        struct curl_slist *next = curl_slist_append(headers, header_values[i]);
+        if (!next) {
             curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
+            free(authorization);
+            json_object_put(request);
+            return NULL;
         }
-
-        free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
-
-    if (data != NULL)
-    {
-        free(data);
+        headers = next;
     }
+    free(authorization);
 
-    curl_global_cleanup();
+    char *answer = NULL;
+    printf("[DEBUG] model: %s\n[DEBUG] url: %s\n[DEBUG] data: %s\n",
+           model, url, body);
+    fflush(stdout);
+    for (int attempt = 1; attempt <= tries; ++attempt) {
+        struct MemoryStruct chunk = {calloc(1, 1), 0};
+        CURL *curl = curl_easy_init();
+        if (!chunk.memory || !curl) {
+            free(chunk.memory);
+            if (curl)
+                curl_easy_cleanup(curl);
+            break;
+        }
+        char error[CURL_ERROR_SIZE] = {0};
+        long status = 0;
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_response);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk);
+        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 15000L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, request_timeout_ms());
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        /* Keep both certificate and hostname verification enabled. */
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+        CURLcode result = curl_easy_perform(curl);
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        fprintf(stderr, "[DEBUG] attempt %d/%d: curl=%d (%s), HTTP=%ld\n",
+                attempt, tries, result, curl_easy_strerror(result), status);
+        int retry = 0;
+        if (result != CURLE_OK) {
+            fprintf(stderr, "Transport error: %s\n", *error ? error : curl_easy_strerror(result));
+            retry = retryable_transport(result);
+        } else if (status < 200 || status >= 300) {
+            fprintf(stderr, "API error (HTTP %ld): %s\n", status, chunk.memory);
+            retry = status == 408 || status == 429 || status == 500 ||
+                    status == 502 || status == 503 || status == 504;
+        } else {
+            json_object *response = json_tokener_parse(chunk.memory);
+            json_object *choices = NULL, *message = NULL, *content = NULL;
+            if (response && json_object_object_get_ex(response, "choices", &choices) &&
+                json_object_is_type(choices, json_type_array) &&
+                json_object_array_length(choices) > 0) {
+                json_object *first = json_object_array_get_idx(choices, 0);
+                if (json_object_object_get_ex(first, "message", &message) &&
+                    json_object_object_get_ex(message, "content", &content) &&
+                    json_object_is_type(content, json_type_string)) {
+                    const char *text = json_object_get_string(content);
+                    if (*text == '\n')
+                        ++text;
+                    if (*text)
+                        answer = strdup(text);
+                }
+            }
+            if (!answer)
+                fprintf(stderr, "Invalid chat response (expected choices[0].message.content): %s\n",
+                        chunk.memory);
+            if (response)
+                json_object_put(response);
+        }
+        curl_easy_cleanup(curl);
+        free(chunk.memory);
+        if (answer || !retry || attempt == tries)
+            break;
+        fprintf(stderr, "Retrying in %d second(s).\n", attempt);
+        sleep((unsigned int)attempt);
+    }
+    curl_slist_free_all(headers);
+    json_object_put(request);
     return answer;
 }
 
-
-int main() {
-    char* messages = "[{\"role\": \"user\", \"content\": \"You are an expert in networking protocols. For the RTSP protocol, the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where SET_PARAMETER and TEARDOWN should be placed in this sequence.\"}]";
-    char* model ="codex-auto-review";
-    printf("Sending request to LLM API...\n");
-    char* response = chat_with_llm(messages, model, 3, 0.7);
-    if (response) {
-        printf("\n=== LLM Response ===\n");
-        printf("%s\n", response);
-        free(response);
+int main(void)
+{
+    const char *messages = "[{\"role\":\"user\",\"content\":\"You are an expert in networking protocols. For the RTSP protocol, the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where SET_PARAMETER and TEARDOWN should be placed in this sequence.\"}]";
+    const char *model = getenv("LLM_MODEL");
+    if (!model || !*model)
+        model = DEFAULT_MODEL;
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+        fprintf(stderr, "Failed to initialize libcurl.\n");
+        return EXIT_FAILURE;
     }
-    return 0;
+    printf("Sending request to LLM API...\n");
+    char *response = chat_with_llm(messages, model, 3, 0.7f);
+    if (response)
+        printf("\n=== LLM Response ===\n%s\n", response);
+    else
+        fprintf(stderr, "LLM request failed.\n");
+    int result = response ? EXIT_SUCCESS : EXIT_FAILURE;
+    free(response);
+    curl_global_cleanup();
+    return result;
 }

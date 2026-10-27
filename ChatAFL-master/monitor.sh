@@ -26,6 +26,7 @@
 #   7. Ablation/Arm:     direct | gated_fixed | calibrated | cal_gamma099/100
 #                        | wo_* 消融组 — fuzzer_stats 的 arm 字段为运行时真值,
 #                        /proc/1/environ 仅作回退 (与 run_ablation.sh 组名等价)
+#                        | salvageN / wrapgateN / wrapdirectN (Q1 固定阈值族)
 #   8. 宿主机磁盘:       根分区 used/total/avail + 使用率, 超 DISK_WARN_PCT
 #                        (默认85%) 变黄、超 DISK_CRIT_PCT (默认92%) 变红加 ⚠
 #
@@ -35,6 +36,11 @@
 #   GPU) 只需两步, 不改动渲染主流程:
 #     1. 按约定实现 host_section_<name>() — 自采集自格式化, 输出若干完整行
 #     2. 在 HOST_SECTIONS 数组末尾追加该函数名
+#
+# 开闭原则 (实验臂解析器注册表):
+#   scripts/monitor_arms.sh 中新增解析器并注册到 MONITOR_ABLATION_RESOLVERS，
+#   需要的新环境字段追加到 MONITOR_ABLATION_ENV_KEYS；原解析器保留兜底，
+#   主表、分组汇总、CSV、机制面板共享解析结果，无需逐个修改显示分支。
 #
 # LLM 统计说明（2026-03 起）:
 #   monitor.sh 优先且仅使用 fuzzer_stats 内的 llm_* 字段，
@@ -673,9 +679,9 @@ collect_one() {
     cal_flag=$(echo "$stats_blob"     | grep -m1 -E '^calibration[[:space:]]*:' | sed 's/.*: *//' | tr -d '[:space:]')
     cal_gamma_fs=$(echo "$stats_blob" | grep -m1 -E '^cal_gamma[[:space:]]*:'   | sed 's/.*: *//' | tr -d '[:space:]')
 
-    # 单次 docker exec 读取 PID1 启动环境中的 CHATAFL_* 消融开关 (9 字段)
-    local env_flags
-    env_flags=$(docker exec "$cid" bash -c '
+    # Keep the legacy 14 fields on the first line; extensions use named keys.
+    local env_flags env_snapshot env_extensions=""
+    env_snapshot=$(docker exec "$cid" bash -c '
         env_vars=$(cat /proc/1/environ 2>/dev/null | tr "\0" "\n" | grep "^CHATAFL_")
         if [[ -z "$env_vars" ]]; then
             echo "NONE"
@@ -703,11 +709,21 @@ collect_one() {
             esac
         done <<< "$env_vars"
         echo "$no_hyp $no_refine $no_frontier $no_adaptive $no_sp $no_admission $cal $cal_gamma $threshold $adm_mode $prov $shadow $state_sel $retain"
-    ' 2>/dev/null || echo "NONE")
+        while IFS="=" read -r k v; do
+            for extension_key in $1; do
+                if [[ "$k" == "$extension_key" ]]; then
+                    printf "%s=%s\n" "$k" "$v"
+                    break
+                fi
+            done
+        done <<< "$env_vars"
+    ' monitor-env "${MONITOR_ABLATION_ENV_KEYS[*]}" 2>/dev/null || echo "NONE")
+    env_flags="${env_snapshot%%$'\n'*}"
+    if [[ "$env_snapshot" == *$'\n'* ]]; then env_extensions="${env_snapshot#*$'\n'}"; fi
     env_flags="${env_flags:-NONE}"
 
     local ablation_label
-    ablation_label=$(resolve_ablation_label "$arm_name" "$cal_flag" "$cal_gamma_fs" "$env_flags")
+    ablation_label=$(monitor_resolve_ablation_label "$arm_name" "$cal_flag" "$cal_gamma_fs" "$env_flags" "$stats_blob" "$env_extensions")
     ablation_label=${ablation_label:-"?"}
 
     # IPSM 节点/边
@@ -1067,7 +1083,7 @@ main() {
 
         # v3.5 机制面板（开闭扩展：仅新增钩子行，不改既有采集/打印逻辑）
         if [[ $MECH -eq 1 ]]; then
-            mech_section "$container_list" || true
+            mech_section "$container_list" "${results[@]}" || true
         fi
 
         # CSV 输出
@@ -1149,9 +1165,17 @@ mech_print_table() {
 }
 
 mech_section() {
-    local rows=() row cid
-    for cid in $1; do
+    local rows=() row cid container_list="$1"
+    shift
+    local -A arm_labels=()
+    for row in "$@"; do arm_labels["${row%%|*}"]="${row##*|}"; done
+    for cid in $container_list; do
         if row=$(mech_collect_one "$cid" 2>/dev/null); then
+            # Reuse the identity collected for the main table and CSV.
+            if [[ -n "${arm_labels[$cid]:-}" ]]; then
+                local rest="${row#*|}"
+                row="${row%%|*}|${arm_labels[$cid]}|${rest#*|}"
+            fi
             [[ -n "$row" ]] && rows+=("$row")
         fi
     done
@@ -1163,6 +1187,10 @@ mech_section() {
     return 0
 }
 
-trap 'echo -e "\n${YELLOW}Monitor stopped.${RST}"; exit 0' INT TERM
+# Arm extensions are registered separately; the original resolver is the fallback.
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/scripts/monitor_arms.sh"
 
-main
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    trap 'echo -e "\n${YELLOW}Monitor stopped.${RST}"; exit 0' INT TERM
+    main
+fi

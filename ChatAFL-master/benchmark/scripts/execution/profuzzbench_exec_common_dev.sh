@@ -855,6 +855,9 @@ for i in $(seq 1 $RUNS); do
   # Phase-2 factorial admission switches (expert #4/#5): native-retention
   # control arm and gate/provisional/shadow factor isolation.  Absence keeps
   # the fuzzer defaults (gate + provisional + shadow = arm D).
+  [[ -n "${CHATAFL_SALVAGE:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_SALVAGE=${CHATAFL_SALVAGE}"
+  [[ -n "${CHATAFL_PLAINTEXT_WRAP:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_PLAINTEXT_WRAP=${CHATAFL_PLAINTEXT_WRAP}"
+  [[ -n "${CHATAFL_ABLATION_THRESHOLD:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
   [[ -n "${CHATAFL_ADMISSION_MODE:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_ADMISSION_MODE=${CHATAFL_ADMISSION_MODE}"
   [[ -n "${CHATAFL_PROVISIONAL:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL=${CHATAFL_PROVISIONAL}"
   [[ -n "${CHATAFL_SHADOW:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_SHADOW=${CHATAFL_SHADOW}"

@@ -1,0 +1,212 @@
+[
+  {
+    "arm": "wrapdirect8",
+    "runs": 3,
+    "ends": {
+      "sum": 60678,
+      "mean": 20226,
+      "min": 19860,
+      "max": 20896
+    },
+    "candidates": {
+      "sum": 141,
+      "mean": 47,
+      "min": 42,
+      "max": 52
+    },
+    "lineage_gain_events": {
+      "sum": 1,
+      "mean": 0.3333333333333333,
+      "min": 0,
+      "max": 1
+    },
+    "llm_mutation_executions_zero_gain_lineages": {
+      "sum": 630,
+      "mean": 210,
+      "min": 0,
+      "max": 339
+    },
+    "pre_first_invocation_ms": {
+      "sum": 1522131,
+      "mean": 507377,
+      "min": 474068,
+      "max": 525466
+    },
+    "target_invocation_duration_ms": {
+      "sum": 13041249,
+      "mean": 4347083,
+      "min": 4208021,
+      "max": 4515183
+    },
+    "duration_ms": {
+      "sum": 17100085,
+      "mean": 5700028.333333333,
+      "min": 5699998,
+      "max": 5700089
+    },
+    "executions_by_ancestry_kind": {
+      "no_tracked_candidate_ancestry/calibration": 15312,
+      "no_tracked_candidate_ancestry/mutation": 44531,
+      "llm_lineage/candidate": 141,
+      "llm_lineage/mutation": 630,
+      "llm_lineage/calibration": 64
+    },
+    "trial_disposition": {
+      "durable": 141
+    },
+    "decision_intended_disposition": {
+      "reject": 141
+    },
+    "provisional_kinds": {},
+    "llm_statuses": {
+      "ok": 649,
+      "transport-error": 24
+    },
+    "llm_rows": 673,
+    "llm_tokens": 723136,
+    "llm_latency_ms": 5163673
+  },
+  {
+    "arm": "wrapgate8",
+    "runs": 3,
+    "ends": {
+      "sum": 63019,
+      "mean": 21006.333333333332,
+      "min": 19899,
+      "max": 22734
+    },
+    "candidates": {
+      "sum": 151,
+      "mean": 50.333333333333336,
+      "min": 48,
+      "max": 53
+    },
+    "lineage_gain_events": {
+      "sum": 0,
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    },
+    "llm_mutation_executions_zero_gain_lineages": {
+      "sum": 0,
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    },
+    "pre_first_invocation_ms": {
+      "sum": 1523793,
+      "mean": 507931,
+      "min": 454176,
+      "max": 570388
+    },
+    "target_invocation_duration_ms": {
+      "sum": 13863473,
+      "mean": 4621157.666666667,
+      "min": 4497986,
+      "max": 4683371
+    },
+    "duration_ms": {
+      "sum": 17099994,
+      "mean": 5699998,
+      "min": 5699997,
+      "max": 5699999
+    },
+    "executions_by_ancestry_kind": {
+      "no_tracked_candidate_ancestry/calibration": 14799,
+      "no_tracked_candidate_ancestry/mutation": 47701,
+      "llm_lineage/candidate": 151,
+      "llm_lineage/shadow": 368
+    },
+    "trial_disposition": {
+      "reject": 147,
+      "provisional": 4
+    },
+    "decision_intended_disposition": {
+      "reject": 147,
+      "provisional": 4
+    },
+    "provisional_kinds": {
+      "admit": 4,
+      "expire": 4
+    },
+    "llm_statuses": {
+      "ok": 655,
+      "transport-error": 21
+    },
+    "llm_rows": 676,
+    "llm_tokens": 710842,
+    "llm_latency_ms": 4948518
+  },
+  {
+    "arm": "salvage8",
+    "runs": 3,
+    "ends": {
+      "sum": 65554,
+      "mean": 21851.333333333332,
+      "min": 20569,
+      "max": 22580
+    },
+    "candidates": {
+      "sum": 152,
+      "mean": 50.666666666666664,
+      "min": 43,
+      "max": 55
+    },
+    "lineage_gain_events": {
+      "sum": 0,
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    },
+    "llm_mutation_executions_zero_gain_lineages": {
+      "sum": 0,
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    },
+    "pre_first_invocation_ms": {
+      "sum": 1547808,
+      "mean": 515936,
+      "min": 490332,
+      "max": 544465
+    },
+    "target_invocation_duration_ms": {
+      "sum": 13308483,
+      "mean": 4436161,
+      "min": 4354991,
+      "max": 4540141
+    },
+    "duration_ms": {
+      "sum": 17100114,
+      "mean": 5700038,
+      "min": 5699999,
+      "max": 5700093
+    },
+    "executions_by_ancestry_kind": {
+      "no_tracked_candidate_ancestry/calibration": 15584,
+      "no_tracked_candidate_ancestry/mutation": 49482,
+      "llm_lineage/candidate": 152,
+      "llm_lineage/shadow": 336
+    },
+    "trial_disposition": {
+      "reject": 147,
+      "provisional": 5
+    },
+    "decision_intended_disposition": {
+      "reject": 151,
+      "provisional": 1
+    },
+    "provisional_kinds": {
+      "admit": 5,
+      "expire": 5
+    },
+    "llm_statuses": {
+      "ok": 656,
+      "transport-error": 19,
+      "api-error": 2
+    },
+    "llm_rows": 677,
+    "llm_tokens": 732207,
+    "llm_latency_ms": 5128516
+  }
+]
