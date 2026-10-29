@@ -102,7 +102,7 @@ def _extract_seeds(prompt):
         seeds.append(m.group(1).strip())
     return seeds[:20]  # cap at 20
 
-def _mutate_seed(seed_line, rnd, proto):
+def _mutate_seed(seed_line, r, proto):
     """Generate a mutation of an actual seed line."""
     parts = seed_line.split()
     if not parts:
@@ -112,37 +112,37 @@ def _mutate_seed(seed_line, rnd, proto):
     mutations = []
     # Argument mutation
     if args:
-        idx = rnd.randrange(len(args))
+        idx = r.randrange(len(args))
         val = args[idx]
         # numeric mutation
         if val.isdigit():
-            new_val = str(int(val) + rnd.choice([-1, 1, rnd.randint(-100, 100), 0, 999999]))
+            new_val = str(int(val) + r.choice([-1, 1, r.randint(-100, 100), 0, 999999]))
             mutations.append(" ".join([cmd] + args[:idx] + [new_val] + args[idx+1:]))
         # string mutation
         else:
             chars = "abcdefghijklmnopqrstuvwxyz0123456789-_./~%!?@#$^&*()[]{}|\\:;\"'<>,"
             new_val = list(val)
-            op = rnd.choice(["insert", "delete", "replace", "swap"])
+            op = r.choice(["insert", "delete", "replace", "swap"])
             if op == "insert" and len(new_val) < 100:
-                pos = rnd.randrange(len(new_val) + 1)
-                new_val.insert(pos, rnd.choice(chars))
+                pos = r.randrange(len(new_val) + 1)
+                new_val.insert(pos, r.choice(chars))
             elif op == "delete" and len(new_val) > 1:
-                del new_val[rnd.randrange(len(new_val))]
+                del new_val[r.randrange(len(new_val))]
             elif op == "replace" and new_val:
-                new_val[rnd.randrange(len(new_val))] = rnd.choice(chars)
+                new_val[r.randrange(len(new_val))] = r.choice(chars)
             elif op == "swap" and len(new_val) > 1:
-                i, j = sorted(rnd.sample(range(len(new_val)), 2))
+                i, j = sorted(r.sample(range(len(new_val)), 2))
                 new_val[i], new_val[j] = new_val[j], new_val[i]
             mutations.append(" ".join([cmd] + args[:idx] + ["".join(new_val)] + args[idx+1:]))
     # Command insertion (prepend another command)
     extras = {"FTP": ["NOOP", "SYST", "FEAT", "TYPE I", "PASV"], "HTTP": ["GET /", "HEAD /"],
               "SMTP": ["NOOP", "RSET"], "SIP": ["OPTIONS", "REGISTER"], "RTSP": ["OPTIONS"]}.get(proto, ["NOOP"])
-    mutations.append(f"{rnd.choice(extras)}\r\n{seed_line}")
+    mutations.append(f"{r.choice(extras)}\r\n{seed_line}")
     # Command mutation (change the verb)
     if proto == "FTP":
-        alt = rnd.choice(["LIST", "NLST", "STAT", "HELP", "SITE HELP", "FEAT", "MKD", "RMD", "CWD", "TYPE", "MODE", "STRU", "REST", "SIZE", "MDTM"])
+        alt = r.choice(["LIST", "NLST", "STAT", "HELP", "SITE HELP", "FEAT", "MKD", "RMD", "CWD", "TYPE", "MODE", "STRU", "REST", "SIZE", "MDTM"])
         mutations.append(" ".join([alt] + args))
-    return rnd.choice(mutations) if mutations else seed_line
+    return r.choice(mutations) if mutations else seed_line
 
 # ── Phase tracking for non-stationarity ──
 def _phase(idx):
@@ -169,30 +169,30 @@ USERS_OK = ["mockuser", "ftp", "anonymous"]
 USERS_BAD = ["root", "admin", "postmaster", "nobody"]
 PASS_OK = ["mockpass", "ftp", "anonymous"]
 
-def ftp_deep(rnd, i, phase, ctx, seeds):
-    u = rnd.choice(USERS_OK); p = rnd.choice(PASS_OK)
-    d = rnd.choice(DIRS); f = rnd.choice(FILES)
-    n = rnd.randint(1, 99999)
+def ftp_deep(r, i, phase, ctx, seeds):
+    u = r.choice(USERS_OK); p = r.choice(PASS_OK)
+    d = r.choice(DIRS); f = r.choice(FILES)
+    n = r.randint(1, 99999)
     # If we have actual seeds, build on them
-    if seeds and phase >= 1 and rnd.random() < 0.4:
-        base_seed = rnd.choice(seeds)
-        mutated = _mutate_seed(base_seed, rnd, "FTP")
+    if seeds and phase >= 1 and r.random() < 0.4:
+        base_seed = r.choice(seeds)
+        mutated = _mutate_seed(base_seed, r, "FTP")
         return f"USER {u}\r\nPASS {p}\r\n{mutated}\r\n"
     if phase == 0:
-        return rnd.choice([
+        return r.choice([
             f"USER {u}\r\nPASS {p}\r\nSYST\r\nPWD\r\n",
             f"USER {u}\r\nPASS {p}\r\nTYPE I\r\nPASV\r\nLIST\r\n",
         ])
     if phase == 1:
-        return rnd.choice([
+        return r.choice([
             f"USER {u}\r\nPASS {p}\r\nTYPE I\r\nPASV\r\nLIST {d}\r\n"
             f"EPSV\r\nNLST {d}\r\nSIZE {f}\r\nMDTM {f}\r\n",
             f"USER {u}\r\nPASS {p}\r\nCWD {d}\r\nPASV\r\nRETR {f}\r\n"
             f"TYPE A\r\nPASV\r\nLIST -la\r\nREST {n}\r\n",
         ])
-    extra = f"SITE CHMOD 644 {rnd.choice(FILES)}\r\n" if rnd.random() < 0.3 else ""
+    extra = f"SITE CHMOD 644 {r.choice(FILES)}\r\n" if r.random() < 0.3 else ""
     target = f"CWD {d}\r\nPASV\r\nLIST {d}\r\n" if ctx else ""
-    return rnd.choice([
+    return r.choice([
         f"USER {u}\r\nPASS {p}\r\nFEAT\r\nOPTS UTF8 ON\r\n{target}"
         f"TYPE I\r\nPASV\r\nLIST {d}\r\nSIZE {f}\r\nMDTM {f}\r\n{extra}"
         f"REST {n}\r\nPASV\r\nRETR {f}\r\nSTAT /\r\n",
@@ -201,112 +201,121 @@ def ftp_deep(rnd, i, phase, ctx, seeds):
         f"SMNT /dev/null\r\nACCT none\r\nABOR\r\nNOOP\r\n",
     ])
 
-def ftp_bad(rnd, phase):
+def ftp_bad(r, phase):
     mode = _next_error_mode()
     if mode == 0:
-        u = rnd.choice(USERS_BAD)
-        return f"USER {u}\r\nPASS wrongpass{rnd.randint(1,99)}\r\nLIST\r\nRETR /etc/shadow\r\n"
+        u = r.choice(USERS_BAD)
+        return f"USER {u}\r\nPASS wrongpass{r.randint(1,99)}\r\nLIST\r\nRETR /etc/shadow\r\n"
     if mode == 1:
         return f"LIST /etc\r\nRETR /etc/passwd\r\nSTOR /tmp/pwned\r\nDELE /etc/hosts\r\n"
-    u = rnd.choice(USERS_OK); p = rnd.choice(PASS_OK)
+    u = r.choice(USERS_OK); p = r.choice(PASS_OK)
     return f"USER {u}\r\nPASS {p}\r\nPORT 999,999,999,999,999,999\r\nRETR ../../../etc/passwd\r\n"
 
-def ftp_rare(rnd, phase, ctx, seeds):
-    u = rnd.choice(USERS_OK); p = rnd.choice(PASS_OK)
-    if phase >= 1 and seeds and rnd.random() < 0.3:
-        return f"USER {u}\r\nPASS {p}\r\n{_mutate_seed(rnd.choice(seeds), rnd, 'FTP')}\r\nSITE HELP\r\n"
-    return rnd.choice([
-        f"USER {u}\r\nPASS {p}\r\nSITE HELP\r\nHELP SITE\r\nSITE CHMOD 600 {rnd.choice(FILES)}\r\n",
+def ftp_rare(r, phase, ctx, seeds):
+    u = r.choice(USERS_OK); p = r.choice(PASS_OK)
+    if phase >= 1 and seeds and r.random() < 0.3:
+        return f"USER {u}\r\nPASS {p}\r\n{_mutate_seed(r.choice(seeds), r, 'FTP')}\r\nSITE HELP\r\n"
+    return r.choice([
+        f"USER {u}\r\nPASS {p}\r\nSITE HELP\r\nHELP SITE\r\nSITE CHMOD 600 {r.choice(FILES)}\r\n",
         "FEAT\r\nOPTS UTF8 ON\r\nOPTS MLST type*;size*;modify*;\r\nHELP MLST\r\n",
-        f"USER {u}\r\nPASS {p}\r\nSIZE {rnd.choice(FILES)}\r\nMDTM {rnd.choice(FILES)}\r\nMLSD {rnd.choice(DIRS)}\r\n",
+        f"USER {u}\r\nPASS {p}\r\nSIZE {r.choice(FILES)}\r\nMDTM {r.choice(FILES)}\r\nMLSD {r.choice(DIRS)}\r\n",
     ])
 
-def ftp_mut(rnd, seeds):
+def ftp_mut(r, seeds):
     # If we have actual seeds, mutate them
-    if seeds and rnd.random() < 0.6:
-        return _mutate_seed(rnd.choice(seeds), rnd, "FTP") + "\r\n"
-    return rnd.choice([
-        f"MKD d{rnd.randint(1,999999)}\r\n", "SITE HELP\r\n", "FEAT\r\n",
-        f"REST {rnd.randint(0,2**24)}\r\n", "EPSV\r\n", "NOOP\r\n",
-        f"CWD {rnd.choice(DIRS)}\r\n", f"SIZE {rnd.choice(FILES)}\r\n",
+    if seeds and r.random() < 0.6:
+        return _mutate_seed(r.choice(seeds), r, "FTP") + "\r\n"
+    return r.choice([
+        f"MKD d{r.randint(1,999999)}\r\n", "SITE HELP\r\n", "FEAT\r\n",
+        f"REST {r.randint(0,2**24)}\r\n", "EPSV\r\n", "NOOP\r\n",
+        f"CWD {r.choice(DIRS)}\r\n", f"SIZE {r.choice(FILES)}\r\n",
     ])
 
 # ── Protocol banks (SMTP/DAAP/HTTP/RTSP/SIP same structure as v4 but seed-aware) ──
-def smtp_deep(rnd, i, ph, ctx, seeds):
-    if seeds and ph >= 1 and rnd.random() < 0.4:
-        mut = _mutate_seed(rnd.choice(seeds), rnd, "SMTP")
+def smtp_deep(r, i, ph, ctx, seeds):
+    if seeds and ph >= 1 and r.random() < 0.4:
+        mut = _mutate_seed(r.choice(seeds), r, "SMTP")
         return f"EHLO mock.local\r\n{mut}\r\n"
     if ph == 0: return "EHLO mock.local\r\nNOOP\r\nHELP\r\n"
-    return rnd.choice([
+    return r.choice([
         "EHLO mock.local\r\nMAIL FROM:<sender@mock.local>\r\nRCPT TO:<rcpt@mock.local>\r\nDATA\r\nSubject: test\r\n\r\nbody\r\n.\r\n",
-        f"HELO h{rnd.randint(1,999)}.local\r\nMAIL FROM:<x@mock.local> SIZE={rnd.randint(100,99999)}\r\nRCPT TO:<y@mock.local>\r\nDATA\r\ncontent\r\n.\r\nRSET\r\n",
+        f"HELO h{r.randint(1,999)}.local\r\nMAIL FROM:<x@mock.local> SIZE={r.randint(100,99999)}\r\nRCPT TO:<y@mock.local>\r\nDATA\r\ncontent\r\n.\r\nRSET\r\n",
     ])
 
-def http_deep(rnd, i, ph, ctx, seeds):
-    if seeds and ph >= 1 and rnd.random() < 0.4:
-        mut = _mutate_seed(rnd.choice(seeds), rnd, "HTTP")
+def http_deep(r, i, ph, ctx, seeds):
+    if seeds and ph >= 1 and r.random() < 0.4:
+        mut = _mutate_seed(r.choice(seeds), r, "HTTP")
         return mut + "\r\n"
     if ph == 0: return "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
-    return rnd.choice([
-        f"GET /index{rnd.randint(1,99)}.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes={rnd.randint(0,99999)}-\r\n\r\nGET /?q={rnd.randint(1,99999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        f"POST /form{rnd.randint(1,9)} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {rnd.randint(10,500)}\r\n\r\na={rnd.randint(1,999999)}&b=x\r\n",
+    return r.choice([
+        f"GET /index{r.randint(1,99)}.html HTTP/1.1\r\nHost: localhost\r\nRange: bytes={r.randint(0,99999)}-\r\n\r\nGET /?q={r.randint(1,99999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        f"POST /form{r.randint(1,9)} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {r.randint(10,500)}\r\n\r\na={r.randint(1,999999)}&b=x\r\n",
     ])
 
-def daap_deep(rnd, i, ph, ctx, seeds):
+def daap_deep(r, i, ph, ctx, seeds):
     if ph == 0: return "GET /server-info HTTP/1.1\r\nHost: localhost\r\n\r\n"
-    return rnd.choice([
-        f"GET /databases HTTP/1.1\r\nHost: localhost\r\n\r\nGET /databases/1/items?meta=all&index={rnd.randint(0,9999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
-        f"GET /login HTTP/1.1\r\nHost: localhost\r\n\r\nGET /update?revision={rnd.randint(1,99999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    return r.choice([
+        f"GET /databases HTTP/1.1\r\nHost: localhost\r\n\r\nGET /databases/1/items?meta=all&index={r.randint(0,9999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        f"GET /login HTTP/1.1\r\nHost: localhost\r\n\r\nGET /update?revision={r.randint(1,99999)} HTTP/1.1\r\nHost: localhost\r\n\r\n",
     ])
 
-def rtsp_deep(rnd, i, ph, ctx, seeds):
+def rtsp_deep(r, i, ph, ctx, seeds):
     if ph == 0: return f"OPTIONS * RTSP/1.0\r\nCSeq: {i}\r\n\r\n"
     return (f"DESCRIBE rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: {i}\r\n\r\n"
-            f"SETUP rtsp://127.0.0.1/media/streamid={rnd.randint(0,5)} RTSP/1.0\r\nCSeq: {i+1}\r\n"
-            f"Transport: RTP/AVP;unicast;client_port={rnd.randint(40000,60000)}\r\n\r\n"
-            f"PLAY rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: {i+2}\r\nSession: {rnd.randint(1000,9999)}\r\n\r\n")
+            f"SETUP rtsp://127.0.0.1/media/streamid={r.randint(0,5)} RTSP/1.0\r\nCSeq: {i+1}\r\n"
+            f"Transport: RTP/AVP;unicast;client_port={r.randint(40000,60000)}\r\n\r\n"
+            f"PLAY rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: {i+2}\r\nSession: {r.randint(1000,9999)}\r\n\r\n")
 
-def sip_deep(rnd, i, ph, ctx, seeds):
+def sip_deep(r, i, ph, ctx, seeds):
     if ph == 0: return f"OPTIONS sip:test@127.0.0.1 SIP/2.0\r\nCSeq: {i} OPTIONS\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\n\r\n"
     return (f"REGISTER sip:127.0.0.1 SIP/2.0\r\nCSeq: {i} REGISTER\r\n"
-            f"Via: SIP/2.0/TCP 127.0.0.1:5060\r\nContact: <sip:user{rnd.randint(1,99)}@127.0.0.1>\r\n"
-            f"Expires: {rnd.choice([60,3600,86400])}\r\n\r\n"
+            f"Via: SIP/2.0/TCP 127.0.0.1:5060\r\nContact: <sip:user{r.randint(1,99)}@127.0.0.1>\r\n"
+            f"Expires: {r.choice([60,3600,86400])}\r\n\r\n"
             f"MESSAGE sip:user@127.0.0.1 SIP/2.0\r\nCSeq: {i+1} MESSAGE\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\n\r\n")
 
 BANKS = {
     "FTP": dict(tpl=["USER","PASS","LIST","SYST","FEAT","PWD","TYPE","PASV","EPSV","HELP","NOOP","STAT","MKD","RMD","CWD","MODE","STRU","REST","SIZE","MDTM","SITE","ALLO","ABOR","MLSD","QUIT"],
-                seed="USER mockuser\r\nPASS mockpass\r\nSYST\r\nFEAT\r\nPASV\r\nLIST\r\n",
+                seed="USER mockuser\r\nPASS mockpass\r\nSYST\r\n",
                 deep=ftp_deep, rare=ftp_rare, bad=ftp_bad, mut=ftp_mut),
     "SMTP": dict(tpl=["EHLO","HELO","MAIL","RCPT","DATA","NOOP","RSET","HELP","VRFY","EXPN","AUTH","STARTTLS","QUIT"],
-                 seed="EHLO mock.local\r\nNOOP\r\nRSET\r\nHELP\r\nVRFY user\r\n",
+                 seed="EHLO mock.local\r\nNOOP\r\n",
                  deep=smtp_deep,
-                 rare=lambda r,p,c,s: rnd.choice(["EHLO mock.local\r\nVRFY postmaster\r\nEXPN staff\r\n","EHLO mock.local\r\nAUTH PLAIN dGVzdA==\r\nSTARTTLS\r\n"]),
-                 bad=lambda r,p: f"MAIL FROM:<bomb@nowhere>\r\nRCPT TO:<{rnd.choice(USERS_BAD)}@invalid>\r\nDATA\r\nx\r\n.",
-                 mut=lambda r,s: rnd.choice(["NOOP\r\n","RSET\r\n",f"VRFY user{rnd.randint(1,99999)}\r\n"])),
+                 rare=lambda r,p,c,s: r.choice(["EHLO mock.local\r\nVRFY postmaster\r\nEXPN staff\r\n","EHLO mock.local\r\nAUTH PLAIN dGVzdA==\r\nSTARTTLS\r\n"]),
+                 bad=lambda r,p: r.choice([
+        "RCPT TO:<user@nowhere>\r\nMAIL FROM:<sender>\r\nDATA\r\nx\r\n.",  # reversed order→503
+        f"MAIL FROM:<a@b>\r\nDATA\r\nx\r\n.",  # missing RCPT→503
+        f"EHLO x\r\nRCPT TO:<u@v>\r\nQUIT",  # RCPT before MAIL→503
+    ]),
+                 mut=lambda r,s: r.choice(["NOOP\r\n","RSET\r\n",f"VRFY user{r.randint(1,99999)}\r\n"])),
     "DAAP": dict(tpl=["GET /server-info","GET /databases","GET /logout","GET /update","GET /content-codes","GET /databases/1/items","GET /databases/1/containers","GET /login"],
-                 seed="GET /server-info HTTP/1.1\r\nHost: localhost\r\n\r\nGET /content-codes HTTP/1.1\r\nHost: localhost\r\n\r\n",
+                 seed="GET /server-info HTTP/1.1\r\nHost: localhost\r\n\r\n",
                  deep=daap_deep,
-                 rare=lambda r,p,c,s: f"GET /databases/{rnd.randint(1,99)}/groups HTTP/1.1\r\nHost: localhost\r\n\r\n",
+                 rare=lambda r,p,c,s: f"GET /databases/{r.randint(1,99)}/groups HTTP/1.1\r\nHost: localhost\r\n\r\n",
                  bad=lambda r,p: f"GET /../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n",
-                 mut=lambda r,s: f"GET /databases/1/items?query={rnd.randint(1,999999)} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+                 mut=lambda r,s: f"GET /databases/1/items?query={r.randint(1,999999)} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
     "HTTP": dict(tpl=["GET","HEAD","POST","PUT","DELETE","OPTIONS","TRACE","PATCH"],
-                 seed="GET / HTTP/1.1\r\nHost: localhost\r\n\r\nHEAD /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n",
+                 seed="GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
                  deep=http_deep,
                  rare=lambda r,p,c,s: f"OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\nTRACE / HTTP/1.1\r\nHost: localhost\r\n\r\n",
-                 bad=lambda r,p: f"GET /../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n",
-                 mut=lambda r,s: f"GET /x{rnd.randint(1,999999)} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+                 bad=lambda r,p: r.choice([
+        "GET /path\r\n\r\n",
+        "GET /x HTTP/1.1\r\n\r\n",
+        "POSTFORM /submit\r\nRandom: data\r\n\r\n",
+        "GET /../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    ]),
+                 mut=lambda r,s: f"GET /x{r.randint(1,999999)} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
     "RTSP": dict(tpl=["OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN","GET_PARAMETER","SET_PARAMETER"],
-                 seed="OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\nDESCRIBE rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: 2\r\n\r\n",
+                 seed="OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n",
                  deep=rtsp_deep,
-                 rare=lambda r,p,c,s: f"GET_PARAMETER rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: {rnd.randint(1,999)}\r\n\r\n",
-                 bad=lambda r,p: f"DESCRIBE rtsp://127.0.0.1/missing{rnd.randint(1,999)} RTSP/9.9\r\nCSeq: {rnd.randint(1,999)}\r\n\r\n",
-                 mut=lambda r,s: f"OPTIONS * RTSP/1.0\r\nCSeq: {rnd.randint(1,99999)}\r\n\r\n"),
+                 rare=lambda r,p,c,s: f"GET_PARAMETER rtsp://127.0.0.1/media RTSP/1.0\r\nCSeq: {r.randint(1,999)}\r\n\r\n",
+                 bad=lambda r,p: f"DESCRIBE rtsp://127.0.0.1/missing{r.randint(1,999)} RTSP/9.9\r\nCSeq: {r.randint(1,999)}\r\n\r\n",
+                 mut=lambda r,s: f"OPTIONS * RTSP/1.0\r\nCSeq: {r.randint(1,99999)}\r\n\r\n"),
     "SIP": dict(tpl=["REGISTER","INVITE","ACK","BYE","CANCEL","OPTIONS","SUBSCRIBE","NOTIFY","MESSAGE","INFO"],
                 seed="OPTIONS sip:test@127.0.0.1 SIP/2.0\r\nCSeq: 1 OPTIONS\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\n\r\n",
                 deep=sip_deep,
-                rare=lambda r,p,c,s: f"SUBSCRIBE sip:127.0.0.1 SIP/2.0\r\nCSeq: {rnd.randint(1,999)} SUBSCRIBE\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\nEvent: presence\r\n\r\n",
-                bad=lambda r,p: f"INVITE sip:nobody@invalid{rnd.randint(1,999)} SIP/2.0\r\nCSeq: {rnd.randint(1,999)} INVITE\r\n\r\n",
-                mut=lambda r,s: f"OPTIONS sip:t{rnd.randint(1,999999)}@127.0.0.1 SIP/2.0\r\nCSeq: {rnd.randint(1,9999)} OPTIONS\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\n\r\n"),
+                rare=lambda r,p,c,s: f"SUBSCRIBE sip:127.0.0.1 SIP/2.0\r\nCSeq: {r.randint(1,999)} SUBSCRIBE\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\nEvent: presence\r\n\r\n",
+                bad=lambda r,p: f"INVITE sip:nobody@invalid{r.randint(1,999)} SIP/2.0\r\nCSeq: {r.randint(1,999)} INVITE\r\n\r\n",
+                mut=lambda r,s: f"OPTIONS sip:t{r.randint(1,999999)}@127.0.0.1 SIP/2.0\r\nCSeq: {r.randint(1,9999)} OPTIONS\r\nVia: SIP/2.0/TCP 127.0.0.1:5060\r\n\r\n"),
 }
 
 PROTO_ORDER = ["FTP", "SMTP", "RTSP", "SIP", "DAAP", "HTTP"]
@@ -332,11 +341,11 @@ def reply_for(prompt, temperature=0.5):
     if "ONLY valid JSON" in prompt or "suggested_request" in prompt:
         reqs["plateau"] += 1
         i = reqs["plateau"]
-        rnd = random.Random(int(time.time() * 1000) + i)
+        r = random.Random(int(time.time() * 1000) + i)
         ph = _phase(i)
         ctx = _context_states(prompt)
         seeds = _extract_seeds(prompt)
-        roll = rnd.random() * 100.0
+        roll = r.random() * 100.0
         kind = _MIX_ORDER[-1]
         for _edge, _k in _MIX_CUM:
             if roll < _edge:
@@ -344,10 +353,10 @@ def reply_for(prompt, temperature=0.5):
                 break
         # Temperature awareness: high temp → more deep/creative
         if temperature >= 1.0:
-            if kind == "mut" and rnd.random() < 0.5: kind = "rare"
-            if kind == "bad" and rnd.random() < 0.3: kind = "deep"
+            if kind == "mut" and r.random() < 0.5: kind = "rare"
+            if kind == "bad" and r.random() < 0.3: kind = "deep"
         if kind == "mut":
-            ins = bank["mut"](rnd, seeds)
+            ins = bank["mut"](r, seeds)
             _remember(proto, ins)
             return json.dumps({
                 "analysis": f"mock-v5: mutate seed ({proto}) phase={ph} seeds={len(seeds)}",
@@ -359,14 +368,14 @@ def reply_for(prompt, temperature=0.5):
                     {"type": "prioritize_seeds", "seed_ids": [0]},
                 ]})
         if kind == "bad":
-            candidate = bank["bad"](rnd, ph)
+            candidate = bank["bad"](r, ph)
         elif kind == "rare":
-            candidate = bank["rare"](rnd, ph, ctx, seeds)
+            candidate = bank["rare"](r, ph, ctx, seeds)
         else:
-            candidate = bank["deep"](rnd, i, ph, ctx, seeds)
+            candidate = bank["deep"](r, i, ph, ctx, seeds)
         # Conversation memory: if repeat, try a mutation of an actual seed
         if _repeat_count(proto, candidate) and seeds:
-            candidate = _mutate_seed(rnd.choice(seeds), rnd, proto)
+            candidate = _mutate_seed(r.choice(seeds), r, proto)
         _remember(proto, candidate)
         return json.dumps({
             "analysis": f"mock-v5: {proto} phase={ph} ctx={len(ctx)} seeds={len(seeds)} temp={temperature}",

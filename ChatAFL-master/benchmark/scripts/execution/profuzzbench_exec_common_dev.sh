@@ -870,6 +870,7 @@ for i in $(seq 1 $RUNS); do
   # unlike the loopfuzz-only ablation flags above).
   TARGET_ENV_FLAGS=""
   [[ -n "${KAMAILIO_TCP:-}" ]]             && TARGET_ENV_FLAGS+=" -e KAMAILIO_TCP=${KAMAILIO_TCP}"
+  [[ -n "${SKIP_LOOPFUZZ_REBUILD:-}" ]]    && TARGET_ENV_FLAGS+=" -e SKIP_LOOPFUZZ_REBUILD=${SKIP_LOOPFUZZ_REBUILD}"
   # Phase-2 (#13): coverage_v4 replay controls consumed by the in-container
   # cov_script wrapper.  COVERAGE_V4_RESET_COMMAND_JSON must be a validated
   # per-target reset argv (JSON array); until it is supplied the wrapper's
@@ -991,9 +992,7 @@ for i in $(seq 1 $RUNS); do
       -d -it $DOCIMAGE /bin/bash -c "\
         ${SUBJECT_COPY}\
         echo '[DEV] Copying and compiling updated code...' && \
-        if [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; fi && \
-        cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null || true && \
-        cd /home/ubuntu/loopfuzz && make clean && make -j\$(nproc) && \
+        if [ "\${SKIP_LOOPFUZZ_REBUILD:-0}" = "1" ]; then echo '[DEV] SKIP_LOOPFUZZ_REBUILD=1: using image-embedded binary'; elif [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; cd /home/ubuntu/loopfuzz; make -j\$(nproc); else cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null; cd /home/ubuntu/loopfuzz; make clean; make -j\$(nproc); fi && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then

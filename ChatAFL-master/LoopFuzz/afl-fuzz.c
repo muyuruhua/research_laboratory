@@ -65,6 +65,7 @@
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
+#include <setjmp.h>
 #include <dirent.h>
 #include <ctype.h>
 #include <fcntl.h>
@@ -969,6 +970,7 @@ static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidat
                                        * (45.2 vs 28.4 lines/64-exec, p=0.002). */
 static u64  salvage_attempted = 0;
 static u64  salvage_succeeded = 0;
+static u64  salvage_recoveries = 0;  /* Heisenbug recovery count */
 static u8   plaintext_wrap_enabled = 0;  /* CHATAFL_PLAINTEXT_WRAP: wrap
                                        * plain-text plateau replies into the
                                        * {"suggested_request": ...} form so
@@ -12211,6 +12213,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "salvage_enabled       : %u\n"
              "salvage_attempted     : %llu\n"
              "salvage_succeeded     : %llu\n"
+             "salvage_recoveries    : %llu\n"
              "plaintext_wrap_enabled: %u\n"
              "plaintext_wraps       : %llu\n"
              "no_llm_mode           : %u\n"
@@ -12272,6 +12275,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           salvage_enabled,
           (unsigned long long)salvage_attempted,
           (unsigned long long)salvage_succeeded,
+          (unsigned long long)salvage_recoveries,
           plaintext_wrap_enabled,
           (unsigned long long)plaintext_wraps,
           (u32)llm_disabled,
@@ -14264,37 +14268,84 @@ static u32 salvage_collect_clean(void) {
   }
   return n_clean;
 }
+/* Forward declaration */
+static u8 admission_provisional_queue_candidate_n(u32 target_sid, u64 candidate_id, const char *admit_reason, u32 skip_msgs, u32 n_msgs);
 
-/* Indexed save: only kl_messages entries at absolute index
- * candidate_message_first + salvage_clean_window_idx[i]. */
+
+/* Heisenbug defense: data validation + SIGABRT recovery */
+static sigjmp_buf salvage_jmp;
+static volatile sig_atomic_t salvage_active = 0;
+
+static void salvage_sigabrt_handler(int sig) {
+  if (salvage_active) {
+    salvage_active = 0;
+    salvage_recoveries++;
+    siglongjmp(salvage_jmp, 1);
+  }
+  _exit(99);
+}
+
+static int salvage_data_valid(const u8 *data, u32 sz) {
+  if (!data || sz == 0 || sz > 65536) return 0;
+  if (data[0] == 0x00) return 0;
+  return 1;
+}
+
+/* ── Snapshot infrastructure (v6 heap fix) ─────────────────────── */
+static u8 *salvage_snap_data[64];
+static u32 salvage_snap_size[64];
+static u32 salvage_snap_count = 0;
+
+static void salvage_take_snapshot(void) {
+  for (u32 i = 0; i < 64; i++) { salvage_snap_data[i] = NULL; salvage_snap_size[i] = 0; }
+  salvage_snap_count = 0;
+  if (!kl_messages) return;
+  kliter_t(lms) *it;
+  u32 idx = 0;
+  for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && salvage_snap_count < 64; it = kl_next(it), idx++) {
+    if (idx < candidate_message_first) continue;
+    u32 rel = idx - candidate_message_first;
+    for (u32 j = 0; j < 64; j++) {
+      if (salvage_clean_window_idx[j] == rel) {
+        u32 sz = (u32)kl_val(it)->msize;
+        if (salvage_data_valid(kl_val(it)->mdata, sz)) {
+          salvage_snap_data[salvage_snap_count] = (u8 *)ck_alloc(sz);
+          memcpy(salvage_snap_data[salvage_snap_count], kl_val(it)->mdata, sz);
+          salvage_snap_size[salvage_snap_count] = sz;
+          salvage_snap_count++;
+        }
+        break;
+      }
+    }
+  }
+}
+
+static void salvage_free_snapshot(void) {
+  for (u32 i = 0; i < salvage_snap_count; i++) {
+    if (salvage_snap_data[i]) { ck_free(salvage_snap_data[i]); salvage_snap_data[i] = NULL; }
+    salvage_snap_size[i] = 0;
+  }
+  salvage_snap_count = 0;
+}
+
 static u32 salvage_save_messages(const u8 *fname, u32 n_idx, u8 replay_enabled) {
   s32 fd = open((const char *)fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (fd < 0) return 0;
-  u8 *mem = NULL;
-  u32 len = 0, idx = 0, written = 0;
-  kliter_t(lms) *it;
-  for (it = kl_begin(kl_messages);
-       it != kl_end(kl_messages) && written < n_idx;
-       it = kl_next(it), idx++) {
-    if (idx < candidate_message_first) continue;
-    u32 rel = idx - candidate_message_first;
-    u8 want = 0;
-    for (u32 j = 0; j < n_idx; j++)
-      if (salvage_clean_window_idx[j] == rel) { want = 1; break; }
-    if (!want) continue;
-    u32 msize = kl_val(it)->msize;
+  u8 *mem = NULL; u32 len = 0;
+  u32 count = n_idx < salvage_snap_count ? n_idx : salvage_snap_count;
+  for (u32 i = 0; i < count; i++) {
+    if (!salvage_snap_data[i] || salvage_snap_size[i] == 0) continue;
+    u32 msize = salvage_snap_size[i];
     if (replay_enabled) {
       mem = (u8 *)ck_realloc(mem, 4 + len + msize);
-      u32 *psize = (u32 *)&mem[len];
-      *psize = msize;
-      memcpy(&mem[len + 4], kl_val(it)->mdata, msize);
+      u32 *psize = (u32 *)&mem[len]; *psize = msize;
+      memcpy(&mem[len + 4], salvage_snap_data[i], msize);
       len = 4 + len + msize;
     } else {
       mem = (u8 *)ck_realloc(mem, len + msize);
-      memcpy(&mem[len], kl_val(it)->mdata, msize);
+      memcpy(&mem[len], salvage_snap_data[i], msize);
       len += msize;
     }
-    written++;
   }
   if (len) ck_write(fd, mem, len, (const char *)fname);
   else unlink((char *)fname);
@@ -14303,24 +14354,187 @@ static u32 salvage_save_messages(const u8 *fname, u32 n_idx, u8 replay_enabled) 
   return len;
 }
 
-static u8 admission_provisional_queue_candidate_n(u32 target_sid,
-                                                  u64 candidate_id,
-                                                  const char *admit_reason,
-                                                  u32 skip_msgs,
-                                                  u32 n_msgs);
-
-/* Salvage entry point: queue the clean messages of a rejected candidate
- * into the provisional tier. Returns 1 if queued. */
-static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
-  u32 keep = salvage_collect_clean();
-  salvage_attempted++;
-  if (keep < 2) return 0;
-  u8 ok = admission_provisional_queue_candidate_n(
-      target_sid, candidate_id, "salvage", 0, keep);
-  if (ok) salvage_succeeded++;
-  return ok;
+/* ── SMTP transactional skeleton ── */
+static void salvage_reorder_smtp_snapshot(void) {
+  u32 oc = salvage_snap_count; if (oc < 2) return;
+  u32 ehlo=0xFFFFFFFF, mail=0xFFFFFFFF, quit=0xFFFFFFFF, data=0xFFFFFFFF;
+  u32 aux_idx[8]; u32 aux_n=0;
+  u32 rcpt_idx[16]; u32 rcpt_n=0;
+  u32 body_idx[32]; u32 body_n=0;
+  u8 in_body=0;
+  for (u32 i=0; i<oc; i++) {
+    const char *d=(const char*)salvage_snap_data[i]; u32 sz=salvage_snap_size[i];
+    u32 lin=sz; while(lin && (d[lin-1]=='\r' || d[lin-1]=='\n')) lin--;
+    if(!lin) continue;
+    if(lin>=4 && (strncasecmp(d,"EHLO",4)==0 || strncasecmp(d,"HELO",4)==0)) { if(ehlo==0xFFFFFFFF) ehlo=i; }
+    else if(lin>=10 && strncasecmp(d,"MAIL FROM:",10)==0) { if(mail==0xFFFFFFFF) mail=i; }
+    else if(lin>=8 && strncasecmp(d,"RCPT TO:",8)==0) { if(rcpt_n<16) rcpt_idx[rcpt_n++]=i; }
+    else if(lin==4 && strncasecmp(d,"DATA",4)==0) { if(data==0xFFFFFFFF) { data=i; in_body=1; } }
+    else if(lin==1 && d[0]=='.') { in_body=0; }
+    else if(lin>=4 && strncasecmp(d,"QUIT",4)==0) { if(quit==0xFFFFFFFF) quit=i; }
+    else if(lin>=4 && (strncasecmp(d,"NOOP",4)==0 || strncasecmp(d,"RSET",4)==0)) { if(aux_n<8) aux_idx[aux_n++]=i; }
+    else if(in_body) { if(body_n<32) body_idx[body_n++]=i; }
+  }
+  u32 keep_list[64]; u32 keep_n=0;
+  if(ehlo!=0xFFFFFFFF) keep_list[keep_n++]=ehlo;
+  for(u32 i=0;i<aux_n && keep_n<64;i++) keep_list[keep_n++]=aux_idx[i];
+  if(mail!=0xFFFFFFFF && rcpt_n>0) {
+    keep_list[keep_n++]=mail;
+    for(u32 i=0;i<rcpt_n && keep_n<64;i++) keep_list[keep_n++]=rcpt_idx[i];
+    if(data!=0xFFFFFFFF && body_n>0) {
+      keep_list[keep_n++]=data;
+      for(u32 i=0;i<body_n && keep_n<64;i++) keep_list[keep_n++]=body_idx[i];
+    }
+  }
+  if(quit!=0xFFFFFFFF && keep_n<64) keep_list[keep_n++]=quit;
+  if(keep_n<2) return;
+  u8 *ld[64]; u32 ls[64];
+  for(u32 i=0;i<oc;i++) { ld[i]=salvage_snap_data[i]; ls[i]=salvage_snap_size[i]; }
+  u8 kp[64]={0};
+  for(u32 i=0;i<keep_n;i++) kp[keep_list[i]]=1;
+  for(u32 i=0;i<oc;i++) { if(!kp[i] && ld[i]) ck_free(ld[i]); }
+  for(u32 i=0;i<keep_n;i++) { salvage_snap_data[i]=ld[keep_list[i]]; salvage_snap_size[i]=ls[keep_list[i]]; }
+  salvage_snap_count=keep_n;
 }
 
+/* ── HTTP request completion ── */
+static int salvage_http_method_ok(const char *d, u32 lin) {
+  u32 sp=0; while(sp<lin && d[sp]!=' ') sp++;
+  if(sp==0 || sp>=32) return 0;
+  char m[33]; memcpy(m,d,sp); m[sp]=0;
+  const char *ok[]={"GET","POST","HEAD","OPTIONS",NULL};
+  for(int i=0; ok[i]; i++) if(strcasecmp(m,ok[i])==0) return 1;
+  return 0;
+}
+static void salvage_complete_http_snapshot(void) {
+  u32 oc=salvage_snap_count; if(!oc) return;
+  u8 *od[64]; u32 os[64]; u32 on=0;
+  for(u32 i=0;i<oc;i++) {
+    const char *d=(const char*)salvage_snap_data[i]; u32 sz=salvage_snap_size[i];
+    u32 lin=sz; while(lin && (d[lin-1]=='\r' || d[lin-1]=='\n')) lin--;
+    if(!lin) { ck_free(salvage_snap_data[i]); continue; }
+    u32 sp=0; while(sp<lin && d[sp]!=' ') sp++;
+    if(sp>0 && sp<20) {
+      const char *mth[]={"GET","POST","HEAD","OPTIONS","PUT","DELETE","PATCH",NULL};
+      int is_req=0;
+      for(int mi=0; mth[mi]; mi++) { u32 ml=strlen(mth[mi]); if(lin>=ml && strncasecmp(d,mth[mi],ml)==0) { is_req=1; break; } }
+      if(is_req) {
+        if(!salvage_http_method_ok(d,lin)) { ck_free(salvage_snap_data[i]); continue; }
+        u32 rest=sp; while(rest<lin && d[rest]==' ') rest++;
+        u32 pe=rest; while(pe<lin && d[pe]!=' ' && d[pe]!='\r' && d[pe]!='\n') pe++;
+        if(sp==0 || pe==rest) { ck_free(salvage_snap_data[i]); continue; }
+        char buf[512];
+        int w=snprintf(buf,sizeof(buf),"%.*s %.*s HTTP/1.1\r\n",(int)sp,d,(int)(pe-rest),d+rest);
+        ck_free(salvage_snap_data[i]);
+        if(w>0 && (u32)w<sizeof(buf) && on<64) { od[on]=(u8*)ck_alloc(w); memcpy(od[on],buf,w); os[on]=w; on++; }
+        continue;
+      }
+    }
+    if(lin>5 && memchr(d,':',lin)) { if(on<64) { od[on]=salvage_snap_data[i]; os[on]=sz; on++; } }
+    else { ck_free(salvage_snap_data[i]); }
+  }
+  for(u32 i=0;i<on;i++) { salvage_snap_data[i]=od[i]; salvage_snap_size[i]=os[i]; }
+  salvage_snap_count=on;
+}
+
+/* ── RTSP session skeleton ── */
+static void salvage_rtsp_skeleton(void) {
+  u32 oc=salvage_snap_count; if(oc<2) return;
+  char sid[128]={0};
+  if(candidate_response && candidate_response_size>8) {
+    for(u32 i=0; i+8<candidate_response_size; i++) {
+      if(strncasecmp((const char*)candidate_response+i,"Session:",8)==0) {
+        u32 j=i+8; while(j<candidate_response_size && (candidate_response[j]==' '||candidate_response[j]=='\t')) j++;
+        u32 k=j; while(k<candidate_response_size && candidate_response[k]!='\r' && candidate_response[k]!='\n' && candidate_response[k]!=';' && k-j<127) k++;
+        if(k>j) { memcpy(sid,candidate_response+j,k-j); sid[k-j]=0; }
+        break;
+      }
+    }
+  }
+  u32 opts=0xFFFFFFFF, dsc=0xFFFFFFFF, stp=0xFFFFFFFF, td=0xFFFFFFFF;
+  u32 sc[32]; u32 scn=0;
+  for(u32 i=0;i<oc;i++) {
+    const char *d=(const char*)salvage_snap_data[i]; u32 sz=salvage_snap_size[i];
+    u32 lin=sz; while(lin && (d[lin-1]=='\r'||d[lin-1]=='\n')) lin--;
+    if(!lin) continue;
+    u32 wl=0; while(wl<lin && d[wl]!=' ' && d[wl]!='\r') wl++;
+    if(!wl || wl>20) continue;
+    if(strncasecmp(d,"OPTIONS",7)==0 && wl==7) { if(opts==0xFFFFFFFF) opts=i; }
+    else if(strncasecmp(d,"DESCRIBE",8)==0 && wl==8) { if(dsc==0xFFFFFFFF) dsc=i; }
+    else if(strncasecmp(d,"SETUP",5)==0 && wl==5) { if(stp==0xFFFFFFFF) stp=i; }
+    else if(strncasecmp(d,"TEARDOWN",8)==0 && wl==8) { if(td==0xFFFFFFFF) td=i; }
+    else if((strncasecmp(d,"PLAY",4)==0 && wl==4) || (strncasecmp(d,"PAUSE",5)==0 && wl==5) ||
+            (strncasecmp(d,"GET_PARAMETER",13)==0 && wl==13)) { if(scn<32) sc[scn++]=i; }
+  }
+  u32 kl[64]; u32 kn=0;
+  if(opts!=0xFFFFFFFF) kl[kn++]=opts;
+  if(dsc!=0xFFFFFFFF) kl[kn++]=dsc;
+  if(stp!=0xFFFFFFFF) kl[kn++]=stp;
+  for(u32 i=0;i<scn && kn<60;i++) kl[kn++]=sc[i];
+  if(td!=0xFFFFFFFF && kn<64) kl[kn++]=td;
+  if(kn<2) return;
+  if(sid[0]) {
+    for(u32 ki=0;ki<kn;ki++) {
+      u32 ii=kl[ki]; const char *d=(const char*)salvage_snap_data[ii]; u32 sz=salvage_snap_size[ii];
+      u32 lin=sz; while(lin && (d[lin-1]=='\r'||d[lin-1]=='\n')) lin--;
+      u32 wl=0; while(wl<lin && d[wl]!=' ') wl++;
+      int nd=(wl==4&&strncasecmp(d,"PLAY",4)==0)||(wl==5&&strncasecmp(d,"PAUSE",5)==0)||
+             (wl==8&&strncasecmp(d,"TEARDOWN",8)==0)||(wl==13&&strncasecmp(d,"GET_PARAMETER",13)==0);
+      if(!nd) continue;
+      int hs=0; for(u32 j=0;j+8<=lin;j++) { if(strncasecmp(d+j,"Session:",8)==0) { hs=1; break; } }
+      if(hs) continue;
+      u32 fle=0; for(u32 j=0;j<sz&&j<512;j++) { if(d[j]=='\r' && j+1<sz && d[j+1]=='\n') { fle=j+2; break; } }
+      if(!fle) fle=lin;
+      char hdr[192]; int hw=snprintf(hdr,sizeof(hdr),"Session: %s\r\n",sid);
+      if(hw<=0 || (u32)hw>=sizeof(hdr)) continue;
+      u8 *nb=(u8*)ck_alloc(sz+hw); if(!nb) continue;
+      memcpy(nb,d,fle); memcpy(nb+fle,hdr,hw); memcpy(nb+fle+hw,d+fle,sz-fle);
+      ck_free(salvage_snap_data[ii]); salvage_snap_data[ii]=nb; salvage_snap_size[ii]=sz+hw;
+    }
+  }
+  u8 *ld[64]; u32 ls[64];
+  for(u32 i=0;i<oc;i++) { ld[i]=salvage_snap_data[i]; ls[i]=salvage_snap_size[i]; }
+  u8 kp[64]={0}; for(u32 i=0;i<kn;i++) kp[kl[i]]=1;
+  for(u32 i=0;i<oc;i++) { if(!kp[i] && ld[i]) ck_free(ld[i]); }
+  for(u32 i=0;i<kn;i++) { salvage_snap_data[i]=ld[kl[i]]; salvage_snap_size[i]=ls[kl[i]]; }
+  salvage_snap_count=kn;
+}
+
+static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
+  void (*old_handler)(int) = signal(SIGABRT, salvage_sigabrt_handler);
+  salvage_active = 1;
+  if (sigsetjmp(salvage_jmp, 1) != 0) {
+    salvage_snap_count = 0;
+    signal(SIGABRT, old_handler);
+    salvage_active = 0;
+    return 0;
+  }
+  salvage_free_snapshot();
+  u32 keep = salvage_collect_clean();
+  salvage_attempted++;
+  if (keep < 2) { signal(SIGABRT, old_handler); salvage_active = 0; return 0; }
+  salvage_take_snapshot();
+  if (salvage_snap_count < 2) {
+    salvage_free_snapshot();
+    signal(SIGABRT, old_handler); salvage_active = 0; return 0;
+  }
+  if (protocol_name) {
+    if (strcasecmp(protocol_name, "SMTP") == 0) salvage_reorder_smtp_snapshot();
+    else if (strcasecmp(protocol_name, "HTTP") == 0) salvage_complete_http_snapshot();
+    else if (strcasecmp(protocol_name, "RTSP") == 0) salvage_rtsp_skeleton();
+  }
+  if (salvage_snap_count < 2) {
+    salvage_free_snapshot();
+    signal(SIGABRT, old_handler); salvage_active = 0; return 0;
+  }
+  u8 ok = admission_provisional_queue_candidate_n(
+      target_sid, candidate_id, "salvage", 0, salvage_snap_count);
+  if (ok) salvage_succeeded++;
+  salvage_free_snapshot();
+  signal(SIGABRT, old_handler);
+  salvage_active = 0;
+  return ok;
+}
 static u8 admission_provisional_queue_candidate_n(u32 target_sid,
                                                   u64 candidate_id,
                                                   const char *admit_reason,
