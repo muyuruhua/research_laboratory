@@ -1111,6 +1111,33 @@ static u64  state_retain_admitted = 0;
 static u64  prov_conv_immediate_only = 0;
 static u64  prov_conv_beyond_trial = 0;
 static u64  prov_conv_unclassified = 0;
+
+/* ── Stage-2 T03: campaign-level fixed target-invocation budget ──
+ * When campaign_call_budget > 0, every ADMITTED target invocation counts
+ * against the cap (trial, validation, ordinary, calibration — all kinds,
+ * per the T02-B billing contract). At the cap the campaign refuses new
+ * invocations and terminates cleanly at the next safe scheduler point
+ * with termination reason "campaign-call-budget". The T03 Q1 strategies
+ * adjust only where saved quota goes: NO_REFLOW parks it (the effective
+ * cap shrinks — the calls are genuinely not spent), REFLOW refills the
+ * ordinary-exploration pool (cap unchanged, consumption ledgered). */
+static u64 campaign_call_budget = 0;        /* CHATAFL_CAMPAIGN_CALL_BUDGET */
+static u64 campaign_charged_invocations = 0;
+static u8  campaign_budget_exhausted = 0;
+static u8  campaign_budget_stop_reported = 0;
+static u8  q1_no_reflow = 0;                /* CHATAFL_Q1_NO_REFLOW */
+static u8  q1_reflow = 0;                   /* CHATAFL_Q1_REFLOW */
+static u8  q1_direct_service = 0;           /* CHATAFL_Q1_DIRECT_SERVICE */
+static u64 q1_saved_total = 0, q1_idle_total = 0;
+static u64 q1_reflow_pool = 0, q1_reflow_consumed = 0;
+
+static u64 campaign_effective_call_cap(void) {
+  if (!campaign_call_budget) return 0;
+  return campaign_call_budget > q1_idle_total ?
+      campaign_call_budget - q1_idle_total : 0;
+}
+
+
 static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidates
                                        * keep their error-free messages via the
                                        * provisional tier instead of being
@@ -3918,6 +3945,12 @@ static void run_config_log(const char *phase, const char *termination_reason) {
       "unconverted candidate subtree; every run_target call incl. calibration/hang retry; first hnb=2 makes subtree durable"));
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
   json_object_object_add(j, "state_retain", json_object_new_boolean(state_retain_enabled));
+  /* Stage-2 T03 stamps: fixed-call budget and Q1 quota-flow policy. */
+  admission_json_add_u64(j, "campaign_call_budget", campaign_call_budget);
+  json_object_object_add(j, "q1_policy",
+      json_object_new_string(q1_direct_service ? "direct-service" :
+                             q1_reflow ? "reflow" :
+                             q1_no_reflow ? "no-reflow" : "none"));
   /* Conversion-semantics stamp (2026-11-06): conversions inside the
    * validation window are CLASSIFIED (immediate-rescue vs beyond-trial)
    * via recorded trial/save bitmap positions; the virgin map is not
@@ -10988,7 +11021,35 @@ static u8 execution_is_validation_probe(void) {
   return execution_kind && !strcmp(execution_kind, "prov-annotate");
 }
 
+static void q1_log_flow_event(const char *kind, u64 candidate_id,
+                              const char *destination) {
+  if (!event_log_enabled) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("q1_budget_flow"));
+  json_object_object_add(j, "kind", json_object_new_string(kind));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "candidate_id", candidate_id);
+  json_object_object_add(j, "destination", json_object_new_string(destination));
+  admission_json_add_u64(j, "amount", provisional_budget_default);
+  admission_json_add_u64(j, "saved_total", q1_saved_total);
+  admission_json_add_u64(j, "idle_total", q1_idle_total);
+  admission_json_add_u64(j, "reflow_pool_left", q1_reflow_pool);
+  admission_json_add_u64(j, "reflow_consumed", q1_reflow_consumed);
+  admission_json_add_u64(j, "charged_invocations", campaign_charged_invocations);
+  admission_json_add_u64(j, "effective_cap", campaign_effective_call_cap());
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  ec_append_jsonl("q1-budget-flow.jsonl", j);
+  json_object_put(j);
+}
+
 static u8 execution_admit(struct queue_entry *root, u32 cid) {
+  /* Fixed-budget check precedes every per-root consideration: reaching the
+   * campaign cap is a planned stop, not an integrity failure. */
+  u64 cap = campaign_effective_call_cap();
+  if (cap && campaign_charged_invocations >= cap) {
+    campaign_budget_exhausted = 1;
+    return 0;
+  }
   if (!execution_ready(root)) return 0;
   if (!strcmp(execution_kind, "mutation") && cal_episode_active &&
       episode_energy_cap && episode_havoc_phase)
@@ -11002,6 +11063,7 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
    * ancestry-free invocations. Gains were already split along the same
    * line (llm_lineage_edge_gains), so the opportunity gate now compares
    * like with like. */
+  campaign_charged_invocations++;
   if (cid) {
     lineage_invocation_total++;
     if (root && !root->prov_converted && !execution_is_validation_probe()) {
@@ -11011,6 +11073,11 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
     }
   } else {
     ord_invocation_total++;
+    /* REFLOW consumption: an ordinary mutation burns pool quota first. */
+    if (q1_reflow && !strcmp(execution_kind, "mutation") && q1_reflow_pool) {
+      q1_reflow_pool--;
+      q1_reflow_consumed++;
+    }
   }
   return 1;
 }
@@ -13013,6 +13080,13 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "prov_conv_immediate_only: %llu\n"
              "prov_conv_beyond_trial  : %llu\n"
              "prov_conv_unclassified  : %llu\n"
+             "campaign_call_budget    : %llu\n"
+             "campaign_charged_calls  : %llu\n"
+             "campaign_budget_exhausted: %llu\n"
+             "q1_saved_quota          : %llu\n"
+             "q1_idle_quota           : %llu\n"
+             "q1_reflow_consumed      : %llu\n"
+             "q1_reflow_pool_left     : %llu\n"
              "code_retain_converted : %llu\n"
              "salvage_enabled       : %u\n"
              "salvage_attempted     : %llu\n"
@@ -13087,6 +13161,13 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)prov_conv_immediate_only,
           (unsigned long long)prov_conv_beyond_trial,
           (unsigned long long)prov_conv_unclassified,
+          (unsigned long long)campaign_call_budget,
+          (unsigned long long)campaign_charged_invocations,
+          (unsigned long long)campaign_budget_exhausted,
+          (unsigned long long)q1_saved_total,
+          (unsigned long long)q1_idle_total,
+          (unsigned long long)q1_reflow_consumed,
+          (unsigned long long)q1_reflow_pool,
           (unsigned long long)code_retain_converted,
           salvage_enabled,
           (unsigned long long)salvage_attempted,
@@ -16239,6 +16320,13 @@ static u8 admission_run_llm_candidate(char **argv,
     if (ev.disposition == EC_CODE_RETAIN && !code_retain_enabled &&
         !test_force_code_retain)
       ev.disposition = EC_REJECT;
+    /* T03 strategy A (direct service): the gate decision under study is
+     * not executed — every executed, parseable, replayable candidate gets
+     * the SAME bounded validation service the gate arms give retained
+     * candidates (uniform treatment, uniform 64-call quota). */
+    if (q1_direct_service && executed && ev.p_pass && ev.r_pass &&
+        (ev.disposition == EC_REJECT || ev.disposition == EC_DURABLE))
+      ev.disposition = EC_PROVISIONAL;
     /* S2 (2026-11-05): opt-in state-evidence retention; only upgrades a
      * strict-U reject, so it can never override durable/provisional. */
     if (state_retain_route(&ev))
@@ -16251,6 +16339,19 @@ static u8 admission_run_llm_candidate(char **argv,
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
 
+  /* T03 flow ledger: an executed, parseable, replayable candidate that the
+   * gate rejected frees its would-be 64-call service quota. NO_REFLOW parks
+   * the quota (effective cap shrinks by it); REFLOW hands it to the
+   * ordinary-exploration pool (consumption tracked in execution_admit). */
+  if ((q1_no_reflow || q1_reflow) && executed && ev.p_pass && ev.r_pass &&
+      ev.disposition == EC_REJECT && !durable && !provisional && !forced) {
+    q1_saved_total += provisional_budget_default;
+    q1_log_flow_event("saved", (u64)llm_cur_candidate_id,
+                      q1_reflow ? "ordinary-pool" : "idle");
+    if (q1_reflow) q1_reflow_pool += provisional_budget_default;
+    else q1_idle_total += provisional_budget_default;
+  }
+
   if (executed && !common_ret && !last_common_fuzz_saved &&
       last_common_fuzz_fault == FAULT_NONE && !stop_soon) {
     if (admission_native_retention) {
@@ -16261,7 +16362,8 @@ static u8 admission_run_llm_candidate(char **argv,
       durable = admission_promote_durable(candidate, candidate_len);
     } else if (ev.disposition == EC_PROVISIONAL) {
       provisional = admission_provisional_queue_candidate(
-          target_sid, (u64)llm_cur_candidate_id, NULL);
+          target_sid, (u64)llm_cur_candidate_id,
+          q1_direct_service ? "direct-service" : NULL);
     } else if (ev.disposition == EC_CODE_RETAIN) {
       /* v3.4 (expert P0-3): U-fail but code-bearing — retained in the
        * provisional tier, earns durability only via descendant code
@@ -22235,6 +22337,18 @@ static void evidence_env_parse(void) {
       u32 b = (u32)atoi(pb);
       if (b > 0 && b <= 100000) provisional_budget_default = b;
     }
+    const char *cb = getenv("CHATAFL_CAMPAIGN_CALL_BUDGET");
+    if (cb && *cb) {
+      u64 b = (u64)atoll(cb);
+      if (b > 0 && b <= 100000000ULL) campaign_call_budget = b;
+      else WARNF("CHATAFL_CAMPAIGN_CALL_BUDGET=%s invalid, budget off", cb);
+    }
+    if (getenv("CHATAFL_Q1_NO_REFLOW") &&
+        strcmp(getenv("CHATAFL_Q1_NO_REFLOW"), "0") != 0) q1_no_reflow = 1;
+    if (getenv("CHATAFL_Q1_REFLOW") &&
+        strcmp(getenv("CHATAFL_Q1_REFLOW"), "0") != 0) q1_reflow = 1;
+    if (getenv("CHATAFL_Q1_DIRECT_SERVICE") &&
+        strcmp(getenv("CHATAFL_Q1_DIRECT_SERVICE"), "0") != 0) q1_direct_service = 1;
     const char *pt = getenv("CHATAFL_PROVISIONAL_TTL_MS");
     if (pt && *pt) {
       u32 t = (u32)atoi(pt);
@@ -23575,6 +23689,15 @@ retry_state_aware:
           }
         }
       }
+      if (campaign_budget_exhausted && !campaign_budget_stop_reported) {
+        campaign_budget_stop_reported = 1;
+        scheduler_selection_reason = "campaign-call-budget-exhausted";
+        scheduler_log_selection(NULL);
+        stop_soon = 2;
+        WARNF("Campaign call budget exhausted: %llu charged, cap %llu",
+              campaign_charged_invocations, campaign_effective_call_cap());
+        break;
+      }
       if (stop_soon || !selected_seed) break;
       if (!full_session_m2_override && target_state_id == 0 &&
           !entry_can_fuzz_state(selected_seed, target_state_id)) {
@@ -23788,6 +23911,7 @@ stop_fuzzing:
   if (run_config_logged) {
     const char *reason =
         scheduler_integrity_failed ? "scheduler-integrity-failure" :
+        campaign_budget_exhausted ? "campaign-call-budget" :
         stop_soon == 2 ? "exit_1" :
         (unique_crashes && !queue_cycle ? "early-crash" : "signal-or-timeout");
     run_config_log("end", reason);

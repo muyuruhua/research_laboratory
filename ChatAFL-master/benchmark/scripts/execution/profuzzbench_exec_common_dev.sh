@@ -846,6 +846,15 @@ for i in $(seq 1 $RUNS); do
   # Docker's -e follows last-value-wins: if CHATAFL_HYPOTHESIS is passed
   # here, it overrides the hardcoded -e CHATAFL_HYPOTHESIS=1 below.
   ABLATION_FLAGS=""
+  # Every container gets an identity and RNG seed derived from the immutable
+  # group/run tuple.  The fuzzer already consumes these variables; generating
+  # them here avoids millisecond/PID collisions across parallel groups.
+  _IDENTITY_DIGEST="$(printf '%s' "${DOCIMAGE}|${FUZZER}|${OUTDIR}|${RUN_TS}|${i}" | sha256sum | cut -c1-32)"
+  _CAMPAIGN_ID="lf-${_IDENTITY_DIGEST}"
+  _RNG_HEX="$(printf '%s' "seed|${DOCIMAGE}|${FUZZER}|${OUTDIR}|${RUN_TS}|${i}" | sha256sum | cut -c1-16)"
+  ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_ID=${_CAMPAIGN_ID}"
+  ABLATION_FLAGS+=" -e CHATAFL_RNG_SEED=0x${_RNG_HEX}"
+  echo "[RUN_IDENTITY] arm=${OUTDIR} run=${i} campaign=${_CAMPAIGN_ID} rng=0x${_RNG_HEX}"
   [[ -n "${CHATAFL_HYPOTHESIS:-}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_HYPOTHESIS=${CHATAFL_HYPOTHESIS}"
   [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
@@ -923,6 +932,10 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_CODE_RETAIN:-}" ]]            && ABLATION_FLAGS+=" -e CHATAFL_CODE_RETAIN=${CHATAFL_CODE_RETAIN}"
   [[ -n "${CHATAFL_STATE_RETAIN:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_STATE_RETAIN=${CHATAFL_STATE_RETAIN}"
   [[ -n "${CHATAFL_PROV_PREFIX_PROTECT:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_PROV_PREFIX_PROTECT=${CHATAFL_PROV_PREFIX_PROTECT}"
+  [[ -n "${CHATAFL_CAMPAIGN_CALL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_CALL_BUDGET=${CHATAFL_CAMPAIGN_CALL_BUDGET}"
+  [[ -n "${CHATAFL_Q1_NO_REFLOW:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_Q1_NO_REFLOW=${CHATAFL_Q1_NO_REFLOW}"
+  [[ -n "${CHATAFL_Q1_REFLOW:-}" ]]              && ABLATION_FLAGS+=" -e CHATAFL_Q1_REFLOW=${CHATAFL_Q1_REFLOW}"
+  [[ -n "${CHATAFL_Q1_DIRECT_SERVICE:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_Q1_DIRECT_SERVICE=${CHATAFL_Q1_DIRECT_SERVICE}"
   [[ -n "${CHATAFL_TEST_FORCE_CODE_RETAIN:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_TEST_FORCE_CODE_RETAIN=${CHATAFL_TEST_FORCE_CODE_RETAIN}"
   [[ -n "${CHATAFL_NO_LLM:-}" ]]                 && ABLATION_FLAGS+=" -e CHATAFL_NO_LLM=${CHATAFL_NO_LLM}"
   [[ -n "${CHATAFL_STATE_SELECT:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_STATE_SELECT=${CHATAFL_STATE_SELECT}"

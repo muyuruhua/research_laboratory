@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1918,6 +1919,18 @@ klist_t(lms) * construct_kl_messages(u8 *fname, region_t *regions, u32 region_co
 
   klist_t(lms) *kl_messages = kl_init(lms);
   u32 i;
+  /* A regions table is a contract for these exact bytes. Reject stale or
+   * truncated files instead of silently manufacturing zero-padded messages. */
+  u64 expected = 0;
+  if (!regions || !region_count) goto invalid_seed;
+  for (i = 0; i < region_count; i++) {
+    if (regions[i].start_byte != expected ||
+        regions[i].end_byte < regions[i].start_byte) goto invalid_seed;
+    expected = (u64)regions[i].end_byte + 1;
+  }
+  if (fseek(fseed, 0, SEEK_END) || ftell(fseed) < 0 ||
+      (u64)ftell(fseed) != expected || fseek(fseed, 0, SEEK_SET))
+    goto invalid_seed;
 
   for (i = 0; i < region_count; i++)
   {
@@ -1930,7 +1943,11 @@ klist_t(lms) * construct_kl_messages(u8 *fname, region_t *regions, u32 region_co
     m->msize = len;
     if (m->mdata == NULL)
       PFATAL("Unable to allocate memory region to store new message");
-    fread(m->mdata, 1, len, fseed);
+    if (fread(m->mdata, 1, len, fseed) != len) {
+      ck_free(m->mdata);
+      ck_free(m);
+      goto invalid_seed;
+    }
 
     // Insert the message to the linked list
     *kl_pushp(lms, kl_messages) = m;
@@ -1939,6 +1956,11 @@ klist_t(lms) * construct_kl_messages(u8 *fname, region_t *regions, u32 region_co
   if (fseed != NULL)
     fclose(fseed);
   return kl_messages;
+invalid_seed:
+  fclose(fseed);
+  delete_kl_messages(kl_messages);
+  errno = EINVAL;
+  return NULL;
 }
 
 void delete_kl_messages(klist_t(lms) * kl_messages)

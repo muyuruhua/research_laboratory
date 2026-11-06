@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <limits.h>
 #include <math.h>
+#include <sys/file.h>
+#include <sys/types.h>
 
 #include "chat-llm.h"
 #include "knowledge-level.h"
@@ -98,6 +100,44 @@ void chat_llm_set_calls_log(const char *path) {
         snprintf(chat_llm_calls_path, sizeof(chat_llm_calls_path), "%s", path);
 }
 
+/* ── Channel context (CSV#20 component attribution & ablation) ──────
+ * Every gateway call belongs to exactly one request class:
+ *   grammar    – protocol-template discovery + grammar-hypothesis
+ *                generation/refinement
+ *   enrichment – initial-corpus seed enrichment workers
+ *   plateau    – stall/plateau suggested-request consultation
+ *   other      – anything else (e.g. MQTT diff verdicts)
+ * The tag rides the llm-calls.jsonl rows (killing the historical
+ * 5649/40114 request-class ambiguity at the source) and carries a
+ * per-channel kill switch: a disabled channel short-circuits exactly
+ * like CHATAFL_NO_LLM — no request, no tokens, no ledger row — so
+ * grammar-only / enrichment-only / plateau-only arms are real
+ * component isolations, not post-hoc re-classification.  __thread:
+ * enrichment workers run concurrently with the main thread. */
+static __thread char chat_llm_channel[24] = "other";
+
+void chat_llm_set_channel(const char *channel) {
+    if (channel && *channel)
+        snprintf(chat_llm_channel, sizeof(chat_llm_channel), "%s", channel);
+    else
+        snprintf(chat_llm_channel, sizeof(chat_llm_channel), "other");
+}
+
+const char *chat_llm_current_channel(void) { return chat_llm_channel; }
+
+static unsigned char chat_llm_channel_disabled(void) {
+    const char *e;
+    if (!strcmp(chat_llm_channel, "grammar"))
+        e = getenv("CHATAFL_NO_GRAMMAR");
+    else if (!strcmp(chat_llm_channel, "enrichment"))
+        e = getenv("CHATAFL_NO_ENRICH");
+    else if (!strcmp(chat_llm_channel, "plateau"))
+        e = getenv("CHATAFL_NO_PLATEAU");
+    else
+        return 0;
+    return e && *e && strcmp(e, "0") != 0;
+}
+
 unsigned long long chat_llm_cum_calls(void) {
     pthread_mutex_lock(&g_llm_calls_mutex);
     unsigned long long value = llm_cum_calls;
@@ -123,16 +163,16 @@ static unsigned long long chat_llm_now_ms(void) {
  * written as sidecar files <seq>.req/.resp next to llm-calls.jsonl so the
  * ledger stays parseable while the complete exchanges remain auditable
  * (gateway nondeterminism / replay). */
-static void chat_llm_archive(unsigned long long seq, const char *req_json,
+static void chat_llm_archive(const char *request_id, const char *req_json,
                              const char *resp) {
     if (!chat_llm_archive_dir[0]) return;
     if (req_json && *req_json) {
-        char p[4352]; snprintf(p, sizeof(p), "%s/%llu.req", chat_llm_archive_dir, seq);
+        char p[4352]; snprintf(p, sizeof(p), "%s/%s.req", chat_llm_archive_dir, request_id);
         FILE *f = fopen(p, "w");
         if (f) { fputs(req_json, f); fclose(f); }
     }
     if (resp && *resp) {
-        char p[4352]; snprintf(p, sizeof(p), "%s/%llu.resp", chat_llm_archive_dir, seq);
+        char p[4352]; snprintf(p, sizeof(p), "%s/%s.resp", chat_llm_archive_dir, request_id);
         FILE *f = fopen(p, "w");
         if (f) { fputs(resp, f); fclose(f); }
     }
@@ -141,17 +181,30 @@ static void chat_llm_archive(unsigned long long seq, const char *req_json,
 static void chat_llm_log_call(const char *status, const char *model_req,
                               long latency_ms,
                               unsigned long long pt, unsigned long long ct,
-                              const char *endpoint) {
+                              const char *endpoint, int attempt, int retry) {
     if (!chat_llm_calls_path[0]) return;
     pthread_mutex_lock(&g_llm_calls_mutex);
     unsigned long long seq = llm_calls_seq + 1;
-    chat_llm_archive(seq, g_llm_last_req, g_llm_last_resp);
+    /* seq is retained for compatibility, but is not a cross-fork identity:
+     * forked children inherit its value. PID + process-local seq is stable
+     * for the campaign and keeps request/response sidecars one-to-one. */
+    char request_id[128];
+    snprintf(request_id, sizeof(request_id), "%ld-%llu", (long)getpid(), seq);
+    chat_llm_archive(request_id, g_llm_last_req, g_llm_last_resp);
     FILE *f = fopen(chat_llm_calls_path, "a");
     if (f) {
+        flock(fileno(f), LOCK_EX);
         seq = ++llm_calls_seq;
+        snprintf(request_id, sizeof(request_id), "%ld-%llu", (long)getpid(), seq);
         json_object *record = json_object_new_object();
         if (record) {
             json_object_object_add(record, "seq", json_object_new_int64(seq));
+            json_object_object_add(record, "request_id", json_object_new_string(request_id));
+            json_object_object_add(record, "pid", json_object_new_int64((int64_t)getpid()));
+            json_object_object_add(record, "ppid", json_object_new_int64((int64_t)getppid()));
+            json_object_object_add(record, "attempt", json_object_new_int(attempt));
+            json_object_object_add(record, "retry", json_object_new_boolean(retry != 0));
+            json_object_object_add(record, "channel", json_object_new_string(chat_llm_channel));
             json_object_object_add(record, "time_ms", json_object_new_int64(chat_llm_now_ms()));
             json_object_object_add(record, "status", json_object_new_string(status ? status : "unknown"));
             json_object_object_add(record, "model_requested", json_object_new_string(model_req ? model_req : ""));
@@ -166,6 +219,8 @@ static void chat_llm_log_call(const char *status, const char *model_req,
             fprintf(f, "%s\n", json_object_to_json_string_ext(record, JSON_C_TO_STRING_PLAIN));
             json_object_put(record);
         }
+        fflush(f);
+        flock(fileno(f), LOCK_UN);
         fclose(f);
     }
     pthread_mutex_unlock(&g_llm_calls_mutex);
@@ -272,6 +327,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     g_llm_last_req[0] = g_llm_last_resp[0] = '\0';
     const char *no_llm = getenv("CHATAFL_NO_LLM");
     if (no_llm && *no_llm && strcmp(no_llm, "0") != 0) return NULL;
+    if (chat_llm_channel_disabled()) return NULL;
     if (tries <= 0 || !isfinite(temperature)) return NULL;
 
     const char *env_base = getenv("CHATAFL_LLM_BASE");
@@ -369,7 +425,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         if (!chat_llm_reserve_call()) {
             curl_easy_cleanup(curl);
             free(chunk.memory);
-            chat_llm_log_call("cap-refused", llm_model, 0, 0, 0, url);
+            chat_llm_log_call("cap-refused", llm_model, 0, 0, 0, url, attempt, 0);
             break;
         }
         unsigned long long started = chat_llm_now_ms();
@@ -438,7 +494,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             if (response) json_object_put(response);
         }
         chat_llm_log_call(call_status, llm_model, latency,
-                          llm_last_prompt_tokens, llm_last_completion_tokens, url);
+                          llm_last_prompt_tokens, llm_last_completion_tokens, url,
+                          attempt, retry && attempt + 1 < tries);
         /* Every path releases the handle and buffer before retrying or returning. */
         curl_easy_cleanup(curl);
         free(chunk.memory);
@@ -713,8 +770,29 @@ static const char PLATEAU_BUGCLASS_PRIMITIVES[] =
  * builds). */
 #define attack_prompt_enabled() kl_attack_prompt_on()
 
+static char *llm_handle_plateau_inner(const char *protocol_name,
+                                      const char *examples,
+                                      const char *history,
+                                      const char *state_ctx);
+
 char *llm_handle_plateau(const char *protocol_name, const char *examples,
                          const char *history, const char *state_ctx) {
+    if (!protocol_name) return NULL;
+    /* CSV#20 channel scope: every gateway call on this path is a plateau
+     * consultation (saved/restored so callers never leak the tag). */
+    char channel_prev[sizeof(chat_llm_channel)];
+    snprintf(channel_prev, sizeof(channel_prev), "%s", chat_llm_current_channel());
+    chat_llm_set_channel("plateau");
+    char *plateau_result = llm_handle_plateau_inner(protocol_name, examples,
+                                                    history, state_ctx);
+    chat_llm_set_channel(channel_prev);
+    return plateau_result;
+}
+
+static char *llm_handle_plateau_inner(const char *protocol_name,
+                                      const char *examples,
+                                      const char *history,
+                                      const char *state_ctx) {
     if (!protocol_name) return NULL;
 
     /* Look up per-protocol format constraint for plateau prompt (Fix-23) */
@@ -1987,6 +2065,10 @@ char *format_string(char *state_string)
  ***/
 void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set)
 {
+    /* CSV#20 channel scope: protocol-template discovery feeds the grammar. */
+    char channel_prev[sizeof(chat_llm_channel)];
+    snprintf(channel_prev, sizeof(channel_prev), "%s", chat_llm_current_channel());
+    chat_llm_set_channel("grammar");
     khash_t(strMap) *state_to_times = kh_init(strMap); // map from state to times
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
@@ -2033,6 +2115,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
             }
         }
     }
+    chat_llm_set_channel(channel_prev);
 }
 
 khash_t(strSet) * duplicate_hash(khash_t(strSet) * set)
@@ -2488,6 +2571,9 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
 
 char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
 {
+    /* CSV#20 channel scope: seed-enrichment request class (thread-local;
+     * the worker threads calling this never run other call classes). */
+    chat_llm_set_channel("enrichment");
     /* Look up protocol-specific hints */
     const EnrichHintEntry *hint = NULL;
     if (protocol_name) {

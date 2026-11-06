@@ -167,12 +167,46 @@ static void test_simple_online_baselines(void) {
   CHECK(fabs(ec_run_rate_estimate(3, 9) - 4.0 / 11.0) < 1e-12, "run-rate arithmetic");
 }
 
+/* CSV #12 (2026-11-02): run-level base-rate shrinkage — the principled
+ * online translation of the offline campaign-level winners.  Thin evidence
+ * pulls toward the run base rate; dense evidence dominates; degenerate
+ * inputs fall back instead of NaN. */
+static void test_shrinkage_estimator(void) {
+  /* Zero per-state evidence → exactly the run base rate (replaces the
+   * Beta(1,1) 0.5 default that mispriced low-reward campaigns). */
+  CHECK(fabs(ec_shrink_estimate(0, 0, 0.12, 8.0) - 0.12) < 1e-12,
+        "no evidence -> run base rate");
+  /* Thin evidence: 1 reward in 2 episodes, run rate 0.1, κ=8 →
+   * (1 + 0.8) / (2 + 8) = 0.18 — near the base rate, not 0.5. */
+  CHECK(fabs(ec_shrink_estimate(1, 2, 0.1, 8.0) - 0.18) < 1e-12,
+        "thin evidence shrinks toward base");
+  /* Dense evidence dominates: 90 rewards in 100 episodes, base 0.1, κ=8 →
+   * (90 + 0.8) / 108 ≈ 0.8407 — close to the raw 0.9, far from base 0.1. */
+  CHECK(fabs(ec_shrink_estimate(90, 100, 0.1, 8.0) - 90.8 / 108.0) < 1e-12,
+        "dense evidence dominates");
+  /* Monotone in per-state success for fixed base. */
+  double lo = ec_shrink_estimate(0, 10, 0.2, 4.0);
+  double hi = ec_shrink_estimate(10, 10, 0.2, 4.0);
+  CHECK(lo < hi, "monotone in per-state successes");
+  /* Monotone in run base rate for fixed per-state evidence. */
+  CHECK(ec_shrink_estimate(1, 4, 0.0, 4.0) < ec_shrink_estimate(1, 4, 0.9, 4.0),
+        "monotone in run base rate");
+  /* κ=0 degenerates to the raw per-state rate; still no NaN at 0/0. */
+  CHECK(fabs(ec_shrink_estimate(3, 4, 0.7, 0.0) - 0.75) < 1e-12, "kappa=0 raw rate");
+  CHECK(fabs(ec_shrink_estimate(0, 0, 0.3, 0.0) - 0.3) < 1e-12, "0/0 falls back to base");
+  /* Input guards: NaN run rate and out-of-range values clamp, never NaN. */
+  double guarded = ec_shrink_estimate(2, 5, 5.0, -1.0);
+  CHECK(guarded == guarded && guarded >= 0.0 && guarded <= 1.0,
+        "out-of-range inputs clamp to a valid probability");
+}
+
 int main(void) {
   test_posterior_update();
   test_disposition();
   test_thompson_statistics();
   test_gamma_extremes();
   test_simple_online_baselines();
+  test_shrinkage_estimator();
 
   if (failures) {
     printf("evidence_selftest: %d FAILURE(S)\n", failures);

@@ -203,6 +203,10 @@ int main(int argc, char *argv[])
   klist_t(lms) * kl_messages;
   kliter_t(lms) * it;
   kl_messages = construct_kl_messages(argv[1], regions, region_count);
+  if (!kl_messages) {
+    fprintf(stderr, "Invalid or truncated request regions: %s\n", argv[1]);
+    return 1;
+  }
 
   for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
   {

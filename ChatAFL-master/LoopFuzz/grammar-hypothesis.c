@@ -1491,6 +1491,8 @@ char* construct_hypothesis_refinement_prompt(
  * ============================================ */
 
 int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
+    /* CSV#20 channel scope: all calls on this path are grammar-channel. */
+    chat_llm_set_channel("grammar");
     if (!ctx) {
         fprintf(stderr, "[!] generate_grammar_hypotheses: ctx is NULL\n");
         return 0;
@@ -2520,7 +2522,9 @@ int refine_hypothesis_with_counterexamples(
     if (hyp->counterexample_count == 0) {
         return 0;  // Nothing to refine
     }
-    
+    /* CSV#20 channel scope: hypothesis refinement is a grammar-channel call. */
+    chat_llm_set_channel("grammar");
+
     char *prompt = construct_hypothesis_refinement_prompt(hyp, ctx->protocol_name);
     
     char *response = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 3, 0.3);

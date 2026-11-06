@@ -78,6 +78,28 @@ def check_archive(path):
         "kinds": dict(kinds),
         "root_cap_violations": cap_violations,
     }
+    # L7 fixed-budget identity (stage-2 T03 runs): when a campaign call
+    # budget is stamped, charged starts must not exceed cap; refusals at
+    # the cap must be present (budget actually bound) or the run ended by
+    # timeout first (both recorded, never silently assumed).
+    with tarfile.open(path, "r:gz") as tf2:
+        rc = tf2.extractfile("out-bftpd-loopfuzz/run-config.jsonl")
+        budget = None
+        if rc:
+            for line in io.TextIOWrapper(rc):
+                try:
+                    j = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if j.get("event") == "run_config" and j.get("phase") == "start":
+                    budget = j.get("campaign_call_budget")
+                    stats["q1_policy"] = j.get("q1_policy")
+                    break
+    if budget:
+        stats["campaign_call_budget"] = budget
+        if len(starts) > budget:
+            fails.append("L7-charged-over-budget")
+        stats["budget_binding"] = "cap" if len(refused) else "timeout-first-or-unbound"
     if unmatched:
         # tail cutoff is legitimate at campaign end but must be explicit
         stats["note"] = "unpaired starts allowed only at campaign tail (cutoff)"

@@ -112,7 +112,7 @@ CHATAFL_MOCK_LLM="${CHATAFL_MOCK_LLM:-0}"
 # Explicit, shared validation controls are applied AFTER arm isolation.
 # Keeping them outside CHATAFL_* prevents silent removal by the isolation
 # sweep. Defaults remain the published arm definitions.
-for _validation_var in ABLATION_THRESHOLD_OVERRIDE ABLATION_WARMUP_MAX_OVERRIDE ABLATION_EPISODE_ENERGY_OVERRIDE; do
+for _validation_var in ABLATION_THRESHOLD_OVERRIDE ABLATION_WARMUP_MAX_OVERRIDE ABLATION_EPISODE_ENERGY_OVERRIDE ABLATION_CALL_BUDGET_OVERRIDE; do
   _validation_value="${!_validation_var}"
   if [[ -n "$_validation_value" && ! "$_validation_value" =~ ^[1-9][0-9]*$ ]]; then
     echo "[ERROR] ${_validation_var} must be a positive integer" >&2
@@ -221,10 +221,11 @@ run_queued_groups() {
     for _dry_spec in "${GROUP_SPECS[@]}"; do
       printf '[ARM_SPEC] %s\n' "$_dry_spec"
     done
-    printf '[SHARED_OVERRIDES] threshold=%s warmup_max=%s episode_energy=%s\n' \
+    printf '[SHARED_OVERRIDES] threshold=%s warmup_max=%s episode_energy=%s call_budget=%s\n' \
       "${ABLATION_THRESHOLD_OVERRIDE:-arm-default}" \
       "${ABLATION_WARMUP_MAX_OVERRIDE:-arm-default}" \
-      "${ABLATION_EPISODE_ENERGY_OVERRIDE:-arm-default}"
+      "${ABLATION_EPISODE_ENERGY_OVERRIDE:-arm-default}" \
+      "${ABLATION_CALL_BUDGET_OVERRIDE:-off}"
     exit 0
   fi
 
@@ -293,6 +294,11 @@ run_queued_groups() {
           export CHATAFL_SCHEDULER_WARMUP_MAX="$ABLATION_WARMUP_MAX_OVERRIDE"
         [[ -n "${ABLATION_EPISODE_ENERGY_OVERRIDE:-}" ]] && \
           export CHATAFL_EPISODE_ENERGY="$ABLATION_EPISODE_ENERGY_OVERRIDE"
+
+        # Stage-2 T03: uniform fixed target-invocation budget across arms
+        # (the first-round primary endpoint runs under a common call cap).
+        [[ -n "${ABLATION_CALL_BUDGET_OVERRIDE:-}" ]] && \
+          export CHATAFL_CAMPAIGN_CALL_BUDGET="$ABLATION_CALL_BUDGET_OVERRIDE"
 
         export CHATAFL_NO_HETERO_BROKERS=1
         export CHATAFL_FROM_ABLATION=1
@@ -709,6 +715,33 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_CODE_RETAIN=1" \
           "CHATAFL_PROV_PREFIX_PROTECT=0"
+        ;;
+      q1a8|q1b8|q1c8)
+        # Stage-2 T03 Q1 strategies (2026-11-06): single-factor triplet on
+        # the fate of the 64-call quota freed by gate rejects of executable
+        # candidates. All three share the wrapgate8 generation base and the
+        # SAME campaign call budget (set via ABLATION_CALL_BUDGET_OVERRIDE
+        # so the A-vs-C comparison is fixed-call, not fixed-wallclock).
+        #   q1a8 = A direct service (no gate decision; every p&r candidate
+        #          gets the same bounded validation service)
+        #   q1b8 = B gate + idle (freed quota parked; effective cap shrinks)
+        #   q1c8 = C gate + reflow (freed quota refills ordinary mutation)
+        valid+=("$name")
+        local q1var=""
+        case "$name" in
+          q1a8) q1var="CHATAFL_Q1_DIRECT_SERVICE=1" ;;
+          q1b8) q1var="CHATAFL_Q1_NO_REFLOW=1" ;;
+          q1c8) q1var="CHATAFL_Q1_REFLOW=1" ;;
+        esac
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1" \
+          "CHATAFL_PLAINTEXT_WRAP=1" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
+          "${q1var}"
         ;;
       stateretain8)
         # S2 state-evidence entry (2026-11-05): wrapgate8 + only

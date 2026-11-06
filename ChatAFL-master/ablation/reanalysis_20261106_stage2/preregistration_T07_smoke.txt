@@ -1,0 +1,14 @@
+Stage-2 T07 smoke pre-registration (before launch, 2026-11-06)
+Baseline: commit fcbcffc8c (reviewed 0d46afb1 capture rewrite) + T03 mechanisms
+  (campaign call budget, q1 flow ledger, direct-service route) on top.
+Arms (15) x3 x45min, parallel, mock (unchanged SHA), threshold=1, warmup=8, energy=64:
+  wrapdirect8 wrapgate8 shadowrand8 nollm8 ordmatch8 salvage8 code_retain8 ordedf8
+  calibrated8 cal_ewma8 cal_shrink cal_run_rate8 q1a8 q1b8 q1c8
+Shared: ABLATION_CALL_BUDGET_OVERRIDE=12000 (fixed-call primary endpoint for ALL arms).
+Primary comparisons (3, pre-registered):
+ 1. q1a8 vs q1c8  -> A/C same-budget new source branches (B as mechanism split)
+ 2. q1c8 vs q1b8  -> reflow effect (censoring + branch bounds; no effect claims at n=3)
+ 3. T03 dose lines: q1b8/q1c8 saved-quota events >=10/arm; q1c8 reflow consumed/saved >=0.8;
+    q1a8 direct-service admits > 50/arm; budget binding recorded per run (L7).
+Verdict rules: P64 as N/C/F/U + bounds; fixed-call endpoint = terminal union minus
+per-run seed baseline (both recorded); no significance/equivalence claims at n=3.

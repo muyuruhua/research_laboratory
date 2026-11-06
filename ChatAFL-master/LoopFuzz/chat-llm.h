@@ -86,6 +86,13 @@ void chat_llm_global_init(void);
 /* Must be called once after all LLM calls are done */
 void chat_llm_global_cleanup(void);
 
+/* CSV#20 channel context: name the request class (grammar | enrichment |
+ * plateau | other) AROUND a call region so llm-calls.jsonl attributes it
+ * and the per-channel kill switch (CHATAFL_NO_GRAMMAR/ENRICH/PLATEAU)
+ * applies.  Thread-local; callers save/restore around their region. */
+void        chat_llm_set_channel(const char *channel);
+const char *chat_llm_current_channel(void);
+
 /* Auditable LLM configuration (paper §九): resolve CHATAFL_TOP_P /
  * CHATAFL_MAX_TOKENS / LLM_MODEL once; getters expose the effective
  * values for run-config.jsonl. */

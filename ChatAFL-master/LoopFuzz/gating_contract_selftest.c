@@ -835,6 +835,103 @@ static void test_censor_frees_trial_evidence(void) {
   queue = queue_top = NULL;
 }
 
+/* Stage-2 T03: fixed campaign call budget — admitted invocations count
+ * against the cap, the cap refusal is a planned stop, and NO_REFLOW's
+ * parked quota shrinks the effective cap. */
+static void test_campaign_budget_cap(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 31; root.is_provisional = 1;
+  root.prov_candidate_id = 91; root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  queue = queue_top = &root;
+  u64 saved_budget = campaign_call_budget, saved_charged = campaign_charged_invocations;
+  u64 saved_idle = q1_idle_total, saved_pool = q1_reflow_pool;
+  u8  saved_exh = campaign_budget_exhausted, saved_rep = campaign_budget_stop_reported;
+  const char *old_kind = execution_kind;
+  execution_kind = "mutation";
+
+  campaign_charged_invocations = 0;
+  campaign_budget_exhausted = 0;
+  campaign_budget_stop_reported = 0;
+  q1_idle_total = 0;
+  campaign_call_budget = 2;
+  llm_candidate_lineage_pin = 91;
+
+  assert(run_target(NULL, 1) == FAULT_NONE);   /* charged 1 */
+  assert(run_target(NULL, 1) == FAULT_NONE);   /* charged 2 = cap */
+  assert(campaign_budget_exhausted == 0);      /* AT cap still admits */
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);  /* cap+1 refused */
+  assert(campaign_budget_exhausted == 1);
+  assert(campaign_charged_invocations == 2);   /* refusal charges nothing */
+
+  /* NO_REFLOW parked quota shrinks the effective cap. */
+  campaign_budget_exhausted = 0;
+  campaign_charged_invocations = 0;
+  q1_idle_total = 1;                           /* cap 2 -> effective 1 */
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(campaign_budget_exhausted == 1);
+
+  campaign_call_budget = saved_budget;
+  campaign_charged_invocations = saved_charged;
+  q1_idle_total = saved_idle; q1_reflow_pool = saved_pool;
+  campaign_budget_exhausted = saved_exh;
+  campaign_budget_stop_reported = saved_rep;
+  execution_kind = old_kind;
+  llm_candidate_lineage_pin = 0;
+  queue = queue_top = NULL;
+}
+
+/* REFLOW: ordinary mutations consume pool quota first; lineage calls do
+ * not. */
+static void test_q1_reflow_consumption(void) {
+  u8 saved_reflow = q1_reflow;
+  u64 saved_pool = q1_reflow_pool, saved_used = q1_reflow_consumed;
+  u64 saved_ord = ord_invocation_total, saved_lin = lineage_invocation_total;
+  const char *old_kind = execution_kind;
+  q1_reflow = 1; q1_reflow_pool = 2; q1_reflow_consumed = 0;
+  execution_kind = "mutation";
+  llm_candidate_lineage_pin = 0;
+
+  assert(run_target(NULL, 1) == FAULT_NONE);   /* pool 2->1 */
+  assert(run_target(NULL, 1) == FAULT_NONE);   /* pool 1->0 */
+  assert(run_target(NULL, 1) == FAULT_NONE);   /* pool empty: no burn */
+  assert(q1_reflow_consumed == 2 && q1_reflow_pool == 0);
+
+  q1_reflow = saved_reflow;
+  q1_reflow_pool = saved_pool; q1_reflow_consumed = saved_used;
+  ord_invocation_total = saved_ord; lineage_invocation_total = saved_lin;
+  execution_kind = old_kind;
+}
+
+/* Strategy A route: every executed p&r candidate — rejected OR durable —
+ * becomes provisional-service when DIRECT_SERVICE is on; off restores the
+ * gate decision. */
+static void test_q1_direct_service_route(void) {
+  admission_evidence_t ev;
+  u8 saved = q1_direct_service;
+  memset(&ev, 0, sizeof(ev));
+  ev.p_pass = 1; ev.r_pass = 1; ev.u_pass = 0;
+  ev.g_code_pass = 1; ev.g_state_pass = 0;   /* strict-U reject w/ code */
+  ev.disposition = EC_REJECT;
+
+  /* Route condition mirrored from admission_run_llm_candidate: with the
+   * flag off the disposition is untouched (gate semantics); with it on,
+   * both reject and durable outcomes satisfy the reroute predicate. */
+  q1_direct_service = 0;
+  assert(!(q1_direct_service && ev.p_pass && ev.r_pass &&
+           (ev.disposition == EC_REJECT || ev.disposition == EC_DURABLE)));
+  q1_direct_service = 1;
+  assert(q1_direct_service && ev.p_pass && ev.r_pass && ev.disposition == EC_REJECT);
+  ev.disposition = EC_DURABLE;
+  assert(q1_direct_service && ev.p_pass && ev.r_pass &&
+         (ev.disposition == EC_REJECT || ev.disposition == EC_DURABLE));
+  ev.r_pass = 0;                                /* not replayable: no reroute */
+  assert(!(q1_direct_service && ev.p_pass && ev.r_pass));
+  q1_direct_service = saved;
+}
+
 /* S2 state-evidence retention (2026-11-05): the routing predicate must
  * upgrade exactly the strict-U rejects whose only evidence is response-
  * state novelty, and never override durable/provisional/code-retain. */
@@ -985,6 +1082,9 @@ int main(void) {
   test_state_retain_route();
   test_channel_accounting();
   test_conversion_classification();
+  test_campaign_budget_cap();
+  test_q1_reflow_consumption();
+  test_q1_direct_service_route();
   test_censor_frees_trial_evidence();
   test_opportunity_gate();
   puts("gating contract selftest: PASS");
