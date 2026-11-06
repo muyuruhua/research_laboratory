@@ -1,0 +1,535 @@
+diff --git a/ChatAFL-master/LoopFuzz/afl-fuzz.c b/ChatAFL-master/LoopFuzz/afl-fuzz.c
+index 8f154a29a..20dd7adbd 100644
+--- a/ChatAFL-master/LoopFuzz/afl-fuzz.c
++++ b/ChatAFL-master/LoopFuzz/afl-fuzz.c
+@@ -370,17 +370,20 @@ struct queue_entry
+    * and their M2 is unchanged by this field. */
+   u32 prov_cand_first;
+   u32 prov_cand_count;
+-  /* Conversion classification (2026-11-06): the trial probe's consumed
+-   * bitmap byte positions (non-salvage channels; NULL = none recorded),
+-   * the position count, and the classification of the first in-budget
+-   * hnb==2 conversion: 0 unclassified, 1 subset of trial positions
+-   * (immediate rescue), 2 positions beyond the trial set (descendant
+-   * novelty). Measurement only — the virgin map is NOT mutated at
+-   * admission (the 2026-11-05 commit variant created a corpus/bitmap
+-   * consistency hazard on expiry and was reverted). */
+-  u32 *prov_trial_pos;
+-  u32 prov_trial_pos_n;
++  /* Exact map-slot set seen during the candidate trial. Salvage changes
++   * the saved input, so it deliberately has no comparable trial set. */
++  u8 *prov_trial_slots;
++  u8 prov_trial_evidence_valid;
++  u32 prov_trial_slot_count;
++  u32 prov_trial_candidate_id;
++  u64 prov_trial_invocation_id;
+   u8 prov_conv_class;
++  u8 prov_conv_evidence_source;
++  u32 prov_conv_evidence_candidate_id;
++  u64 prov_conv_evidence_invocation;
++  u32 prov_conv_save_slot_count;
++  u32 prov_conv_overlap_slot_count;
++  u32 prov_conv_beyond_trial_slot_count;
+ 
+   /* ── Lineage (paper §queue-pollution measurement) ────────────────
+    * 0 = ordinary havoc/splice entry (no LLM ancestry).  >0 = the
+@@ -514,6 +517,9 @@ enum
+   /* 06 */ FAULT_RESOURCE_LIMIT /* no target invocation took place */
+ };
+ 
++#define PROV_EVIDENCE_MUTATION_SAVE 1
++#define PROV_EVIDENCE_INLINE_CALIBRATION 2
++
+ char **use_argv; /* argument to run the target program. In vanilla AFL, this is a local variable in main. */
+ /* add these declarations here so we can call these functions earlier */
+ static u8 run_target(char **argv, u32 timeout);
+@@ -521,7 +527,11 @@ static void provisional_expire(struct queue_entry *q, const char *reason);
+ /* CSV #7 matched ordinary cohort close (body with the other provisional
+  * lifecycle helpers; the run_target debit point closes on it). */
+ static void ordinary_match_close(struct queue_entry *q, const char *reason);
+-static void provisional_note_gain(u32 candidate_id, u32 queue_index);
++static void provisional_note_gain(u32 candidate_id, u32 queue_index,
++                                 const u8 *new_slots,
++                                 u32 evidence_candidate_id,
++                                 u64 evidence_invocation_id,
++                                 u8 evidence_source);
+ static inline u32 UR(u32 limit);
+ static u8 entry_can_fuzz_state(struct queue_entry *q, u32 state_id);
+ static inline u8 has_new_bits(u8 *virgin_map);
+@@ -975,14 +985,13 @@ static u32  last_native_save_index = 0;
+ static u8   admission_trial_mode = 0;   /* armed around LLM trial executions */
+ static u8   last_trial_hnb = 0;         /* 0 none / 1 hit-count-only / 2 new edge */
+ static u8 *trial_virgin_scratch = NULL; /* MAP_SIZE probe buffer, lazily alloc'd */
+-/* Trial/save novelty position holders (2026-11-06): the trial probe's
+- * consumed byte positions (for conversion classification) and the most
+- * recent lineage save's positions, both capped at HNB_CAPTURE_MAX. */
+-#define HNB_CAPTURE_MAX 128
+-static u32 last_trial_new_pos[HNB_CAPTURE_MAX];
+-static u32 last_trial_new_pos_n = 0;
+-static u32 last_lineage_save_pos[HNB_CAPTURE_MAX];
+-static u32 last_lineage_save_pos_n = 0;
++/* Trial/save novelty is represented as an exact set of AFL map slots. */
++#define HNB_SLOT_SET_BYTES ((MAP_SIZE + 7) / 8)
++static u8 last_trial_new_slots[HNB_SLOT_SET_BYTES];
++static u8 last_trial_evidence_valid = 0;
++static u32 last_trial_slot_count = 0;
++static u32 last_trial_candidate_id = 0;
++static u64 last_trial_invocation_id = 0;
+ 
+ /* P0-6 (no-executable-M2 deadlock): argv captured at startup so the
+  * provisional pre-annotation probe can execute the freshly-queued file
+@@ -1079,6 +1088,7 @@ static u64  shadow_would_have_found = 0;
+  * often the fallback paths were exercised. */
+ static u32  llm_candidate_lineage_pin = 0;
+ static u32  cur_fuzz_lineage_candidate_id = 0;
++static struct queue_entry *cur_fuzz_provisional_root = NULL;
+ static u64  llm_lineage_entries = 0;
+ static u64  llm_lineage_edge_gains = 0;
+ static u64  seed_fallback_used = 0;
+@@ -3915,6 +3925,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
+    * the reverted admission-commit variant; archives with neither measured
+    * unclassified conversions. Do not pool-compare across these stamps. */
+   json_object_object_add(j, "p64_conversion_classified", json_object_new_boolean(1));
++  json_object_object_add(j, "p64_conversion_evidence", json_object_new_string(
++      "full-map-slot-set-candidate-invocation-v2"));
+   json_object_object_add(j, "salvage_enabled", json_object_new_boolean(salvage_enabled));
+   json_object_object_add(j, "salvage_probe_gate", json_object_new_boolean(salvage_probe_gate));
+   if (salvage_opportunity_threshold > 0.0) {
+@@ -4126,6 +4138,30 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
+   admission_json_add_u64(j, "ttl_deadline_ms", q->prov_deadline_ms);
+   admission_json_add_u64(j, "descendant_execs", q->prov_desc_execs);
+   admission_json_add_u64(j, "descendant_code_gain", q->prov_desc_code_gain);
++  admission_json_add_u64(j, "conversion_class", q->prov_conv_class);
++  json_object_object_add(j, "conversion_class_name",
++      json_object_new_string(q->prov_conv_class == 1 ? "trial-slots-only" :
++          q->prov_conv_class == 2 ? "contains-beyond-trial-slots" : "unknown"));
++  json_object_object_add(j, "conversion_evidence_valid",
++      json_object_new_boolean(q->prov_conv_class != 0));
++  admission_json_add_u64(j, "conversion_evidence_invocation_id",
++                         q->prov_conv_evidence_invocation);
++  admission_json_add_u64(j, "conversion_evidence_candidate_id",
++                         q->prov_conv_evidence_candidate_id);
++  admission_json_add_u64(j, "trial_candidate_id", q->prov_trial_candidate_id);
++  admission_json_add_u64(j, "trial_invocation_id", q->prov_trial_invocation_id);
++  json_object_object_add(j, "conversion_evidence_source",
++      json_object_new_string(q->prov_conv_evidence_source == PROV_EVIDENCE_MUTATION_SAVE ?
++          "mutation-save" :
++          q->prov_conv_evidence_source == PROV_EVIDENCE_INLINE_CALIBRATION ?
++              "inline-calibration" : "unknown"));
++  admission_json_add_u64(j, "trial_slot_count", q->prov_trial_slot_count);
++  admission_json_add_u64(j, "conversion_save_slot_count",
++                         q->prov_conv_save_slot_count);
++  admission_json_add_u64(j, "conversion_overlap_trial_slot_count",
++                         q->prov_conv_overlap_slot_count);
++  admission_json_add_u64(j, "conversion_beyond_trial_slot_count",
++                         q->prov_conv_beyond_trial_slot_count);
+   admission_json_add_u64(j, "first_productive_descendant",
+       q->prov_first_gain_queue);
+   admission_json_add_u64(j, "first_gain_execution_id", q->prov_first_gain_execution);
+@@ -8092,6 +8128,8 @@ EXP_ST void __attribute__((unused)) destroy_queue(void)
+     }
+     if (q->regions)
+       ck_free(q->regions);
++    if (q->prov_trial_slots)
++      ck_free(q->prov_trial_slots);
+     ck_free(q);
+     q = n;
+   }
+@@ -8146,24 +8184,65 @@ EXP_ST void read_bitmap(u8 *fname)
+    This function is called after every exec() on a fairly large buffer, so
+    it needs to be fast. We do this in 32-bit and 64-bit flavors. */
+ 
+-/* Position capture for novelty classification (2026-11-06, independent
+- * audit fix): optionally records the byte indices has_new_bits clears in
+- * the caller's map. Armed only around the two call sites that need it
+- * (trial probe and lineage save), so steady-state cost is one NULL check
+- * per overlapping word. */
+-static u32 hnb_capture_storage[128];
+-static u32 *hnb_capture_buf = NULL;
+-static u32 hnb_capture_n = 0, hnb_capture_left = 0;
++/* Capture the set of map slots that are new edges for the current
++ * has_new_bits call. This is a MAP_SIZE-bit set, so it cannot silently
++ * truncate large trials. */
++static u8 hnb_capture_slots[HNB_SLOT_SET_BYTES];
++static u8 hnb_capture_active = 0;
++static u32 hnb_capture_n = 0;
+ static void hnb_capture_begin(void) {
+-  hnb_capture_buf = hnb_capture_storage;
+-  hnb_capture_n = 0; hnb_capture_left = HNB_CAPTURE_MAX;
++  memset(hnb_capture_slots, 0, sizeof(hnb_capture_slots));
++  hnb_capture_n = 0;
++  hnb_capture_active = 1;
+ }
+ static u32 hnb_capture_end(void) {
+   u32 n = hnb_capture_n;
+-  hnb_capture_buf = NULL; hnb_capture_left = 0;
++  hnb_capture_active = 0;
+   return n;
+ }
+ 
++static u8 prov_slot_set_subset(const u8 *subset, const u8 *set) {
++  if (!subset || !set) return 0;
++  for (u32 i = 0; i < HNB_SLOT_SET_BYTES; i++)
++    if (subset[i] & (u8)~set[i]) return 0;
++  return 1;
++}
++
++static u8 prov_slot_set_nonempty(const u8 *slots) {
++  if (!slots) return 0;
++  for (u32 i = 0; i < HNB_SLOT_SET_BYTES; i++)
++    if (slots[i]) return 1;
++  return 0;
++}
++
++static u32 prov_slot_set_count(const u8 *slots) {
++  u32 count = 0;
++  if (!slots) return 0;
++  for (u32 i = 0; i < HNB_SLOT_SET_BYTES; i++) {
++    u8 value = slots[i];
++    while (value) {
++      count += value & 1u;
++      value >>= 1;
++    }
++  }
++  return count;
++}
++
++static void prov_slot_set_overlap_counts(const u8 *a, const u8 *b,
++                                         u32 *overlap, u32 *outside_b) {
++  u32 in_count = 0, out_count = 0;
++  if (a && b) {
++    for (u32 i = 0; i < HNB_SLOT_SET_BYTES; i++) {
++      u8 in = a[i] & b[i];
++      u8 out = a[i] & (u8)~b[i];
++      while (in) { in_count += in & 1u; in >>= 1; }
++      while (out) { out_count += out & 1u; out >>= 1; }
++    }
++  }
++  if (overlap) *overlap = in_count;
++  if (outside_b) *outside_b = out_count;
++}
++
+ static inline u8 has_new_bits(u8 *virgin_map)
+ {
+ 
+@@ -8194,14 +8273,18 @@ static inline u8 has_new_bits(u8 *virgin_map)
+ 
+     if (unlikely(*current) && unlikely(*current & *virgin))
+     {
+-      if (hnb_capture_buf && hnb_capture_left) {
++      if (hnb_capture_active) {
+         const u8 *cb = (const u8 *)current, *vb = (const u8 *)virgin;
+         const u8 *tb = (const u8 *)trace_bits;
+         u32 woff = (u32)(cb - tb);
+-        for (u32 b = 0; b < 8 && hnb_capture_left; b++)
+-          if (cb[b] && vb[b]) {
+-            hnb_capture_buf[hnb_capture_n++] = woff + b;
+-            hnb_capture_left--;
++        for (u32 b = 0; b < sizeof(*current); b++)
++          if (cb[b] && vb[b] == 0xff) {
++            u32 slot = woff + b;
++            u8 bit = (u8)(1u << (slot & 7));
++            if (!(hnb_capture_slots[slot >> 3] & bit)) {
++              hnb_capture_slots[slot >> 3] |= bit;
++              hnb_capture_n++;
++            }
+           }
+       }
+ 
+@@ -10982,8 +11065,10 @@ static void show_stats(void);
+  * episode's reward just because it was found during stability checking.
+  * The invocation hook decides eligibility; controller and full-session
+  * calibration remain excluded from training. */
+-static u8 calibration_consume_new_bits(void) {
++static u8 calibration_consume_new_bits(u8 capture_lineage) {
++  if (capture_lineage) hnb_capture_begin();
+   u8 hnb = has_new_bits(virgin_bits);
++  if (capture_lineage) hnb_capture_end();
+   if (hnb == 2) cal_episode_note_code_gain();
+   return hnb;
+ }
+@@ -11087,9 +11172,19 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
+     if (q->exec_cksum != cksum)
+     {
+ 
+-      u8 hnb = calibration_consume_new_bits();
++      u8 capture_lineage = cur_fuzz_provisional_root &&
++          cur_fuzz_provisional_root->is_provisional &&
++          !cur_fuzz_provisional_root->prov_expired &&
++          cur_fuzz_provisional_root->prov_candidate_id ==
++              q->llm_origin_candidate_id;
++      u8 hnb = calibration_consume_new_bits(capture_lineage);
+       if (hnb == 2 && q->llm_origin_candidate_id) {
+-        provisional_note_gain(q->llm_origin_candidate_id, q->index);
++        provisional_note_gain(q->llm_origin_candidate_id, q->index,
++            capture_lineage && prov_slot_set_nonempty(hnb_capture_slots) ?
++                hnb_capture_slots : NULL,
++            q->llm_origin_candidate_id,
++            target_invocation_seq,
++            PROV_EVIDENCE_INLINE_CALIBRATION);
+         lineage_log_event(q->llm_origin_candidate_id, q->index);
+       }
+       if (hnb > new_bits)
+@@ -12139,13 +12234,18 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
+   u8 *fn = "";
+   u8 hnb;
+   // s32 fd;
+-  u8 keeping = 0, res;
++  u8 keeping = 0, res, lineage_evidence_valid = 0;
+ 
+   /* Trial executions are observations for the admission controller, not
+    * AFL crash/hang/queue findings. Preserve FAULT_ERROR's fatal behavior,
+    * but keep every other trial fault out of the main feedback channels. */
+   if (admission_trial_mode) {
+     last_trial_hnb = 0;
++    last_trial_evidence_valid = 0;
++    last_trial_slot_count = 0;
++    last_trial_candidate_id = 0;
++    last_trial_invocation_id = 0;
++    memset(last_trial_new_slots, 0, sizeof(last_trial_new_slots));
+     if (fault == FAULT_ERROR)
+       FATAL("Unable to execute target application");
+     if (fault == FAULT_NONE && fault == crash_mode) {
+@@ -12154,10 +12254,17 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
+       memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
+       hnb_capture_begin();
+       last_trial_hnb = has_new_bits(trial_virgin_scratch);
+-      last_trial_new_pos_n = hnb_capture_end();
+-      if (last_trial_new_pos_n)
+-        memcpy(last_trial_new_pos, hnb_capture_storage,
+-               last_trial_new_pos_n * sizeof(u32));
++      u32 captured_slots = hnb_capture_end();
++      if (execution_kind && !strcmp(execution_kind, "candidate") &&
++          llm_candidate_lineage_pin &&
++          (last_trial_hnb != 2 || captured_slots)) {
++        memcpy(last_trial_new_slots, hnb_capture_slots,
++               sizeof(last_trial_new_slots));
++        last_trial_evidence_valid = 1;
++        last_trial_slot_count = captured_slots;
++        last_trial_candidate_id = llm_candidate_lineage_pin;
++        last_trial_invocation_id = target_invocation_seq;
++      }
+     }
+     return 0;
+   }
+@@ -12168,18 +12275,15 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
+     /* Keep only if there are new bits in the map, add to queue for
+        future fuzzing, etc. */
+ 
+-    /* Lineage saves record their consumed positions so the conversion
+-     * classifier (provisional_note_gain) can split "rescue of the
+-     * candidate's own trial novelty" from "beyond-trial descendant
+-     * novelty". Capture is armed only when this execution carries LLM
+-     * ancestry (cheap guard, hot path unaffected otherwise). */
+-    if (cur_fuzz_lineage_candidate_id) {
++    /* Capture exact new-edge slots so the first conversion can be compared
++     * with this candidate's trial without consulting stale global data. */
++    if (cur_fuzz_lineage_candidate_id && cur_fuzz_provisional_root &&
++        cur_fuzz_provisional_root->is_provisional &&
++        !cur_fuzz_provisional_root->prov_expired) {
+       hnb_capture_begin();
+       hnb = has_new_bits(virgin_bits);
+-      last_lineage_save_pos_n = hnb_capture_end();
+-      if (last_lineage_save_pos_n)
+-        memcpy(last_lineage_save_pos, hnb_capture_storage,
+-               last_lineage_save_pos_n * sizeof(u32));
++      lineage_evidence_valid = hnb_capture_end() > 0;
++      if (hnb != 2) lineage_evidence_valid = 0;
+       if (!hnb) {
+         if (crash_mode)
+           total_crashes++;
+@@ -12231,7 +12335,10 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
+       cal_episode_note_code_gain();
+       last_native_save_index = queue_top->index;
+       provisional_note_gain(queue_top->llm_origin_candidate_id,
+-                            queue_top->index);
++          queue_top->index,
++          lineage_evidence_valid ? hnb_capture_slots : NULL,
++          cur_fuzz_lineage_candidate_id, target_invocation_seq,
++          PROV_EVIDENCE_MUTATION_SAVE);
+       /* v3.3 lineage: this new edge was produced by (a descendant of) an
+        * admitted LLM candidate — the admission channel's downstream
+        * code-edge production, separated from the havoc channel. */
+@@ -14901,9 +15008,16 @@ static void provisional_remove_entry_files(struct queue_entry *q) {
+   provisional_invalidate_entry(q, 0);
+ }
+ 
++static void provisional_free_trial_evidence(struct queue_entry *q) {
++  if (!q) return;
++  if (q->prov_trial_slots) ck_free(q->prov_trial_slots);
++  q->prov_trial_slots = NULL;
++  q->prov_trial_evidence_valid = 0;
++}
++
+ static void provisional_expire(struct queue_entry *q, const char *reason) {
+   if (!q || q->prov_expired || !q->is_provisional) return;
+-  if (q->prov_trial_pos) { ck_free(q->prov_trial_pos); q->prov_trial_pos = NULL; }
++  provisional_free_trial_evidence(q);
+   /* Every close path, including EDF eligibility failures, must preserve
+    * the ordinary cohort's files and leave provisional_live unchanged. */
+   if (q->prov_ordinary_match) {
+@@ -14946,6 +15060,7 @@ static void provisional_expire(struct queue_entry *q, const char *reason) {
+  * comparison therefore differs ONLY in retention/scheduling policy. */
+ static void ordinary_match_close(struct queue_entry *q, const char *reason) {
+   if (!q || q->prov_expired || !q->is_provisional) return;
++  provisional_free_trial_evidence(q);
+   q->prov_expired = 1;
+   q->is_provisional = 0;
+   ordinary_match_closed++;
+@@ -14970,18 +15085,11 @@ static void ordinary_match_close(struct queue_entry *q, const char *reason) {
+   provisional_log_event("ordinary-close", q, reason);
+ }
+ 
+-/* Ascending-position subset check for conversion classification. */
+-static u8 prov_pos_subset(const u32 *s, u32 sn, const u32 *t, u32 tn) {
+-  u32 si = 0, ti = 0;
+-  while (si < sn) {
+-    while (ti < tn && t[ti] < s[si]) ti++;
+-    if (ti == tn || t[ti] != s[si]) return 0;
+-    si++; ti++;
+-  }
+-  return 1;
+-}
+-
+-static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
++static void provisional_note_gain(u32 candidate_id, u32 queue_index,
++                                  const u8 *new_slots,
++                                  u32 evidence_candidate_id,
++                                  u64 evidence_invocation_id,
++                                  u8 evidence_source) {
+   struct queue_entry *q = provisional_root_for_candidate(candidate_id);
+   if (!q || !q->is_provisional || q->prov_converted || q->prov_expired) return;
+   q->prov_first_gain_queue = queue_index;
+@@ -14998,15 +15106,28 @@ static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
+    * novelty, not stable source-branch identity; a conversion may also
+    * first-gain via nested calibration (see the invocation ledger). No
+    * virgin-map mutation is involved. */
+-  if (q->prov_trial_pos_n && last_lineage_save_pos_n) {
+-    q->prov_conv_class = prov_pos_subset(last_lineage_save_pos,
+-                                         last_lineage_save_pos_n,
+-                                         q->prov_trial_pos,
+-                                         q->prov_trial_pos_n) ? 1 : 2;
++  if (q->prov_trial_evidence_valid && q->prov_trial_slots && new_slots &&
++      candidate_id == evidence_candidate_id && evidence_invocation_id &&
++      q->prov_trial_candidate_id == evidence_candidate_id &&
++      evidence_invocation_id > q->prov_trial_invocation_id &&
++      (evidence_source == PROV_EVIDENCE_MUTATION_SAVE ||
++       evidence_source == PROV_EVIDENCE_INLINE_CALIBRATION) &&
++      prov_slot_set_nonempty(new_slots)) {
++    u32 overlap = 0, beyond = 0;
++    prov_slot_set_overlap_counts(new_slots, q->prov_trial_slots,
++                                 &overlap, &beyond);
++    q->prov_conv_class = beyond ? 2 : 1;
++    q->prov_conv_save_slot_count = prov_slot_set_count(new_slots);
++    q->prov_conv_overlap_slot_count = overlap;
++    q->prov_conv_beyond_trial_slot_count = beyond;
++    q->prov_conv_evidence_invocation = evidence_invocation_id;
++    q->prov_conv_evidence_candidate_id = evidence_candidate_id;
++    q->prov_conv_evidence_source = evidence_source;
+     if (q->prov_conv_class == 1) prov_conv_immediate_only++;
+     else prov_conv_beyond_trial++;
+   } else {
+     q->prov_conv_class = 0;
++    q->prov_conv_evidence_source = 0;
+     prov_conv_unclassified++;
+   }
+   if (provisional_live && !q->prov_ordinary_match) provisional_live--;
+@@ -15017,7 +15138,7 @@ static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
+       q->prov_ordinary_match ?
+           "first native new-edge save (ordinary-match cohort)" :
+           "first native new-edge save; subtree becomes durable");
+-  if (q->prov_trial_pos) { ck_free(q->prov_trial_pos); q->prov_trial_pos = NULL; }
++  provisional_free_trial_evidence(q);
+ }
+ 
+ /* Return the candidate itself and a state whose M2 suffix can execute.
+@@ -15696,6 +15817,13 @@ static void provisional_preannotate(struct queue_entry *q) {
+   }
+ }
+ 
++static u8 provisional_trial_evidence_matches_candidate(u64 candidate_id) {
++  return last_trial_evidence_valid &&
++      last_trial_candidate_id == (u32)candidate_id &&
++      candidate_invocation_id != 0 &&
++      last_trial_invocation_id == candidate_invocation_id;
++}
++
+ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
+                                                   u64 candidate_id,
+                                                   const char *admit_reason,
+@@ -15799,11 +15927,14 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
+     if (q->prov_cand_first >= caller_messages_sent) q->prov_cand_count = 0;
+     else if (q->prov_cand_count > caller_messages_sent - q->prov_cand_first)
+       q->prov_cand_count = caller_messages_sent - q->prov_cand_first;
+-    if (last_trial_new_pos_n) {
+-      q->prov_trial_pos = ck_alloc(last_trial_new_pos_n * sizeof(u32));
+-      memcpy(q->prov_trial_pos, last_trial_new_pos,
+-             last_trial_new_pos_n * sizeof(u32));
+-      q->prov_trial_pos_n = last_trial_new_pos_n;
++    if (provisional_trial_evidence_matches_candidate(candidate_id)) {
++      q->prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
++      memcpy(q->prov_trial_slots, last_trial_new_slots,
++             HNB_SLOT_SET_BYTES);
++      q->prov_trial_evidence_valid = 1;
++      q->prov_trial_slot_count = last_trial_slot_count;
++      q->prov_trial_candidate_id = last_trial_candidate_id;
++      q->prov_trial_invocation_id = last_trial_invocation_id;
+     }
+   }
+ 
+@@ -15812,17 +15943,9 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
+   if (admit_reason && strcmp(admit_reason, "code-retain") == 0) {
+     q->prov_code_retain = 1;   /* v3.4 P0-3 retention channel marker */
+     code_retain_admitted++;
+-    /* The retained session's edges belong to the retained corpus from
+-     * now on — commit the trial's own novelty to the REAL map exactly as
+-     * durable promotion does (trace_bits still holds the trial execution;
+-     * the preannotate probe runs only after this call). P64 conversions
+-     * inside the validation window are thereafter descendant-only. */
+-    /* Measurement-only immediate-edge accounting (2026-11-06 audit fix):
+-     * the trial's consumed positions are recorded on the entry for the
+-     * conversion classifier. The shared virgin map is deliberately NOT
+-     * mutated here: expiring an unconverted root deletes its corpus files
+-     * without rolling the map back, so committing at admission could
+-     * leave bitmap novelty without a retained witness. */
++    /* Trial novelty remains measurement-only: expiry removes the retained
++     * corpus file, so consuming it in the shared virgin map would lose its
++     * corpus witness. */
+   } else if (admit_reason && strcmp(admit_reason, "state-retain") == 0) {
+     state_retain_admitted++;   /* S2 channel dose counter (2026-11-05) */
+   }
+@@ -15915,6 +16038,7 @@ static void provisional_censor_all_at_shutdown(void) {
+       q->is_provisional = 0;
+       q->prov_expired = 1;  /* stop any further lifecycle action */
+       provisional_log_event("censor", q, "campaign-end");
++      provisional_free_trial_evidence(q);
+     }
+   }
+   provisional_live = 0;
+@@ -16055,6 +16179,11 @@ static u8 admission_run_llm_candidate(char **argv,
+   u8 use_trial_mode = (p_effective && candidate && candidate_len > 0 &&
+                        !ablation_no_admission && !admission_native_retention) ? 1 : 0;
+   last_trial_hnb = 0;
++  last_trial_evidence_valid = 0;
++  last_trial_slot_count = 0;
++  last_trial_candidate_id = 0;
++  last_trial_invocation_id = 0;
++  memset(last_trial_new_slots, 0, sizeof(last_trial_new_slots));
+   if (p_effective && candidate && candidate_len > 0) {
+     admission_trial_mode = use_trial_mode;
+     /* v3.3 lineage: arm C executes candidates in normal mode, so a native
+@@ -23494,11 +23623,14 @@ retry_state_aware:
+        * unrelated entries). */
+       cur_fuzz_lineage_candidate_id =
+           selected_seed ? selected_seed->llm_origin_candidate_id : 0;
++      cur_fuzz_provisional_root = cur_fuzz_lineage_candidate_id ?
++          provisional_root_for_candidate(cur_fuzz_lineage_candidate_id) : NULL;
+ 
+       u64 execs_before_fuzz = total_execs;
+       skipped_fuzz = fuzz_one(use_argv);
+ 
+       cur_fuzz_lineage_candidate_id = 0;
++      cur_fuzz_provisional_root = NULL;
+ 
+       /* v3.3b churn detection: a fuzz_one round that executed nothing
+        * (silent region/target skip) is the spin fuel — count consecutive
