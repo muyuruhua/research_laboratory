@@ -28,6 +28,46 @@ static void test_cumulative_weights(void) {
   assert(index_search(NULL, 0, 0) == 0);
 }
 
+/* P0-10 completion: joint statistical test of the production pipeline
+ * scheduler_draw_below(total) -> index_search(cum, n, draw), i.e. exactly
+ * what the weighted-selection path executes per selection.  3,000,000
+ * draws over weights {2,3,5}: expected proportions 0.2/0.3/0.5; at this n
+ * the 4-sigma binomial band is ~0.5% of each expectation, so a 1.5%
+ * relative tolerance rejects the bias the old >= boundary produced
+ * ((2,3,5)->(3,3,4)) while tolerating healthy randomness. */
+static void test_joint_weighted_sampling(void) {
+  u64 sums[] = {2, 5, 10};
+  u64 total = 10;
+  double expect[3] = {0.2, 0.3, 0.5};
+  u64 counts[3] = {0, 0, 0};
+  const u32 N = 3000000;
+  ec_rng_seed(0xD15EA5EEDULL);
+  for (u32 i = 0; i < N; i++) {
+    u64 draw = scheduler_draw_below(total);
+    assert(draw < total);
+    u32 idx = index_search(sums, 3, draw);
+    assert(idx < 3);
+    counts[idx]++;
+  }
+  for (u32 b = 0; b < 3; b++) {
+    double rel = (double)counts[b] / ((double)N * expect[b]) - 1.0;
+    if (rel < 0) rel = -rel;
+    assert(rel < 0.015);
+  }
+  /* Zero-weight buckets stay structurally unreachable through the same
+   * pipeline, and the surviving buckets keep their 4:6 ratio. */
+  u64 zw[] = {0, 4, 4, 10};
+  u64 zw_counts[4] = {0, 0, 0, 0};
+  for (u32 i = 0; i < 200000; i++) {
+    u64 draw = scheduler_draw_below(10);
+    u32 idx = index_search(zw, 4, draw);
+    assert(idx == 1 || idx == 3);
+    zw_counts[idx]++;
+  }
+  assert(zw_counts[0] == 0 && zw_counts[2] == 0);
+  assert(zw_counts[1] > 70000 && zw_counts[1] < 90000);
+}
+
 static void test_bounded_rng(void) {
   uint64_t out = 7;
   assert(!ec_rng_below(0, &out) && out == 7);
@@ -94,6 +134,192 @@ static void test_m2_and_queue_contract(void) {
   queue = NULL;
 }
 
+/* Exercise the production episode accounting and posterior update.  A
+ * trial between two ordinary mutations must not discard the first
+ * mutation's reward; full-session candidate validation must never train a
+ * prefix-state posterior.  Nested execution labels require an explicit
+ * ordinary parent and are not accepted merely because their kind matches. */
+static void test_episode_attribution(state_info_t *st, u32 sid) {
+  u8 old_log = event_log_enabled;
+  event_log_enabled = 0;
+  target_state_id = sid;
+  full_session_m2_override = 0;
+  scheduler_selection_reason = "weighted-eligible";
+  double alpha = st->cal_alpha, beta = st->cal_beta;
+  u32 episodes = st->cal_episodes;
+  u64 pooled = cal_run_episode_updates;
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  cal_episode_note_state_gain();
+  cal_nested_mutation_context = 1;
+  cal_episode_note_invocation("calibration");
+  cal_episode_note_invocation("hang-retry");
+  cal_nested_mutation_context = 0;
+  cal_episode_note_invocation("candidate");
+  cal_episode_note_code_gain();
+  cal_episode_note_state_gain();
+  admission_trial_mode = 1;
+  cal_episode_note_invocation("shadow");
+  cal_episode_note_invocation("mutation"); /* trial cannot spoof ordinary work */
+  admission_trial_mode = 0;
+  cal_episode_note_invocation("prov-annotate");
+  cal_episode_note_invocation("salvage-probe");
+  cal_episode_note_invocation("calibration"); /* no ordinary parent */
+  cal_episode_note_invocation("hang-retry");
+  cal_episode_note_invocation("mutation");
+  assert(cal_episode_total_invocations == 11);
+  assert(cal_episode_training_invocations == 4);
+  assert(cal_episode_mutation_invocations == 2 && cal_episode_nested_invocations == 2);
+  assert(cal_episode_code_gains == 1 && cal_episode_state_gains == 1);
+  assert(cal_episode_all_code_gains == 2 && cal_episode_all_state_gains == 2);
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == episodes + 1 && cal_run_episode_updates == pooled + 1);
+  assert(fabs(st->cal_alpha - (1.0 + cal_gamma * (alpha - 1.0) + 1.0)) < 1e-12);
+  assert(fabs(st->cal_beta - (1.0 + cal_gamma * (beta - 1.0))) < 1e-12);
+
+  alpha = st->cal_alpha; beta = st->cal_beta; episodes = st->cal_episodes;
+  pooled = cal_run_episode_updates;
+  /* Each exclusion is independently sufficient: a future change to one
+   * guard must not be hidden by the other guard in the same test. */
+  full_session_m2_override = 1;
+  scheduler_selection_reason = "weighted-eligible";
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  cal_nested_mutation_context = 1;
+  cal_episode_note_invocation("calibration");
+  cal_nested_mutation_context = 0;
+  assert(!cal_episode_train_eligible && cal_episode_total_invocations == 2);
+  assert(!cal_episode_training_invocations && !cal_episode_code_gains);
+  cal_episode_finalize(0);
+  assert(st->cal_alpha == alpha && st->cal_beta == beta);
+  assert(st->cal_episodes == episodes && cal_run_episode_updates == pooled);
+
+  full_session_m2_override = 0;
+  scheduler_selection_reason = "forced-provisional-candidate";
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  assert(!cal_episode_train_eligible && cal_episode_total_invocations == 1);
+  assert(!cal_episode_training_invocations && !cal_episode_code_gains);
+  cal_episode_finalize(0);
+  assert(st->cal_alpha == alpha && st->cal_beta == beta);
+  assert(st->cal_episodes == episodes && cal_run_episode_updates == pooled);
+
+  /* Interrupted or state-redirected episodes cannot fabricate a reward. */
+  full_session_m2_override = 0;
+  scheduler_selection_reason = "warmup-eligible";
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  cal_episode_finalize(1);
+  assert(st->cal_episodes == episodes && st->cal_alpha == alpha && st->cal_beta == beta);
+  cal_episode_begin(sid);
+  target_state_id = sid + 1;
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  assert(cal_episode_total_invocations == 1 && !cal_episode_training_invocations);
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == episodes && cal_run_episode_updates == pooled);
+  target_state_id = sid;
+  event_log_enabled = old_log;
+}
+
+/* Exercise the same real-map observation used by calibrate_case.  A
+ * repeated input may first expose a code edge during inline calibration:
+ * the map consumes it exactly once and its ordinary parent earns reward.
+ * A new hit-count bucket alone, or controller-only calibration, cannot
+ * create a positive training example. */
+static void test_inline_calibration_reward(state_info_t *st, u32 sid) {
+  u8 old_log = event_log_enabled;
+  u8 *old_trace = trace_bits;
+  u8 saved_virgin[MAP_SIZE];
+  memcpy(saved_virgin, virgin_bits, MAP_SIZE);
+  trace_bits = ck_alloc(MAP_SIZE);
+  memset(virgin_bits, 0xff, MAP_SIZE);
+  event_log_enabled = 0;
+  full_session_m2_override = 0;
+  scheduler_selection_reason = "weighted-eligible";
+  target_state_id = sid;
+  u32 episodes = st->cal_episodes;
+  u64 rewarded = st->cal_episode_rewards;
+
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  /* A previously seen edge with a fresh hit-count bucket is hnb==1. */
+  virgin_bits[0] = 0xfe;
+  trace_bits[0] = 2;
+  cal_nested_mutation_context = 1;
+  cal_episode_note_invocation("calibration");
+  assert(calibration_consume_new_bits(0) == 1);
+  assert(!cal_episode_code_gains);
+  /* The next stability iteration discovers an actually unseen edge. */
+  trace_bits[1] = 1;
+  cal_episode_note_invocation("calibration");
+  assert(calibration_consume_new_bits(0) == 2);
+  assert(cal_episode_code_gains == 1 && cal_episode_all_code_gains == 1);
+  assert(calibration_consume_new_bits(0) == 0);
+  assert(cal_episode_code_gains == 1);
+  cal_nested_mutation_context = 0;
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == episodes + 1 && st->cal_episode_rewards == rewarded + 1);
+
+  episodes = st->cal_episodes;
+  rewarded = st->cal_episode_rewards;
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("candidate");
+  cal_episode_note_invocation("calibration"); /* no ordinary parent */
+  trace_bits[2] = 1;
+  assert(calibration_consume_new_bits(0) == 2);
+  assert(!cal_episode_training_invocations && !cal_episode_code_gains);
+  assert(cal_episode_all_code_gains == 1);
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == episodes && st->cal_episode_rewards == rewarded);
+
+  ck_free(trace_bits);
+  trace_bits = old_trace;
+  memcpy(virgin_bits, saved_virgin, MAP_SIZE);
+  event_log_enabled = old_log;
+}
+
+/* All Q3 scorers must see exactly the same Frontier(s), including fixed
+ * error and low-productivity penalties.  This detects a hidden policy
+ * replacement when calibration_enabled is toggled. */
+static void test_q3_shared_frontier(state_info_t *a, state_info_t *b) {
+  state_info_t saved_a = *a, saved_b = *b;
+  u8 old_frontier = ablation_no_frontier;
+  ablation_no_frontier = 0;
+  calibration_enabled = 0;
+  a->fuzzs = b->fuzzs = 0;
+  a->paths_discovered = b->paths_discovered = 0;
+  a->selected_times = b->selected_times = 30;
+  a->productivity = b->productivity = 0;
+  a->error_hint = b->error_hint = 2;
+  update_scores_and_select_next_state(FAVOR);
+  double unpenalized_a = a->last_frontier_score;
+  double unpenalized_b = b->last_frontier_score;
+  a->error_hint = 1;
+  b->error_hint = 0;
+  update_scores_and_select_next_state(FAVOR);
+  double fixed_a = a->last_frontier_score;
+  double fixed_b = b->last_frontier_score;
+  assert(fabs(fixed_a - 0.5 * unpenalized_a) < 1e-9);
+  assert(fabs(fixed_b - 0.7 * unpenalized_b) < 1e-9);
+  calibration_enabled = 1;
+  for (u8 estimator = 0; estimator < 4; estimator++) {
+    cal_estimator = estimator;
+    update_scores_and_select_next_state(FAVOR);
+    assert(a->last_frontier_score == fixed_a);
+    assert(b->last_frontier_score == fixed_b);
+  }
+  *a = saved_a;
+  *b = saved_b;
+  ablation_no_frontier = old_frontier;
+  calibration_enabled = 0;
+  cal_estimator = 0;
+}
+
 static void test_registration_and_scheduler(void) {
   setup_ipsm();
   expand_was_fuzzed_map(1, 1);
@@ -149,8 +375,72 @@ static void test_registration_and_scheduler(void) {
       }
     }
   }
+  /* Warmup must count cursor wraps, not every eligible state encountered
+   * while building the eligibility set. With two executable states at
+   * indices 0 and 2, the first two selections do not complete a sweep; the
+   * third wraps from index 3 to index 0 exactly once. */
+  state_cycles = selected_state_index = 0;
+  scheduler_warmup_selections = 0;
+  scheduler_warmup_max_selections = 0;
+  assert(choose_target_state(FAVOR) == 0);
+  assert(state_cycles == 0);
+  assert(choose_target_state(FAVOR) == a);
+  assert(state_cycles == 0);
+  assert(choose_target_state(FAVOR) == 0);
+  assert(state_cycles == 1);
+
+  /* Growing state spaces cannot defer weighted scheduling indefinitely:
+   * after the configured count of unweighted FAVOR selections, the next
+   * choice must enter the production weighted path. */
+  state_cycles = selected_state_index = 0;
+  scheduler_warmup_selections = 0;
+  scheduler_warmup_max_selections = 2;
+  assert(choose_target_state(FAVOR) == 0);
+  assert(!strcmp(scheduler_selection_reason, "warmup-eligible"));
+  assert(scheduler_warmup_selections == 1);
+  assert(choose_target_state(FAVOR) == a);
+  assert(!strcmp(scheduler_selection_reason, "warmup-eligible"));
+  assert(scheduler_warmup_selections == 2);
+  choose_target_state(FAVOR);
+  assert(!strcmp(scheduler_selection_reason, "weighted-eligible"));
+  assert(!strcmp(scheduler_warmup_exit_reason, "selection-cap"));
+  assert(scheduler_warmup_selections == 2);
+
+  test_q3_shared_frontier(initial, reachable);
+
+  /* The calibration audit reuses the same normalized draw against
+   * frontier-only weights. Choose EWMA values that materially reorder two
+   * otherwise equal frontier states, then find a deterministic quantile
+   * in the interval where the calibrated and counterfactual choices differ. */
+  calibration_enabled = 1;
+  cal_estimator = 1;
+  cal_estimator_name = "ewma";
+  cal_epsilon = 0.1;
+  initial->fuzzs = reachable->fuzzs = 0;
+  initial->selected_times = reachable->selected_times = 0;
+  initial->paths_discovered = reachable->paths_discovered = 0;
+  initial->cal_ewma = 0.95;
+  reachable->cal_ewma = 0.05;
+  u8 calibration_changed = 0;
+  for (u64 seed = 1; seed <= 256 && !calibration_changed; seed++) {
+    ec_rng_seed(seed);
+    update_scores_and_select_next_state(FAVOR);
+    calibration_changed = scheduler_calibration_changed_selection;
+  }
+  assert(calibration_changed);
+  assert(scheduler_calibration_applied);
+  assert(scheduler_calibration_counterfactual_state == 0 ||
+         scheduler_calibration_counterfactual_state == a);
+  assert(scheduler_calibration_counterfactual_state != SCHEDULER_NO_STATE);
+  calibration_enabled = 0;
+  cal_estimator = 0;
+  cal_estimator_name = "thompson";
+  cal_epsilon = EC_DEFAULT_EPSILON;
+
   initial->seeds[0] = &expired;
   state_cycles = selected_state_index = 0;
+  scheduler_warmup_selections = 0;
+  scheduler_warmup_max_selections = 64;
   for (u32 i = 0; i < 10; i++) assert(choose_target_state(FAVOR) == a);
   assert(state_cycles >= 5);
   initial->seeds[0] = &valid;
@@ -175,6 +465,9 @@ static void test_registration_and_scheduler(void) {
   assert(!strcmp(scheduler_selection_reason, "no-executable-state"));
   assert(choose_target_state(INVALID_SELECTION) == SCHEDULER_NO_STATE);
 
+  test_episode_attribution(reachable, a);
+  test_inline_calibration_reward(reachable, a);
+
   destroy_ipsm();
   state_ids = NULL; state_ids_count = 0;
   for (u32 i = 0; i < fuzzed_map_states; i++) ck_free(was_fuzzed_map[i]);
@@ -185,9 +478,10 @@ static void test_registration_and_scheduler(void) {
 int main(void) {
   rand_cnt = 100000; srandom(123);
   test_cumulative_weights();
+  test_joint_weighted_sampling();
   test_bounded_rng();
   test_m2_and_queue_contract();
   test_registration_and_scheduler();
-  puts("scheduler_contract_selftest: exact sampling, RNG rejection, M2 eligibility, queue bounds, state persistence passed");
+  puts("scheduler_contract_selftest: exact sampling, joint weighted uniformity, RNG rejection, M2 eligibility, queue bounds, warmup bound/cycles, shared Q3 frontier, calibration counterfactual, state persistence, episode attribution, inline calibration reward passed");
   return 0;
 }

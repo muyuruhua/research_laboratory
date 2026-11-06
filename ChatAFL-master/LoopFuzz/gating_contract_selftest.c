@@ -96,6 +96,8 @@ static void test_expiry_pending_and_top_rated(void) {
   root.index = 9;
   root.is_provisional = 1;
   root.prov_candidate_id = 91;
+  root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+  root.prov_trial_evidence_valid = 1;
   root.fname = (u8 *)alloc_printf("%s/queue/id:000009,prov", dir);
   root.pending_accounted = 0;
   root.favored = 1;
@@ -106,6 +108,7 @@ static void test_expiry_pending_and_top_rated(void) {
   queue = queue_top = &root;
   provisional_expire(&root, "selftest");
   assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_trial_slots == NULL && !root.prov_trial_evidence_valid);
   assert(pending_not_fuzzed == 0 && pending_favored == 0);
   assert(top_rated[3] == NULL && root.tc_ref == 0);
   provisional_expire(&root, "repeat");
@@ -125,13 +128,17 @@ static void test_calibration_gain_and_span(void) {
   root.next = &child; queue = &root; queue_top = &child;
   provisional_live = 1; total_execs = 18; target_invocation_seq = 22;
   last_execution_kind = "calibration";
-  provisional_note_gain(child.llm_origin_candidate_id, child.index);
+  provisional_note_gain(child.llm_origin_candidate_id, child.index, NULL,
+                        child.llm_origin_candidate_id, 23,
+                        PROV_EVIDENCE_INLINE_CALIBRATION);
   assert(root.prov_converted && !root.is_provisional);
   assert(root.prov_first_gain_queue == 21);
   assert(root.prov_first_gain_execution == 18);
   /* First gain is immutable once converted. */
   total_execs = 19; target_invocation_seq = 23;
-  provisional_note_gain(child.llm_origin_candidate_id, 99);
+  provisional_note_gain(child.llm_origin_candidate_id, 99, NULL,
+                        child.llm_origin_candidate_id, 24,
+                        PROV_EVIDENCE_INLINE_CALIBRATION);
   assert(root.prov_first_gain_queue == 21 && root.prov_first_gain_execution == 18);
 
   u32 ends[] = {4, 9, 15};
@@ -253,7 +260,7 @@ static void test_trial_save_is_non_destructive(void) {
   memset(virgin_tmout, 0xff, MAP_SIZE);
   memset(virgin_crash, 0xff, MAP_SIZE);
   memset(trace_bits, 0, MAP_SIZE);
-  trace_bits[17] = 1;
+  for (u32 i = 0; i < 160; i++) trace_bits[i] = 1;
   u8 virgin_before[MAP_SIZE];
   u8 timeout_before[MAP_SIZE];
   u8 crash_before[MAP_SIZE];
@@ -270,20 +277,48 @@ static void test_trial_save_is_non_destructive(void) {
   u8 old_trial_mode = admission_trial_mode;
   u8 old_crash_mode = crash_mode;
   u8 old_bitmap_changed = bitmap_changed;
+  const char *old_kind = execution_kind;
+  u32 old_pin = llm_candidate_lineage_pin;
+  u64 old_invocation = target_invocation_seq;
+  u64 old_candidate_invocation = candidate_invocation_id;
   admission_trial_mode = 1;
+  execution_kind = "candidate";
+  llm_candidate_lineage_pin = 77;
+  target_invocation_seq = 99;
+  candidate_invocation_id = 99;
   crash_mode = FAULT_NONE;
   bitmap_changed = 0;
 
   assert(save_if_interesting(NULL, trace_bits, 1, FAULT_NONE) == 0);
   assert(last_trial_hnb == 2);
+  assert(last_trial_evidence_valid && last_trial_slot_count == 160);
+  assert(last_trial_candidate_id == 77 && last_trial_invocation_id == 99);
+  assert(provisional_trial_evidence_matches_candidate(77));
+  assert(!provisional_trial_evidence_matches_candidate(76));
+  candidate_invocation_id = 98;
+  assert(!provisional_trial_evidence_matches_candidate(77));
+  candidate_invocation_id = 99;
+  for (u32 i = 0; i < 160; i++)
+    assert(last_trial_new_slots[i >> 3] & (u8)(1u << (i & 7)));
   assert(memcmp(virgin_bits, virgin_before, MAP_SIZE) == 0);
   assert(bitmap_changed == 0);
   assert(queued_paths == queued_before && queue == NULL);
 
+  memset(trace_bits, 0, MAP_SIZE);
+  trace_bits[200] = 1;
+  virgin_bits[200] = 0x7f;
+  assert(save_if_interesting(NULL, trace_bits, 1, FAULT_NONE) == 0);
+  assert(last_trial_hnb == 1);
+  assert(last_trial_evidence_valid && last_trial_slot_count == 0);
+  assert(!prov_slot_set_nonempty(last_trial_new_slots));
+  virgin_bits[200] = 0xff;
+
   assert(save_if_interesting(NULL, trace_bits, 1, FAULT_TMOUT) == 0);
   assert(last_trial_hnb == 0);
+  assert(!last_trial_evidence_valid && last_trial_slot_count == 0);
   assert(save_if_interesting(NULL, trace_bits, 1, FAULT_CRASH) == 0);
   assert(last_trial_hnb == 0);
+  assert(!last_trial_evidence_valid && last_trial_candidate_id == 0);
   assert(memcmp(virgin_bits, virgin_before, MAP_SIZE) == 0);
   assert(memcmp(virgin_tmout, timeout_before, MAP_SIZE) == 0);
   assert(memcmp(virgin_crash, crash_before, MAP_SIZE) == 0);
@@ -294,6 +329,10 @@ static void test_trial_save_is_non_destructive(void) {
   admission_trial_mode = old_trial_mode;
   crash_mode = old_crash_mode;
   bitmap_changed = old_bitmap_changed;
+  execution_kind = old_kind;
+  llm_candidate_lineage_pin = old_pin;
+  target_invocation_seq = old_invocation;
+  candidate_invocation_id = old_candidate_invocation;
 }
 
 /* CSV #8 (2026-11-02): the three U policies must differ exactly on the
@@ -397,6 +436,8 @@ static void test_ordinary_match_close_keeps_files(void) {
   root.prov_ordinary_match = 1;
   root.prov_candidate_id = 55;
   root.prov_budget_left = 2;
+  root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+  root.prov_trial_evidence_valid = 1;
   root.prov_deadline_ms = get_cur_time() + 60000;
   root.fname = (u8 *)alloc_printf("%s/queue/id:000005,ord", dir);
   FILE *fp = fopen((char *)root.fname, "w");
@@ -410,6 +451,7 @@ static void test_ordinary_match_close_keeps_files(void) {
   assert(root.prov_budget_left == 0 && root.prov_desc_execs == 2);
   assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
   assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_trial_slots == NULL && !root.prov_trial_evidence_valid);
   assert(ordinary_match_closed == closed_before + 1);
   struct stat st;
   assert(stat((char *)root.fname, &st) == 0);   /* file retained, not unlinked */
@@ -685,72 +727,111 @@ static void test_channel_accounting(void) {
   queue = queue_top = NULL;
 }
 
-/* Conversion classification (2026-11-06 audit fix): the first in-budget
- * hnb==2 conversion is split into immediate-rescue (save positions subset
- * of the recorded trial positions) vs beyond-trial novelty. The virgin
- * map must NOT be mutated at admission (reverted commit variant). */
+static void test_set_map_slot(u8 *slots, u32 slot) {
+  slots[slot >> 3] |= (u8)(1u << (slot & 7));
+}
+
+/* Conversion classification refers to AFL map slots and must use only
+ * candidate-bound trial evidence and the current gain invocation. */
 static void test_conversion_classification(void) {
-  struct queue_entry root;
-  memset(&root, 0, sizeof(root));
-  root.index = 21; root.is_provisional = 1;
-  root.prov_candidate_id = 42; root.prov_budget_left = 64;
-  root.prov_deadline_ms = get_cur_time() + 60000;
-  u32 *trial_pos = ck_alloc(3 * sizeof(u32));
-  trial_pos[0] = 5; trial_pos[1] = 9; trial_pos[2] = 20;
-  root.prov_trial_pos = trial_pos; root.prov_trial_pos_n = 3;
-  queue = queue_top = &root;
+  struct queue_entry root, root2, root3, root4, root5;
+  struct queue_entry *roots[] = {&root, &root2, &root3, &root4, &root5};
+  const u32 candidate_ids[] = {42, 43, 44, 46, 47};
+  const u64 trial_ids[] = {100, 110, 120, 130, 140};
+  for (u32 i = 0; i < 5; i++) {
+    memset(roots[i], 0, sizeof(*roots[i]));
+    roots[i]->index = 21 + i;
+    roots[i]->is_provisional = 1;
+    roots[i]->prov_candidate_id = candidate_ids[i];
+    roots[i]->prov_budget_left = 64;
+    roots[i]->prov_deadline_ms = get_cur_time() + 60000;
+    roots[i]->prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+    roots[i]->prov_trial_evidence_valid = 1;
+    roots[i]->prov_trial_candidate_id = candidate_ids[i];
+    roots[i]->prov_trial_invocation_id = trial_ids[i];
+    test_set_map_slot(roots[i]->prov_trial_slots, 5);
+    test_set_map_slot(roots[i]->prov_trial_slots, 9);
+    test_set_map_slot(roots[i]->prov_trial_slots, 20);
+    roots[i]->prov_trial_slot_count = 3;
+  }
   u64 saved_i = prov_conv_immediate_only, saved_b = prov_conv_beyond_trial;
   u64 saved_u = prov_conv_unclassified;
 
-  /* subset -> immediate rescue */
-  u32 save_sub[2] = {5, 9};
-  memcpy(last_lineage_save_pos, save_sub, sizeof(save_sub));
-  last_lineage_save_pos_n = 2;
-  provisional_note_gain(42, 100);
+  u8 save_subset[HNB_SLOT_SET_BYTES] = {0};
+  test_set_map_slot(save_subset, 5);
+  test_set_map_slot(save_subset, 9);
+  queue = queue_top = &root;
+  provisional_note_gain(42, 100, save_subset, 42, 101,
+                        PROV_EVIDENCE_MUTATION_SAVE);
   assert(root.prov_conv_class == 1);
   assert(prov_conv_immediate_only == saved_i + 1);
   assert(root.prov_converted == 1);
+  assert(root.prov_trial_slots == NULL);
+  assert(root.prov_conv_save_slot_count == 2);
+  assert(root.prov_conv_overlap_slot_count == 2);
+  assert(root.prov_conv_beyond_trial_slot_count == 0);
 
-  /* beyond-trial position -> descendant novelty */
-  struct queue_entry root2;
-  memset(&root2, 0, sizeof(root2));
-  root2.index = 22; root2.is_provisional = 1;
-  root2.prov_candidate_id = 43; root2.prov_budget_left = 64;
-  root2.prov_deadline_ms = get_cur_time() + 60000;
-  u32 *trial_pos2 = ck_alloc(3 * sizeof(u32));
-  memcpy(trial_pos2, trial_pos, 3 * sizeof(u32));
-  root2.prov_trial_pos = trial_pos2; root2.prov_trial_pos_n = 3;
+  /* Mixed overlap and new slots are reported as containing beyond-trial. */
   queue = &root2; queue_top = &root2;
-  u32 save_beyond[2] = {5, 17};
-  memcpy(last_lineage_save_pos, save_beyond, sizeof(save_beyond));
-  last_lineage_save_pos_n = 2;
-  provisional_note_gain(43, 101);
+  u8 save_mixed[HNB_SLOT_SET_BYTES] = {0};
+  test_set_map_slot(save_mixed, 5);
+  test_set_map_slot(save_mixed, 17);
+  provisional_note_gain(43, 101, save_mixed, 43, 111,
+                        PROV_EVIDENCE_MUTATION_SAVE);
   assert(root2.prov_conv_class == 2);
   assert(prov_conv_beyond_trial == saved_b + 1);
-  assert(root2.prov_trial_pos == NULL);      /* freed after conversion */
+  assert(root2.prov_trial_slots == NULL);
+  assert(root2.prov_conv_save_slot_count == 2);
+  assert(root2.prov_conv_overlap_slot_count == 1);
+  assert(root2.prov_conv_beyond_trial_slot_count == 1);
 
-  /* missing capture -> unclassified, no map mutation path involved */
-  struct queue_entry root3;
-  memset(&root3, 0, sizeof(root3));
-  root3.index = 23; root3.is_provisional = 1;
-  root3.prov_candidate_id = 44; root3.prov_budget_left = 64;
-  root3.prov_deadline_ms = get_cur_time() + 60000;
+  /* Candidate mismatch and non-monotone invocation IDs are unclassified. */
   queue = &root3; queue_top = &root3;
-  last_lineage_save_pos_n = 0;
-  provisional_note_gain(44, 102);
+  u8 save_one[HNB_SLOT_SET_BYTES] = {0};
+  test_set_map_slot(save_one, 37);
+  provisional_note_gain(44, 102, save_one, 45, 121,
+                        PROV_EVIDENCE_MUTATION_SAVE);
   assert(root3.prov_conv_class == 0);
   assert(prov_conv_unclassified == saved_u + 1);
 
-  /* subset checker itself — use a live copy: the roots above already
-   * freed their trial-position arrays at conversion. */
-  u32 live_t[3] = {5, 9, 20};
-  assert(prov_pos_subset(save_sub, 2, live_t, 3) == 1);
-  assert(prov_pos_subset(save_beyond, 2, live_t, 3) == 0);
-  assert(prov_pos_subset(live_t, 3, live_t, 3) == 1);
+  queue = &root4; queue_top = &root4;
+  provisional_note_gain(46, 103, save_one, 46, 131,
+                        PROV_EVIDENCE_INLINE_CALIBRATION);
+  assert(root4.prov_conv_class == 2);
+  assert(root4.prov_conv_evidence_source ==
+         PROV_EVIDENCE_INLINE_CALIBRATION);
+
+  queue = &root5; queue_top = &root5;
+  provisional_note_gain(47, 104, save_one, 47, 139,
+                        PROV_EVIDENCE_MUTATION_SAVE);
+  assert(root5.prov_conv_class == 0);
+  assert(prov_conv_unclassified == saved_u + 2);
+
+  u8 full_capture[HNB_SLOT_SET_BYTES] = {0};
+  for (u32 i = 0; i < 160; i++) test_set_map_slot(full_capture, i);
+  assert(prov_slot_set_count(full_capture) == 160);
+  assert(prov_slot_set_subset(save_subset, full_capture));
+  assert(!prov_slot_set_subset(full_capture, save_subset));
 
   prov_conv_immediate_only = saved_i; prov_conv_beyond_trial = saved_b;
   prov_conv_unclassified = saved_u;
-  last_lineage_save_pos_n = 0;
+  queue = queue_top = NULL;
+}
+
+static void test_censor_frees_trial_evidence(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.is_provisional = 1;
+  root.prov_candidate_id = 88;
+  root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+  root.prov_trial_evidence_valid = 1;
+  queue = queue_top = &root;
+  u8 old_log = event_log_enabled;
+  event_log_enabled = 0;
+  provisional_censor_all_at_shutdown();
+  assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_trial_slots == NULL && !root.prov_trial_evidence_valid);
+  event_log_enabled = old_log;
   queue = queue_top = NULL;
 }
 
@@ -904,6 +985,7 @@ int main(void) {
   test_state_retain_route();
   test_channel_accounting();
   test_conversion_classification();
+  test_censor_frees_trial_evidence();
   test_opportunity_gate();
   puts("gating contract selftest: PASS");
   return 0;
