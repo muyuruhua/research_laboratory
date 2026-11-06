@@ -15047,12 +15047,16 @@ static void salvage_opportunity_refresh(void) {
   u8 decided = val_calls >= min_val;
   u8 forced_service = 0;
   u8 now_parked;
-  if (!decided) {
-    now_parked = salvage_opportunity_parked;
-  } else if (salvage_opportunity_parked &&
-             opportunity_parked_windows >= OPPORTUNITY_PARK_WINDOW_CAP) {
+  /* Service guarantee FIRST (batch-B run1 postmortem): the cap exists to
+   * bound starvation, so it must fire regardless of window exposure —
+   * underexposed parked windows previously looped forever without ever
+   * reaching the forced branch, censoring 8 roots for the whole run. */
+  if (salvage_opportunity_parked &&
+      opportunity_parked_windows >= OPPORTUNITY_PARK_WINDOW_CAP) {
     now_parked = 0;                 /* service guarantee window */
     forced_service = 1;
+  } else if (!decided) {
+    now_parked = salvage_opportunity_parked;
   } else {
     now_parked = (ord_rate > val_rate);
   }

@@ -848,13 +848,23 @@ static void test_opportunity_gate(void) {
   assert(provisional_select_service(&state_out) == &root);
   assert(salvage_opportunity_parked == 0);
 
-  /* W5 (underexposed): parked + fewer than 64 lineage calls in window ->
-   * no decision; park kept even though ordinary runs hot. */
+  /* W5 (underexposed, below cap): parked + fewer than 64 lineage calls
+   * in window -> no decision; park kept even though ordinary runs hot. */
   salvage_opportunity_parked = 1; opportunity_parked_windows = 1;
   code_gain_events += 20; ord_invocation_total += 2000;
   lineage_invocation_total += 10;
   assert(provisional_select_service(&state_out) == NULL);
   assert(salvage_opportunity_parked == 1);
+
+  /* W6 (underexposed AT the cap): the service guarantee fires regardless
+   * of exposure — starvation bounding precedes the statistical decision
+   * (batch-B run1 postmortem). */
+  opportunity_parked_windows = OPPORTUNITY_PARK_WINDOW_CAP;
+  code_gain_events += 20; ord_invocation_total += 2000;
+  lineage_invocation_total += 5;
+  struct queue_entry *forced = provisional_select_service(&state_out);
+  assert(forced == &root);
+  assert(salvage_opportunity_parked == 0 && opportunity_parked_windows == 0);
 
   /* off by default */
   salvage_opportunity_threshold = 0.0;
