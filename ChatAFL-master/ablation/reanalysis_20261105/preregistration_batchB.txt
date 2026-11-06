@@ -1,0 +1,9 @@
+Batch B pre-registration (before launch, 2026-11-06)
+Freeze doc: C_two_papers/LoopFuzz_冻结与停止条件_v2_20261106.md
+SHA-256 (first 16): a77958a8aa32ca79
+Arms: wrapgate8 code_retain8 noprefix8 stateretain8 salvage8 salvageop8 x3 x45min threshold=1 mock
+Primary comparisons (max 3, same-batch same-version):
+ 1. code_retain8 vs noprefix8  -> S1 on/off conversion-class decomposition, bounds only
+ 2. salvageop8 vs salvage8     -> bounded-park censoring rate + branch-increment bounds
+ 3. stateretain8 vs wrapgate8  -> S2 dose check (admits>0 pass line; no benefit judgment)
+Verdict rules: P64 as per-run N/C/F/U + logical bounds; no effect/no-effect claims at n=3.
