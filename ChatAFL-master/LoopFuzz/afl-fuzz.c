@@ -353,6 +353,34 @@ struct queue_entry
   u32 prov_first_gain_queue;
   u64 prov_first_gain_execution, prov_first_gain_invocation, prov_first_gain_ms;
   u8  prov_code_retain;    /* v3.4: admitted via the P0-3 retention channel */
+  /* CSV#7 matched-cohort marker: this root entered through the same
+   * admission decision stream and carries the same validation budget
+   * ledger and first-gain attribution as a provisional root. It keeps
+   * ordinary retention semantics; the scheduler gives it a bounded
+   * fallback service opportunity after regular provisional roots, while
+   * CHATAFL_ORDINARY_EDF=1 opts into concurrent EDF service. */
+  u8  prov_ordinary_match;
+  /* S1 prefix protection (2026-11-05): candidate message window in the
+   * SAVED session's message indexing. Under forced provisional service
+   * the M2 mutation range is clamped to this window so the prefix that
+   * reached the candidate position (e.g. FTP USER/PASS) replays verbatim
+   * and only the candidate suffix mutates.  count==0 = window unknown →
+   * legacy full-session M2.  Salvage entries save only the stripped
+   * candidate messages, so their window spans the whole saved session
+   * and their M2 is unchanged by this field. */
+  u32 prov_cand_first;
+  u32 prov_cand_count;
+  /* Conversion classification (2026-11-06): the trial probe's consumed
+   * bitmap byte positions (non-salvage channels; NULL = none recorded),
+   * the position count, and the classification of the first in-budget
+   * hnb==2 conversion: 0 unclassified, 1 subset of trial positions
+   * (immediate rescue), 2 positions beyond the trial set (descendant
+   * novelty). Measurement only — the virgin map is NOT mutated at
+   * admission (the 2026-11-05 commit variant created a corpus/bitmap
+   * consistency hazard on expiry and was reverted). */
+  u32 *prov_trial_pos;
+  u32 prov_trial_pos_n;
+  u8 prov_conv_class;
 
   /* ── Lineage (paper §queue-pollution measurement) ────────────────
    * 0 = ordinary havoc/splice entry (no LLM ancestry).  >0 = the
@@ -490,6 +518,9 @@ char **use_argv; /* argument to run the target program. In vanilla AFL, this is 
 /* add these declarations here so we can call these functions earlier */
 static u8 run_target(char **argv, u32 timeout);
 static void provisional_expire(struct queue_entry *q, const char *reason);
+/* CSV #7 matched ordinary cohort close (body with the other provisional
+ * lifecycle helpers; the run_target debit point closes on it). */
+static void ordinary_match_close(struct queue_entry *q, const char *reason);
 static void provisional_note_gain(u32 candidate_id, u32 queue_index);
 static inline u32 UR(u32 limit);
 static u8 entry_can_fuzz_state(struct queue_entry *q, u32 state_id);
@@ -540,6 +571,14 @@ u32 *state_ids = NULL;
 u32 state_ids_count = 0;
 u32 selected_state_index = 0;
 u32 state_cycles = 0;
+/* FAVOR starts with unweighted round-robin exploration, but the legacy
+ * state-cycle counter is only a secondary warmup condition: this hard cap
+ * guarantees weighted scheduling cannot be postponed by a growing state
+ * list. These are declared here because run_config_log() records the policy
+ * before the scheduler implementation below. */
+static u32 scheduler_warmup_selections = 0;
+static u32 scheduler_warmup_max_selections = 64;
+static const char *scheduler_warmup_exit_reason = "not-reached";
 u32 messages_sent = 0;
 char *mqtt_cluster_diff_summary = NULL;
 u32 mqtt_cluster_broker_count = 0;
@@ -708,6 +747,26 @@ u8 false_negative_reduction = 0;
 
 /* Track how long we don't observe interesting seeds */
 u32 uninteresting_times = 0;
+/* CSV#18 trigger policies: WHAT the plateau counter counts.
+ *   code-stall    — consecutive rounds with no new code coverage (legacy
+ *                   uninteresting_times semantics; the default).
+ *   response-gap  — consecutive rounds with no new RESPONSE-side novelty
+ *                   (observed states/transitions + IPSM state edges).
+ *   fixed-interval— rounds since the last LLM consultation, regardless of
+ *                   novelty (dose-aligned control: same threshold, zero
+ *                   feedback dependence).
+ * All three share adaptive_plateau_threshold, so the arms differ ONLY in
+ * the trigger signal, and every fire is ledgered (trigger-events.jsonl). */
+u8  llm_trigger_policy = 0;            /* CHATAFL_TRIGGER_POLICY */
+const char *llm_trigger_policy_name = "code-stall";
+u32 response_gap_rounds = 0;
+u32 rounds_since_llm_trigger = 0;
+u64 llm_trigger_events = 0;
+u64 response_novelty_counter_last = 0;
+/* Response-side novelty counter components (see round bookkeeping in
+ * common_fuzz_stuff): ledger growth + IPSM state-edge growth. */
+u64 observed_states_total = 0;
+u64 observed_transitions_total = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
@@ -855,6 +914,9 @@ static u32 *candidate_response_ends = NULL;
 static u32 response_greeting_bytes = 0, candidate_greeting_bytes = 0;
 static u8 response_single_connection = 0, candidate_single_connection = 0;
 static u64 candidate_execution_id = 0, candidate_invocation_id = 0;
+static u64 response_invocation_id = 0;
+static u32 candidate_response_start = 0, candidate_response_end = 0;
+static u8 candidate_response_span_valid = 0;
 static u32 candidate_observed_new_states = 0, candidate_observed_new_transitions = 0;
 static u8 candidate_observation_recorded = 0;
 
@@ -874,9 +936,9 @@ static u64  cal_episodes_rewarded = 0;
 
 /* Monotone code-progress event counters.  code_save_events counts EVERY
  * native coverage save (has_new_bits != 0, INCLUDING hit-count-only changes,
- * hnb==1); code_gain_events counts NEW-EDGE saves only (hnb==2) and is the
- * sole calibration reward signal (paper Eq.4: previously unseen code
- * branches — execution-frequency novelty must not fire the reward).
+ * hnb==1); code_gain_events counts NEW-EDGE saves only (hnb==2).
+ * Episode reward also observes new edges first consumed by an eligible
+ * inline calibration invocation; hit-count novelty never fires reward.
  * ipsm_new_edge_events counts state-machine edge additions (the misaligned
  * proxy signal).  admission_gain_events counts code evidence produced by
  * PROMOTED LLM candidates so trial work stays out of episode rewards. */
@@ -913,6 +975,71 @@ static u32  last_native_save_index = 0;
 static u8   admission_trial_mode = 0;   /* armed around LLM trial executions */
 static u8   last_trial_hnb = 0;         /* 0 none / 1 hit-count-only / 2 new edge */
 static u8 *trial_virgin_scratch = NULL; /* MAP_SIZE probe buffer, lazily alloc'd */
+/* Trial/save novelty position holders (2026-11-06): the trial probe's
+ * consumed byte positions (for conversion classification) and the most
+ * recent lineage save's positions, both capped at HNB_CAPTURE_MAX. */
+#define HNB_CAPTURE_MAX 128
+static u32 last_trial_new_pos[HNB_CAPTURE_MAX];
+static u32 last_trial_new_pos_n = 0;
+static u32 last_lineage_save_pos[HNB_CAPTURE_MAX];
+static u32 last_lineage_save_pos_n = 0;
+
+/* P0-6 (no-executable-M2 deadlock): argv captured at startup so the
+ * provisional pre-annotation probe can execute the freshly-queued file
+ * without threading argv through the admission call chain. */
+static char **g_admission_argv = NULL;
+
+/* P0-9 leave-one-out predicate ablation: a disabled predicate is forced
+ * to pass, so the recorded disposition is the AND of the remaining ones.
+ * The event ledger keeps the TRUE predicate values; the ablation flags
+ * are logged alongside so every decision stays auditable. */
+static u8 adm_ablate_p      = 0;  /* CHATAFL_ADMIT_NO_P */
+static u8 adm_ablate_u      = 0;  /* CHATAFL_ADMIT_NO_U */
+static u8 adm_ablate_r      = 0;  /* CHATAFL_ADMIT_NO_R */
+static u8 adm_ablate_gcode  = 0;  /* CHATAFL_ADMIT_NO_GCODE */
+static u8 adm_ablate_gstate = 0;  /* CHATAFL_ADMIT_NO_GSTATE */
+
+/* P0-21 shadow sampling: "evidence" (legacy, only rejects that already
+ * show G_code/G_state evidence — biased, cannot estimate the population
+ * false-negative rate) or "random" (uniform Bernoulli sample of ALL
+ * rejects — the reviewer-required unbiased design). */
+static u8    shadow_sample_random = 0;     /* CHATAFL_SHADOW_SAMPLE=random */
+static double shadow_random_rate  = 0.25;  /* CHATAFL_SHADOW_RATE */
+
+/* CSV #8 U-policy knob (the four-policy comparison):
+ *   strict   — legacy U: fault-free + parseable suffix + no 4xx/5xx error
+ *              hint (classify_state_error_hint) anywhere in the suffix.
+ *   soft     — U fails only on STRUCTURAL failure (target fault, empty or
+ *              unboundable response suffix).  Error responses are recorded
+ *              (u_error_states, u_soft_tolerated) but no longer veto the
+ *              candidate alone — the admission dose log keeps the true
+ *              error count so mis-admission stays measurable.
+ *   protocol — like strict, plus protocol-semantic error indicators for
+ *              the binary protocols where a 3-digit 4xx/5xx check never
+ *              applied (SSH DISCONNECT, TLS/DTLS ALERT, DNS RCODE,
+ *              DICOM reject/abort).  This is the honest "protocol-specific
+ *              U": each protocol's U veto rests on that protocol's own
+ *              error semantics, not a text-protocol default.
+ * The fourth policy (Gcode-conditioned U bypass) is the existing
+ * CHATAFL_CODE_RETAIN channel, untouched here. */
+static u8    u_policy = 0;                 /* CHATAFL_U_POLICY 0/1/2 */
+static const char *u_policy_name = "strict";
+static u64   u_policy_soft_tolerated = 0;  /* error responses tolerated under soft */
+static u64   u_policy_error_rejects = 0;   /* candidates actually vetoed by an error under strict/protocol */
+
+/* CSV #7 matched ordinary cohort: with CHATAFL_ORDINARY_BUDGET=1 every
+ * candidate admitted through the provisional channel is (subject to rate)
+ * re-labeled an ordinary-match root: same budget ledger, ordinary
+ * scheduling/retention. */
+static u8    ordinary_budget_enabled = 0;  /* CHATAFL_ORDINARY_BUDGET */
+static double ordinary_budget_rate = 1.0;  /* CHATAFL_ORDINARY_RATE, (0,1] */
+static u8 ordinary_edf_enabled = 0;  /* CHATAFL_ORDINARY_EDF: include
+                                      * ordinary-match roots in concurrent
+                                      * EDF service; default defers them
+                                      * until no regular root is live */
+static u64   ordinary_match_admits = 0;
+static u64   ordinary_match_closed = 0;
+static u64   ordinary_match_converted = 0;
 
 KHASH_SET_INIT_INT64(hs64)             /* u64 set: (from<<32)|to transitions */
 static khash_t(hs32) *observed_state_ledger = NULL;  /* state ids seen by trials */
@@ -962,6 +1089,18 @@ static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
 static u8   code_retain_enabled = 0;  /* CHATAFL_CODE_RETAIN (expert P0-3 policy) */
+/* S2 state-evidence retention (2026-11-05): CHATAFL_STATE_RETAIN admits
+ * u_fail ∧ r ∧ gstate ∧ ¬gcode candidates (the structurally empty natural
+ * provisional cell) to the bounded validation tier, mirroring the
+ * code-retain policy for state evidence. */
+static u8   state_retain_enabled = 0;
+static u64  state_retain_admitted = 0;
+/* Conversion classification counters (2026-11-06): class 1 = rescue of
+ * the candidate's own trial novelty (bitmap positions subset), 2 = beyond
+ * -trial novelty, 0 = unclassified (salvage entries / missing capture). */
+static u64  prov_conv_immediate_only = 0;
+static u64  prov_conv_beyond_trial = 0;
+static u64  prov_conv_unclassified = 0;
 static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidates
                                        * keep their error-free messages via the
                                        * provisional tier instead of being
@@ -969,6 +1108,51 @@ static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidat
                                        * streams carry descendant value
                                        * (45.2 vs 28.4 lines/64-exec, p=0.002). */
 static u64  salvage_attempted = 0;
+/* Layer-2 fix (probe-promotion, 2026-10-30): the P0-6 post-admission probe
+ * revealed 89-91% of salvage admissions are dead sessions (probe
+ * serviceable 11%/9% in the two real-gateway batches).  When
+ * CHATAFL_SALVAGE_PROBE_GATE=1 the probe runs BEFORE queueing and its
+ * outcome becomes admission evidence: a stripped session that cannot
+ * complete can never produce descendants, so it is honestly re-rejected
+ * at the gate instead of consuming a queue slot, a probe execution, and
+ * live-cap pressure.  Admitted entries are annotated from the probe's
+ * own responses (no second execution). */
+static u8   salvage_probe_gate = 0;    /* CHATAFL_SALVAGE_PROBE_GATE */
+/* Opportunity-cost gate (2026-11-06 revision, channel-consistent): with
+ * CHATAFL_SALVAGE_OPPORTUNITY>0 the EDF service of the provisional tier
+ * is PARKED while the ordinary channel's recent new-edge yield exceeds
+ * the lineage channel's. Channels are consistent since 2026-11-06: the
+ * lineage denominator (lineage_invocation_total) counts EVERY charged
+ * invocation with candidate ancestry including converted roots and
+ * durable-lineage descendants, matching the llm_lineage_edge_gains
+ * numerator (the 2026-11-05 version lost converted-root calls in both
+ * denominators and misfiled durable-lineage calls as ordinary — GLM53
+ * audit counterexamples). A window with fewer than 64 validation-channel
+ * calls is underexposed: no park/unpark decision is made off it. The
+ * refresh cadence is fixed at 2000 ordinary calls; the env value is only
+ * an enable. All decisions are ledgered (kind="opportunity-gate"). */
+static double salvage_opportunity_threshold = 0.0;
+/* S1 prefix protection (2026-11-05): CHATAFL_PROV_PREFIX_PROTECT=0 opts
+ * out (legacy full-session M2 under forced provisional service). */
+static u8 prov_prefix_protect = 1;
+static u64   ord_invocation_total = 0;      /* candidate_id==0 invocations */
+static u64   opp_window_calls = 0;
+static u8    salvage_opportunity_parked = 0;
+static u64   salvage_opportunity_events = 0;
+/* Q1 marginal accounting (2026-11-05): the opportunity gate now compares
+ * CHANNEL yields instead of one global per-1k-edge rate. prov_charged_total
+ * counts charged validation-lineage executions (execution_admit root branch);
+ * the LLM-lineage channel's gains are llm_lineage_edge_gains, the ordinary
+ * channel's gains are code_gain_events - llm_lineage_edge_gains. */
+static u64   prov_charged_total = 0;
+static u64   lineage_invocation_total = 0;  /* every charged invocation with
+                                             * candidate ancestry (live root,
+                                             * converted root or durable-lineage
+                                             * descendant) — the channel the
+                                             * lineage gains numerator uses */
+static u64   opp_win_val_calls = 0, opp_win_val_gains = 0, opp_win_ord_gains = 0;
+static u64  salvage_probe_rejected = 0;
+static u8   salvage_probe_annotate_pending = 0;  /* probe ran; annotate, don't re-execute */
 static u64  salvage_succeeded = 0;
 static u64  salvage_recoveries = 0;  /* Heisenbug recovery count */
 static u8   plaintext_wrap_enabled = 0;  /* CHATAFL_PLAINTEXT_WRAP: wrap
@@ -982,9 +1166,21 @@ static u64  plaintext_wraps = 0;
  * keeps Score = Frontier·[ε+(1−ε)·θ̃] but replaces the Thompson posterior
  * sample with EWMA or the smoothed run rate, so the calibrated-vs-simple
  * contrast stays a single-variable comparison. */
-static u8   cal_estimator = 0;        /* 0=thompson posterior, 1=ewma, 2=run_rate */
+static u8   cal_estimator = 0;        /* 0=thompson posterior, 1=ewma, 2=run_rate, 3=shrink */
 static const char *cal_estimator_name = "thompson";
 static double cal_ewma_alpha = 0.05;  /* matches the offline prequential analysis */
+/* CSV #12 run-level base-rate shrinkage (hierarchical prior): the offline
+ * winning predictors were CAMPAIGN-WIDE EWMA/run-rate, but the production
+ * scorer is per-state — a direct port would erase inter-state contrast.
+ * The principled online translation is empirical-Bayes shrinkage:
+ *   θ_s = (succ_s + κ·r) / (episodes_s + κ)
+ * where r is the pooled run-level reward rate and κ a pseudo-count:
+ * thin per-state evidence is pulled toward the run base rate instead of
+ * the arbitrary Beta(1,1) mean 0.5; dense evidence dominates.  κ is
+ * CHATAFL_CAL_SHRINK_PSEUDO (default 8). */
+static double cal_shrink_kappa = 8.0; /* CHATAFL_CAL_SHRINK_PSEUDO */
+static u64   cal_run_episode_updates = 0;   /* pooled denominator (eligible episodes) */
+static u64   cal_run_episode_rewarded = 0;  /* pooled numerator */
 static u8   test_force_code_retain = 0; /* CHATAFL_TEST_FORCE_CODE_RETAIN (test knob) */
 static u64  code_retain_admitted = 0;
 static u64  code_retain_converted = 0;
@@ -1011,9 +1207,25 @@ static u8   cal_episode_active = 0;
 static u32  cal_episode_state = 0;
 static s32  cal_episode_seed_index = -1;
 static u64  cal_episode_start_ms = 0;
-static u64  cal_episode_start_execs = 0;
-static u64  cal_episode_start_code_gains = 0;
-static u64  cal_episode_start_ipsm_edges = 0;
+/* Count admitted target invocations directly.  Global counter deltas cannot
+ * separate controller trials from ordinary mutations without discarding
+ * earlier ordinary work when a trial occurs in the middle of an episode. */
+static u64  cal_episode_total_invocations = 0;
+static u64  cal_episode_training_invocations = 0;
+static u64  cal_episode_mutation_invocations = 0;
+static u64  cal_episode_nested_invocations = 0;
+static u64  cal_episode_code_gains = 0;
+static u64  cal_episode_state_gains = 0;
+static u64  cal_episode_all_code_gains = 0;
+static u64  cal_episode_all_state_gains = 0;
+static u8   cal_episode_train_eligible = 0;
+static u8   cal_episode_full_session = 0;
+static const char *cal_episode_selection_reason = "uninitialized";
+/* Only calibration/retry nested in an ordinary mutation may train the
+ * scheduler.  Candidate retention and controller probes may call the same
+ * helpers and must not inherit the preceding ordinary invocation's label. */
+static u8   cal_nested_mutation_context = 0;
+static u8   cal_last_invocation_trainable = 0;
 static double cal_episode_alpha_before = 1.0;
 static double cal_episode_beta_before = 1.0;
 static double cal_episode_theta_sample = -1.0;
@@ -1858,6 +2070,10 @@ static void mqtt_save_diff_report(const char *diff_type,
         (ecnt >= 2 && eps) ? eps[0].impl_name : "",
         (ecnt >= 2 && eps) ? "\n" : "");
 
+      /* CSV#20 channel scope: MQTT diff verdicts are not any of the three
+       * component channels — pin "other" so an earlier grammar/plateau
+       * scope can never leak onto (or disable) this call. */
+      chat_llm_set_channel("other");
       char *llm_resp = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 1, 0.2);
 
       if (llm_resp) {
@@ -3107,6 +3323,10 @@ static void admission_ledger_observe(const unsigned int *states,
     if (!ipsm_has_state_transition(states[i - 1], states[i]) && absent)
       if (new_trans_out) (*new_trans_out)++;
   }
+  /* CSV#18 response-gap trigger input: cumulative ledger sizes (khash
+   * size == distinct states/transitions ever observed). */
+  observed_states_total = (u64)kh_size(observed_state_ledger);
+  observed_transitions_total = (u64)kh_size(observed_trans_ledger);
 }
 
 static char *admission_collect_state_evidence(u8 executed,
@@ -3291,11 +3511,21 @@ typedef struct {
   u32  u_suffix_count;   /* number of states in candidate's suffix */
   u8   u_binding_valid;
   u32  u_response_start, u_response_end;
+  /* CSV #8 U-policy dose: how many suffix states the ACTIVE policy
+   * classifies as errors, and whether a soft policy tolerated them. */
+  u32  u_error_states;
+  u8   u_soft_tolerated;
   /* Trial-mode evidence (P0-1): non-destructive novelty probe result
    * (0=none, 1=hit-count-only, 2=new edge) and ledger-based state-novelty
    * counts that do not depend on retention. */
   u8   trial_hnb;
   u32  obs_new_states, obs_new_transitions;
+  /* P0-9 audit fix: the OBSERVED predicate values as evaluated, frozen
+   * before any leave-one-out forcing.  The plain p/u/r/g_* fields carry
+   * the EFFECTIVE tuple (post-forcing) that drove the decision; these
+   *_obs fields keep the true measurement so admission_*_fail counters
+   * and leave-one-out dose accounting never count forced passes. */
+  u8   p_pass_obs, u_pass_obs, r_pass_obs, g_code_pass_obs, g_state_pass_obs;
   char *state_seq;   /* owned */
   char *edge_seq;    /* owned */
   int  disposition;  /* EC_* */
@@ -3315,13 +3545,30 @@ static u8 admission_response_span(const u32 *ends, u32 sent, u32 size,
                                   u32 *start_out, u32 *end_out) {
   if (!ends || !count || first >= sent || count > sent - first ||
       greeting > size) return 0;
-  u32 previous = greeting;
+  u32 previous = greeting, nonempty = 0;
   for (u32 i = 0; i < first + count; i++) {
     if (ends[i] < previous || ends[i] > size) return 0;
+    /* Pipelining-aware binding (2026-11-03 root-cause fix): on SMTP-style
+     * targets several requests share one batched response block, so a
+     * message CAN show a zero byte delta (measured exim: boundaries
+     * 895,895,895 / 370,370,370 on every trial -> U structurally failed
+     * 31/31 candidates).  Zero-delta messages no longer invalidate the
+     * binding; the window merely needs >=1 non-empty response span and
+     * globally non-decreasing boundaries (same-connection attribution). */
+    if (i >= first && ends[i] > previous) nonempty++;
     previous = ends[i];
   }
   u32 start = first ? ends[first - 1] : greeting;
   u32 end = ends[first + count - 1];
+  /* Delayed-response extension (2026-11-04 SIP root-cause fix): on SIP/TCP
+   * the response to the candidate message arrives DURING the next message's
+   * send window (measured kamailio: candidate=msg2, ends[2]==ends[1]==596,
+   * but ends[3]=851 — the 255 bytes between 596 and 851 are msg2's delayed
+   * response).  When the window has zero non-empty spans, extend the end
+   * one message past the window to capture the delayed response, provided
+   * that next message exists and did elicit bytes. */
+  if (!nonempty && first + count < sent && ends[first + count] > end)
+    end = ends[first + count];
   if (start_out) *start_out = start;
   if (end_out) *end_out = end;
   return end > start;
@@ -3336,6 +3583,8 @@ static void admission_clear_response_capture(void) {
   candidate_message_first = candidate_message_count = 0;
   candidate_single_connection = 0;
   candidate_execution_id = candidate_invocation_id = 0;
+  candidate_response_start = candidate_response_end = 0;
+  candidate_response_span_valid = 0;
   candidate_observed_new_states = candidate_observed_new_transitions = 0;
   candidate_observation_recorded = 0;
 }
@@ -3346,7 +3595,8 @@ static void admission_capture_response(void) {
   candidate_greeting_bytes = response_greeting_bytes;
   candidate_single_connection = response_single_connection;
   candidate_execution_id = total_execs;
-  candidate_invocation_id = target_invocation_seq;
+  candidate_invocation_id = (response_invocation_id == target_invocation_seq)
+      ? response_invocation_id : 0;
   if (candidate_response_size && response_buf) {
     candidate_response = ck_alloc_nozero(candidate_response_size);
     memcpy(candidate_response, response_buf, candidate_response_size);
@@ -3355,22 +3605,67 @@ static void admission_capture_response(void) {
     candidate_response_ends = ck_alloc_nozero(messages_sent * sizeof(u32));
     memcpy(candidate_response_ends, response_bytes, messages_sent * sizeof(u32));
   }
-  /* Freeze novelty before native retention mutates the scheduler IPSM. */
-  if (extract_response_codes && candidate_response && candidate_response_size) {
+  /* Freshness contract: responses are usable only when their freeze-time
+   * stamp equals the CURRENT invocation. Equality (not a nonzero id) is
+   * the freshness proof — a 0==0 match before the first invocation has no
+   * responses to freeze anyway (candidate_response == NULL then). */
+  candidate_response_span_valid = (response_invocation_id == target_invocation_seq) &&
+      candidate_response && candidate_response_ends &&
+      admission_response_span(candidate_response_ends, candidate_messages_sent,
+          candidate_response_size, candidate_greeting_bytes,
+          candidate_message_first, candidate_message_count,
+          &candidate_response_start, &candidate_response_end);
+  /* Freeze only the executed candidate M2 responses before native retention
+   * can mutate the scheduler IPSM. Prefix/suffix and greeting evidence never
+   * enters this ledger. */
+  if (candidate_response_span_valid && extract_response_codes) {
     u32 count = 0;
-    u32 *states = extract_response_codes(candidate_response, candidate_response_size, &count);
+    u32 *states = extract_response_codes(
+        candidate_response + candidate_response_start,
+        candidate_response_end - candidate_response_start, &count);
     admission_ledger_observe(states, count, 0, &candidate_observed_new_states,
                             &candidate_observed_new_transitions);
     if (states) ck_free(states);
+    candidate_observation_recorded = 1;
   }
-  candidate_observation_recorded = 1;
+}
+
+/* CSV #8 protocol-policy: per-protocol error semantics for the binary
+ * protocols where the 3-digit 4xx/5xx check never applied.  These encode
+ * each protocol's own "server rejected / aborted / error" indicator using
+ * the same state_id encodings documented at classify_state_error_hint. */
+static u8 u_policy_protocol_error(u32 state_id, const char *protocol) {
+  if (!protocol) return 0;
+  if (strcasecmp(protocol, "SSH") == 0)
+    return state_id == 1;                     /* SSH_MSG_DISCONNECT */
+  if (strcasecmp(protocol, "TLS") == 0 ||
+      strcasecmp(protocol, "DTLS12") == 0)
+    return state_id >= 0x1500 && state_id < 0x1600;  /* ALERT content_type */
+  if (strcasecmp(protocol, "DNS") == 0)
+    return (state_id & 0x000F) != 0;          /* RCODE != NOERROR */
+  if (strcasecmp(protocol, "DICOM") == 0)
+    return state_id == 3 || state_id == 6;    /* A-ASSOCIATE-RJ / P-DATA abort */
+  /* MQTT state_id is the bare packet-type byte: CONNACK refusal codes live
+   * in the payload, invisible to the state encoder — stays behavioral. */
+  return 0;
+}
+
+/* One policy-common helper: does this suffix state veto U under the
+ * ACTIVE policy? (dose counters are maintained by the caller) */
+static u8 u_policy_state_is_error(u32 state_id) {
+  if (classify_state_error_hint(state_id, protocol_name) == 1) return 1;
+  if (u_policy == 2) return u_policy_protocol_error(state_id, protocol_name);
+  return 0;
 }
 
 static void admission_evaluate_candidate_u(admission_evidence_t *ev,
                                            u8 executed) {
   ev->u_pass_prefix = ev->u_pass;
   ev->u_pass = 0;
-  if (!executed || !ev->p_pass || !candidate_single_connection ||
+  ev->u_pass_obs = 0;
+  ev->u_error_states = 0;
+  ev->u_soft_tolerated = 0;
+  if (!executed || !candidate_single_connection ||
       !extract_response_codes || !candidate_response ||
       !admission_response_span(candidate_response_ends, candidate_messages_sent,
           candidate_response_size, candidate_greeting_bytes,
@@ -3384,11 +3679,24 @@ static void admission_evaluate_candidate_u(admission_evidence_t *ev,
   for (u32 i = 0; states && i < count; i++) {
     if (!states[i]) continue;
     ev->u_suffix_count++;
-    if (classify_state_error_hint(states[i], protocol_name) == 1) error = 1;
+    if (u_policy_state_is_error(states[i])) {
+      ev->u_error_states++;
+      error = 1;
+    }
   }
   if (states) ck_free(states);
-  ev->u_pass = (last_common_fuzz_fault == FAULT_NONE &&
-                 ev->u_suffix_count > 0 && !error);
+  u8 structural_ok = (last_common_fuzz_fault == FAULT_NONE &&
+                      ev->u_suffix_count > 0);
+  /* soft policy: an error response is evidence, not a veto — record it
+   * (so mis-admission stays measurable) but let U pass on structure. */
+  if (u_policy == 1 && error) ev->u_soft_tolerated = 1;
+  ev->u_pass = structural_ok && (u_policy == 1 ? 1 : !error);
+  ev->u_pass_obs = ev->u_pass;
+  if (error && u_policy == 1) u_policy_soft_tolerated++;
+  /* strict/protocol: count candidates that structurally executed fine and
+   * were vetoed by an error response ALONE — the exact population the
+   * soft policy re-admits, i.e. the arms' measurable dose delta. */
+  if (error && u_policy != 1 && structural_ok) u_policy_error_rejects++;
 }
 
 /* Evaluate the P/U/R/G_code/G_state predicates on one bounded trial.
@@ -3421,9 +3729,9 @@ static void admission_evaluate(const admission_snapshot_t *before,
   ev->native_promoted = last_common_fuzz_saved ? 1 : 0;
   ev->trial_hnb       = executed ? last_trial_hnb : 0;
 
-  ev->u_pass = (p_pass && executed && last_common_fuzz_fault == FAULT_NONE &&
+  ev->u_pass = (executed && last_common_fuzz_fault == FAULT_NONE &&
                 ev->state_count > 0 && !ev->has_error);
-  ev->r_pass = (p_pass && executed && ev->state_count > 0 &&
+  ev->r_pass = (executed && ev->state_count > 0 &&
                 (ev->state_count > 1 || ev->target_hit ||
                  ev->ipsm_edge_delta > 0 || ev->ipsm_node_delta > 0 ||
                  ev->obs_new_states > 0 || ev->obs_new_transitions > 0));
@@ -3432,15 +3740,21 @@ static void admission_evaluate(const admission_snapshot_t *before,
    * qualifies — hit-count-only changes are execution-frequency novelty and
    * must not open the durable gate (nor fire the reward).  In the legacy
    * direct path (arm C) native promotion / bitmap deltas apply as before. */
-  ev->g_code_pass = (p_pass && executed &&
+  ev->g_code_pass = (executed &&
                      (ev->trial_hnb == 2 || last_common_fuzz_hnb == 2));
   /* G_state: IPSM state-machine novelty only — assessed from the observed
    * response sequence via the ledger (retention-independent), with the
    * graph deltas kept as the legacy signal for the direct path. */
-  ev->g_state_pass = (p_pass && executed &&
+  ev->g_state_pass = (executed &&
                       (ev->obs_new_states > 0 || ev->obs_new_transitions > 0));
   /* Legacy aggregate kept for backward-compatible counters. */
   ev->g_pass = (ev->g_code_pass || ev->g_state_pass);
+
+  ev->p_pass_obs = ev->p_pass;
+  ev->u_pass_obs = ev->u_pass;
+  ev->r_pass_obs = ev->r_pass;
+  ev->g_code_pass_obs = ev->g_code_pass;
+  ev->g_state_pass_obs = ev->g_state_pass;
 
   ec_predicates_t pr = { ev->p_pass, ev->u_pass, ev->r_pass,
                          ev->g_code_pass, ev->g_state_pass };
@@ -3593,10 +3907,68 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "provisional_budget_scope", json_object_new_string(
       "unconverted candidate subtree; every run_target call incl. calibration/hang retry; first hnb=2 makes subtree durable"));
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
+  json_object_object_add(j, "state_retain", json_object_new_boolean(state_retain_enabled));
+  /* Conversion-semantics stamp (2026-11-06): conversions inside the
+   * validation window are CLASSIFIED (immediate-rescue vs beyond-trial)
+   * via recorded trial/save bitmap positions; the virgin map is not
+   * mutated at admission. Archives with p64_descendant_only instead used
+   * the reverted admission-commit variant; archives with neither measured
+   * unclassified conversions. Do not pool-compare across these stamps. */
+  json_object_object_add(j, "p64_conversion_classified", json_object_new_boolean(1));
   json_object_object_add(j, "salvage_enabled", json_object_new_boolean(salvage_enabled));
+  json_object_object_add(j, "salvage_probe_gate", json_object_new_boolean(salvage_probe_gate));
+  if (salvage_opportunity_threshold > 0.0) {
+    char th[32];
+    snprintf(th, sizeof(th), "%llu", (unsigned long long)(u64)salvage_opportunity_threshold);
+    json_object_object_add(j, "salvage_opportunity",
+        json_object_new_string(th));
+    json_object_object_add(j, "salvage_opportunity_semantics",
+        json_object_new_string("marginal-channel-yield (2026-11-05): park "
+                               "validation while ordinary_yield > "
+                               "validation_yield; value = min ordinary "
+                               "invocations per window"));
+  }
   json_object_object_add(j, "plaintext_wrap_enabled", json_object_new_boolean(plaintext_wrap_enabled));
   json_object_object_add(j, "test_force_code_retain", json_object_new_boolean(test_force_code_retain));
   json_object_object_add(j, "no_llm", json_object_new_boolean(llm_disabled));
+  /* CSV#20 per-channel component switches + CSV#18 trigger policy */
+  {
+    const char *ng = getenv("CHATAFL_NO_GRAMMAR");
+    const char *ne = getenv("CHATAFL_NO_ENRICH");
+    const char *np = getenv("CHATAFL_NO_PLATEAU");
+    json_object_object_add(j, "no_grammar",
+        json_object_new_boolean(ng && *ng && strcmp(ng, "0") != 0));
+    json_object_object_add(j, "no_enrich",
+        json_object_new_boolean(ne && *ne && strcmp(ne, "0") != 0));
+    json_object_object_add(j, "no_plateau",
+        json_object_new_boolean(np && *np && strcmp(np, "0") != 0));
+  }
+  json_object_object_add(j, "llm_trigger_policy",
+      json_object_new_string(llm_trigger_policy_name));
+  /* P0-6/P0-9/P0-21 audit knobs (2026-10-29) */
+  json_object_object_add(j, "provisional_preannotate", json_object_new_int(2));
+  json_object_object_add(j, "ablate_p", json_object_new_boolean(adm_ablate_p));
+  json_object_object_add(j, "ablate_u", json_object_new_boolean(adm_ablate_u));
+  json_object_object_add(j, "ablate_r", json_object_new_boolean(adm_ablate_r));
+  json_object_object_add(j, "ablate_gcode", json_object_new_boolean(adm_ablate_gcode));
+  json_object_object_add(j, "ablate_gstate", json_object_new_boolean(adm_ablate_gstate));
+  json_object_object_add(j, "shadow_sample_mode", json_object_new_string(
+      shadow_sample_random ? "random" : "evidence"));
+  if (shadow_sample_random) {
+    char rate[16];
+    snprintf(rate, sizeof(rate), "%.4f", shadow_random_rate);
+    json_object_object_add(j, "shadow_random_rate", json_object_new_string(rate));
+  }
+  /* CSV #8 U policy + CSV #7 matched ordinary cohort (2026-11-02) */
+  json_object_object_add(j, "u_policy", json_object_new_string(u_policy_name));
+  json_object_object_add(j, "ordinary_budget",
+      json_object_new_boolean(ordinary_budget_enabled));
+  if (ordinary_budget_enabled) {
+    char orate[16];
+    snprintf(orate, sizeof(orate), "%.4f", ordinary_budget_rate);
+    json_object_object_add(j, "ordinary_rate", json_object_new_string(orate));
+  }
+  admission_json_add_f64(j, "cal_shrink_kappa", cal_shrink_kappa);
   {
     const char *ssel2 = getenv("CHATAFL_STATE_SELECT");
     json_object_object_add(j, "state_select_override",
@@ -3606,6 +3978,10 @@ static void run_config_log(const char *phase, const char *termination_reason) {
     admission_json_add_f64(j, "cal_ewma_alpha", cal_ewma_alpha);
   }
   json_object_object_add(j, "calibration", json_object_new_boolean(calibration_enabled));
+  admission_json_add_u64(j, "scheduler_warmup_max_selections",
+                         scheduler_warmup_max_selections);
+  json_object_object_add(j, "scheduler_warmup_policy",
+      json_object_new_string("five-complete-sweeps-or-selection-cap"));
   json_object_object_add(j, "no_refinement", json_object_new_boolean(ablation_no_refinement));
   json_object_object_add(j, "no_frontier", json_object_new_boolean(ablation_no_frontier));
   json_object_object_add(j, "no_adaptive", json_object_new_boolean(ablation_no_adaptive));
@@ -3630,12 +4006,21 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   admission_json_add_u64(j, "provisional_budget", provisional_budget_default);
   admission_json_add_u64(j, "provisional_ttl_ms", provisional_ttl_ms_default);
   admission_json_add_u64(j, "provisional_max_live", provisional_max_live);
+  /* S1 prefix protection version stamp: runs without this field (or with
+   * a different value) used a different forced-service M2 policy and must
+   * not be pool-compared with this run. */
+  json_object_object_add(j, "prov_prefix_protect",
+      json_object_new_boolean(prov_prefix_protect != 0));
   /* v3 fidelity knobs: fixed episode energy (havoc execs; 0=legacy variable),
    * reward semantics (new-edge-only since schema v3), and trial-mode
    * admission (execute-before-promote with a non-destructive probe). */
   admission_json_add_u64(j, "episode_energy_cap", episode_energy_cap);
   json_object_object_add(j, "code_reward_semantics",
       json_object_new_string("new-edge-only-hnb2"));
+  json_object_object_add(j, "calibration_attribution",
+      json_object_new_string("ordinary-mutation-and-nested-v1"));
+  json_object_object_add(j, "episode_energy_semantics",
+      json_object_new_string("havoc-mutation-invocations-only"));
   json_object_object_add(j, "trial_mode_admission",
       json_object_new_boolean(!ablation_no_admission && !admission_native_retention));
   /* v3 (P0-2) identity pinning: binary / corpus / config hashes, container
@@ -3747,10 +4132,14 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
   admission_json_add_u64(j, "first_gain_invocation_id", q->prov_first_gain_invocation);
   admission_json_add_u64(j, "first_gain_time_ms", q->prov_first_gain_ms);
   json_object_object_add(j, "budget_definition", json_object_new_string(
-      "run_target invocations across unconverted root subtree, including calibration and hang retry"));
+      "run_target invocations across unconverted root subtree, excluding prov-annotate probe and including calibration/hang retry"));
   admission_json_add_u64(j, "conversion_time_ms",
       q->prov_converted ? q->prov_first_gain_ms - q->prov_admit_ms : 0);
   admission_json_add_u64(j, "durable_promotion", q->prov_converted);
+  /* CSV #7 cohort marker: ordinary-match roots share the budget ledger
+   * but receive ordinary retention/scheduling treatment. */
+  if (q->prov_ordinary_match)
+    json_object_object_add(j, "ordinary_match", json_object_new_boolean(1));
   /* v3.3: how far past the wall-clock deadline the expiry actually landed
    * (0 for on-time closure) — bounds the async-sweep delay from the data. */
   {
@@ -3839,10 +4228,24 @@ static void episode_log_event(u32 state_id, s32 seed_index,
   admission_json_add_f64(j, "frontier_score", frontier_score);
   admission_json_add_f64(j, "final_selection_score", final_score);
   admission_json_add_u64(j, "mutations", mutations);
+  json_object_object_add(j, "invocation_accounting",
+      json_object_new_string("ordinary-mutation-and-nested-v1"));
+  json_object_object_add(j, "selection_reason",
+      json_object_new_string(cal_episode_selection_reason));
+  json_object_object_add(j, "full_session_override",
+      json_object_new_boolean(cal_episode_full_session));
+  json_object_object_add(j, "train_eligible",
+      json_object_new_boolean(cal_episode_train_eligible));
+  admission_json_add_u64(j, "total_invocations", cal_episode_total_invocations);
+  admission_json_add_u64(j, "training_invocations", cal_episode_training_invocations);
+  admission_json_add_u64(j, "ordinary_mutation_invocations", cal_episode_mutation_invocations);
+  admission_json_add_u64(j, "nested_training_invocations", cal_episode_nested_invocations);
+  admission_json_add_u64(j, "total_native_code_gains", cal_episode_all_code_gains);
+  admission_json_add_u64(j, "total_state_edge_gains", cal_episode_all_state_gains);
   admission_json_add_u64(j, "new_code_edges", new_code_edges);
   admission_json_add_u64(j, "new_state_edges", new_state_edges);
-  /* reward == -1 marks an incomplete episode (interrupted / aborted): no
-   * reward is assigned and the posterior is NOT updated (paper §五.1). */
+  /* reward == -1 marks an episode without an eligible completed training
+   * exposure (interruption, full-session service, or no ordinary work). */
   json_object_object_add(j, "reward", json_object_new_int(reward));
   admission_json_add_f64(j, "alpha_after", alpha_after);
   admission_json_add_f64(j, "beta_after", beta_after);
@@ -3892,12 +4295,15 @@ static void admission_log_candidate_event(const char *source,
   u8 promoted = (ev.native_promoted || forced_promoted || durable_promoted) ? 1 : 0;
 
   admission_candidate_total++;
-  if (!ev.p_pass) admission_p_fail++;
-  if (!ev.u_pass) admission_u_fail++;
-  if (!ev.r_pass) admission_r_fail++;
-  if (!ev.g_pass) admission_g_fail++;
-  if (!ev.g_code_pass) admission_g_code_fail++;
-  if (!ev.g_state_pass) admission_g_state_fail++;
+  /* P0-9 audit fix: count the OBSERVED tuple, never the leave-one-out
+   * forced-pass values (in lou8, admission_u_fail must reflect how many
+   * candidates actually failed U, which is the arm's dose). */
+  if (!ev.p_pass_obs) admission_p_fail++;
+  if (!ev.u_pass_obs) admission_u_fail++;
+  if (!ev.r_pass_obs) admission_r_fail++;
+  if (!(ev.g_code_pass_obs || ev.g_state_pass_obs)) admission_g_fail++;
+  if (!ev.g_code_pass_obs) admission_g_code_fail++;
+  if (!ev.g_state_pass_obs) admission_g_state_fail++;
   if (ev.native_promoted) admission_native_promoted++;
   if (forced_promoted) admission_forced_promoted++;
   if (durable_promoted) admission_promoted_durable++;
@@ -4075,9 +4481,39 @@ static void admission_log_decision_event(const admission_evidence_t *ev,
   json_object_object_add(j, "trial_mode", json_object_new_boolean(ev->trial_mode));
   json_object_object_add(j, "p_pass", json_object_new_boolean(ev->p_pass));
   json_object_object_add(j, "u_pass", json_object_new_boolean(ev->u_pass));
+  /* CSV #8 U-policy dose: which policy judged this candidate, how many
+   * suffix states it classifies as errors, and whether soft tolerated. */
+  json_object_object_add(j, "u_policy", json_object_new_string(u_policy_name));
+  if (ev->u_binding_valid) {
+    admission_json_add_u64(j, "u_error_states", ev->u_error_states);
+    if (u_policy == 1 && ev->u_soft_tolerated)
+      json_object_object_add(j, "u_soft_tolerated", json_object_new_boolean(1));
+  }
   json_object_object_add(j, "r_pass", json_object_new_boolean(ev->r_pass));
   json_object_object_add(j, "g_code_pass", json_object_new_boolean(ev->g_code_pass));
   json_object_object_add(j, "g_state_pass", json_object_new_boolean(ev->g_state_pass));
+  if (adm_ablate_p || adm_ablate_u || adm_ablate_r ||
+      adm_ablate_gcode || adm_ablate_gstate) {
+    char abl[64] = "";
+    if (adm_ablate_p)      strncat(abl, "P,", sizeof(abl) - strlen(abl) - 1);
+    if (adm_ablate_u)      strncat(abl, "U,", sizeof(abl) - strlen(abl) - 1);
+    if (adm_ablate_r)      strncat(abl, "R,", sizeof(abl) - strlen(abl) - 1);
+    if (adm_ablate_gcode)  strncat(abl, "Gcode,", sizeof(abl) - strlen(abl) - 1);
+    if (adm_ablate_gstate) strncat(abl, "Gstate,", sizeof(abl) - strlen(abl) - 1);
+    u32 alen = strlen(abl);
+    if (alen && abl[alen - 1] == ',') abl[alen - 1] = 0;
+    /* predicate flags above are the EFFECTIVE (post-ablation) tuple;
+     * "predicate_ablation" names which inputs were forced to pass.
+     * The *_observed flags carry the true pre-forcing measurements so
+     * leave-one-out dose (e.g. how many candidates actually failed U)
+     * is readable from this arm's own ledger. */
+    json_object_object_add(j, "predicate_ablation", json_object_new_string(abl));
+    json_object_object_add(j, "p_pass_observed", json_object_new_boolean(ev->p_pass_obs));
+    json_object_object_add(j, "u_pass_observed", json_object_new_boolean(ev->u_pass_obs));
+    json_object_object_add(j, "r_pass_observed", json_object_new_boolean(ev->r_pass_obs));
+    json_object_object_add(j, "g_code_pass_observed", json_object_new_boolean(ev->g_code_pass_obs));
+    json_object_object_add(j, "g_state_pass_observed", json_object_new_boolean(ev->g_state_pass_obs));
+  }
   json_object_object_add(j, "trial_hnb", json_object_new_int((int)ev->trial_hnb));
   json_object_object_add(j, "obs_new_states", json_object_new_int((int)ev->obs_new_states));
   json_object_object_add(j, "obs_new_transitions",
@@ -4103,6 +4539,8 @@ u32 reward_grammar;
 
 void setup_llm_grammars()
 {
+    /* CSV#20 channel scope: protocol-template discovery is grammar-channel. */
+    chat_llm_set_channel("grammar");
 
   ACTF("Getting grammars from LLM...");
 
@@ -4765,6 +5203,9 @@ void update_fuzzs()
 static const char *scheduler_selection_reason = "uninitialized";
 static u32 scheduler_eligible_states, scheduler_eligible_seeds;
 static u64 scheduler_weight_total, scheduler_random_draw;
+static u8 scheduler_calibration_applied = 0;
+static u8 scheduler_calibration_changed_selection = 0;
+static u32 scheduler_calibration_counterfactual_state = SCHEDULER_NO_STATE;
 /* A provisional candidate is a complete session replay, rather than a
  * state-0 prefix mutation. This flag is set only for the direct service path
  * and is cleared immediately after that fuzz cycle. */
@@ -4787,6 +5228,33 @@ static void scheduler_log_selection(struct queue_entry *q) {
   admission_json_add_u64(j, "eligible_seeds", scheduler_eligible_seeds);
   admission_json_add_u64(j, "weight_total", scheduler_weight_total);
   admission_json_add_u64(j, "random_draw", scheduler_random_draw);
+  json_object_object_add(j, "scheduler_phase",
+      json_object_new_string(!strcmp(scheduler_selection_reason, "weighted-eligible") ||
+                             !strcmp(scheduler_selection_reason, "zero-weight-eligible-uniform") ?
+                             "weighted" : "warmup-or-fallback"));
+  admission_json_add_u64(j, "warmup_selections", scheduler_warmup_selections);
+  admission_json_add_u64(j, "warmup_max_selections", scheduler_warmup_max_selections);
+  json_object_object_add(j, "warmup_exit_reason",
+      json_object_new_string(scheduler_warmup_exit_reason));
+  json_object_object_add(j, "calibration_applied",
+      json_object_new_boolean(scheduler_calibration_applied));
+  if (scheduler_calibration_applied) {
+    admission_json_add_u64(j, "calibration_counterfactual_state",
+                           scheduler_calibration_counterfactual_state);
+    json_object_object_add(j, "calibration_changed_selection",
+        json_object_new_boolean(scheduler_calibration_changed_selection));
+  }
+  /* S1 prefix protection dose: which M2 range the forced provisional
+   * service will actually mutate for this entry. */
+  if (q && q->is_provisional && full_session_m2_override) {
+    json_object_object_add(j, "prov_m2_policy",
+        json_object_new_string(
+            (prov_prefix_protect && q->prov_cand_count) ?
+                "candidate-window" : "full-session"));
+    admission_json_add_u64(j, "prov_m2_first", q->prov_cand_first);
+    admission_json_add_u64(j, "prov_m2_count", q->prov_cand_count);
+    admission_json_add_u64(j, "prov_region_count", q->region_count);
+  }
   ec_append_jsonl("scheduler-selections.jsonl", j);
   json_object_put(j);
 }
@@ -4796,6 +5264,20 @@ static u8 entry_m2_range(struct queue_entry *q, u32 state_id,
                          u32 *start_out, u32 *count_out) {
   if (!q || q->prov_expired || !q->regions || !q->region_count) return 0;
   if (full_session_m2_override && state_id == 0) {
+    /* S1 prefix protection: clamp M2 to the candidate's message window so
+     * the reaching prefix replays verbatim. Falls through to the legacy
+     * whole-session range whenever the window is absent or malformed. */
+    if (prov_prefix_protect && q->prov_cand_count &&
+        q->prov_cand_first < q->region_count) {
+      u32 win = q->prov_cand_count;
+      if (win > q->region_count - q->prov_cand_first)
+        win = q->region_count - q->prov_cand_first;
+      if (win) {
+        if (start_out) *start_out = q->prov_cand_first;
+        if (count_out) *count_out = win;
+        return 1;
+      }
+    }
     for (u32 i = 0; i < q->region_count; i++) {
       if (!q->regions[i].state_count || !q->regions[i].state_sequence)
         return 0;
@@ -4831,9 +5313,14 @@ static u8 entry_can_fuzz_state(struct queue_entry *q, u32 state_id) {
 
 static u8 entry_can_fuzz_full_session(struct queue_entry *q) {
   if (!q || q->prov_expired || !q->regions || !q->region_count) return 0;
+  /* Pipelining-aware executability: on SMTP-style targets some regions carry
+   * no separate response (batched replies) and stay unannotated; requiring
+   * ALL regions annotated declared every exim entry unserviceable.  Require
+   * a majority of annotated regions instead — FTP semantics unchanged. */
+  u32 annotated = 0;
   for (u32 i = 0; i < q->region_count; i++)
-    if (!q->regions[i].state_count || !q->regions[i].state_sequence) return 0;
-  return 1;
+    if (q->regions[i].state_count && q->regions[i].state_sequence) annotated++;
+  return annotated * 2 >= q->region_count && annotated >= 1;
 }
 
 static u32 state_executable_seed_count(state_info_t *state, u32 state_id) {
@@ -4878,6 +5365,9 @@ u32 update_scores_and_select_next_state(u8 mode)
   scheduler_eligible_states = scheduler_eligible_seeds = 0;
   scheduler_weight_total = scheduler_random_draw = 0;
   scheduler_selection_reason = "no-executable-state";
+  scheduler_calibration_applied = 0;
+  scheduler_calibration_changed_selection = 0;
+  scheduler_calibration_counterfactual_state = SCHEDULER_NO_STATE;
 
   if (state_ids_count == 0)
     return result;
@@ -4954,21 +5444,17 @@ u32 update_scores_and_select_next_state(u8 mode)
          * error_hint=2 (confirmed productive despite error code)
          *   → no penalty (full bonus preserved)
          *
-         * ARM SPLIT (paper §七): this FIXED state policy is the arm-D
-         * (loopfuzz-gated-fixed) scheduler.  Arm E (CHATAFL_CALIBRATION=1)
-         * replaces it with the calibrated confidence below — the fixed
-         * p_s<0.005 penalty and the calibrated posterior must never be
-         * mixed in one arm, or the D-vs-E contrast stops being causal. */
-        if (!calibration_enabled) {
-          if (state->error_hint == 1) {
-            frontier_bonus *= 0.5;
-          } else if (state->error_hint == 0 &&
-                     state->selected_times >= 30 &&
-                     state->productivity < 0.005) {
-            frontier_bonus *= 0.7;
-          }
-          /* error_hint == 2: confirmed productive → no penalty */
+         * Q3 shared base: these fixed penalties apply to every scorer.
+         * Calibration changes only the multiplicative confidence factor
+         * below, so enabling it cannot silently alter Frontier(s). */
+        if (state->error_hint == 1) {
+          frontier_bonus *= 0.5;
+        } else if (state->error_hint == 0 &&
+                   state->selected_times >= 30 &&
+                   state->productivity < 0.005) {
+          frontier_bonus *= 0.7;
         }
+        /* error_hint == 2: confirmed productive → no penalty */
         }
 
         /* MQTT-only: cap frontier_bonus on sparse state graphs.
@@ -5018,6 +5504,11 @@ u32 update_scores_and_select_next_state(u8 mode)
               cal_estimator == 1 ? state->cal_ewma :
               cal_estimator == 2 ? ec_run_rate_estimate(state->cal_episode_rewards,
                                                         state->cal_episodes) :
+              cal_estimator == 3 ? ec_shrink_estimate(
+                  state->cal_episode_rewards, state->cal_episodes,
+                  cal_run_episode_updates ?
+                      (double)cal_run_episode_rewarded / cal_run_episode_updates : 0.5,
+                  cal_shrink_kappa) :
               ec_thompson_sample(state->cal_alpha, state->cal_beta);
           double factor = ec_calibrated_factor(theta_t, cal_epsilon);
           double score = frontier_score * factor;
@@ -5059,6 +5550,44 @@ u32 update_scores_and_select_next_state(u8 mode)
     result = state_ids[eligible_indices[idx]];
     k = kh_get(hms, khms_states, result);
     scheduler_eligible_seeds = state_executable_seed_count(kh_val(khms_states, k), result);
+
+    /* Replay the same normalized random quantile through the fixed
+     * frontier-only weights. This records whether calibration changed the
+     * choice for this draw without consuming a second RNG value. */
+    if (calibration_enabled && scheduler_weight_total) {
+      u64 frontier_total = 0;
+      for (u32 j = 0; j < scheduler_eligible_states; j++) {
+        u32 state_index = eligible_indices[j];
+        khint_t state_key = kh_get(hms, khms_states, state_ids[state_index]);
+        state_info_t *candidate = kh_val(khms_states, state_key);
+        double score = candidate->last_frontier_score;
+        u64 weight = !isfinite(score) || score <= 0.0 ? 0 :
+            (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
+        frontier_total += weight;
+      }
+      if (frontier_total) {
+        __uint128_t scaled_draw = (__uint128_t)scheduler_random_draw * frontier_total /
+                                  scheduler_weight_total;
+        u64 cumulative = 0;
+        for (u32 j = 0; j < scheduler_eligible_states; j++) {
+          u32 state_index = eligible_indices[j];
+          u32 candidate_id = state_ids[state_index];
+          khint_t state_key = kh_get(hms, khms_states, candidate_id);
+          state_info_t *candidate = kh_val(khms_states, state_key);
+          double score = candidate->last_frontier_score;
+          u64 weight = !isfinite(score) || score <= 0.0 ? 0 :
+              (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
+          cumulative += weight;
+          if (scaled_draw < cumulative) {
+            scheduler_calibration_counterfactual_state = candidate_id;
+            break;
+          }
+        }
+        scheduler_calibration_applied = 1;
+        scheduler_calibration_changed_selection =
+            scheduler_calibration_counterfactual_state != result;
+      }
+    }
   }
 
   if (state_scores)
@@ -5067,16 +5596,22 @@ u32 update_scores_and_select_next_state(u8 mode)
   return result;
 }
 
-/* Select a target state at which we do state-aware fuzzing.
- * Warmup (original AFLNet semantics): state_cycles counts COMPLETE sweeps
- * through the state list, and the weighted/FAVOR scorer arms only after 5
- * sweeps.  Short campaigns (minutes-scale mock runs make single-digit
- * selections) therefore stay in warmup by design; the weighted path is
- * contract-tested separately and dominates long campaigns. */
+/* Select a target state at which we do state-aware fuzzing. The legacy
+ * five-sweep warmup remains, with a selection-count cap so growing state
+ * lists cannot defer weighted scheduling indefinitely. */
 unsigned int choose_target_state(u8 mode)
 {
-  if (mode == FAVOR && state_cycles >= 5)
+  scheduler_calibration_applied = 0;
+  scheduler_calibration_changed_selection = 0;
+  scheduler_calibration_counterfactual_state = SCHEDULER_NO_STATE;
+  if (mode == FAVOR &&
+      (state_cycles >= 5 ||
+       (scheduler_warmup_max_selections &&
+        scheduler_warmup_selections >= scheduler_warmup_max_selections))) {
+    scheduler_warmup_exit_reason = state_cycles >= 5 ?
+        "five-complete-sweeps" : "selection-cap";
     return update_scores_and_select_next_state(FAVOR);
+  }
   scheduler_eligible_states = scheduler_eligible_seeds = 0;
   scheduler_weight_total = scheduler_random_draw = 0;
   scheduler_selection_reason = "no-executable-state";
@@ -5122,11 +5657,16 @@ unsigned int choose_target_state(u8 mode)
     result = id;
     scheduler_eligible_seeds = seeds;
     selected_state_index = (index + 1) % state_ids_count;
-    if (mode == FAVOR && (index < start || index + 1 == state_ids_count)) state_cycles++;
+    /* A completed sweep is a wrap of the selection cursor. The previous
+     * code incremented for every eligible state after the cursor, so one
+     * call could count several wraps and arm weighted scheduling early. */
+    if (mode == FAVOR && (index < start || index + 1 == state_ids_count))
+      state_cycles++;
   }
   if (result != SCHEDULER_NO_STATE) {
     scheduler_selection_reason = mode == FAVOR ? "warmup-eligible" : "round-robin-eligible";
     scheduler_mark_unweighted(result);
+    if (mode == FAVOR) scheduler_warmup_selections++;
   }
   return result;
 }
@@ -5137,7 +5677,7 @@ unsigned int choose_target_state(u8 mode)
  * reaches s, and running one energy cycle of descendant mutations.  The
  * posterior θ_s is updated ONCE per episode with reward
  *     r_t(s) = 1 iff the episode discovers a previously-unseen code
- *              edge/branch (native coverage save)
+ *              edge/branch (native save or eligible inline calibration)
  *              0 otherwise.
  * IPSM novelty is deliberately excluded from the reward — otherwise the
  * calibration would circularly trust the very proxy it is meant to audit.
@@ -5154,9 +5694,17 @@ static void cal_episode_begin(u32 state_id) {
   cal_episode_state = state_id;
   cal_episode_seed_index = -1;
   cal_episode_start_ms = get_cur_time();
-  cal_episode_start_execs = total_execs;
-  cal_episode_start_code_gains = code_gain_events;
-  cal_episode_start_ipsm_edges = ipsm_new_edge_events;
+  cal_episode_total_invocations = 0;
+  cal_episode_training_invocations = 0;
+  cal_episode_mutation_invocations = 0;
+  cal_episode_nested_invocations = 0;
+  cal_episode_code_gains = cal_episode_state_gains = 0;
+  cal_episode_all_code_gains = cal_episode_all_state_gains = 0;
+  cal_episode_full_session = full_session_m2_override;
+  cal_episode_selection_reason = scheduler_selection_reason;
+  cal_episode_train_eligible = !cal_episode_full_session &&
+      strcmp(cal_episode_selection_reason, "forced-provisional-candidate") != 0;
+  cal_nested_mutation_context = cal_last_invocation_trainable = 0;
   cal_episode_alpha_before = st->cal_alpha;
   cal_episode_beta_before = st->cal_beta;
   cal_episode_theta_sample = st->last_sampled_theta;
@@ -5172,15 +5720,33 @@ static void cal_episode_note_seed(struct queue_entry *q) {
   if (cal_episode_active && q) cal_episode_seed_index = (s32)q->index;
 }
 
-/* Trial/episode reward separation (P0-1/P0-4): LLM trial executions (and
- * any promotion they cause) happen inside fuzz_one, i.e. inside the
- * current episode.  Re-base the episode's start counters after a trial so
- * the episode's mutations/reward describe ONLY its descendant mutations. */
-static void cal_episode_rebase_after_trial(void) {
+/* Called only after run_target's actual-invocation debit point.  Refused
+ * executions do not contribute either total exposure or training exposure. */
+static void cal_episode_note_invocation(const char *kind) {
+  cal_last_invocation_trainable = 0;
   if (!cal_episode_active) return;
-  cal_episode_start_execs = total_execs;
-  cal_episode_start_code_gains = code_gain_events;
-  cal_episode_start_ipsm_edges = ipsm_new_edge_events;
+  cal_episode_total_invocations++;
+  u8 mutation = !strcmp(kind, "mutation");
+  u8 nested = cal_nested_mutation_context &&
+      (!strcmp(kind, "calibration") || !strcmp(kind, "hang-retry"));
+  if (!cal_episode_train_eligible || admission_trial_mode ||
+      target_state_id != cal_episode_state || (!mutation && !nested)) return;
+  cal_last_invocation_trainable = 1;
+  cal_episode_training_invocations++;
+  if (mutation) cal_episode_mutation_invocations++;
+  else cal_episode_nested_invocations++;
+}
+
+static void cal_episode_note_code_gain(void) {
+  if (!cal_episode_active) return;
+  cal_episode_all_code_gains++;
+  if (cal_last_invocation_trainable) cal_episode_code_gains++;
+}
+
+static void cal_episode_note_state_gain(void) {
+  if (!cal_episode_active) return;
+  cal_episode_all_state_gains++;
+  if (cal_last_invocation_trainable) cal_episode_state_gains++;
 }
 
 /* Close the current state-selection episode.  `interrupted` != 0 means the
@@ -5197,20 +5763,16 @@ static void cal_episode_finalize(u8 interrupted) {
   khint_t k = kh_get(hms, khms_states, state_id);
   state_info_t *st = (k != kh_end(khms_states)) ? kh_val(khms_states, k) : NULL;
 
-  u64 mutations = total_execs >= cal_episode_start_execs ?
-                  total_execs - cal_episode_start_execs : 0;
+  u64 mutations = cal_episode_training_invocations;
   u8 completed = !interrupted;
-  u8 eligible = (completed && mutations > 0 && st != NULL);
+  u8 eligible = (completed && cal_episode_train_eligible && mutations > 0 && st != NULL);
 
   /* Reward: new code EDGE discovered by this episode's descendant
-   * mutations only (code_gain_events is new-edge-only since schema v3;
-   * trial work was re-based out by cal_episode_rebase_after_trial). */
-  int reward = completed ?
-      ((code_gain_events > cal_episode_start_code_gains) ? 1 : 0) : -1;
-  u64 new_code_edges = code_gain_events >= cal_episode_start_code_gains ?
-                       code_gain_events - cal_episode_start_code_gains : 0;
-  u64 new_state_edges = ipsm_new_edge_events >= cal_episode_start_ipsm_edges ?
-                        ipsm_new_edge_events - cal_episode_start_ipsm_edges : 0;
+   * mutations or their nested calibration (hnb==2). Controller work is excluded at
+   * invocation/gain hooks, without ever resetting earlier ordinary work. */
+  int reward = eligible ? (cal_episode_code_gains > 0 ? 1 : 0) : -1;
+  u64 new_code_edges = cal_episode_code_gains;
+  u64 new_state_edges = cal_episode_state_gains;
   u64 now = get_cur_time();
   u64 latency = now >= cal_episode_start_ms ? now - cal_episode_start_ms : 0;
   u64 energy_used = (episode_energy_cap > episode_energy_left) ?
@@ -5230,12 +5792,17 @@ static void cal_episode_finalize(u8 interrupted) {
     alpha_after = post.alpha;
     beta_after = post.beta;
     posterior_updated = 1;
+    /* Pooled run-level counters feed the shrinkage estimator's base rate
+     * (CSV #12).  Updated after the per-state update but read only at the
+     * NEXT selection, so predictions stay pre-update/leak-free. */
+    cal_run_episode_updates++;
+    if (reward > 0) cal_run_episode_rewarded++;
   }
 
   cal_episodes_total++;
   if (completed) cal_episodes_completed++;
   else cal_episodes_interrupted++;
-  if (completed && mutations == 0) cal_episodes_zero_mut++;
+  if (completed && cal_episode_total_invocations == 0) cal_episodes_zero_mut++;
   if (reward > 0) cal_episodes_rewarded++;
 
   episode_log_event(state_id, cal_episode_seed_index,
@@ -5267,10 +5834,13 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
     state->selected_seed_index %= state->seeds_count;
 
     /* v3.2 (P0-2 fix): if a live provisional entry belongs to this state,
-     * select it FIRST so it gets descendant validation before TTL expiry. */
+     * select it FIRST so it gets descendant validation before TTL expiry.
+     * Ordinary-match roots are handled by provisional_select_service's
+     * deterministic fallback when no regular provisional root is live. */
     for (u32 pi = 0; pi < state->seeds_count; pi++) {
       struct queue_entry *pe = state->seeds[pi];
-      if (pe && pe->is_provisional && !pe->prov_converted && !pe->prov_expired &&
+      if (pe && pe->is_provisional && !pe->prov_ordinary_match &&
+          !pe->prov_converted && !pe->prov_expired &&
           entry_can_fuzz_state(pe, target_state_id)) {
         state->selected_seed_index = pi;
         return pe;
@@ -5532,6 +6102,7 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           // Add an edge to the graph
           edge = agedge(ipsm, from, to, "new_edge", TRUE);
           ipsm_new_edge_events++;
+          cal_episode_note_state_gain();
           if (dry_run)
             agset(edge, "color", "blue");
           else
@@ -5844,6 +6415,14 @@ int send_over_network()
     ck_free(response_bytes);
     response_bytes = NULL;
   }
+
+  /* Freeze-time stamp (2026-11-02 regression fix): every response captured
+   * from this point belongs to the target invocation that is about to run.
+   * admission_capture_response() uses this to reject stale responses from
+   * an earlier invocation; the stamp was previously never assigned, so the
+   * equality check silently invalidated EVERY candidate capture (obs-ledger
+   * G_state evidence dead, candidate_response_span_valid always 0). */
+  response_invocation_id = target_invocation_seq;
 
   /* ── Multi-Party Driver Skeleton ─────────────────────────────────────
    *
@@ -7567,6 +8146,24 @@ EXP_ST void read_bitmap(u8 *fname)
    This function is called after every exec() on a fairly large buffer, so
    it needs to be fast. We do this in 32-bit and 64-bit flavors. */
 
+/* Position capture for novelty classification (2026-11-06, independent
+ * audit fix): optionally records the byte indices has_new_bits clears in
+ * the caller's map. Armed only around the two call sites that need it
+ * (trial probe and lineage save), so steady-state cost is one NULL check
+ * per overlapping word. */
+static u32 hnb_capture_storage[128];
+static u32 *hnb_capture_buf = NULL;
+static u32 hnb_capture_n = 0, hnb_capture_left = 0;
+static void hnb_capture_begin(void) {
+  hnb_capture_buf = hnb_capture_storage;
+  hnb_capture_n = 0; hnb_capture_left = HNB_CAPTURE_MAX;
+}
+static u32 hnb_capture_end(void) {
+  u32 n = hnb_capture_n;
+  hnb_capture_buf = NULL; hnb_capture_left = 0;
+  return n;
+}
+
 static inline u8 has_new_bits(u8 *virgin_map)
 {
 
@@ -7597,6 +8194,16 @@ static inline u8 has_new_bits(u8 *virgin_map)
 
     if (unlikely(*current) && unlikely(*current & *virgin))
     {
+      if (hnb_capture_buf && hnb_capture_left) {
+        const u8 *cb = (const u8 *)current, *vb = (const u8 *)virgin;
+        const u8 *tb = (const u8 *)trace_bits;
+        u32 woff = (u32)(cb - tb);
+        for (u32 b = 0; b < 8 && hnb_capture_left; b++)
+          if (cb[b] && vb[b]) {
+            hnb_capture_buf[hnb_capture_n++] = woff + b;
+            hnb_capture_left--;
+          }
+      }
 
       if (likely(ret < 2))
       {
@@ -10185,6 +10792,13 @@ static void execution_log_event(const char *event, u64 attempt_id,
   admission_json_add_u64(j, "execution_id_before", before);
   admission_json_add_u64(j, "execution_id_after", total_execs);
   json_object_object_add(j, "execution_kind", json_object_new_string(execution_kind));
+  json_object_object_add(j, "episode_training_invocation",
+      json_object_new_boolean(cal_last_invocation_trainable));
+  if (cal_episode_active) {
+    admission_json_add_u64(j, "episode_selected_state", cal_episode_state);
+    json_object_object_add(j, "episode_selection_reason",
+        json_object_new_string(cal_episode_selection_reason));
+  }
   admission_json_add_u64(j, "candidate_id", candidate_id);
   if (queue_cur && !corpus_read_or_sync && strcmp(execution_kind, "sync"))
     admission_json_add_u64(j, "parent_queue_id", queue_cur->index);
@@ -10263,12 +10877,14 @@ static u8 execution_ready(struct queue_entry *root) {
     if (root->prov_expired) return 0;
     if (!root->prov_budget_left) {
       provisional_budget_exhausted_stop = 1;
-      provisional_expire(root, "budget-exhausted");
+      if (root->prov_ordinary_match) ordinary_match_close(root, "budget-exhausted");
+      else provisional_expire(root, "budget-exhausted");
       return 0;
     }
     if (get_cur_time() >= root->prov_deadline_ms) {
       provisional_ttl_stop = 1;
-      provisional_expire(root, "ttl-expired");
+      if (root->prov_ordinary_match) ordinary_match_close(root, "ttl-expired");
+      else provisional_expire(root, "ttl-expired");
       return 0;
     }
   }
@@ -10282,14 +10898,36 @@ static u8 execution_ready(struct queue_entry *root) {
   return 1;
 }
 
-static u8 execution_admit(struct queue_entry *root) {
+/* The pre-annotation run makes a newly admitted session executable. It is
+ * controller work, not a mutation descendant, and must not consume the
+ * candidate's validation budget or descendant dose. */
+static u8 execution_is_validation_probe(void) {
+  return execution_kind && !strcmp(execution_kind, "prov-annotate");
+}
+
+static u8 execution_admit(struct queue_entry *root, u32 cid) {
   if (!execution_ready(root)) return 0;
   if (!strcmp(execution_kind, "mutation") && cal_episode_active &&
       episode_energy_cap && episode_havoc_phase)
     episode_energy_left--;
-  if (root && !root->prov_converted) {
-    root->prov_budget_left--;
-    root->prov_desc_execs++;
+  /* Channel-consistent accounting (2026-11-06, GLM53 audit fixes the
+   * numerator/denominator mismatch): the lineage channel counts EVERY
+   * charged invocation with candidate ancestry — live provisional roots,
+   * CONVERTED roots (previously vanished from both denominators) and
+   * durable-lineage descendants (previously miscounted as ordinary while
+   * their gains fed the lineage numerator). The ordinary channel counts
+   * ancestry-free invocations. Gains were already split along the same
+   * line (llm_lineage_edge_gains), so the opportunity gate now compares
+   * like with like. */
+  if (cid) {
+    lineage_invocation_total++;
+    if (root && !root->prov_converted && !execution_is_validation_probe()) {
+      root->prov_budget_left--;
+      root->prov_desc_execs++;
+      prov_charged_total++;
+    }
+  } else {
+    ord_invocation_total++;
   }
   return 1;
 }
@@ -10298,6 +10936,7 @@ static u8 execution_admit(struct queue_entry *root) {
  * passes this single debit point. Refusal is an explicit non-execution. */
 static u8 run_target(char **argv, u32 timeout) {
   u64 attempt_id = ++execution_attempt_seq, before = total_execs;
+  cal_last_invocation_trainable = 0;
   u32 cid = (corpus_read_or_sync || !strcmp(execution_kind, "sync")) ? 0 :
       (llm_candidate_lineage_pin ? llm_candidate_lineage_pin : cur_fuzz_lineage_candidate_id);
   struct queue_entry *root = provisional_root_for_candidate(cid);
@@ -10305,7 +10944,8 @@ static u8 run_target(char **argv, u32 timeout) {
   if (!reset_completed_before_forkserver &&
       !phase2_target_reset("invocation", attempt_id)) goto refused;
   reset_completed_before_forkserver = 0;
-  if (!execution_admit(root)) goto refused;
+  if (!execution_admit(root, cid)) goto refused;
+  cal_episode_note_invocation(execution_kind);
   u64 invocation_id = ++target_invocation_seq;
   execution_log_event("invocation_start", attempt_id, invocation_id,
       before, FAULT_NONE, cid, root);
@@ -10336,6 +10976,17 @@ static void write_to_testcase(void *mem, u32 len)
 }
 
 static void show_stats(void);
+
+/* calibrate_case consumes the real virgin map too.  A new edge first
+ * reached by a repeated ordinary input must not disappear from its
+ * episode's reward just because it was found during stability checking.
+ * The invocation hook decides eligibility; controller and full-session
+ * calibration remain excluded from training. */
+static u8 calibration_consume_new_bits(void) {
+  u8 hnb = has_new_bits(virgin_bits);
+  if (hnb == 2) cal_episode_note_code_gain();
+  return hnb;
+}
 
 /* Calibrate a new test case. This is done when processing the input directory
    to warn about flaky or otherwise problematic test cases early on; and when
@@ -10436,7 +11087,7 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
     if (q->exec_cksum != cksum)
     {
 
-      u8 hnb = has_new_bits(virgin_bits);
+      u8 hnb = calibration_consume_new_bits();
       if (hnb == 2 && q->llm_origin_candidate_id) {
         provisional_note_gain(q->llm_origin_candidate_id, q->index);
         lineage_log_event(q->llm_origin_candidate_id, q->index);
@@ -10783,6 +11434,7 @@ static void init_grammar_hypothesis_system(void)
   // Generate initial hypotheses
   fprintf(stderr, "[DEBUG] Calling generate_grammar_hypotheses (max=5)\n");
   int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
+  chat_llm_set_channel("other");   /* grammar scope ends with its entry point */
   fprintf(stderr, "[DEBUG] generate_grammar_hypotheses returned %d hypotheses\n", hyp_count);
 
   if (hyp_count == 0)
@@ -11039,6 +11691,7 @@ static void perform_dry_run(char **argv)
 
     /* AFLNet construct the kl_messages linked list for this queue entry*/
     kl_messages = construct_kl_messages(q->fname, q->regions, q->region_count);
+    if (!kl_messages) FATAL("Invalid or truncated seed regions: %s", q->fname);
 
     res = calibrate_case(argv, q, use_mem, 0, 1);
     ck_free(use_mem);
@@ -11488,27 +12141,52 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
   // s32 fd;
   u8 keeping = 0, res;
 
+  /* Trial executions are observations for the admission controller, not
+   * AFL crash/hang/queue findings. Preserve FAULT_ERROR's fatal behavior,
+   * but keep every other trial fault out of the main feedback channels. */
+  if (admission_trial_mode) {
+    last_trial_hnb = 0;
+    if (fault == FAULT_ERROR)
+      FATAL("Unable to execute target application");
+    if (fault == FAULT_NONE && fault == crash_mode) {
+      if (!trial_virgin_scratch)
+        trial_virgin_scratch = ck_alloc_nozero(MAP_SIZE);
+      memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
+      hnb_capture_begin();
+      last_trial_hnb = has_new_bits(trial_virgin_scratch);
+      last_trial_new_pos_n = hnb_capture_end();
+      if (last_trial_new_pos_n)
+        memcpy(last_trial_new_pos, hnb_capture_storage,
+               last_trial_new_pos_n * sizeof(u32));
+    }
+    return 0;
+  }
+
   if (fault == crash_mode)
   {
 
     /* Keep only if there are new bits in the map, add to queue for
        future fuzzing, etc. */
 
-    /* P0-1 (execute-before-promote): while an LLM candidate's bounded
-     * trial is running, do NOT retain and do NOT consume the virgin map.
-     * Probe novelty non-destructively on a scratch copy so the gate
-     * (admission_evaluate) sees the evidence while the retention decision
-     * stays with the controller.  Crash/hang handling below is unaffected:
-     * a faulting trial never reaches this branch (fault != crash_mode). */
-    if (admission_trial_mode) {
-      if (!trial_virgin_scratch)
-        trial_virgin_scratch = ck_alloc_nozero(MAP_SIZE);
-      memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
-      last_trial_hnb = has_new_bits(trial_virgin_scratch);  /* 1=hit-count only, 2=new edge */
-      return 0;
-    }
-
-    if (!(hnb = has_new_bits(virgin_bits)))
+    /* Lineage saves record their consumed positions so the conversion
+     * classifier (provisional_note_gain) can split "rescue of the
+     * candidate's own trial novelty" from "beyond-trial descendant
+     * novelty". Capture is armed only when this execution carries LLM
+     * ancestry (cheap guard, hot path unaffected otherwise). */
+    if (cur_fuzz_lineage_candidate_id) {
+      hnb_capture_begin();
+      hnb = has_new_bits(virgin_bits);
+      last_lineage_save_pos_n = hnb_capture_end();
+      if (last_lineage_save_pos_n)
+        memcpy(last_lineage_save_pos, hnb_capture_storage,
+               last_lineage_save_pos_n * sizeof(u32));
+      if (!hnb) {
+        if (crash_mode)
+          total_crashes++;
+        mqtt_record_state_stall();
+        return 0;
+      }
+    } else if (!(hnb = has_new_bits(virgin_bits)))
     {
       if (crash_mode)
         total_crashes++;
@@ -11545,11 +12223,12 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
      * code_save_events counts EVERY coverage save (has_new_bits != 0,
      * including hit-count-only changes, hnb==1 — execution-frequency
      * novelty); code_gain_events counts NEW-EDGE saves (hnb==2) ONLY and
-     * is the sole calibration reward / provisional-conversion signal
-     * (paper Eq.4: previously unseen code branches). */
+     * contributes to episode reward / provisional conversion.  Eligible
+     * inline calibration separately observes its own first-seen edges. */
     code_save_events++;
     if (hnb == 2) {
       code_gain_events++;
+      cal_episode_note_code_gain();
       last_native_save_index = queue_top->index;
       provisional_note_gain(queue_top->llm_origin_candidate_id,
                             queue_top->index);
@@ -11604,7 +12283,10 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     /* Try to calibrate inline; this also calls update_bitmap_score() when
        successful. */
 
+    u8 old_cal_context = cal_nested_mutation_context;
+    cal_nested_mutation_context = cal_last_invocation_trainable;
     res = calibrate_case(argv, queue_top, mem, queue_cycle - 1, 0);
+    cal_nested_mutation_context = old_cal_context;
 
     if (res == FAULT_ERROR)
       FATAL("Unable to execute target application");
@@ -11657,9 +12339,12 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       u8 new_fault;
       write_to_testcase(mem, len);
       const char *old_kind = execution_kind;
+      u8 old_cal_context = cal_nested_mutation_context;
+      cal_nested_mutation_context = cal_last_invocation_trainable;
       execution_kind = "hang-retry";
       new_fault = run_target(argv, hang_tmout);
       execution_kind = old_kind;
+      cal_nested_mutation_context = old_cal_context;
       if (new_fault == FAULT_RESOURCE_LIMIT) return keeping;
 
       /* A corner case that one user reported bumping into: increasing the
@@ -12191,6 +12876,15 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "provisional_expired   : %llu\n"
              "provisional_censored  : %llu\n"
              "provisional_live      : %llu\n"
+             "u_policy_name         : %s\n"
+             "u_policy_error_rejects: %llu\n"
+             "u_policy_soft_tolerated : %llu\n"
+             "ordinary_match_admits : %llu\n"
+             "ordinary_match_closed : %llu\n"
+             "ordinary_match_converted : %llu\n"
+             "salvage_opportunity_events : %llu\n"
+             "llm_trigger_policy    : %s\n"
+             "llm_trigger_events    : %llu\n"
              "code_save_events      : %llu\n"
              "code_gain_events      : %llu\n"
              "admission_gain_events : %llu\n"
@@ -12209,6 +12903,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "no_seed_stalls        : %llu\n"
              "churn_fallback_used   : %llu\n"
              "code_retain_admitted  : %llu\n"
+             "prov_conv_immediate_only: %llu\n"
+             "prov_conv_beyond_trial  : %llu\n"
+             "prov_conv_unclassified  : %llu\n"
              "code_retain_converted : %llu\n"
              "salvage_enabled       : %u\n"
              "salvage_attempted     : %llu\n"
@@ -12253,6 +12950,15 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)provisional_expired_total,
           (unsigned long long)provisional_censored,
           (unsigned long long)provisional_live,
+          u_policy_name,
+          (unsigned long long)u_policy_error_rejects,
+          (unsigned long long)u_policy_soft_tolerated,
+          (unsigned long long)ordinary_match_admits,
+          (unsigned long long)ordinary_match_closed,
+          (unsigned long long)ordinary_match_converted,
+          (unsigned long long)salvage_opportunity_events,
+          llm_trigger_policy_name,
+          (unsigned long long)llm_trigger_events,
           (unsigned long long)code_save_events,
           (unsigned long long)code_gain_events,
           (unsigned long long)admission_gain_events,
@@ -12271,6 +12977,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)no_seed_stalls,
           (unsigned long long)churn_fallback_used,
           (unsigned long long)code_retain_admitted,
+          (unsigned long long)prov_conv_immediate_only,
+          (unsigned long long)prov_conv_beyond_trial,
+          (unsigned long long)prov_conv_unclassified,
           (unsigned long long)code_retain_converted,
           salvage_enabled,
           (unsigned long long)salvage_attempted,
@@ -13826,7 +14535,7 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
    * Runs every HYPOTHESIS_VALIDATION_SAMPLE_RATE-th execution.
    * At exec_speed ≈ 25 K/s this is ~50 calls/s × ~1 µs = <0.01% overhead.
    * ============================================ */
-  if (hypothesis_mode && hypothesis_ctx &&
+  if (!admission_trial_mode && hypothesis_mode && hypothesis_ctx &&
       (total_execs % HYPOTHESIS_VALIDATION_SAMPLE_RATE == 0)) {
     validate_hypothesis_sampled(out_buf, len, regions, region_count);
   }
@@ -13902,7 +14611,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
    * Bounded by hash dedup; does not affect fault classification. */
   if (teardown_save_pending) {
     teardown_save_pending = 0;
-    teardown_persist_candidate(out_buf, len);
+    if (!admission_trial_mode)
+      teardown_persist_candidate(out_buf, len);
   }
 
   /* Protocol-specific semantic oracle check.
@@ -13953,6 +14663,15 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
     } else if (oracle_sample_rate > 1) {
       oracle_sample_skips++;  /* execution skipped by sampling */
     }
+  }
+
+  /* The admission controller consumes the frozen response and coverage
+   * evidence above. Do not let trial executions update AFL's scheduler,
+   * timeout streak, queue counters, or the main crash/hang/coverage maps. */
+  if (admission_trial_mode) {
+    if (stop_soon) return 1;
+    last_common_fuzz_saved = save_if_interesting(argv, out_buf, len, fault);
+    return 0;
   }
 
   /* MQTT-only differential signal ingestion.
@@ -14026,16 +14745,47 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   /* This handles FAULT_ERROR for us: */
 
+  u64 gains_before_round = code_gain_events;
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
   last_common_fuzz_saved = is_interesting;
 
-  if (is_interesting)
+  /* Plateau counter reset ONLY on new code edges (2026-11-04 root-cause
+   * fix): save_if_interesting returns 1 for BOTH new edges (hnb==2) and
+   * hit-count changes (hnb==1). On code-rich targets (lighttpd1: 85 new
+   * edges + frequent hit-count churn) hit-count-only saves kept resetting
+   * uninteresting_times to 0, preventing the plateau trigger from firing
+   * even at threshold=1. Align the counter with actual code progress:
+   * only a new-edge save (code_gain_events incremented) resets it. */
+  if (code_gain_events > gains_before_round)
   {
     uninteresting_times = 0;
   }
   else
   {
     uninteresting_times++;
+  }
+
+  /* CSV#18 round bookkeeping for the alternative trigger policies.
+   * response-gap counts EXECUTIONS without response-side novelty (ledger
+   * growth OR a new IPSM state edge — ordinary executions innovate on the
+   * IPSM, trials on the ledger; both are genuine response novelty), with
+   * the legacy per-execution granularity of uninteresting_times.
+   * fixed-interval counts fuzz_one CYCLES since the last consultation —
+   * its firing check runs once per cycle, so an execution-granularity
+   * counter made the effective interval collapse to one full cycle
+   * (observed 2026-11-02: counter pinned at exactly 512 = havoc batch
+   * regardless of threshold); cycle granularity makes the threshold
+   * meaningful again ("consult every N cycles"). */
+  {
+    u64 response_novelty_now = observed_states_total +
+                                observed_transitions_total +
+                                (u64)ipsm_new_edge_events;
+    if (response_novelty_now != response_novelty_counter_last) {
+      response_gap_rounds = 0;
+      response_novelty_counter_last = response_novelty_now;
+    } else {
+      response_gap_rounds++;
+    }
   }
 
   queued_discovered += is_interesting;
@@ -14096,7 +14846,13 @@ static void queue_debit_pending(struct queue_entry *q) {
   if (q->favored && pending_favored) pending_favored--;
 }
 
-static void provisional_remove_entry_files(struct queue_entry *q) {
+/* Invalidate one entry's scheduler-side state.  keep_files=0 (provisional
+ * expiry) unlinks the queue/replayable/regions files and appends the
+ * removal checkpoint so coverage replay's join stays consistent;
+ * keep_files=1 (ordinary-match close) keeps the bytes — immediate
+ * retention semantics — while the entry still stops being selectable. */
+static void provisional_invalidate_entry(struct queue_entry *q, u8 keep_files) {
+  if (!keep_files) {
   if (q->fname) {
     unlink((char *)q->fname);
     u8 *fn_regions = alloc_printf("%s/regions/%s", out_dir, basename(q->fname));
@@ -14125,6 +14881,7 @@ static void provisional_remove_entry_files(struct queue_entry *q) {
     ec_append_jsonl("queue-checkpoints.jsonl", j);
     json_object_put(j);
   }
+  }
   queue_debit_pending(q);
   for (u32 i = 0; i < MAP_SIZE; i++) {
     if (top_rated[i] != q) continue;
@@ -14140,8 +14897,19 @@ static void provisional_remove_entry_files(struct queue_entry *q) {
   score_changed = 1;
 }
 
+static void provisional_remove_entry_files(struct queue_entry *q) {
+  provisional_invalidate_entry(q, 0);
+}
+
 static void provisional_expire(struct queue_entry *q, const char *reason) {
   if (!q || q->prov_expired || !q->is_provisional) return;
+  if (q->prov_trial_pos) { ck_free(q->prov_trial_pos); q->prov_trial_pos = NULL; }
+  /* Every close path, including EDF eligibility failures, must preserve
+   * the ordinary cohort's files and leave provisional_live unchanged. */
+  if (q->prov_ordinary_match) {
+    ordinary_match_close(q, reason);
+    return;
+  }
   q->prov_expired = 1;
   q->is_provisional = 0;
   if (provisional_live) provisional_live--;
@@ -14170,6 +14938,49 @@ static void provisional_expire(struct queue_entry *q, const char *reason) {
   provisional_log_event("expire", q, reason);
 }
 
+/* CSV #7 ordinary-match close: the 64-call window shut (budget exhausted
+ * or TTL passed) WITHOUT a first code gain.  The budget semantics are
+ * identical to provisional expiry — the lineage stops executing and stops
+ * being selectable — but immediate-retention semantics keep the bytes in
+ * the corpus: no file removal, no removal checkpoint.  The Productivity@64
+ * comparison therefore differs ONLY in retention/scheduling policy. */
+static void ordinary_match_close(struct queue_entry *q, const char *reason) {
+  if (!q || q->prov_expired || !q->is_provisional) return;
+  q->prov_expired = 1;
+  q->is_provisional = 0;
+  ordinary_match_closed++;
+  provisional_invalidate_entry(q, 1 /* keep files: corpus retention */);
+  for (struct queue_entry *d = queue; d; d = d->next) {
+    if (d == q || d->prov_expired ||
+        d->llm_origin_candidate_id != q->prov_candidate_id) continue;
+    d->prov_expired = 1;
+    provisional_invalidate_entry(d, 1);
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("lineage_invalidation"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "candidate_id", q->prov_candidate_id);
+    admission_json_add_u64(j, "root_queue_id", q->index);
+    admission_json_add_u64(j, "queue_entry", d->index);
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    json_object_object_add(j, "reason", json_object_new_string(reason));
+    json_object_object_add(j, "files_retained", json_object_new_boolean(1));
+    ec_append_jsonl("lineage-events.jsonl", j);
+    json_object_put(j);
+  }
+  provisional_log_event("ordinary-close", q, reason);
+}
+
+/* Ascending-position subset check for conversion classification. */
+static u8 prov_pos_subset(const u32 *s, u32 sn, const u32 *t, u32 tn) {
+  u32 si = 0, ti = 0;
+  while (si < sn) {
+    while (ti < tn && t[ti] < s[si]) ti++;
+    if (ti == tn || t[ti] != s[si]) return 0;
+    si++; ti++;
+  }
+  return 1;
+}
+
 static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
   struct queue_entry *q = provisional_root_for_candidate(candidate_id);
   if (!q || !q->is_provisional || q->prov_converted || q->prov_expired) return;
@@ -14180,19 +14991,125 @@ static void provisional_note_gain(u32 candidate_id, u32 queue_index) {
   q->prov_desc_code_gain = 1;
   q->prov_converted = 1;
   q->is_provisional = 0;
-  if (provisional_live) provisional_live--;
+  /* Conversion classification (2026-11-06 audit fix): split the first
+   * in-budget hnb==2 into (1) rescue of the candidate's OWN trial
+   * novelty — every save position already among the trial's recorded
+   * positions — and (2) beyond-trial novelty. The class measures bitmap
+   * novelty, not stable source-branch identity; a conversion may also
+   * first-gain via nested calibration (see the invocation ledger). No
+   * virgin-map mutation is involved. */
+  if (q->prov_trial_pos_n && last_lineage_save_pos_n) {
+    q->prov_conv_class = prov_pos_subset(last_lineage_save_pos,
+                                         last_lineage_save_pos_n,
+                                         q->prov_trial_pos,
+                                         q->prov_trial_pos_n) ? 1 : 2;
+    if (q->prov_conv_class == 1) prov_conv_immediate_only++;
+    else prov_conv_beyond_trial++;
+  } else {
+    q->prov_conv_class = 0;
+    prov_conv_unclassified++;
+  }
+  if (provisional_live && !q->prov_ordinary_match) provisional_live--;
   provisional_converted++;
+  if (q->prov_ordinary_match) ordinary_match_converted++;
   if (q->prov_code_retain) code_retain_converted++;
-  provisional_log_event("convert", q, "first native new-edge save; subtree becomes durable");
+  provisional_log_event("convert", q,
+      q->prov_ordinary_match ?
+          "first native new-edge save (ordinary-match cohort)" :
+          "first native new-edge save; subtree becomes durable");
+  if (q->prov_trial_pos) { ck_free(q->prov_trial_pos); q->prov_trial_pos = NULL; }
 }
 
 /* Return the candidate itself and a state whose M2 suffix can execute.
  * The caller must use both outputs directly instead of choosing another
  * seed from the state pool. One validation subtree has at most B calls. */
+static u64   opportunity_parked_windows = 0;   /* consecutive parked windows */
+/* Bounded park (2026-11-06 audit fix): after this many consecutive parked
+ * windows the next window forces ONE service window regardless of rates
+ * (validation service guarantee). Frozen at 2; a to-be-verified parameter,
+ * not an optimized one. Without it, park can starve validation until the
+ * campaign ends (002638: 17 run-end censored roots). */
+#define OPPORTUNITY_PARK_WINDOW_CAP 2
+
+static void salvage_opportunity_refresh(void) {
+  if (salvage_opportunity_threshold <= 0.0) return;
+  if (ord_invocation_total - opp_window_calls < 2000) return;
+  u64 ord_calls = ord_invocation_total - opp_window_calls;
+  u64 ord_gains =
+      (code_gain_events - llm_lineage_edge_gains) - opp_win_ord_gains;
+  u64 val_calls = lineage_invocation_total - opp_win_val_calls;
+  u64 val_gains = llm_lineage_edge_gains - opp_win_val_gains;
+  double ord_rate = ((double)ord_gains + 1.0) / ((double)ord_calls + 2.0);
+  double val_rate = ((double)val_gains + 1.0) / ((double)val_calls + 2.0);
+  /* Zero-sample guard: fewer than 64 lineage-channel calls in the window
+   * is underexposed — no park/unpark decision off it (park state kept). */
+  u64 min_val = 64;
+  u8 decided = val_calls >= min_val;
+  u8 forced_service = 0;
+  u8 now_parked;
+  if (!decided) {
+    now_parked = salvage_opportunity_parked;
+  } else if (salvage_opportunity_parked &&
+             opportunity_parked_windows >= OPPORTUNITY_PARK_WINDOW_CAP) {
+    now_parked = 0;                 /* service guarantee window */
+    forced_service = 1;
+  } else {
+    now_parked = (ord_rate > val_rate);
+  }
+  if (now_parked && now_parked != salvage_opportunity_parked)
+    opportunity_parked_windows = 1;
+  else if (now_parked)
+    opportunity_parked_windows++;
+  else
+    opportunity_parked_windows = 0;
+  u8 changed = now_parked != salvage_opportunity_parked;
+  salvage_opportunity_parked = now_parked;
+  if (changed) salvage_opportunity_events++;
+  opp_window_calls = ord_invocation_total;
+  opp_win_ord_gains = code_gain_events - llm_lineage_edge_gains;
+  opp_win_val_calls = lineage_invocation_total;
+  opp_win_val_gains = llm_lineage_edge_gains;
+  /* EVERY window refresh is logged (2026-11-06 audit fix): the old log
+   * wrote only state transitions, so absence of underexposed markers in
+   * the event stream could NOT prove that all windows were adequately
+   * exposed. */
+  if (event_log_enabled) {
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("provisional"));
+    json_object_object_add(j, "kind", json_object_new_string("opportunity-window"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    char or_[32], vr[32];
+    snprintf(or_, sizeof(or_), "%.6f", ord_rate);
+    snprintf(vr, sizeof(vr), "%.6f", val_rate);
+    json_object_object_add(j, "ordinary_yield", json_object_new_string(or_));
+    json_object_object_add(j, "validation_yield", json_object_new_string(vr));
+    admission_json_add_u64(j, "window_ordinary_calls", ord_calls);
+    admission_json_add_u64(j, "window_validation_calls", val_calls);
+    json_object_object_add(j, "parked", json_object_new_boolean(now_parked));
+    json_object_object_add(j, "changed", json_object_new_boolean(changed));
+    json_object_object_add(j, "underexposed_window",
+        json_object_new_boolean(!decided));
+    json_object_object_add(j, "forced_service_window",
+        json_object_new_boolean(forced_service));
+    admission_json_add_u64(j, "consecutive_parked_windows",
+                           opportunity_parked_windows);
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    ec_append_jsonl("provisional-events.jsonl", j);
+    json_object_put(j);
+  }
+}
+
 static struct queue_entry *provisional_select_service(u32 *state_out) {
+  salvage_opportunity_refresh();
+  if (salvage_opportunity_threshold > 0.0 && salvage_opportunity_parked)
+    return NULL;   /* havoc hot: marginal value of subtree calls < havoc */
   struct queue_entry *best = NULL;
+  struct queue_entry *ordinary_fallback = NULL;
   for (struct queue_entry *q = queue; q; q = q->next) {
     if (!q->is_provisional || q->prov_converted || q->prov_expired) continue;
+    /* Ordinary-match roots are deferred while a regular provisional root is
+     * serviceable. The fallback below still guarantees a mutation window
+     * when the campaign contains only ordinary-match roots. */
     if (!q->prov_budget_left) {
       provisional_expire(q, "budget-exhausted");
       continue;
@@ -14205,18 +15122,32 @@ static struct queue_entry *provisional_select_service(u32 *state_out) {
       provisional_expire(q, "no-executable-M2");
       continue;
     }
+    if (q->prov_ordinary_match && !ordinary_edf_enabled) {
+      /* Keep ordinary-match roots out of the EDF race while a regular
+       * provisional root is serviceable, but do not let an all-ordinary
+       * campaign receive zero descendant validation. This fallback is
+       * deterministic (earliest deadline); the per-execution ledger still
+       * distinguishes the pre-annotation probe from mutation descendants. */
+      if (!ordinary_fallback ||
+          q->prov_deadline_ms < ordinary_fallback->prov_deadline_ms)
+        ordinary_fallback = q;
+      continue;
+    }
     if (!best || q->prov_deadline_ms < best->prov_deadline_ms) best = q;
   }
+  if (!best) best = ordinary_fallback;
   if (best && state_out) *state_out = 0; /* replay and mutate the full session */
   return best;
 }
 
-/* Evict the oldest live provisional entry when the live cap is hit. */
+/* Evict the oldest live provisional entry when the live cap is hit.
+ * Ordinary-match roots use their own retention cohort and are not counted
+ * in provisional_live, so they exert no live-cap pressure. */
 static void provisional_evict_oldest_if_needed(void) {
   if (provisional_live < provisional_max_live) return;
   struct queue_entry *oldest = NULL;
   for (struct queue_entry *q = queue; q; q = q->next) {
-    if (q->is_provisional && !q->prov_expired) {
+    if (q->is_provisional && !q->prov_expired && !q->prov_ordinary_match) {
       if (!oldest || q->prov_admit_ms < oldest->prov_admit_ms) oldest = q;
     }
   }
@@ -14295,6 +15226,37 @@ static int salvage_data_valid(const u8 *data, u32 sz) {
 static u8 *salvage_snap_data[64];
 static u32 salvage_snap_size[64];
 static u32 salvage_snap_count = 0;
+static u32 salvage_clean_count = 0;
+
+typedef struct {
+  klist_t(lms) *messages;
+  kliter_t(lms) *prev, *next;
+} admission_session_context_t;
+
+/* Probes execute an independent, exact saved session. common_fuzz_stuff
+ * replaces M2 inside the caller's M1/M3 and must not be used for this. */
+static void admission_session_enter(admission_session_context_t *saved,
+                                     klist_t(lms) *messages) {
+  saved->messages = kl_messages; saved->prev = M2_prev; saved->next = M2_next;
+  kl_messages = messages; M2_prev = NULL; M2_next = kl_end(messages);
+}
+
+static void admission_session_leave(admission_session_context_t *saved) {
+  delete_kl_messages(kl_messages);
+  kl_messages = saved->messages; M2_prev = saved->prev; M2_next = saved->next;
+}
+
+static klist_t(lms) *salvage_snapshot_messages(void) {
+  klist_t(lms) *messages = kl_init(lms);
+  for (u32 i = 0; i < salvage_snap_count; i++) {
+    message_t *m = ck_alloc(sizeof(*m));
+    m->msize = salvage_snap_size[i];
+    m->mdata = ck_alloc(m->msize);
+    memcpy(m->mdata, salvage_snap_data[i], m->msize);
+    *kl_pushp(lms, messages) = m;
+  }
+  return messages;
+}
 
 static void salvage_take_snapshot(void) {
   for (u32 i = 0; i < 64; i++) { salvage_snap_data[i] = NULL; salvage_snap_size[i] = 0; }
@@ -14305,7 +15267,8 @@ static void salvage_take_snapshot(void) {
   for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && salvage_snap_count < 64; it = kl_next(it), idx++) {
     if (idx < candidate_message_first) continue;
     u32 rel = idx - candidate_message_first;
-    for (u32 j = 0; j < 64; j++) {
+    if (rel >= candidate_message_count) break;
+    for (u32 j = 0; j < salvage_clean_count; j++) {
       if (salvage_clean_window_idx[j] == rel) {
         u32 sz = (u32)kl_val(it)->msize;
         if (salvage_data_valid(kl_val(it)->mdata, sz)) {
@@ -14500,6 +15463,81 @@ static void salvage_rtsp_skeleton(void) {
   salvage_snap_count=kn;
 }
 
+/* Layer-2 fix: execute the stripped snapshot ONCE as a non-destructive
+ * controller probe (trial mode, uncharged: the candidate has no queue
+ * entry yet, so run_target's debit point sees no provisional root).
+ * Serviceable == every snapshot message was actually sent and elicited a
+ * non-empty response span.  On pass, the response globals stay populated
+ * so the queue step can annotate regions without a second execution. */
+static u8 salvage_probe_snapshot(void) {
+  if (!g_admission_argv || stop_soon) return 0;
+  u32 total = 0;
+  for (u32 i = 0; i < salvage_snap_count; i++) total += salvage_snap_size[i];
+  if (!total || total > (16u << 20)) return 0;
+
+  u8 *buf = (u8 *)ck_alloc(total);
+  u32 off = 0;
+  for (u32 i = 0; i < salvage_snap_count; i++) {
+    memcpy(buf + off, salvage_snap_data[i], salvage_snap_size[i]);
+    off += salvage_snap_size[i];
+  }
+
+  u8 old_trial = admission_trial_mode;
+  const char *old_kind = execution_kind;
+  u32 old_pin = llm_candidate_lineage_pin;
+  u8 old_saved = last_common_fuzz_saved;
+  u8 old_fault = last_common_fuzz_fault;
+  u8 old_hnb = last_common_fuzz_hnb;
+  u8 old_thnb = last_trial_hnb;
+
+  admission_trial_mode = 1;            /* non-destructive probe */
+  execution_kind = "salvage-probe";
+  llm_candidate_lineage_pin = 0;       /* controller work: charge nothing */
+
+  admission_session_context_t context;
+  admission_session_enter(&context, salvage_snapshot_messages());
+  write_to_testcase(buf, total);
+  u8 probe_fault = run_target(g_admission_argv, exec_tmout);
+  admission_session_leave(&context);
+
+  llm_candidate_lineage_pin = old_pin;
+  execution_kind = old_kind;
+  admission_trial_mode = old_trial;
+  last_common_fuzz_saved = old_saved;
+  last_common_fuzz_fault = old_fault;
+  last_common_fuzz_hnb = old_hnb;
+  last_trial_hnb = old_thnb;
+
+  u32 sent = messages_sent < salvage_snap_count ? messages_sent : salvage_snap_count;
+  u8 serviceable = (probe_fault == FAULT_NONE &&
+                    messages_sent == salvage_snap_count);
+  /* Pipelining-aware: batched replies leave some messages with zero response
+   * delta; the session is serviceable if it completed and ANY message in the
+   * window elicited response bytes (see admission_response_span fix). */
+  u8 any_resp = 0;
+  for (u32 i = 0; i < sent; i++)
+    if (response_bytes[i] > 0 && (i == 0 || response_bytes[i] > response_bytes[i - 1]))
+      any_resp = 1;
+  serviceable = serviceable && any_resp;
+  ck_free(buf);
+  return serviceable;
+}
+
+static void salvage_log_probe_reject(u64 candidate_id, u32 msgs, u32 sent) {
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("provisional"));
+  json_object_object_add(j, "kind", json_object_new_string("probe-reject"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "candidate_id", candidate_id);
+  admission_json_add_u64(j, "snapshot_messages", msgs);
+  admission_json_add_u64(j, "messages_sent", sent);
+  json_object_object_add(j, "reason",
+      json_object_new_string(sent < msgs ? "session-aborted-early" : "message-without-response"));
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  ec_append_jsonl("provisional-events.jsonl", j);
+  json_object_put(j);
+}
+
 static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
   void (*old_handler)(int) = signal(SIGABRT, salvage_sigabrt_handler);
   salvage_active = 1;
@@ -14511,6 +15549,7 @@ static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
   }
   salvage_free_snapshot();
   u32 keep = salvage_collect_clean();
+  salvage_clean_count = keep;
   salvage_attempted++;
   if (keep < 2) { signal(SIGABRT, old_handler); salvage_active = 0; return 0; }
   salvage_take_snapshot();
@@ -14527,14 +15566,132 @@ static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
     salvage_free_snapshot();
     signal(SIGABRT, old_handler); salvage_active = 0; return 0;
   }
+  /* Layer-2: probe BEFORE queueing — admission consumes the probe outcome.
+   * A failed probe is an honest gate rejection, not a queue burden. */
+  salvage_probe_annotate_pending = 0;
+  if (salvage_probe_gate) {
+    u32 msgs_before = salvage_snap_count;
+    if (!salvage_probe_snapshot()) {
+      salvage_probe_rejected++;
+      salvage_log_probe_reject(candidate_id, msgs_before, messages_sent);
+      salvage_free_snapshot();
+      signal(SIGABRT, old_handler); salvage_active = 0; return 0;
+    }
+    salvage_probe_annotate_pending = 1;   /* responses still in globals */
+  }
   u8 ok = admission_provisional_queue_candidate_n(
       target_sid, candidate_id, "salvage", 0, salvage_snap_count);
+  salvage_probe_annotate_pending = 0;
   if (ok) salvage_succeeded++;
   salvage_free_snapshot();
   signal(SIGABRT, old_handler);
   salvage_active = 0;
   return ok;
 }
+/* P0-6 fix: annotate a queue entry's regions from the responses of the
+ * execution that just finished (same semantics as update_region_annotations,
+ * but bounded by the entry's own region_count so an early-disconnect run
+ * cannot write past the regions array). */
+static void provisional_annotate_regions(struct queue_entry *q) {
+  if (!q || !q->regions) return;
+  u32 n = q->region_count < messages_sent ? q->region_count : messages_sent;
+  for (u32 i = 0; i < n; i++) {
+    if ((response_bytes[i] == 0) ||
+        (i > 0 && (response_bytes[i] - response_bytes[i - 1] == 0))) {
+      q->regions[i].state_sequence = NULL;
+      q->regions[i].state_count = 0;
+    } else {
+      unsigned int state_count = 0;
+      q->regions[i].state_sequence =
+          (*extract_response_codes)(response_buf, response_bytes[i], &state_count);
+      q->regions[i].state_count = state_count;
+    }
+  }
+}
+
+/* P0-6 fix (no-executable-M2 deadlock, 2026-10-29 audit): regions built by
+ * convert_kl_messages_to_regions() carry state_sequence == NULL until the
+ * entry is executed; provisional_select_service() demands non-NULL state
+ * sequences BEFORE any execution, so every admission-created provisional
+ * entry died as "no-executable-M2" with zero descendants (67/67 across the
+ * three-target real-gateway batch).  Fix: right after queueing, execute the
+ * saved file ONCE as a non-destructive probe (trial mode: no virgin-map
+ * update, no queue insertion) with the lineage pin set to the new candidate,
+ * so the probe can annotate regions from the observed responses.  The
+ * probe is explicitly excluded from the descendant budget; only subsequent
+ * mutation/calibration invocations consume the validation window. Entries
+ * whose stripped session genuinely cannot complete (some message elicits no
+ * response / no state code) still fail entry_can_fuzz_full_session — but
+ * now for a real reason, after a real execution. */
+static void provisional_preannotate(struct queue_entry *q) {
+  if (!q || !q->fname || !g_admission_argv || stop_soon) return;
+
+  FILE *fp = fopen((char *)q->fname, "rb");
+  if (!fp) return;
+  u8 *buf = (u8 *)ck_alloc(q->len);
+  u32 got = fread(buf, 1, q->len, fp);
+  fclose(fp);
+  if (got != q->len || !got) { ck_free(buf); return; }
+
+  u8 old_trial = admission_trial_mode;
+  const char *old_kind = execution_kind;
+  u32 old_pin = llm_candidate_lineage_pin;
+  u8 old_saved = last_common_fuzz_saved;
+  u8 old_fault = last_common_fuzz_fault;
+  u8 old_hnb = last_common_fuzz_hnb;
+  u8 old_thnb = last_trial_hnb;
+
+  admission_trial_mode = 1;          /* non-destructive probe */
+  execution_kind = "prov-annotate";
+  llm_candidate_lineage_pin = q->llm_origin_candidate_id;
+
+  klist_t(lms) *probe_messages = construct_kl_messages(
+      q->fname, q->regions, q->region_count);
+  if (!probe_messages) {
+    llm_candidate_lineage_pin = old_pin;
+    execution_kind = old_kind;
+    admission_trial_mode = old_trial;
+    ck_free(buf);
+    provisional_expire(q, "invalid-saved-session");
+    return;
+  }
+  admission_session_context_t context;
+  admission_session_enter(&context, probe_messages);
+  write_to_testcase(buf, q->len);
+  run_target(g_admission_argv, exec_tmout);
+  admission_session_leave(&context);
+
+  llm_candidate_lineage_pin = old_pin;
+  execution_kind = old_kind;
+  admission_trial_mode = old_trial;
+  last_common_fuzz_saved = old_saved;
+  last_common_fuzz_fault = old_fault;
+  last_common_fuzz_hnb = old_hnb;
+  last_trial_hnb = old_thnb;
+
+  provisional_annotate_regions(q);
+
+  ck_free(buf);
+
+  /* The probe is logged separately from the descendant ledger. */
+  if (q->is_provisional && !q->prov_expired) {
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("provisional"));
+    json_object_object_add(j, "kind", json_object_new_string("preannotate"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "candidate_id", q->prov_candidate_id);
+    admission_json_add_u64(j, "queue_entry", q->index);
+    admission_json_add_u64(j, "regions_annotated",
+        q->region_count < messages_sent ? q->region_count : messages_sent);
+    u8 serviceable = entry_can_fuzz_full_session(q);
+    json_object_object_add(j, "serviceable_after_probe",
+        json_object_new_boolean(serviceable));
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    ec_append_jsonl("provisional-events.jsonl", j);
+    json_object_put(j);
+  }
+}
+
 static u8 admission_provisional_queue_candidate_n(u32 target_sid,
                                                   u64 candidate_id,
                                                   const char *admit_reason,
@@ -14544,6 +15701,18 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   if (!provisional_enabled || !out_dir || !kl_messages) return 0;
   if (state_aware_mode == 0) return 0;  /* two-tier queue needs state pools */
   provisional_evict_oldest_if_needed();
+  /* CSV #7 cohort draw happens BEFORE any queue write so the RNG stream and
+   * the registration decisions below key off the same single draw. */
+  u8 ordinary_cohort =
+      ordinary_budget_enabled && ec_uniform01() < ordinary_budget_rate;
+  /* The queue bytes, regions and replay frames must all describe the
+   * same stripped session, rather than the caller's surrounding M1/M3. */
+  u8 is_salvage = admit_reason && !strcmp(admit_reason, "salvage");
+  admission_session_context_t saved_context = {0};
+  if (is_salvage)
+    admission_session_enter(&saved_context, salvage_snapshot_messages());
+  u32 caller_messages_sent = messages_sent;
+  if (is_salvage) messages_sent = salvage_snap_count;
 
 #ifndef SIMPLE_FILES
   u8 *fn = alloc_printf("%s/queue/id:%06u,prov", out_dir, queued_paths);
@@ -14559,12 +15728,20 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   if (!full_len) {
     unlink((char *)fn);
     ck_free(fn);
+    if (is_salvage) {
+      messages_sent = caller_messages_sent;
+      admission_session_leave(&saved_context);
+    }
     return 0;
   }
   admission_add_to_queue(fn, full_len);
   struct queue_entry *q = queue_top;
+  if (is_salvage) messages_sent = caller_messages_sent;
 
-  if (state_aware_mode)
+  /* Early registration joins only state 0 (regions are annotated later);
+   * ordinary-match roots defer registration until after their probe
+   * annotation so they enter the pools of their reachable states. */
+  if (state_aware_mode && !is_salvage && !ordinary_cohort)
     update_state_aware_variables(queue_top, 0);
 
   u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
@@ -14581,21 +15758,113 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   q->prov_budget_left = provisional_budget_default;
   q->prov_admit_ms = get_cur_time();
   q->prov_deadline_ms = q->prov_admit_ms + provisional_ttl_ms_default;
-  /* v3.1: mark as favored so the scheduler picks it up quickly
-   * instead of letting it expire by TTL before being fuzzed */
-  q->favored = 1;
-  pending_favored++;
+  /* CSV #7 matched ordinary cohort: identical admission decision, bytes,
+   * regions, budget ledger and first-gain attribution as a provisional
+   * root — but ORDINARY retention downstream (no favored bump; ordinary
+   * roots defer to regular provisional service and use the deterministic
+   * fallback when no regular root is live). The cohort is drawn
+   * per admission from the SAME decision stream, so Productivity@64
+   * compares retention policies under identical accounting. */
+  if (ordinary_cohort) {
+    q->prov_ordinary_match = 1;
+    ordinary_match_admits++;
+  }
+  /* v3.1: mark regular provisional roots as favored so the scheduler picks
+   * them up quickly instead of letting them expire by TTL before being
+   * fuzzed. Ordinary-match roots use the service fallback above. */
+  if (!q->prov_ordinary_match) {
+    q->favored = 1;
+    pending_favored++;
+  }
   q->llm_origin_candidate_id = (u32)candidate_id;  /* v3.3 lineage */
   llm_lineage_entries++;
+  /* S1 prefix protection: record the candidate window in the SAVED
+   * session's indexing. Salvage saves only the stripped candidate
+   * messages (snapshot), so its window spans the whole saved session and
+   * its M2 is unchanged; every other channel saves the full surrounding
+   * session, and the window is the global candidate bounds (valid until
+   * admission_clear_response_capture() runs after this call returns). */
+  if (is_salvage) {
+    q->prov_cand_first = 0;
+    q->prov_cand_count = salvage_snap_count;
+    /* Salvage saves the STRIPPED session, whose trace differs from the
+     * trial's — trial positions would misclassify, so none recorded. */
+  } else {
+    q->prov_cand_first = candidate_message_first;
+    q->prov_cand_count = candidate_message_count;
+    if (q->prov_cand_first >= caller_messages_sent) q->prov_cand_count = 0;
+    else if (q->prov_cand_count > caller_messages_sent - q->prov_cand_first)
+      q->prov_cand_count = caller_messages_sent - q->prov_cand_first;
+    if (last_trial_new_pos_n) {
+      q->prov_trial_pos = ck_alloc(last_trial_new_pos_n * sizeof(u32));
+      memcpy(q->prov_trial_pos, last_trial_new_pos,
+             last_trial_new_pos_n * sizeof(u32));
+      q->prov_trial_pos_n = last_trial_new_pos_n;
+    }
+  }
 
   provisional_admitted++;
-  provisional_live++;
+  if (!q->prov_ordinary_match) provisional_live++;
   if (admit_reason && strcmp(admit_reason, "code-retain") == 0) {
     q->prov_code_retain = 1;   /* v3.4 P0-3 retention channel marker */
     code_retain_admitted++;
+    /* The retained session's edges belong to the retained corpus from
+     * now on — commit the trial's own novelty to the REAL map exactly as
+     * durable promotion does (trace_bits still holds the trial execution;
+     * the preannotate probe runs only after this call). P64 conversions
+     * inside the validation window are thereafter descendant-only. */
+    /* Measurement-only immediate-edge accounting (2026-11-06 audit fix):
+     * the trial's consumed positions are recorded on the entry for the
+     * conversion classifier. The shared virgin map is deliberately NOT
+     * mutated here: expiring an unconverted root deletes its corpus files
+     * without rolling the map back, so committing at admission could
+     * leave bitmap novelty without a retained witness. */
+  } else if (admit_reason && strcmp(admit_reason, "state-retain") == 0) {
+    state_retain_admitted++;   /* S2 channel dose counter (2026-11-05) */
   }
   provisional_log_event("admit", q,
-      admit_reason ? admit_reason : "state-novelty-only evidence");
+      q->prov_ordinary_match ?
+          "state-novelty-only evidence (ordinary-match cohort)" :
+          (admit_reason ? admit_reason : "state-novelty-only evidence"));
+  /* P0-6: probe-execute once and annotate, so the service eligibility
+   * check sees post-execution state sequences instead of expiring every
+   * never-executed entry as no-executable-M2. */
+  if (salvage_probe_annotate_pending &&
+      admit_reason && strcmp(admit_reason, "salvage") == 0) {
+    /* Layer-2 probe-gate: the pre-admission probe already executed this
+     * session; annotate from its (still-live) responses and verify. */
+    provisional_annotate_regions(q);
+    u8 ok8 = entry_can_fuzz_full_session(q);
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("provisional"));
+    json_object_object_add(j, "kind", json_object_new_string("preannotate"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "candidate_id", q->prov_candidate_id);
+    admission_json_add_u64(j, "queue_entry", q->index);
+    admission_json_add_u64(j, "regions_annotated",
+        q->region_count < messages_sent ? q->region_count : messages_sent);
+    json_object_object_add(j, "probe_reused", json_object_new_boolean(1));
+    json_object_object_add(j, "serviceable_after_probe",
+        json_object_new_boolean(ok8));
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    ec_append_jsonl("provisional-events.jsonl", j);
+    json_object_put(j);
+    if (!ok8) provisional_expire(q, "no-executable-M2");  /* rare: response present but no state codes */
+  } else {
+    provisional_preannotate(q);
+  }
+  /* Ordinary-match roots forgo EDF forcing, so they MUST be reachable
+   * through normal state selection: register them into the seed pools of
+   * their reachable states now that the probe annotated the regions.
+   * (Still inside the stripped-session context for salvage admissions;
+   * response globals still hold the probe's replies, so the region
+   * re-annotation this call performs is idempotent.) */
+  if (q->prov_ordinary_match && state_aware_mode && !stop_soon)
+    update_state_aware_variables(q, 1);
+  if (is_salvage) {
+    messages_sent = caller_messages_sent;
+    admission_session_leave(&saved_context);
+  }
   return 1;
 }
 
@@ -14621,11 +15890,13 @@ static void provisional_account_after_fuzz(struct queue_entry *q,
   if (!q || !q->is_provisional || q->prov_converted) return;
 
   if (q->prov_budget_left == 0) {
-    provisional_expire(q, "budget-exhausted");
+    if (q->prov_ordinary_match) ordinary_match_close(q, "budget-exhausted");
+    else provisional_expire(q, "budget-exhausted");
     return;
   }
   if (get_cur_time() >= q->prov_deadline_ms) {
-    provisional_expire(q, "ttl-expired");
+    if (q->prov_ordinary_match) ordinary_match_close(q, "ttl-expired");
+    else provisional_expire(q, "ttl-expired");
   }
 }
 
@@ -14648,11 +15919,21 @@ static void provisional_censor_all_at_shutdown(void) {
 /* Periodic sweep: expire provisionals whose TTL passed while they were not
  * being fuzzed (they would otherwise linger until re-selected). */
 static void provisional_sweep_expired(void) {
-  if (!provisional_live) return;
+  if (!provisional_live) {
+    /* ordinary-match roots are not counted in provisional_live; sweep
+     * them on their own pass so their windows still close on time. */
+    for (struct queue_entry *q = queue; q; q = q->next) {
+      if (q->is_provisional && !q->prov_converted && !q->prov_expired &&
+          q->prov_ordinary_match && get_cur_time() >= q->prov_deadline_ms)
+        ordinary_match_close(q, "ttl-expired");
+    }
+    return;
+  }
   u64 now = get_cur_time();
   for (struct queue_entry *q = queue; q; q = q->next) {
     if (q->is_provisional && !q->prov_converted && now >= q->prov_deadline_ms) {
-      provisional_expire(q, "ttl-expired");
+      if (q->prov_ordinary_match) ordinary_match_close(q, "ttl-expired");
+      else provisional_expire(q, "ttl-expired");
       if (!provisional_live) break;
     }
   }
@@ -14714,6 +15995,22 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
 static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
                                      admission_evidence_t *ev);
 
+/* S2 routing predicate (2026-11-05): strict-U rejected the candidate, it
+ * is replayable, and its only admission evidence is response-state
+ * novelty (gstate ∧ ¬gcode) — exactly the candidates the natural
+ * provisional cell never receives because state novelty on these targets
+ * arrives via error responses that fail U. */
+static int state_retain_route(const admission_evidence_t *ev) {
+  /* u_binding_valid (added 2026-11-06, GLM53 audit): without a frozen
+   * candidate response binding there is no semantic error-response
+   * evidence at all — the U failure may be mere response absence, not a
+   * protocol-level rejection the state novelty could be attributed to.
+   * Such candidates stay rejected. */
+  return state_retain_enabled && ev->disposition == EC_REJECT &&
+         ev->p_pass && !ev->u_pass && ev->r_pass && ev->u_binding_valid &&
+         ev->g_state_pass && !ev->g_code_pass;
+}
+
 static u8 admission_run_llm_candidate(char **argv,
                                       const char *source,
                                       const char *action_type,
@@ -14750,10 +16047,11 @@ static u8 admission_run_llm_candidate(char **argv,
   candidate_capture_armed = 1;
   admission_take_snapshot(&before);
 
-  u8 use_trial_mode = (p_pass && candidate && candidate_len > 0 &&
+  u8 p_effective = p_pass || adm_ablate_p;
+  u8 use_trial_mode = (p_effective && candidate && candidate_len > 0 &&
                        !ablation_no_admission && !admission_native_retention) ? 1 : 0;
   last_trial_hnb = 0;
-  if (p_pass && candidate && candidate_len > 0) {
+  if (p_effective && candidate && candidate_len > 0) {
     admission_trial_mode = use_trial_mode;
     /* v3.3 lineage: arm C executes candidates in normal mode, so a native
      * save_if_interesting() retention here IS the direct-admission channel
@@ -14781,8 +16079,19 @@ static u8 admission_run_llm_candidate(char **argv,
                      target_sid, source_state, &ev);
   ev.trial_mode = use_trial_mode;
 
-  if (executed && p_pass) {
+  if (executed && p_effective) {
     admission_evaluate_candidate_u(&ev, executed);
+    /* P0-9 leave-one-out: applied AFTER the suffix-U recompute so the
+     * ablation cannot be undone by it, and BEFORE the disposition so the
+     * decision is the AND of the non-ablated predicates.  The ev fields
+     * then carry the EFFECTIVE tuple; the true values were already
+     * recorded by admission_evaluate's own counters (admission_*_fail)
+     * and the ablation set is logged with every decision event. */
+    if (adm_ablate_p)      ev.p_pass = 1;
+    if (adm_ablate_u)      ev.u_pass = 1;
+    if (adm_ablate_r)      ev.r_pass = 1;
+    if (adm_ablate_gcode)  ev.g_code_pass = 1;
+    if (adm_ablate_gstate) ev.g_state_pass = 1;
     /* Recompute disposition with the suffix-only U */
     ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
                            ev.g_code_pass, ev.g_state_pass };
@@ -14797,9 +16106,14 @@ static u8 admission_run_llm_candidate(char **argv,
     if (ev.disposition == EC_CODE_RETAIN && !code_retain_enabled &&
         !test_force_code_retain)
       ev.disposition = EC_REJECT;
+    /* S2 (2026-11-05): opt-in state-evidence retention; only upgrades a
+     * strict-U reject, so it can never override durable/provisional. */
+    if (state_retain_route(&ev))
+      ev.disposition = EC_STATE_RETAIN;
   }
   if (!provisional_enabled &&
-      (ev.disposition == EC_PROVISIONAL || ev.disposition == EC_CODE_RETAIN))
+      (ev.disposition == EC_PROVISIONAL || ev.disposition == EC_CODE_RETAIN ||
+       ev.disposition == EC_STATE_RETAIN))
     ev.disposition = EC_REJECT;
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
@@ -14821,6 +16135,12 @@ static u8 admission_run_llm_candidate(char **argv,
        * gain (same budget/TTL; crash ledger unchanged). */
       provisional = admission_provisional_queue_candidate(
           target_sid, (u64)llm_cur_candidate_id, "code-retain");
+    } else if (ev.disposition == EC_STATE_RETAIN) {
+      /* S2 (2026-11-05): U-fail but state-novel, no immediate code edge —
+       * full session retained (S1 prefix-protected service), durability
+       * only via descendant code gain (same budget/TTL/crash ledger). */
+      provisional = admission_provisional_queue_candidate(
+          target_sid, (u64)llm_cur_candidate_id, "state-retain");
     } else if (salvage_enabled && ev.p_pass && executed &&
                ev.disposition == EC_REJECT) {
       /* Q1 evidence salvage: keep the candidate's error-free messages
@@ -14852,9 +16172,8 @@ static u8 admission_run_llm_candidate(char **argv,
   admission_evidence_free(&ev);
   admission_clear_response_capture();
 
-  /* Trial work (execution + any promotion) must stay out of the current
-   * episode's reward/mutation accounting (paper §五.1 attribution). */
-  cal_episode_rebase_after_trial();
+  /* Trial work is excluded by invocation/gain attribution; earlier ordinary
+   * mutations remain part of this episode even when a trial intervenes. */
 
   return common_ret;
 }
@@ -14910,8 +16229,16 @@ static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
   if (!candidate || !len || !ev) return;
   if (ev->disposition != EC_REJECT) return;
   if (shadow_validations_total >= shadow_max_per_campaign) return;
-  /* Only shadow candidates with some evidence of potential value */
-  if (!ev->g_code_pass && !ev->g_state_pass) return;
+  if (shadow_sample_random) {
+    /* P0-21: uniform Bernoulli sample of the WHOLE reject population —
+     * the only design that can estimate the population false-negative
+     * rate.  Selection is independent of any evidence the gate saw. */
+    if (ec_uniform01() >= shadow_random_rate) return;
+  } else {
+    /* Legacy evidence-selected sample (biased; kept as the default arm
+     * for comparability with earlier batches). */
+    if (!ev->g_code_pass && !ev->g_state_pass) return;
+  }
 
   shadow_validations_total++;
   if (ev->g_code_pass) shadow_false_negatives++;
@@ -14988,13 +16315,13 @@ static void shadow_validate_rejected(char **argv, u8 *candidate, u32 len,
   const char *trigger = ev->g_code_pass ?
       "false-negative (G_code=1 but rejected)" :
       "state-novel reject (G_state=1, G_code=0)";
+  if (shadow_sample_random) trigger = "random-sample (unbiased design)";
   shadow_log_event((u64)llm_cur_candidate_id, trigger,
                    shadow_budget_default, new_edges, latency,
                    target_invocation_seq - invocations_before,
                    ev->g_code_pass, ev->g_state_pass);
 
-  /* Rebase episode counters so shadow work doesn't pollute rewards */
-  cal_episode_rebase_after_trial();
+  /* Shadow work is excluded at the invocation/gain hooks. */
 }
 
 /* Helper to choose random block len for block operations in fuzz_one().
@@ -15731,7 +17058,6 @@ static u32 mqtt_field_aware_mutate(u8 *buf, u32 len) {
 
 static u8 fuzz_one(char **argv)
 {
-
   s32 len, fd, temp_len, i, j;
   u8 *in_buf = NULL, *out_buf, *orig_in, *ex_tmp, *eff_map = 0;
   u64 havoc_queued, orig_hit_cnt, new_hit_cnt;
@@ -15834,6 +17160,11 @@ AFLNET_REGIONS_SELECTION:;
 
   /* Construct the kl_messages linked list and identify boundary pointers (M2_prev and M2_next) */
   kl_messages = construct_kl_messages(queue_cur->fname, queue_cur->regions, queue_cur->region_count);
+  if (!kl_messages) {
+    WARNF("Rejecting inconsistent queue bytes/regions: %s", queue_cur->fname);
+    if (queue_cur->is_provisional) provisional_expire(queue_cur, "invalid-saved-session");
+    return 1;
+  }
 
   kliter_t(lms) * it;
 
@@ -15858,7 +17189,9 @@ AFLNET_REGIONS_SELECTION:;
   /* ============================================
    * Adaptive Plateau Triggering Logic
    * ============================================ */
-  
+  /* CSV#18: fixed-interval counts CYCLES (the check's own granularity). */
+  rounds_since_llm_trigger++;
+
   // Update edges growth rate every 60 seconds
   u64 cur_ms = get_cur_time();
   if (cur_ms - last_edges_check_time >= 60000) {  // 60 seconds
@@ -15897,19 +17230,80 @@ AFLNET_REGIONS_SELECTION:;
     last_edges_check_time = cur_ms;
   }
   
-  if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
+  /* CSV#18: the trigger signal is policy-dependent; the threshold and
+   * everything downstream (hypothesis init/refinement, plateau prompts,
+   * candidate trials) stay identical across arms. */
+  u32 trigger_counter =
+      llm_trigger_policy == 1 ? response_gap_rounds :
+      llm_trigger_policy == 2 ? rounds_since_llm_trigger :
+      uninteresting_times;
+  if (trigger_counter >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
+    /* Trigger ledger: every LLM consultation opportunity is recorded with
+     * the policy, its counter, the threshold and the cost context, so the
+     * three trigger strategies are comparable from the logs alone. */
+    if (event_log_enabled) {
+      struct json_object *tj = json_object_new_object();
+      json_object_object_add(tj, "event", json_object_new_string("trigger"));
+      json_object_object_add(tj, "policy", json_object_new_string(llm_trigger_policy_name));
+      admission_json_add_u64(tj, "counter", trigger_counter);
+      admission_json_add_u64(tj, "threshold", adaptive_plateau_threshold);
+      admission_json_add_u64(tj, "execs_done", total_execs);
+      admission_json_add_u64(tj, "chat_times", chat_times);
+      admission_json_add_u64(tj, "uninteresting_times", uninteresting_times);
+      admission_json_add_u64(tj, "response_gap_rounds", response_gap_rounds);
+      admission_json_add_u64(tj, "rounds_since_trigger", rounds_since_llm_trigger);
+      admission_json_add_u64(tj, "observed_states_total", observed_states_total);
+      admission_json_add_u64(tj, "observed_transitions_total", observed_transitions_total);
+      admission_json_add_u64(tj, "ipsm_state_edge_events", ipsm_new_edge_events);
+      admission_json_add_u64(tj, "llm_calls_total", llm_total_calls);
+      admission_json_add_u64(tj, "time_ms", get_cur_time());
+      ec_append_jsonl("trigger-events.jsonl", tj);
+      json_object_put(tj);
+    }
+    llm_trigger_events++;
     uninteresting_times = 0;
+    response_gap_rounds = 0;
+    rounds_since_llm_trigger = 0;
 
-    /* Fix-10b: Lazy hypothesis system init — only on first plateau trigger.
-     * R9 showed eager init at startup cost 380s + 30MB RSS for exim with
-     * zero benefit (hypothesis_parse_success=0). Deferring to first plateau
-     * avoids the cost entirely for short runs and delays it until the fuzzer
-     * actually needs LLM assistance. */
+    /* Fix-10b + RC-C fix (2026-11-04): Lazy hypothesis system init — only
+     * on first plateau trigger. RC-C root cause: on SIP/HTTP targets the
+     * grammar hypothesis init makes multiple LLM calls for protocol
+     * templates that the mock gateway may serve slowly or incorrectly,
+     * blocking the entire plateau path (measured: trigger fires, "Getting
+     * grammars from LLM..." prints, then no further output — candidates
+     * never generated, plateau_calls stays 0).
+     *
+     * Fix: DEFER grammar init to the SECOND plateau trigger. The first
+     * trigger goes straight to candidate generation (the actual purpose
+     * of the plateau), and grammar hypotheses initialize on a subsequent
+     * trigger once candidate generation is confirmed working. If the
+     * grammar init still blocks on the second trigger, a 60-second
+     * alarm forces it to give up. */
+    static u8 hypothesis_init_attempted = 0;
     if (hypothesis_mode && !hypothesis_ctx) {
-      fprintf(stderr, "[hypothesis] Lazy init: first plateau reached, "
-                      "initializing grammar hypothesis system now.\n");
-      init_grammar_hypothesis_system();
+      if (!hypothesis_init_attempted) {
+        hypothesis_init_attempted = 1;
+        fprintf(stderr, "[hypothesis] RC-C fix: deferring init to 2nd plateau "
+                        "(1st trigger goes to candidate generation)\n");
+      } else {
+        fprintf(stderr, "[hypothesis] Lazy init on 2nd plateau, "
+                        "60s alarm-protected.\n");
+        /* alarm() will send SIGALRM after 60s. The fuzzer's SIGALRM
+         * handler (child_timed_out) will fire; we catch it by checking
+         * a flag set in the handler. If timed out, skip init. */
+        u64 init_start_ms = get_cur_time();
+        alarm(60);
+        init_grammar_hypothesis_system();
+        alarm(0);  /* cancel the alarm */
+        u64 init_ms = get_cur_time() - init_start_ms;
+        if (init_ms > 55000) {
+          fprintf(stderr, "[hypothesis] init took %lums (>55s), "
+                          "disabling hypothesis for this campaign\n",
+                  (unsigned long)init_ms);
+          hypothesis_mode = 0;
+        }
+      }
     }
 
     /* Fix-15 Tier-2: Check if any hypothesis needs refinement.
@@ -15949,8 +17343,16 @@ AFLNET_REGIONS_SELECTION:;
     char **responses_temp = get_responses_from_file(response_fname, &response_bytes_temp, &response_count, &buffer_len);
     if (responses_temp == NULL)
     {
-      ck_free(response_fname);
-      goto plateau_done;
+      /* RC-D fix (2026-11-04): on targets where state extraction doesn't
+       * produce response files (kamailio SIP, lighttpd1 HTTP — the state
+       * parser never creates responses-ipsm entries), the old `goto
+       * plateau_done` silently skipped the ENTIRE LLM consultation.
+       * Proceed with empty response context: the LLM can generate
+       * candidates without prior response examples. */
+      fprintf(stderr, "[plateau] no responses file for %s, proceeding "
+                      "with empty context\n", basename(queue_cur->fname));
+      response_count = 0;
+      buffer_len = 0;
     }
 
     chat_times++;
@@ -16176,6 +17578,96 @@ AFLNET_REGIONS_SELECTION:;
             }
           }
           json_object_object_add(jctx, "states", jstates);
+
+          /* ── FixA (2026-11-04): Coverage-informed prompt ────────────
+           * Root cause measured: edge exclusivity = 0/28,602 (0%) because
+           * LLM candidates exercise the same code paths as havoc — the LLM
+           * has no information about which protocol commands the corpus
+           * has NEVER used. This injects the "never exercised" list into
+           * the plateau prompt so the LLM can target uncovered code.
+           *
+           * Method: scan the queue corpus for first-tokens of each message
+           * (the protocol command), compare against the AFL dictionary
+           * (extras[]), and report the difference. */
+          {
+            /* Collect used commands from queue entries (first token per line) */
+            #define FIXA_MAX_CMD 32
+            #define FIXA_CMD_LEN 16
+            static char used_cmds[FIXA_MAX_CMD][FIXA_CMD_LEN];
+            static u32 used_cmd_count = 0;
+            used_cmd_count = 0;
+
+            for (struct queue_entry *q_scan = queue; q_scan && used_cmd_count < FIXA_MAX_CMD; q_scan = q_scan->next) {
+              if (!q_scan->fname) continue;
+              FILE *fq = fopen((char*)q_scan->fname, "r");
+              if (!fq) continue;
+              char line[256];
+              while (fgets(line, sizeof(line), fq) && used_cmd_count < FIXA_MAX_CMD) {
+                /* Skip empty lines and responses (start with digit) */
+                char *trim = line;
+                while (*trim == ' ' || *trim == '\t' || *trim == '\r') trim++;
+                if (!*trim || *trim == '\n' || (*trim >= '0' && *trim <= '9')) continue;
+                /* Extract first word (the command) */
+                char cmd[FIXA_CMD_LEN] = {0};
+                u32 ci = 0;
+                while (trim[ci] && trim[ci] != ' ' && trim[ci] != '\r' && trim[ci] != '\n' && ci < FIXA_CMD_LEN - 1) {
+                  cmd[ci] = toupper((unsigned char)trim[ci]);
+                  ci++;
+                }
+                if (ci < 2) continue; /* too short */
+                /* Dedup */
+                u8 found = 0;
+                for (u32 uc = 0; uc < used_cmd_count; uc++) {
+                  if (strncmp(used_cmds[uc], cmd, FIXA_CMD_LEN) == 0) { found = 1; break; }
+                }
+                if (!found) {
+                  strncpy(used_cmds[used_cmd_count], cmd, FIXA_CMD_LEN - 1);
+                  used_cmds[used_cmd_count][FIXA_CMD_LEN - 1] = '\0';
+                  used_cmd_count++;
+                }
+              }
+              fclose(fq);
+            }
+
+            /* Compute unused: dictionary extras minus used commands */
+            struct json_object *juncovered = json_object_new_array();
+            u32 uncovered_count = 0;
+            for (u32 ei = 0; ei < extras_cnt && uncovered_count < 16; ei++) {
+              if (!extras[ei].data || extras[ei].len < 2) continue;
+              /* extras entries are binary tokens — take first token up to whitespace */
+              char dict_cmd[FIXA_CMD_LEN] = {0};
+              u32 di = 0;
+              while (di < extras[ei].len && di < FIXA_CMD_LEN - 1 &&
+                     extras[ei].data[di] != '\t' && extras[ei].data[di] != ' ' &&
+                     extras[ei].data[di] != '#') {
+                dict_cmd[di] = toupper(extras[ei].data[di]);
+                di++;
+              }
+              if (di < 2) continue;
+              u8 is_used = 0;
+              for (u32 uc = 0; uc < used_cmd_count; uc++) {
+                if (strncmp(used_cmds[uc], dict_cmd, FIXA_CMD_LEN) == 0) { is_used = 1; break; }
+              }
+              if (!is_used) {
+                json_object_array_add(juncovered, json_object_new_string(dict_cmd));
+                uncovered_count++;
+              }
+            }
+            if (uncovered_count > 0) {
+              json_object_object_add(jctx, "never_used_commands", juncovered);
+              fprintf(stderr, "[FixA] %u never-used commands injected into prompt: ", uncovered_count);
+              for (u32 uc = 0; uc < uncovered_count && uc < 5; uc++) {
+                struct json_object *jt = json_object_array_get_idx(juncovered, uc);
+                fprintf(stderr, "%s%s", uc ? "," : "", json_object_get_string(jt));
+              }
+              if (uncovered_count > 5) fprintf(stderr, "...");
+              fprintf(stderr, "\n");
+            } else {
+              json_object_put(juncovered);
+            }
+          }
+          /* ── End FixA ───────────────────────────────────────────── */
+
           state_ctx = strdup(json_object_to_json_string(jctx));
           json_object_put(jctx);
         }
@@ -16224,7 +17716,10 @@ AFLNET_REGIONS_SELECTION:;
              * so the delta measures ALL prompt-engineering improvements. */
             char *stall_prompt = construct_prompt_stall_original(
                 (char *)protocol_name, (char *)examples, (char *)history);
+            /* CSV#20 channel scope: direct stall consultation. */
+            chat_llm_set_channel("plateau");
             char *stall_resp = chat_with_llm(stall_prompt, LLM_DEFAULT_MODEL, STALL_RETRIES, 1.2);
+            chat_llm_set_channel("other");
             free(stall_prompt);
             if (stall_resp) {
               char *stall_msg = extract_stalled_message(stall_resp, strlen(stall_resp));
@@ -16292,6 +17787,12 @@ AFLNET_REGIONS_SELECTION:;
 
         /* Try to read the suggested output */
         char *stall_message = NULL;
+        /* P0-9 effective P-LOO: P actually fails at the schema gate below
+         * (both admission_run_llm_candidate call sites hardcode p_pass=1,
+         * so an evaluator-only ablation could never change anything).
+         * With CHATAFL_ADMIT_NO_P the raw reply is executed anyway and
+         * judged by the remaining predicates, with the OBSERVED p=false. */
+        u8 plateau_p_loo = 0;
         int fd = open(out_path, O_RDONLY);
         if (fd >= 0)
         {
@@ -16363,7 +17864,17 @@ AFLNET_REGIONS_SELECTION:;
             /* Plain-text reply (typical under real gateways): wrap into
              * the suggested_request form so the candidate reaches a real
              * trial. Evidence still decides admission at trial time. */
-            char *formatted = format_request_message(stall_message);
+            /* Root-cause fix (ASAN, 2026-10-31): format_request_message
+             * TAKES OWNERSHIP and frees its argument (chat-llm.c upstream
+             * contract).  Passing stall_message directly made the callee
+             * free it, then the raw_stall_message alias was freed again at
+             * the end of this block (double free -> "double free or
+             * corruption (!prev)", fatal SIGABRT under mock gateways whose
+             * plain-text plateau replies take this wrap path; real-gateway
+             * JSON replies never reach it) — and an empty wrap result also
+             * left the !jroot logging block reading freed memory.  Pass a
+             * copy so caller ownership is preserved end-to-end. */
+            char *formatted = format_request_message(strdup(stall_message));
             if (formatted && *formatted) {
               struct json_object *jwrap = json_object_new_object();
               json_object_object_add(jwrap, "suggested_request",
@@ -16374,7 +17885,14 @@ AFLNET_REGIONS_SELECTION:;
             }
           }
           if (!jroot) {
-            if (event_log_enabled) {
+            if (adm_ablate_p && raw_stall_message && *raw_stall_message) {
+              /* lop8: schema-invalid output STILL gets a bounded trial —
+               * this is the only place a P-LOO arm can acquire dose.  The
+               * executed candidate event records the observed p_pass=false
+               * plus the effective (forced) tuple. */
+              stall_message = strdup(raw_stall_message);
+              plateau_p_loo = 1;
+            } else if (event_log_enabled) {
               llm_cur_candidate_id = candidate_log_event(
                   "plateau_llm_output", "json",
                   queue_cur ? (s32)queue_cur->index : -1,
@@ -16401,7 +17919,7 @@ AFLNET_REGIONS_SELECTION:;
             }
           }
           free(raw_stall_message);
-          stall_message = NULL;
+          if (!plateau_p_loo) stall_message = NULL;
         }
 
         if (jroot) {
@@ -16619,8 +18137,10 @@ AFLNET_REGIONS_SELECTION:;
                                           target_state_id,
                                           (u8 *)fuzz_data,
                                           fuzz_len,
-                                          1,
-                                          "suggested-request-schema-valid"))
+                                          plateau_p_loo ? 0 : 1,
+                                          plateau_p_loo ?
+                                              "json-schema-invalid (P-LOO forced trial)" :
+                                              "suggested-request-schema-valid"))
           {
             splicing_with = -1;
             if (!stop_soon && !queue_cur->cal_failed && !queue_cur->was_fuzzed)
@@ -19036,6 +20556,7 @@ static void sync_fuzzers(char **argv)
         u32 region_count;
         regions = (*extract_requests)(mem, st.st_size, &region_count);
         kl_messages = construct_kl_messages(path, regions, region_count);
+        if (!kl_messages) FATAL("Invalid or truncated sync seed regions: %s", path);
 
         const char *old_kind = execution_kind;
         execution_kind = "sync";
@@ -20411,6 +21932,118 @@ static void evidence_env_parse(void) {
     }
     if (admission_native_retention || ablation_no_admission)
       provisional_enabled = shadow_enabled = 0;
+    /* P0-9 leave-one-out predicate ablation (gate arm only — the decision
+     * tuple does not exist in native/direct arms). */
+    if (!admission_native_retention && !ablation_no_admission) {
+      if (getenv("CHATAFL_ADMIT_NO_P"))      adm_ablate_p = 1;
+      if (getenv("CHATAFL_ADMIT_NO_U"))      adm_ablate_u = 1;
+      if (getenv("CHATAFL_ADMIT_NO_R"))      adm_ablate_r = 1;
+      if (getenv("CHATAFL_ADMIT_NO_GCODE"))  adm_ablate_gcode = 1;
+      if (getenv("CHATAFL_ADMIT_NO_GSTATE")) adm_ablate_gstate = 1;
+      if (adm_ablate_p || adm_ablate_u || adm_ablate_r ||
+          adm_ablate_gcode || adm_ablate_gstate)
+        OKF("ADMISSION LEAVE-ONE-OUT: P=%u U=%u R=%u Gcode=%u Gstate=%u "
+            "(disabled predicate forced to pass)",
+            adm_ablate_p, adm_ablate_u, adm_ablate_r,
+            adm_ablate_gcode, adm_ablate_gstate);
+    }
+    /* P0-21 shadow sampling design */
+    {
+      const char *ss = getenv("CHATAFL_SHADOW_SAMPLE");
+      if (ss && *ss) {
+        if (!strcmp(ss, "random")) shadow_sample_random = 1;
+        else if (strcmp(ss, "evidence"))
+          FATAL("CHATAFL_SHADOW_SAMPLE must be evidence or random");
+      }
+      const char *sr = getenv("CHATAFL_SHADOW_RATE");
+      if (sr && *sr) {
+        double r = atof(sr);
+        if (r <= 0.0 || r > 1.0)
+          FATAL("CHATAFL_SHADOW_RATE must be in (0,1]");
+        shadow_random_rate = r;
+      }
+      if (shadow_sample_random)
+        OKF("SHADOW SAMPLING: random Bernoulli p=%.3f of ALL rejects "
+            "(unbiased false-negative design)", shadow_random_rate);
+    }
+    /* CSV #8 U policy: strict (legacy) | soft (error tolerated, logged) |
+     * protocol (per-protocol error semantics incl. binary indicators). */
+    {
+      const char *up = getenv("CHATAFL_U_POLICY");
+      if (up && *up) {
+        if (!strcmp(up, "strict")) u_policy = 0;
+        else if (!strcmp(up, "soft")) u_policy = 1;
+        else if (!strcmp(up, "protocol")) u_policy = 2;
+        else FATAL("CHATAFL_U_POLICY must be strict, soft or protocol");
+        u_policy_name = u_policy == 1 ? "soft" : u_policy == 2 ? "protocol" : "strict";
+        OKF("U POLICY: %s%s", u_policy_name,
+            u_policy == 1 ? " (error responses tolerated but logged)" :
+            u_policy == 2 ? " (per-protocol error semantics)" : "");
+      }
+    }
+    /* CSV #7 matched ordinary cohort */
+    {
+      const char *ob = getenv("CHATAFL_ORDINARY_BUDGET");
+      if (ob && *ob && strcmp(ob, "0") != 0) {
+        ordinary_budget_enabled = 1;
+        const char *orr = getenv("CHATAFL_ORDINARY_RATE");
+        if (orr && *orr) {
+          double r = atof(orr);
+          if (r <= 0.0 || r > 1.0)
+            FATAL("CHATAFL_ORDINARY_RATE must be in (0,1]");
+          ordinary_budget_rate = r;
+        }
+        const char *oedf = getenv("CHATAFL_ORDINARY_EDF");
+        if (oedf && *oedf && strcmp(oedf, "0") != 0) {
+          ordinary_edf_enabled = 1;
+          OKF("ORDINARY EDF: ordinary-match roots also receive EDF-forced "
+              "service with the same 64-call budget (fair comparison: "
+              "same service, different retention policy)");
+        }
+        OKF("ORDINARY MATCH: provisional-channel admissions are re-labeled "
+            "ordinary-match roots (rate %.3f): same validation ledger, "
+            "%s service/retention", ordinary_budget_rate,
+            ordinary_edf_enabled ? "EDF+ordinary" : "deferred-fallback+ordinary");
+      }
+    }
+    /* Scheduler warmup cap: selection-count bound above/below the legacy
+     * five-complete-sweeps rule, so growing state lists cannot defer
+     * weighted scheduling indefinitely and short campaigns can exercise
+     * the weighted path.  0 disables the cap. */
+    {
+      const char *wm = getenv("CHATAFL_SCHEDULER_WARMUP_MAX");
+      if (wm && *wm) {
+        u32 w = (u32)atoi(wm);
+        if (w > 1000000) FATAL("CHATAFL_SCHEDULER_WARMUP_MAX too large");
+        scheduler_warmup_max_selections = w;
+        OKF("SCHEDULER WARMUP: five-sweeps OR selection cap %u "
+            "(0 = sweeps only)", w);
+      }
+    }
+    /* CSV#18 trigger policy: what the plateau counter counts. */
+    {
+      const char *tp = getenv("CHATAFL_TRIGGER_POLICY");
+      if (tp && *tp) {
+        if (!strcmp(tp, "code-stall")) llm_trigger_policy = 0;
+        else if (!strcmp(tp, "response-gap")) llm_trigger_policy = 1;
+        else if (!strcmp(tp, "fixed-interval")) llm_trigger_policy = 2;
+        else FATAL("CHATAFL_TRIGGER_POLICY must be code-stall, response-gap or fixed-interval");
+        llm_trigger_policy_name = llm_trigger_policy == 1 ? "response-gap" :
+                                  llm_trigger_policy == 2 ? "fixed-interval" : "code-stall";
+        OKF("LLM TRIGGER POLICY: %s (threshold=%u shared)", llm_trigger_policy_name,
+            adaptive_plateau_threshold);
+      }
+    }
+    /* Shrinkage pseudo-count for CHATAFL_STATE_SELECT=shrink */
+    {
+      const char *ks = getenv("CHATAFL_CAL_SHRINK_PSEUDO");
+      if (ks && *ks) {
+        double k = atof(ks);
+        if (k >= 0.0 && k <= 10000.0) cal_shrink_kappa = k;
+        else WARNF("CHATAFL_CAL_SHRINK_PSEUDO=%s out of [0,10000], keeping %.1f",
+                   ks, cal_shrink_kappa);
+      }
+    }
     const char *exec_log = getenv("CHATAFL_EXECUTION_LOG");
     if (exec_log && *exec_log) {
       if (strcmp(exec_log, "0") && strcmp(exec_log, "1"))
@@ -20479,6 +22112,8 @@ static void evidence_env_parse(void) {
       u32 m = (u32)atoi(pm);
       if (m > 0 && m <= 10000) provisional_max_live = m;
     }
+    const char *ppp = getenv("CHATAFL_PROV_PREFIX_PROTECT");
+    if (ppp && *ppp && !strcmp(ppp, "0")) prov_prefix_protect = 0;
     /* v3.3b testability knob: threshold of consecutive zero-execution
      * fuzz_one rounds before the linear-progress churn fallback fires
      * (default 64; lower only for mechanism tests — e.g. =1 makes any
@@ -20499,11 +22134,36 @@ static void evidence_env_parse(void) {
       OKF("P0-3 code-retain policy ENABLED: U-fail-but-code-bearing "
           "candidates are retained via the provisional tier");
     }
+    const char *sr2 = getenv("CHATAFL_STATE_RETAIN");
+    if (sr2 && *sr2 && strcmp(sr2, "0") != 0) {
+      state_retain_enabled = 1;
+      OKF("S2 state-retain policy ENABLED (2026-11-05): U-fail but "
+          "state-novel (gstate && !gcode) candidates are retained via "
+          "the provisional tier");
+    }
     const char *sv = getenv("CHATAFL_SALVAGE");
     if (sv && *sv && strcmp(sv, "0") != 0) {
       salvage_enabled = 1;
       OKF("Q1 evidence-salvage ENABLED: rejected candidates keep their "
           "error-free messages via the provisional tier");
+    }
+    const char *pg = getenv("CHATAFL_SALVAGE_PROBE_GATE");
+    if (pg && *pg && strcmp(pg, "0") != 0) {
+      if (!salvage_enabled)
+        FATAL("CHATAFL_SALVAGE_PROBE_GATE requires CHATAFL_SALVAGE=1");
+      salvage_probe_gate = 1;
+      OKF("LAYER-2 PROBE-GATE: salvage admission consumes the probe "
+          "outcome (dead stripped sessions are re-rejected at the gate)");
+    }
+    const char *so = getenv("CHATAFL_SALVAGE_OPPORTUNITY");
+    if (so && *so) {
+      double th = atof(so);
+      if (th < 0.0 || th > 1000000.0)
+        FATAL("CHATAFL_SALVAGE_OPPORTUNITY must be in [0,1000000]");
+      salvage_opportunity_threshold = th;
+      OKF("OPPORTUNITY GATE (marginal, 2026-11-05): provisional EDF service "
+          "parks while ordinary-channel yield > validation-channel yield; "
+          "value = min ordinary invocations per window (%.0f; 0 = off)", th);
     }
     const char *pw = getenv("CHATAFL_PLAINTEXT_WRAP");
     if (pw && *pw && strcmp(pw, "0") != 0) {
@@ -20575,6 +22235,7 @@ int main(int argc, char **argv)
   u8 mem_limit_given = 0;
   u8 exit_1 = !!getenv("AFL_BENCH_JUST_ONE");
   // char** use_argv;
+  g_admission_argv = argv;   /* P0-6: for the provisional pre-annotation probe */
 
   struct timeval tv;
   struct timezone tz;
@@ -21031,8 +22692,14 @@ int main(int argc, char **argv)
         state_selection_algo = FAVOR;
         cal_estimator = 2; cal_estimator_name = "run_rate";
         OKF("Simple-online-baseline arm: FAVOR with smoothed run-rate estimator");
+      } else if (strcasecmp(ssel, "shrink") == 0) {
+        state_selection_algo = FAVOR;
+        cal_estimator = 3; cal_estimator_name = "shrink";
+        OKF("Hierarchical shrinkage arm: FAVOR with run-level base-rate "
+            "shrinkage theta_s=(succ+kappa*run_rate)/(episodes+kappa), kappa=%.1f",
+            cal_shrink_kappa);
       } else {
-        WARNF("CHATAFL_STATE_SELECT=%s unknown (random|round_robin|favor|calibrated|ewma|run_rate)", ssel);
+        WARNF("CHATAFL_STATE_SELECT=%s unknown (random|round_robin|favor|calibrated|ewma|run_rate|shrink)", ssel);
       }
     }
   }
@@ -21235,6 +22902,7 @@ int main(int argc, char **argv)
     run_config_logged = 1;
 
     setup_llm_grammars();
+    chat_llm_set_channel("other");   /* grammar scope ends with setup */
     enrich_testcases();
   }
   if (!run_config_logged) {

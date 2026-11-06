@@ -47,6 +47,13 @@
                              * retained via the provisional tier instead of
                              * a hard reject; crashes stay on the separate
                              * bug/oracle ledger either way. */
+#define EC_STATE_RETAIN 4  /* 2026-11-05 (S2): U-fail but STATE evidence and
+                             * no immediate code edge (gstate && !gcode) —
+                             * the natural provisional cell is structurally
+                             * empty because state novelty arrives via error
+                             * responses that fail U; this channel admits
+                             * those candidates to the same bounded
+                             * validation tier (opt-in via the caller). */
 
 /* Frozen calibration defaults (paper §五: freeze after pilot, sensitivity
  * analysis only over γ ∈ {0.99, 0.995, 1.0} — do not widen). */
@@ -82,6 +89,15 @@ double   ec_calibrated_factor(double theta_sample, double epsilon);
  * estimator instead of the Thompson posterior. */
 double   ec_ewma_step(double previous, double alpha, double reward);
 double   ec_run_rate_estimate(unsigned int rewards, unsigned int episodes);
+
+/* Run-level base-rate shrinkage (empirical-Bayes / hierarchical prior):
+ * θ_s = (succ_s + κ·run_rate) / (episodes_s + κ).  Thin per-state evidence
+ * is pulled toward the pooled campaign base rate instead of the Beta(1,1)
+ * mean 0.5; dense evidence dominates.  run_rate ∈ [0,1] is maintained by
+ * the caller (pooled eligible-episode reward rate); degenerate inputs
+ * fall back to run_rate. */
+double   ec_shrink_estimate(unsigned int rewards, unsigned int episodes,
+                            double run_rate, double kappa);
 
 /* Combined scheduling score (paper §五.4). */
 double   ec_selection_score(double frontier_score, double theta_sample,

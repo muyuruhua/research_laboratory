@@ -132,11 +132,11 @@ evidence_selftest: evidence_selftest.c evidence-cal.c evidence-cal.h
 # not launch a target, forkserver, network client, or LLM request.
 scheduler_contract_selftest: scheduler_contract_selftest.c afl-fuzz.c evidence-cal.c evidence-cal.h $(COMM_HDR)
 	$(CC) -D_GNU_SOURCE -O1 -g -ffunction-sections -fdata-sections -Wno-pointer-sign -Wno-unused-result \
-		-o $@ scheduler_contract_selftest.c -Wl,--gc-sections -lcgraph -lm
+		-o $@ scheduler_contract_selftest.c mutation-ops.o -Wl,--gc-sections -lcgraph -lm -ljson-c
 
-gating_contract_selftest: gating_contract_selftest.c afl-fuzz.c aflnet.o evidence-cal.o $(COMM_HDR)
+gating_contract_selftest: gating_contract_selftest.c afl-fuzz.c aflnet.o evidence-cal.o mqtt-differential.o protocol-oracle.o mutation-ops.o $(COMM_HDR)
 	$(CC) -D_GNU_SOURCE -O1 -g -ffunction-sections -fdata-sections -Wno-pointer-sign -Wno-unused-result \
-		-o $@ gating_contract_selftest.c aflnet.o evidence-cal.o -Wl,--gc-sections \
+		-o $@ gating_contract_selftest.c aflnet.o evidence-cal.o mqtt-differential.o protocol-oracle.o mutation-ops.o -Wl,--gc-sections \
 		-lcgraph -lm -ljson-c -lpcre2-8 -lcurl -lpthread
 
 phase2_selftests: scheduler_contract_selftest gating_contract_selftest evidence_selftest

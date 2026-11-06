@@ -149,11 +149,13 @@ mark_completed_samples() {
 
     if [[ -z "$current_status" || "$current_status" == "running" ]]; then
       exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+      oom_killed="$(docker inspect --format '{{.State.OOMKilled}}' "$container_id" 2>/dev/null || true)"
       write_sample_status "$archive_name" \
         "container_id=${container_id}" \
         "status=completed" \
         "reason=completed" \
         "finished_at=$(date -Iseconds)" \
+        "oom_killed=${oom_killed}" \
         "exit_code=${exit_code}"
     fi
   done
@@ -533,6 +535,11 @@ if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
     if [[ -f "${PROJECT_ROOT}/benchmark/scripts/analysis/coverage_v4.py" ]]; then
       SUBJECT_MOUNT="${SUBJECT_MOUNT} -v ${PROJECT_ROOT}/benchmark/scripts/analysis:/tmp/coverage-v4-src:ro"
       SUBJECT_COPY+="mkdir -p ${WORKDIR}/coverage_v4 && cp -f /tmp/coverage-v4-src/coverage_v4.py ${WORKDIR}/coverage_v4/ && "
+      if [[ "$DOCIMAGE" == bftpd ]]; then
+        # Coverage-only SIGPIPE cleanup: rebuild the gcov subject, never the
+        # fuzz target. Strict coverage replay authenticates this policy.
+        SUBJECT_COPY+="python3 /tmp/coverage-v4-src/install_bftpd_coverage_exit.py ${WORKDIR}/bftpd-gcov && "
+      fi
       # Default verified per-input reset command for targets that have a
       # validated reset script (COVERAGE_V4.md contract).  An operator-provided
       # COVERAGE_V4_RESET_COMMAND_JSON always wins; no default is injected for
@@ -864,6 +871,29 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_EXECUTION_LOG:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_EXECUTION_LOG=${CHATAFL_EXECUTION_LOG}"
   [[ -n "${CHATAFL_SHADOW_BUDGET:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_BUDGET=${CHATAFL_SHADOW_BUDGET}"
   [[ -n "${CHATAFL_SHADOW_MAX:-}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_MAX=${CHATAFL_SHADOW_MAX}"
+  # P0-9 leave-one-out predicates + P0-21 unbiased shadow sampling (2026-10-29)
+  [[ -n "${CHATAFL_ADMIT_NO_P:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMIT_NO_P=1"
+  [[ -n "${CHATAFL_ADMIT_NO_U:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMIT_NO_U=1"
+  [[ -n "${CHATAFL_ADMIT_NO_R:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMIT_NO_R=1"
+  [[ -n "${CHATAFL_ADMIT_NO_GCODE:-}" ]]  && ABLATION_FLAGS+=" -e CHATAFL_ADMIT_NO_GCODE=1"
+  [[ -n "${CHATAFL_ADMIT_NO_GSTATE:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ADMIT_NO_GSTATE=1"
+  [[ -n "${CHATAFL_SHADOW_SAMPLE:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_SAMPLE=${CHATAFL_SHADOW_SAMPLE}"
+  [[ -n "${CHATAFL_SHADOW_RATE:-}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_SHADOW_RATE=${CHATAFL_SHADOW_RATE}"
+  [[ -n "${CHATAFL_SALVAGE_PROBE_GATE:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_SALVAGE_PROBE_GATE=${CHATAFL_SALVAGE_PROBE_GATE}"
+  [[ -n "${CHATAFL_SALVAGE_OPPORTUNITY:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_SALVAGE_OPPORTUNITY=${CHATAFL_SALVAGE_OPPORTUNITY}"
+  # CSV#8 U policy / CSV#7 matched ordinary cohort / scheduler warmup cap /
+  # shrinkage pseudo-count (2026-11-02)
+  [[ -n "${CHATAFL_U_POLICY:-}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_U_POLICY=${CHATAFL_U_POLICY}"
+  [[ -n "${CHATAFL_ORDINARY_BUDGET:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ORDINARY_BUDGET=${CHATAFL_ORDINARY_BUDGET}"
+  [[ -n "${CHATAFL_ORDINARY_RATE:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_ORDINARY_RATE=${CHATAFL_ORDINARY_RATE}"
+  [[ -n "${CHATAFL_ORDINARY_EDF:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_ORDINARY_EDF=${CHATAFL_ORDINARY_EDF}"
+  [[ -n "${CHATAFL_SCHEDULER_WARMUP_MAX:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_SCHEDULER_WARMUP_MAX=${CHATAFL_SCHEDULER_WARMUP_MAX}"
+  [[ -n "${CHATAFL_CAL_SHRINK_PSEUDO:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_CAL_SHRINK_PSEUDO=${CHATAFL_CAL_SHRINK_PSEUDO}"
+  # CSV#20 LLM component switches + CSV#18 trigger policies (2026-11-02)
+  [[ -n "${CHATAFL_NO_GRAMMAR:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_GRAMMAR=${CHATAFL_NO_GRAMMAR}"
+  [[ -n "${CHATAFL_NO_ENRICH:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_ENRICH=${CHATAFL_NO_ENRICH}"
+  [[ -n "${CHATAFL_NO_PLATEAU:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_PLATEAU=${CHATAFL_NO_PLATEAU}"
+  [[ -n "${CHATAFL_TRIGGER_POLICY:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_TRIGGER_POLICY=${CHATAFL_TRIGGER_POLICY}"
 
   # Target-environment switches shared by ALL fuzzer containers (fairness:
   # environment arms must apply identically to loopfuzz/chatafl/cl1/cl2/aflnet,
@@ -891,6 +921,8 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_CHURN_CAP:-}" ]]              && ABLATION_FLAGS+=" -e CHATAFL_CHURN_CAP=${CHATAFL_CHURN_CAP}"
   [[ -n "${CHATAFL_SEED_RETRY_CAP:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_SEED_RETRY_CAP=${CHATAFL_SEED_RETRY_CAP}"
   [[ -n "${CHATAFL_CODE_RETAIN:-}" ]]            && ABLATION_FLAGS+=" -e CHATAFL_CODE_RETAIN=${CHATAFL_CODE_RETAIN}"
+  [[ -n "${CHATAFL_STATE_RETAIN:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_STATE_RETAIN=${CHATAFL_STATE_RETAIN}"
+  [[ -n "${CHATAFL_PROV_PREFIX_PROTECT:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_PROV_PREFIX_PROTECT=${CHATAFL_PROV_PREFIX_PROTECT}"
   [[ -n "${CHATAFL_TEST_FORCE_CODE_RETAIN:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_TEST_FORCE_CODE_RETAIN=${CHATAFL_TEST_FORCE_CODE_RETAIN}"
   [[ -n "${CHATAFL_NO_LLM:-}" ]]                 && ABLATION_FLAGS+=" -e CHATAFL_NO_LLM=${CHATAFL_NO_LLM}"
   [[ -n "${CHATAFL_STATE_SELECT:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_STATE_SELECT=${CHATAFL_STATE_SELECT}"
@@ -920,6 +952,46 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_LLM_TIMEOUT:-}" ]]          && LLM_NET_FLAGS+=" -e CHATAFL_LLM_TIMEOUT=${CHATAFL_LLM_TIMEOUT}"
   [[ -n "${CHATAFL_LLM_CONNECT_TIMEOUT:-}" ]]  && LLM_NET_FLAGS+=" -e CHATAFL_LLM_CONNECT_TIMEOUT=${CHATAFL_LLM_CONNECT_TIMEOUT}"
   [[ -n "${CHATAFL_ENRICH_TIMEOUT:-}" ]]       && LLM_NET_FLAGS+=" -e CHATAFL_ENRICH_TIMEOUT=${CHATAFL_ENRICH_TIMEOUT}"
+
+  MOCK_FLAGS=""
+  MOCK_MOUNT=""
+  MOCK_SETUP=""
+  MOCK_CAPTURE=""
+  if [[ "$FUZZER" == "loopfuzz" && "${CHATAFL_MOCK_LLM:-0}" == "1" ]]; then
+    MOCK_SOURCE="${PROJECT_ROOT}/loopfuzz/llm_mock_v5.py"
+    if [[ ! -f "$MOCK_SOURCE" ]]; then
+      printf "\n${LOG_TAG}: [ERROR] Mock server source not found: %s\n" "$MOCK_SOURCE" >&2
+      exit 2
+    fi
+    MOCK_PORT="${MOCK_PORT:-8099}"
+    if [[ ! "$MOCK_PORT" =~ ^[0-9]+$ ]] || (( MOCK_PORT < 1 || MOCK_PORT > 65535 )); then
+      printf "\n${LOG_TAG}: [ERROR] MOCK_PORT must be an integer in [1, 65535]\n" >&2
+      exit 2
+    fi
+    # CHATAFL_NO_LLM must NOT be forced here: a nollm8 arm exports =1 and a
+    # later duplicate -e flag would silently clobber it (reproduced
+    # 2026-11-02: mock's hardcoded =0 left 195 live calls in nollm8).
+    MOCK_FLAGS=" -e CHATAFL_MOCK_LLM=1 -e CHATAFL_NO_LLM=${CHATAFL_NO_LLM:-0} -e MOCK_PORT=${MOCK_PORT} -e MOCK_LATENCY=${MOCK_LATENCY:-1} -e MOCK_ERROR_RATE=${MOCK_ERROR_RATE:-1.5} -e MOCK_SEED=${MOCK_SEED:-20261102} -e CHATAFL_LLM_BASE=http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
+    [[ -n "${MOCK_MODEL:-}" ]] && MOCK_FLAGS+=" -e MOCK_MODEL=${MOCK_MODEL}"
+    [[ -n "${CHATAFL_MOCK_MIX:-}" ]] && MOCK_FLAGS+=" -e CHATAFL_MOCK_MIX=${CHATAFL_MOCK_MIX}"
+    MOCK_MOUNT="-v ${MOCK_SOURCE}:/tmp/llm_mock_v5.py:ro"
+    # Each Docker network namespace gets its own loopback listener and can
+    # therefore use the same port without host publication or cross-arm traffic.
+    MOCK_SETUP="python3 /tmp/llm_mock_v5.py > /tmp/loopfuzz_mock.log 2>&1 & MOCK_PID=\$!; \
+        MOCK_READY=0; for MOCK_TRY in \$(seq 1 60); do \
+          if python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:${MOCK_PORT}/healthz\", timeout=1)' >/dev/null 2>&1; then MOCK_READY=1; break; fi; \
+          sleep 0.5; \
+        done; \
+        if [ \$MOCK_READY -ne 1 ]; then echo '[MOCK] health check failed'; cat /tmp/loopfuzz_mock.log; exit 125; fi; \
+        gcc -O1 -g -ffunction-sections -fdata-sections -Wno-unused-result -I /tmp/loopfuzz-src /tmp/loopfuzz-src/chat-llm.c /tmp/loopfuzz-src/llm_preflight.c -o /tmp/loopfuzz-llm-preflight -Wl,--gc-sections -lcurl -ljson-c -lpcre2-8 -lpthread -lm && /tmp/loopfuzz-llm-preflight || exit 125;"
+    MOCK_CAPTURE="python3 -c 'import urllib.request; data=urllib.request.urlopen(\"http://127.0.0.1:${MOCK_PORT}/__mock__/stats\", timeout=3).read(); open(\"/tmp/loopfuzz_mock_stats.json\", \"wb\").write(data)' || echo '[MOCK] stats collection failed'; \
+        MOCK_RUN_CONFIG=\$(find ${WORKDIR} -type f -path '*/${OUTDIR}/run-config.jsonl' -print -quit); \
+        if [ -n \$MOCK_RUN_CONFIG ] && [ -s /tmp/loopfuzz_mock_stats.json ]; then \
+          python3 -c 'import json,sys; p=sys.argv[1]; cfg=json.load(open(\"/tmp/loopfuzz_mock_stats.json\"))[\"effective_config\"]; rows=[json.loads(x) for x in open(p) if x.strip()]; [r.update(mock_gateway=cfg) for r in rows]; open(p,\"w\").write(\"\".join(json.dumps(r,sort_keys=True)+\"\\n\" for r in rows))' \$MOCK_RUN_CONFIG && \
+          MOCK_OUTPUT_DIR=\$(dirname \$MOCK_RUN_CONFIG); tar -czf '${WORKDIR}/${OUTDIR}.tar.gz' -C \$(dirname \$MOCK_OUTPUT_DIR) \$(basename \$MOCK_OUTPUT_DIR); \
+        fi; \
+        kill \$MOCK_PID 2>/dev/null || true; wait \$MOCK_PID 2>/dev/null || true;"
+  fi
 
   # Attack-channel flags (Stage 1-4, 2026-08-21): forward the CHATAFL_ATTACK_*
   # gates into the container when the operator exports them.  All default OFF
@@ -973,6 +1045,13 @@ for i in $(seq 1 $RUNS); do
     # Volume挂载本地代码并在容器内重新编译
 	    # --memory: 6g (6 groups × 6g + 6 × 0.25g brokers + 2g overhead ≈ 39.5 GB, safe with 44 GB host)
     # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
+    # NOTE(kill-grace): 镜像内 run 脚本用 `timeout -k 30s`。战役到期发
+    # SIGTERM 时，若 afl-fuzz 正阻塞在一次在途 LLM 调用上（上限
+    # CHATAFL_LLM_TIMEOUT_MS=300s），30s 宽限不够 → SIGKILL=137（曾被
+    # 误标 oom_killed；20261031 批 2/18 即此机制：死亡时刻宿主内存 77%
+    # 可用、无内核 OOM 记录、exit 恰在 132min 到期点）。下方 sed 把容器
+    # 内 run 的宽限期提到 360s（≥ LLM 超时 + 余量）；run_summary.py 复核
+    # 137 时须配 --timeout-min 区分 timeout_kill 与真 oom。
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
@@ -981,6 +1060,7 @@ for i in $(seq 1 $RUNS); do
       -e CHATAFL_HYPOTHESIS=1 \
       -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
       ${ABLATION_FLAGS} \
+      ${MOCK_FLAGS} \
       ${TARGET_ENV_FLAGS} \
       ${TOKEN_FLAGS} \
       ${LLM_NET_FLAGS} \
@@ -988,13 +1068,16 @@ for i in $(seq 1 $RUNS); do
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       -v "${PROJECT_ROOT}/LoopFuzz:/tmp/loopfuzz-src:ro" \
+      ${MOCK_MOUNT} \
       ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
         ${SUBJECT_COPY}\
+        ${MOCK_SETUP}\
         echo '[DEV] Copying and compiling updated code...' && \
         if [ "\${SKIP_LOOPFUZZ_REBUILD:-0}" = "1" ]; then echo '[DEV] SKIP_LOOPFUZZ_REBUILD=1: using image-embedded binary'; elif [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; cd /home/ubuntu/loopfuzz; make -j\$(nproc); else cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null; cd /home/ubuntu/loopfuzz; make clean; make -j\$(nproc); fi && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
+        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; ${MOCK_CAPTURE} exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
@@ -1011,6 +1094,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-src/*.c /tmp/chatafl-src/*.h /home/ubuntu/chatafl/ && \
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
+        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
@@ -1027,6 +1111,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl1-src/*.c /tmp/chatafl-cl1-src/*.h /home/ubuntu/chatafl-cl1/ && \
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
+        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
@@ -1043,6 +1128,7 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
+        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "stateafl" ]]; then
     # StateAFL：独立镜像（目标用其 afl-clang-fast 编译）+ 源码挂载重编译，无 LLM。
@@ -1063,9 +1149,11 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/stateafl && make clean && make -j\$(nproc) && \
         # stateafl 的 afl-fuzz 在战役结束时偶发 139 退出(已知不稳定,见 2fe412778),
         # 保留 139→0 掩码;其余 fuzzer 的 139 是真实段错误,必须让 POSTRUN 看到。
+        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
@@ -1101,6 +1189,21 @@ wait
 RUN_COMPLETED=1
 mark_completed_samples
 cleanup_watchdogs
+
+if [[ "$FUZZER" == "loopfuzz" && "${CHATAFL_MOCK_LLM:-0}" == "1" ]]; then
+  MOCK_METRICS_DIR="${SAVETO}/mock_metrics"
+  mkdir -p "$MOCK_METRICS_DIR"
+  for run_index in "${!cids[@]}"; do
+    id="${cids[$run_index]}"
+    metric_path="${MOCK_METRICS_DIR}/${OUTDIR}_run$((run_index + 1)).json"
+    if docker cp "${id}:/tmp/loopfuzz_mock_stats.json" "$metric_path" >/dev/null 2>&1; then
+      printf "\n${LOG_TAG}: [MOCK] metrics saved: %s\n" "$metric_path"
+    else
+      printf "\n${LOG_TAG}: [WARN] Mock metrics missing for run %d (container %s)\n" "$((run_index + 1))" "${id:0:12}"
+    fi
+  done
+  fix_result_permissions "$MOCK_METRICS_DIR"
+fi
 
 collect_results_with_recovery
 

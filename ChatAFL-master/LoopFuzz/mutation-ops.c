@@ -3,6 +3,11 @@
  * for S1-S4 + auth_prefix_protect) with six new version-valid strategies
  * (S5-S10). See mutation-ops.h for the strategy/CVE map. */
 
+/* memmem(3) is a GNU extension; without this the clean build emits an
+ * implicit-declaration warning and the returned pointer is truncated
+ * through int on 64-bit hosts (GLM53 audit, 2026-11-05). */
+#define _GNU_SOURCE
+
 #include "mutation-ops.h"
 #include "knowledge-level.h"
 

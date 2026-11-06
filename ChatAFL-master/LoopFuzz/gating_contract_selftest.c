@@ -35,6 +35,10 @@ static u8 gating_test_driver(char **argv, u32 timeout) {
   messages_sent = 1;
   response_greeting_bytes = 0;
   response_single_connection = 1;
+  /* Emulates the freeze-time stamp send_over_network() applies when it
+   * clears the response buffer: these responses belong to the invocation
+   * that just ran. */
+  response_invocation_id = target_invocation_seq;
   return FAULT_NONE;
 }
 
@@ -204,6 +208,671 @@ static void test_decision_logs_trial_mode_snapshot(void) {
   admission_accounting_enabled = 0;
 }
 
+/* P0-9 audit fix: admission_*_fail counters must count the OBSERVED tuple,
+ * not the leave-one-out forced-pass values — otherwise lou8 reports
+ * admission_u_fail=0 while U genuinely fails ~50x/run (20261031 batch:
+ * lou8=0 vs wrapgate8=46/58/46). */
+static void test_leave_one_out_counts_observed(void) {
+  char dir[] = "/tmp/loopfuzz-lou-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  out_dir = (u8 *)dir;
+  event_log_enabled = 1;
+  admission_accounting_enabled = 1;
+  u64 u_fail_before = admission_u_fail, total_before = admission_candidate_total;
+
+  admission_snapshot_t snap;
+  memset(&snap, 0, sizeof(snap));
+  admission_evidence_t ev;
+  memset(&ev, 0, sizeof(ev));
+  /* lou8 semantics: U observed FAIL, forced to pass for the decision. */
+  ev.p_pass = ev.p_pass_obs = 1;
+  ev.r_pass = ev.r_pass_obs = 1;
+  ev.u_pass = 1;          /* effective (forced) */
+  ev.u_pass_obs = 0;      /* observed truth */
+  ev.disposition = EC_REJECT;
+  admission_log_candidate_event("selftest", "request", -1, 0,
+                                (const u8 *)"x", 1, &snap, &snap, &snap,
+                                &ev, NULL, 1, 0, 0, 0, 0);
+  assert(admission_candidate_total == total_before + 1);
+  assert(admission_u_fail == u_fail_before + 1);
+
+  /* Without ablation both tuples agree — no phantom fail counted. */
+  ev.u_pass = ev.u_pass_obs = 1;
+  admission_log_candidate_event("selftest", "request", -1, 0,
+                                (const u8 *)"x", 1, &snap, &snap, &snap,
+                                &ev, NULL, 1, 0, 0, 0, 0);
+  assert(admission_candidate_total == total_before + 2);
+  assert(admission_u_fail == u_fail_before + 1);
+  admission_accounting_enabled = 0;
+}
+
+/* Trial coverage is measured on a scratch virgin map. Faulting trials must
+ * not enter the main crash/hang feedback path or create queue entries. */
+static void test_trial_save_is_non_destructive(void) {
+  memset(virgin_bits, 0xff, MAP_SIZE);
+  memset(virgin_tmout, 0xff, MAP_SIZE);
+  memset(virgin_crash, 0xff, MAP_SIZE);
+  memset(trace_bits, 0, MAP_SIZE);
+  trace_bits[17] = 1;
+  u8 virgin_before[MAP_SIZE];
+  u8 timeout_before[MAP_SIZE];
+  u8 crash_before[MAP_SIZE];
+  memcpy(virgin_before, virgin_bits, MAP_SIZE);
+  memcpy(timeout_before, virgin_tmout, MAP_SIZE);
+  memcpy(crash_before, virgin_crash, MAP_SIZE);
+
+  u32 queued_before = queued_paths;
+  u64 crashes_before = total_crashes;
+  u64 unique_crashes_before = unique_crashes;
+  u64 tmouts_before = total_tmouts;
+  u64 unique_tmouts_before = unique_tmouts;
+  u64 hangs_before = unique_hangs;
+  u8 old_trial_mode = admission_trial_mode;
+  u8 old_crash_mode = crash_mode;
+  u8 old_bitmap_changed = bitmap_changed;
+  admission_trial_mode = 1;
+  crash_mode = FAULT_NONE;
+  bitmap_changed = 0;
+
+  assert(save_if_interesting(NULL, trace_bits, 1, FAULT_NONE) == 0);
+  assert(last_trial_hnb == 2);
+  assert(memcmp(virgin_bits, virgin_before, MAP_SIZE) == 0);
+  assert(bitmap_changed == 0);
+  assert(queued_paths == queued_before && queue == NULL);
+
+  assert(save_if_interesting(NULL, trace_bits, 1, FAULT_TMOUT) == 0);
+  assert(last_trial_hnb == 0);
+  assert(save_if_interesting(NULL, trace_bits, 1, FAULT_CRASH) == 0);
+  assert(last_trial_hnb == 0);
+  assert(memcmp(virgin_bits, virgin_before, MAP_SIZE) == 0);
+  assert(memcmp(virgin_tmout, timeout_before, MAP_SIZE) == 0);
+  assert(memcmp(virgin_crash, crash_before, MAP_SIZE) == 0);
+  assert(queued_paths == queued_before && queue == NULL);
+  assert(total_crashes == crashes_before && unique_crashes == unique_crashes_before);
+  assert(total_tmouts == tmouts_before && unique_tmouts == unique_tmouts_before);
+  assert(unique_hangs == hangs_before);
+  admission_trial_mode = old_trial_mode;
+  crash_mode = old_crash_mode;
+  bitmap_changed = old_bitmap_changed;
+}
+
+/* CSV #8 (2026-11-02): the three U policies must differ exactly on the
+ * error-veto dimension.  A 530 FTP suffix fails strict AND protocol, but
+ * passes soft with the tolerated error recorded (mis-admission measurable).
+ * Binary-protocol indicators veto only under the protocol policy. */
+static unsigned int *fake_ftp_extractor(unsigned char *buf, unsigned int size,
+                                        unsigned int *count_ref) {
+  (void)buf; (void)size;
+  /* Production contract: the caller frees the returned array. */
+  unsigned int *states = ck_alloc(sizeof(unsigned int) * 2);
+  states[0] = 530;
+  states[1] = 220;
+  *count_ref = 2;
+  return states;
+}
+
+static void test_u_policy_semantics(void) {
+  extract_response_codes = &fake_ftp_extractor;
+  char *old_protocol = protocol_name;
+  protocol_name = "FTP";
+  candidate_single_connection = 1;
+  static unsigned char reply[] = "530 login incorrect\r\n220 bye\r\n";
+  candidate_response = reply;
+  candidate_response_size = sizeof(reply) - 1;
+  static u32 ends[2] = {21, sizeof(reply) - 1};
+  candidate_response_ends = ends;
+  candidate_messages_sent = 2;
+  candidate_message_first = 0;
+  candidate_message_count = 2;
+  candidate_greeting_bytes = 0;
+  last_common_fuzz_fault = FAULT_NONE;
+  u64 rejected_before = u_policy_error_rejects;
+  u64 tolerated_before = u_policy_soft_tolerated;
+
+  admission_evidence_t ev;
+  memset(&ev, 0, sizeof(ev));
+  u_policy = 0; u_policy_name = "strict";
+  admission_evaluate_candidate_u(&ev, 1);
+  assert(ev.u_binding_valid && ev.u_suffix_count == 2);
+  assert(ev.u_pass == 0 && ev.u_error_states == 1);
+  assert(u_policy_error_rejects == rejected_before + 1);
+
+  memset(&ev, 0, sizeof(ev));
+  u_policy = 1; u_policy_name = "soft";
+  admission_evaluate_candidate_u(&ev, 1);
+  assert(ev.u_pass == 1 && ev.u_soft_tolerated == 1 && ev.u_error_states == 1);
+  assert(u_policy_soft_tolerated == tolerated_before + 1);
+
+  memset(&ev, 0, sizeof(ev));
+  u_policy = 2; u_policy_name = "protocol";
+  admission_evaluate_candidate_u(&ev, 1);
+  assert(ev.u_pass == 0 && ev.u_error_states == 1); /* FTP keeps 4xx/5xx veto */
+
+  /* Binary-protocol semantics: no 3-digit-code veto exists for these, so
+   * strict cannot see their error indicators at all; the protocol policy
+   * vetoes on the protocol's own indicator. */
+  u_policy = 0;
+  protocol_name = "SSH";
+  assert(u_policy_state_is_error(1) == 0);   /* strict: SSH DISCONNECT invisible */
+  u_policy = 2;
+  assert(u_policy_state_is_error(1) == 1);   /* protocol: DISCONNECT is an error */
+  protocol_name = "TLS";
+  assert(u_policy_state_is_error(0x1502) == 1 && u_policy_state_is_error(0x1602) == 0);
+  protocol_name = "DNS";
+  assert(u_policy_state_is_error(0x0005) == 1 && u_policy_state_is_error(0x0000) == 0);
+  protocol_name = "DICOM";
+  assert(u_policy_state_is_error(3) == 1 && u_policy_state_is_error(6) == 1 &&
+         u_policy_state_is_error(1) == 0);
+  u_policy = 0;
+  protocol_name = old_protocol;
+
+  /* Manual reset: candidate_response points at static test storage, so the
+   * freeing admission_clear_response_capture() must not run here. */
+  candidate_response = NULL;
+  candidate_response_ends = NULL;
+  candidate_response_size = 0;
+  candidate_messages_sent = 0;
+  candidate_message_first = candidate_message_count = 0;
+  candidate_single_connection = 0;
+  candidate_response_span_valid = 0;
+  extract_response_codes = NULL;
+}
+
+/* CSV #7 (2026-11-02): an ordinary-match root shares the exact 64-call
+ * debit/refusal semantics, but its close RETAINS the corpus file — the
+ * retention-policy difference must be the only asymmetry. */
+static void test_ordinary_match_close_keeps_files(void) {
+  char dir[] = "/tmp/loopfuzz-ordmatch-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  char queue_dir[PATH_MAX], region_dir[PATH_MAX], replay_dir[PATH_MAX];
+  snprintf(queue_dir, sizeof(queue_dir), "%s/queue", dir);
+  snprintf(region_dir, sizeof(region_dir), "%s/regions", dir);
+  snprintf(replay_dir, sizeof(replay_dir), "%s/replayable-queue", dir);
+  make_dir(queue_dir); make_dir(region_dir); make_dir(replay_dir);
+  out_dir = (u8 *)dir;
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 5;
+  root.is_provisional = 1;
+  root.prov_ordinary_match = 1;
+  root.prov_candidate_id = 55;
+  root.prov_budget_left = 2;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  root.fname = (u8 *)alloc_printf("%s/queue/id:000005,ord", dir);
+  FILE *fp = fopen((char *)root.fname, "w");
+  assert(fp && fputs("USER x\r\n", fp) >= 0 && fclose(fp) == 0);
+  queue = queue_top = &root;
+  llm_candidate_lineage_pin = 55;
+  execution_kind = "mutation";
+  u64 closed_before = ordinary_match_closed;
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(root.prov_budget_left == 0 && root.prov_desc_execs == 2);
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(root.prov_expired && !root.is_provisional);
+  assert(ordinary_match_closed == closed_before + 1);
+  struct stat st;
+  assert(stat((char *)root.fname, &st) == 0);   /* file retained, not unlinked */
+  ck_free(root.fname);
+  queue = queue_top = NULL;
+  llm_candidate_lineage_pin = 0;
+}
+
+/* The pre-annotation execution is logged as prov-annotate but is not a
+ * descendant mutation. Verify that only a real mutation consumes the root's
+ * validation ledger. */
+static void test_probe_does_not_consume_descendant_budget(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.is_provisional = 1;
+  root.prov_candidate_id = 77;
+  root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  const char *old_kind = execution_kind;
+  u64 saved_lin = lineage_invocation_total, saved_ord = ord_invocation_total;
+  u64 saved_pin = llm_candidate_lineage_pin;
+  llm_candidate_lineage_pin = 77;          /* probe carries the ancestry */
+  execution_kind = "prov-annotate";
+  assert(execution_admit(&root, 77));
+  assert(root.prov_budget_left == 64 && root.prov_desc_execs == 0);
+  assert(lineage_invocation_total == saved_lin + 1);   /* lineage, not ordinary */
+  assert(ord_invocation_total == saved_ord);
+  execution_kind = "mutation";
+  assert(execution_admit(&root, 77));
+  assert(root.prov_budget_left == 63 && root.prov_desc_execs == 1);
+  execution_kind = old_kind;
+  llm_candidate_lineage_pin = saved_pin;
+  lineage_invocation_total = saved_lin; ord_invocation_total = saved_ord;
+}
+
+/* Ordinary-match roots defer to regular provisional roots, then receive a
+ * deterministic fallback service so an all-ordinary campaign cannot finish
+ * with probe-only evidence. */
+static void test_select_service_ordinary_fallback(void) {
+  struct queue_entry ord, prov;
+  region_t ord_regions[1], prov_regions[1];
+  memset(&ord, 0, sizeof(ord));
+  memset(&prov, 0, sizeof(prov));
+  memset(ord_regions, 0, sizeof(ord_regions));
+  memset(prov_regions, 0, sizeof(prov_regions));
+  static u32 seq = 220;
+  ord_regions[0].state_sequence = &seq; ord_regions[0].state_count = 1;
+  prov_regions[0].state_sequence = &seq; prov_regions[0].state_count = 1;
+  ord.index = 1; ord.is_provisional = 1; ord.prov_ordinary_match = 1;
+  ord.prov_candidate_id = 11; ord.prov_budget_left = 64;
+  ord.prov_deadline_ms = get_cur_time() + 1000;   /* earlier deadline */
+  ord.regions = ord_regions; ord.region_count = 1;
+  prov.index = 2; prov.is_provisional = 1;
+  prov.prov_candidate_id = 12; prov.prov_budget_left = 64;
+  prov.prov_deadline_ms = get_cur_time() + 60000;
+  prov.regions = prov_regions; prov.region_count = 1;
+  ord.next = &prov;
+  queue = &ord; queue_top = &prov;
+  u32 state_out = 0;
+  struct queue_entry *picked = provisional_select_service(&state_out);
+  assert(picked == &prov);                     /* EDF picks the provisional root */
+  prov.is_provisional = 0; prov.prov_converted = 1;
+  picked = provisional_select_service(&state_out);
+  assert(picked == &ord);                      /* fallback services ordinary */
+  assert(ord.is_provisional && !ord.prov_expired);
+  queue = queue_top = NULL;
+}
+
+/* The EDF arm uses provisional_expire's shared error paths. Ordinary
+ * roots and their descendants must still retain every corpus file. */
+static void test_ordinary_edf_expiry_keeps_files(void) {
+  char dir[] = "/tmp/loopfuzz-ordedf-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  const char *subdirs[] = {"queue", "regions", "replayable-queue"};
+  for (u32 i = 0; i < 3; i++) {
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/%s", dir, subdirs[i]);
+    make_dir(path);
+  }
+  out_dir = (u8 *)dir;
+  u8 old_edf = ordinary_edf_enabled, old_log = event_log_enabled;
+  u64 old_live = provisional_live;
+  ordinary_edf_enabled = 1;
+  event_log_enabled = 0;
+  for (u32 failure = 0; failure < 3; failure++) {
+    struct queue_entry root, child;
+    memset(&root, 0, sizeof(root));
+    memset(&child, 0, sizeof(child));
+    root.index = 100 + 2 * failure;
+    root.is_provisional = root.prov_ordinary_match = 1;
+    root.prov_candidate_id = 500 + failure;
+    root.llm_origin_candidate_id = root.prov_candidate_id;
+    root.prov_budget_left = failure == 0 ? 0 : 64;
+    root.prov_deadline_ms = failure == 1 ? 0 : get_cur_time() + 60000;
+    child.index = root.index + 1;
+    child.llm_origin_candidate_id = root.prov_candidate_id;
+    root.next = &child;
+    struct queue_entry *entries[] = {&root, &child};
+    for (u32 k = 0; k < 2; k++) {
+      entries[k]->fname = (u8 *)alloc_printf("%s/queue/id:%06u,ord", dir,
+                                            entries[k]->index);
+      for (u32 i = 0; i < 3; i++) {
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s/%s/%s", dir, subdirs[i],
+                 basename(entries[k]->fname));
+        FILE *fp = fopen(path, "w");
+        assert(fp && fputs("USER x\r\n", fp) >= 0 && fclose(fp) == 0);
+      }
+    }
+    queue = &root; queue_top = &child;
+    provisional_live = 7; /* ordinary roots never belong to this counter */
+    u64 closed_before = ordinary_match_closed;
+    u64 expired_before = provisional_expired_total;
+    assert(provisional_select_service(NULL) == NULL);
+    assert(root.prov_expired && child.prov_expired && !root.is_provisional);
+    assert(ordinary_match_closed == closed_before + 1);
+    assert(provisional_expired_total == expired_before && provisional_live == 7);
+    for (u32 k = 0; k < 2; k++) {
+      for (u32 i = 0; i < 3; i++) {
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s/%s/%s", dir, subdirs[i],
+                 basename(entries[k]->fname));
+        assert(access(path, F_OK) == 0);
+      }
+      ck_free(entries[k]->fname);
+    }
+  }
+  provisional_live = old_live;
+  ordinary_edf_enabled = old_edf;
+  event_log_enabled = old_log;
+  queue = queue_top = NULL;
+}
+
+/* Pipelining-aware binding (2026-11-03 fix): batched SMTP replies leave
+ * zero-delta boundaries inside the candidate window; binding must hold with
+ * >=1 non-empty span, still rejecting all-empty windows and non-monotonic
+ * boundaries.  Measured exim: every trial had 895,895,895-style repeats and
+ * U failed structurally 31/31 before the fix. */
+static void test_pipelined_span_binding(void) {
+  u32 start = 0, end = 0;
+  u32 pipelined[] = {100, 100, 150, 150};
+  assert(admission_response_span(pipelined, 4, 150, 0, 0, 4, &start, &end));
+  assert(start == 0 && end == 150);
+  u32 mixed[] = {40, 40, 40, 90};
+  assert(admission_response_span(mixed, 4, 90, 20, 1, 3, &start, &end));
+  u32 all_flat[] = {80, 80, 80};
+  assert(!admission_response_span(all_flat, 3, 80, 80, 0, 3, &start, &end));
+  u32 backwards[] = {50, 40, 60};
+  assert(!admission_response_span(backwards, 3, 60, 0, 0, 3, &start, &end));
+  /* Majority-annotated executability: 2/3 annotated passes, 1/3 fails. */
+  struct queue_entry q;
+  region_t regions[3];
+  memset(&q, 0, sizeof(q));
+  memset(regions, 0, sizeof(regions));
+  static u32 seq = 220;
+  regions[0].state_sequence = &seq; regions[0].state_count = 1;
+  regions[2].state_sequence = &seq; regions[2].state_count = 1;
+  q.regions = regions; q.region_count = 3;
+  assert(entry_can_fuzz_full_session(&q));
+  regions[2].state_sequence = NULL; regions[2].state_count = 0;
+  assert(!entry_can_fuzz_full_session(&q));
+}
+
+/* Opportunity gate (2026-11-03 fix): EDF service parks while havoc runs hot
+ * and resumes when it stalls, with window bookkeeping preserved. */
+/* S1 prefix protection (2026-11-05): under forced provisional service the
+ * M2 range must clamp to the entry's recorded candidate window so the
+ * reaching prefix replays verbatim; unknown windows and the kill switch
+ * keep the legacy whole-session behavior. */
+static void test_prov_prefix_protect_m2(void) {
+  struct queue_entry root;
+  region_t regions[5];
+  memset(&root, 0, sizeof(root));
+  memset(regions, 0, sizeof(regions));
+  static u32 seq = 230;
+  for (int i = 0; i < 5; i++) {
+    regions[i].state_sequence = &seq; regions[i].state_count = 1;
+  }
+  root.index = 4; root.is_provisional = 1;
+  root.regions = regions; root.region_count = 5;
+  u32 start = 999, count = 0;
+  u8 saved_ov = full_session_m2_override, saved_pp = prov_prefix_protect;
+  full_session_m2_override = 1; prov_prefix_protect = 1;
+
+  /* window unknown (count==0) -> legacy full session */
+  root.prov_cand_first = 0; root.prov_cand_count = 0;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 0 && count == 5);
+
+  /* window [2,3) -> M2 restricted to the candidate messages */
+  root.prov_cand_first = 2; root.prov_cand_count = 2;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 2 && count == 2);
+
+  /* window overrun is clamped to the saved regions */
+  root.prov_cand_first = 3; root.prov_cand_count = 9;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 3 && count == 2);
+
+  /* first beyond saved regions -> legacy full session */
+  root.prov_cand_first = 7; root.prov_cand_count = 2;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 0 && count == 5);
+
+  /* kill switch restores whole-session M2 */
+  prov_prefix_protect = 0;
+  root.prov_cand_first = 2; root.prov_cand_count = 2;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 0 && count == 5);
+  prov_prefix_protect = 1;
+
+  /* the S1 window path does not require per-region annotation (entry_
+   * can_fuzz_full_session judges serviceability separately); the legacy
+   * fallback still rejects unannotated sessions. */
+  regions[1].state_sequence = NULL; regions[1].state_count = 0;
+  root.prov_cand_first = 2; root.prov_cand_count = 2;
+  assert(entry_m2_range(&root, 0, &start, &count) == 1);
+  assert(start == 2 && count == 2);
+  root.prov_cand_count = 0;
+  assert(entry_m2_range(&root, 0, &start, &count) == 0);
+
+  full_session_m2_override = saved_ov; prov_prefix_protect = saved_pp;
+}
+
+/* Channel-consistent accounting (2026-11-06, GLM53 audit): converted
+ * roots and durable-lineage descendants must feed the LINEAGE channel,
+ * never the ordinary denominator; ancestry-free calls feed ordinary. */
+static void test_channel_accounting(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 11; root.is_provisional = 1;
+  root.prov_candidate_id = 42; root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  queue = queue_top = &root;
+
+  u64 saved_lin = lineage_invocation_total, saved_ord = ord_invocation_total;
+  u64 saved_chg = prov_charged_total;
+
+  /* Live root + ancestry: lineage channel + charged budget. */
+  llm_candidate_lineage_pin = 42;
+  execution_kind = "mutation";
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(lineage_invocation_total == saved_lin + 1);
+  assert(ord_invocation_total == saved_ord);
+  assert(prov_charged_total == saved_chg + 1);
+  assert(root.prov_desc_execs == 1);
+
+  /* Converted root: budget no longer debited, but the call STAYS in the
+   * lineage channel (the 2026-11-05 bug let it vanish from both). */
+  root.prov_converted = 1;
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(lineage_invocation_total == saved_lin + 2);
+  assert(ord_invocation_total == saved_ord);
+  assert(prov_charged_total == saved_chg + 1);
+  assert(root.prov_desc_execs == 1);
+
+  /* Durable-lineage call (no live provisional root): lineage channel,
+   * never the ordinary denominator (numerator/denominator alignment). */
+  root.is_provisional = 0;
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(lineage_invocation_total == saved_lin + 3);
+  assert(ord_invocation_total == saved_ord);
+
+  /* Ancestry-free call: ordinary channel. */
+  llm_candidate_lineage_pin = 0;
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(lineage_invocation_total == saved_lin + 3);
+  assert(ord_invocation_total == saved_ord + 1);
+
+  llm_candidate_lineage_pin = 0;
+  lineage_invocation_total = saved_lin; ord_invocation_total = saved_ord;
+  prov_charged_total = saved_chg;
+  queue = queue_top = NULL;
+}
+
+/* Conversion classification (2026-11-06 audit fix): the first in-budget
+ * hnb==2 conversion is split into immediate-rescue (save positions subset
+ * of the recorded trial positions) vs beyond-trial novelty. The virgin
+ * map must NOT be mutated at admission (reverted commit variant). */
+static void test_conversion_classification(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 21; root.is_provisional = 1;
+  root.prov_candidate_id = 42; root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  u32 *trial_pos = ck_alloc(3 * sizeof(u32));
+  trial_pos[0] = 5; trial_pos[1] = 9; trial_pos[2] = 20;
+  root.prov_trial_pos = trial_pos; root.prov_trial_pos_n = 3;
+  queue = queue_top = &root;
+  u64 saved_i = prov_conv_immediate_only, saved_b = prov_conv_beyond_trial;
+  u64 saved_u = prov_conv_unclassified;
+
+  /* subset -> immediate rescue */
+  u32 save_sub[2] = {5, 9};
+  memcpy(last_lineage_save_pos, save_sub, sizeof(save_sub));
+  last_lineage_save_pos_n = 2;
+  provisional_note_gain(42, 100);
+  assert(root.prov_conv_class == 1);
+  assert(prov_conv_immediate_only == saved_i + 1);
+  assert(root.prov_converted == 1);
+
+  /* beyond-trial position -> descendant novelty */
+  struct queue_entry root2;
+  memset(&root2, 0, sizeof(root2));
+  root2.index = 22; root2.is_provisional = 1;
+  root2.prov_candidate_id = 43; root2.prov_budget_left = 64;
+  root2.prov_deadline_ms = get_cur_time() + 60000;
+  u32 *trial_pos2 = ck_alloc(3 * sizeof(u32));
+  memcpy(trial_pos2, trial_pos, 3 * sizeof(u32));
+  root2.prov_trial_pos = trial_pos2; root2.prov_trial_pos_n = 3;
+  queue = &root2; queue_top = &root2;
+  u32 save_beyond[2] = {5, 17};
+  memcpy(last_lineage_save_pos, save_beyond, sizeof(save_beyond));
+  last_lineage_save_pos_n = 2;
+  provisional_note_gain(43, 101);
+  assert(root2.prov_conv_class == 2);
+  assert(prov_conv_beyond_trial == saved_b + 1);
+  assert(root2.prov_trial_pos == NULL);      /* freed after conversion */
+
+  /* missing capture -> unclassified, no map mutation path involved */
+  struct queue_entry root3;
+  memset(&root3, 0, sizeof(root3));
+  root3.index = 23; root3.is_provisional = 1;
+  root3.prov_candidate_id = 44; root3.prov_budget_left = 64;
+  root3.prov_deadline_ms = get_cur_time() + 60000;
+  queue = &root3; queue_top = &root3;
+  last_lineage_save_pos_n = 0;
+  provisional_note_gain(44, 102);
+  assert(root3.prov_conv_class == 0);
+  assert(prov_conv_unclassified == saved_u + 1);
+
+  /* subset checker itself — use a live copy: the roots above already
+   * freed their trial-position arrays at conversion. */
+  u32 live_t[3] = {5, 9, 20};
+  assert(prov_pos_subset(save_sub, 2, live_t, 3) == 1);
+  assert(prov_pos_subset(save_beyond, 2, live_t, 3) == 0);
+  assert(prov_pos_subset(live_t, 3, live_t, 3) == 1);
+
+  prov_conv_immediate_only = saved_i; prov_conv_beyond_trial = saved_b;
+  prov_conv_unclassified = saved_u;
+  last_lineage_save_pos_n = 0;
+  queue = queue_top = NULL;
+}
+
+/* S2 state-evidence retention (2026-11-05): the routing predicate must
+ * upgrade exactly the strict-U rejects whose only evidence is response-
+ * state novelty, and never override durable/provisional/code-retain. */
+static void test_state_retain_route(void) {
+  admission_evidence_t ev;
+  u8 saved = state_retain_enabled;
+  memset(&ev, 0, sizeof(ev));
+  ev.p_pass = 1; ev.u_pass = 0; ev.r_pass = 1;
+  ev.g_state_pass = 1; ev.g_code_pass = 0;
+  ev.disposition = EC_REJECT;
+
+  ev.u_binding_valid = 1;                   /* frozen candidate response binding */
+  state_retain_enabled = 0;                 /* opt-in only */
+  assert(state_retain_route(&ev) == 0);
+  state_retain_enabled = 1;
+  assert(state_retain_route(&ev) == 1);
+
+  ev.g_code_pass = 1;                       /* code evidence -> code-retain path */
+  assert(state_retain_route(&ev) == 0);
+  ev.g_code_pass = 0;
+  ev.u_pass = 1;                            /* natural cell -> provisional */
+  assert(state_retain_route(&ev) == 0);
+  ev.u_pass = 0;
+  ev.r_pass = 0;                            /* not replayable */
+  assert(state_retain_route(&ev) == 0);
+  ev.r_pass = 1;
+  ev.u_binding_valid = 0;                   /* no response binding -> stay rejected */
+  assert(state_retain_route(&ev) == 0);
+  ev.u_binding_valid = 1;
+  ev.disposition = EC_PROVISIONAL;          /* never override non-rejects */
+  assert(state_retain_route(&ev) == 0);
+  ev.disposition = EC_CODE_RETAIN;
+  assert(state_retain_route(&ev) == 0);
+
+  assert(strcmp(ec_disposition_name(EC_STATE_RETAIN), "state-retain") == 0);
+  state_retain_enabled = saved;
+}
+
+static void test_opportunity_gate(void) {
+  struct queue_entry root;
+  region_t regions[1];
+  memset(&root, 0, sizeof(root));
+  memset(regions, 0, sizeof(regions));
+  static u32 seq = 220;
+  regions[0].state_sequence = &seq; regions[0].state_count = 1;
+  root.index = 3; root.is_provisional = 1;
+  root.prov_candidate_id = 9; root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  root.regions = regions; root.region_count = 1;
+  queue = queue_top = &root;
+  u8 old_log = event_log_enabled;
+  event_log_enabled = 0;
+
+  double saved_th = salvage_opportunity_threshold;
+  salvage_opportunity_threshold = 4.0;
+  salvage_opportunity_parked = 0;
+  opportunity_parked_windows = 0;
+  u64 saved_c = opp_window_calls;
+  u64 saved_vc = opp_win_val_calls, saved_vg = opp_win_val_gains;
+  u64 saved_og = opp_win_ord_gains;
+  u64 saved_gains = code_gain_events, saved_ord = ord_invocation_total;
+  u64 saved_lin = llm_lineage_edge_gains, saved_chg = prov_charged_total;
+  u64 saved_lin_calls = lineage_invocation_total;
+
+  /* W1: ordinary out-yields, validation exposed -> park (#1). */
+  opp_window_calls = 0; opp_win_val_calls = 0;
+  opp_win_val_gains = 0; opp_win_ord_gains = 0;
+  code_gain_events = 20; llm_lineage_edge_gains = 0;
+  ord_invocation_total = 2000; lineage_invocation_total = 500;
+  u32 state_out = 0;
+  assert(provisional_select_service(&state_out) == NULL);
+  assert(salvage_opportunity_parked == 1 && opportunity_parked_windows == 1);
+
+  /* W2: ordinary still out-yields -> park (#2, at the cap). */
+  code_gain_events += 20; ord_invocation_total += 2000;
+  lineage_invocation_total += 100;
+  assert(provisional_select_service(&state_out) == NULL);
+  assert(salvage_opportunity_parked == 1 && opportunity_parked_windows == 2);
+
+  /* W3: ordinary STILL out-yields, but the bounded park forces ONE
+   * service window — validation cannot be starved past the cap. */
+  code_gain_events += 20; ord_invocation_total += 2000;
+  lineage_invocation_total += 100;
+  struct queue_entry *picked = provisional_select_service(&state_out);
+  assert(picked == &root);
+  assert(salvage_opportunity_parked == 0 && opportunity_parked_windows == 0);
+
+  /* W4: lineage out-yields ordinary (5/100 vs 2/4000) -> stays unparked
+   * by decision (not by force). */
+  code_gain_events += 2 + 5; llm_lineage_edge_gains += 5;
+  ord_invocation_total += 4000; lineage_invocation_total += 100;
+  assert(provisional_select_service(&state_out) == &root);
+  assert(salvage_opportunity_parked == 0);
+
+  /* W5 (underexposed): parked + fewer than 64 lineage calls in window ->
+   * no decision; park kept even though ordinary runs hot. */
+  salvage_opportunity_parked = 1; opportunity_parked_windows = 1;
+  code_gain_events += 20; ord_invocation_total += 2000;
+  lineage_invocation_total += 10;
+  assert(provisional_select_service(&state_out) == NULL);
+  assert(salvage_opportunity_parked == 1);
+
+  /* off by default */
+  salvage_opportunity_threshold = 0.0;
+  salvage_opportunity_parked = 0;
+  assert(provisional_select_service(&state_out) == &root);
+
+  salvage_opportunity_threshold = saved_th;
+  opp_window_calls = saved_c;
+  opp_win_val_calls = saved_vc; opp_win_val_gains = saved_vg;
+  opp_win_ord_gains = saved_og;
+  code_gain_events = saved_gains; ord_invocation_total = saved_ord;
+  llm_lineage_edge_gains = saved_lin; prov_charged_total = saved_chg;
+  lineage_invocation_total = saved_lin_calls;
+  salvage_opportunity_parked = 0; opportunity_parked_windows = 0;
+  event_log_enabled = old_log;
+  queue = queue_top = NULL;
+}
+
 int main(void) {
   trace_bits = ck_alloc(MAP_SIZE);
   test_candidate_ids_without_log();
@@ -213,6 +882,19 @@ int main(void) {
   test_direct_empty_session_rejected();
   test_response_capture_is_frozen();
   test_decision_logs_trial_mode_snapshot();
+  test_leave_one_out_counts_observed();
+  test_trial_save_is_non_destructive();
+  test_u_policy_semantics();
+  test_ordinary_match_close_keeps_files();
+  test_probe_does_not_consume_descendant_budget();
+  test_select_service_ordinary_fallback();
+  test_ordinary_edf_expiry_keeps_files();
+  test_pipelined_span_binding();
+  test_prov_prefix_protect_m2();
+  test_state_retain_route();
+  test_channel_accounting();
+  test_conversion_classification();
+  test_opportunity_gate();
   puts("gating contract selftest: PASS");
   return 0;
 }

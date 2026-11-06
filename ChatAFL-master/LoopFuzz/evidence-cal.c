@@ -139,6 +139,19 @@ double ec_run_rate_estimate(unsigned int rewards, unsigned int episodes) {
   return ((double)rewards + 1.0) / ((double)episodes + 2.0);
 }
 
+double ec_shrink_estimate(unsigned int rewards, unsigned int episodes,
+                          double run_rate, double kappa) {
+  if (!(run_rate >= 0.0)) run_rate = 0.0;   /* NaN guard */
+  if (run_rate > 1.0) run_rate = 1.0;
+  if (!(kappa >= 0.0)) kappa = 0.0;
+  double denom = (double)episodes + kappa;
+  if (denom <= 0.0) return run_rate;        /* no evidence at all */
+  double theta = ((double)rewards + kappa * run_rate) / denom;
+  if (!(theta >= 0.0)) theta = 0.0;
+  if (theta > 1.0) theta = 1.0;
+  return theta;
+}
+
 double ec_calibrated_factor(double theta_sample, double epsilon) {
   if (epsilon < 0.0) epsilon = 0.0;
   if (epsilon > 1.0) epsilon = 1.0;
@@ -178,6 +191,7 @@ const char *ec_disposition_name(int d) {
     case EC_DURABLE:     return "durable";
     case EC_PROVISIONAL: return "provisional";
     case EC_CODE_RETAIN: return "code-retain";
+    case EC_STATE_RETAIN: return "state-retain";
     default:             return "reject";
   }
 }
