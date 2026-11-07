@@ -27,3 +27,9 @@ Secondary (descriptive): ranges vs wrapgate8/native8; budget binding >=5/6
   first same-batch fair-native comparison.
 Censoring: non-budget-bound runs reported individually, not excluded;
   technical failures drop the run with count kept.
+
+AMENDMENT (pre-data, 2026-11-07 14:40): first launch (n=6) was REJECTED by
+the hard memory admission (host avail 35GB < 37GB reserved for a 6-container
+group). Per the resource-blocked rule this is amended to n=5 per arm
+(reserved 31GB fits; t-statistic at pilot effect = 2.37). No other parameter
+changed; gates G1/G2 unchanged. No batch data existed at amendment time.
