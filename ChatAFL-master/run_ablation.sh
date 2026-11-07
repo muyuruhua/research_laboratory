@@ -362,7 +362,10 @@ launch_custom_groups() {
     name=$(echo "$name" | xargs)  # trim whitespace
     [[ -z "$name" ]] && continue
 
+    local arm_thr=8
+    [[ "$name" == *512 ]] && arm_thr=512
     case "$name" in
+
       wo_all)
         valid+=("$name")
         queue_group "wo_all" \
@@ -401,7 +404,7 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "calibrated" "CHATAFL_CALIBRATION=1"
         ;;
-      calibrated8|cal_ewma8)
+      calibrated8|calibrated512|cal_ewma8|cal_ewma512)
         # Q3 生产对比臂（2026-11-02）：与 wrapgate8(D) 完全同底座（wrap/阈值8/
         # NO_ADAPTIVE/TTL 全同），唯一差异 = 校准估计器；默认 warmup（64 选择
         # 或五遍历）。注意：paper 老臂 calibrated/cal_ewma 不带本底座，与
@@ -409,19 +412,19 @@ launch_custom_groups() {
         # 是 WARMUP_MAX=16 冒烟变体，勿用于正式战役。
         valid+=("$name")
         local prod_esel="calibrated"
-        [[ "$name" == "cal_ewma8" ]] && prod_esel="ewma"
+        [[ "$name" == cal_ewma* ]] && prod_esel="ewma"
         queue_group "$name" \
           "CHATAFL_ADMISSION_MODE=gate" \
           "CHATAFL_PROVISIONAL=1" \
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_CALIBRATION=1" \
           "CHATAFL_STATE_SELECT=${prod_esel}"
         ;;
-      cal_shrink)
+      cal_shrink|cal_shrink512)
         # CSV#12 生产收缩臂（2026-11-02）：θ_s=(succ_s+κ·r)/(episodes_s+κ)，
         # 默认 warmup（64 选择或五遍历）——真实多小时战役用本臂；
         # calshrink8 是 WARMUP_MAX=16 的激活验证变体，勿混入正式对比。
@@ -432,7 +435,7 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_CALIBRATION=1" \
           "CHATAFL_STATE_SELECT=shrink" \
@@ -646,7 +649,7 @@ launch_custom_groups() {
           "CHATAFL_ABLATION_THRESHOLD=8" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000"
         ;;
-      shadowrand8)
+      shadowrand8|shadowrand512)
         # P0-21 无偏影子抽样臂：salvage8 基础上，shadow 验证改为对全部
         # 被拒候选的均匀 Bernoulli 抽样（p=0.25），用于估计总体误拒率。
         # 基线对照 = salvage8（evidence-selected 影子，其余参数全同）。
@@ -658,12 +661,12 @@ launch_custom_groups() {
           "CHATAFL_SALVAGE=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_SHADOW_SAMPLE=random" \
           "CHATAFL_SHADOW_RATE=0.25"
         ;;
-      ordedf8)
+      ordedf8|ordedf512)
         # Q2 fair comparison arm (2026-11-04): ordmatch8 + EDF service for
         # ordinary roots. Same 64-call budget as provisional, same EDF
         # priority, DIFFERENT retention (ordinary keeps files on close).
@@ -679,13 +682,13 @@ launch_custom_groups() {
           "CHATAFL_SALVAGE=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_ORDINARY_BUDGET=1" \
           "CHATAFL_ORDINARY_RATE=1.0" \
           "CHATAFL_ORDINARY_EDF=1"
         ;;
-      cal_run_rate8)
+      cal_run_rate8|cal_run_rate512)
         # Q3 missing arm (2026-11-04 codex gap): wrapgate8 base + run_rate
         valid+=("$name")
         queue_group "$name" \
@@ -694,7 +697,7 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_CALIBRATION=1" \
           "CHATAFL_STATE_SELECT=run_rate"
@@ -750,7 +753,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "${q1var}"
         ;;
-      stateretain8)
+      stateretain8|stateretain512)
         # S2 state-evidence entry (2026-11-05): wrapgate8 + only
         # CHATAFL_STATE_RETAIN=1 -- U-fail ∧ R ∧ Gstate ∧ ¬Gcode candidates
         # (the structurally empty natural provisional cell) enter the
@@ -763,11 +766,11 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_STATE_RETAIN=1"
         ;;
-      native8)
+      native8|native512)
         # CSV#4 fair native control (2026-11-05): native retention + the
         # wrapgate8 generation base (PLAINTEXT_WRAP/fixed threshold/
         # NO_ADAPTIVE) so the remaining difference vs wrapgate8 is the
@@ -779,9 +782,9 @@ launch_custom_groups() {
           "CHATAFL_ADMISSION_MODE=native" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8"
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}"
         ;;
-      code_retain8)
+      code_retain8|code_retain512)
         # CSV#8 U-policy 4th cell (2026-11-03): full wrapgate8 base + only
         # CHATAFL_CODE_RETAIN=1 (U-fail & R & Gcode -> provisional retention,
         # durability only via descendant code gain). Single-variable
@@ -794,7 +797,7 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_CODE_RETAIN=1"
         ;;
@@ -836,7 +839,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_U_POLICY=${upol}"
         ;;
-      ordmatch8)
+      ordmatch8|ordmatch512)
         # CSV#7 同预算 ordinary 对照臂（2026-11-02）：与 salvage8 完全相同
         # 的准入决策流/预算台账/首次增益归因，但临时通道准入的候选改走
         # ordinary-match 队列（regular provisional 根优先；无 favored 加成；
@@ -852,7 +855,7 @@ launch_custom_groups() {
           "CHATAFL_SALVAGE=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_ORDINARY_BUDGET=1" \
           "CHATAFL_ORDINARY_RATE=1.0"
@@ -901,7 +904,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_SALVAGE_OPPORTUNITY=4.0"
         ;;
-      nollm8|gramonly8|genrich8|plateauonly8)
+      nollm8|nollm512|gramonly8|genrich8|plateauonly8)
         # CSV#20 LLM 组件控制臂（2026-11-02）：wrapgate8 基础上仅换 LLM 通道组合。
         # 通道在 chat_with_llm 入口短路（无请求/无token/无账目行），
         # llm-calls.jsonl 每行带 channel 字段，组件隔离按 run-config 可验。
@@ -917,7 +920,7 @@ launch_custom_groups() {
         valid+=("$name")
         local chans=""
         case "$name" in
-          nollm8)       chans="CHATAFL_NO_LLM=1" ;;
+          nollm8|nollm512) chans="CHATAFL_NO_LLM=1" ;;
           gramonly8)    chans="CHATAFL_NO_ENRICH=1,CHATAFL_NO_PLATEAU=1" ;;
           genrich8)     chans="CHATAFL_NO_PLATEAU=1" ;;
           plateauonly8) chans="CHATAFL_NO_GRAMMAR=1,CHATAFL_NO_ENRICH=1" ;;
@@ -928,7 +931,7 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "${chans}"
         ;;
