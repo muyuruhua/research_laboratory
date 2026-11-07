@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
+import json
 import os
 import re
 import tarfile
@@ -169,9 +171,58 @@ def parse_cov_text(text: str) -> tuple[Optional[int], Optional[int]]:
         b_abs = safe_int(fields[4])
         if l_abs is None:
             continue
-        if best is None or l_abs > best[0]:  # type: ignore[operator]
+        # 2026-11-07 audit fix: ties on l_abs must take the max b_abs —
+        # coverage rows are monotone per column but a later row can raise
+        # branches at equal lines; keeping the FIRST tie row returned the
+        # stale endpoint ((l=10,b=3) instead of (l=10,b=4)).
+        if (best is None or l_abs > best[0] or
+                (l_abs == best[0] and
+                 (best[1] is None or (b_abs is not None and b_abs > best[1])))):
             best = (l_abs, b_abs)
     return best if best is not None else (None, None)
+
+
+def recover_from_v4_snapshots(tf: tarfile.TarFile) -> tuple[Optional[int], Optional[int]]:
+    """#13 fallback (2026-10-29 audit): two exim runs in the 20261029 batch
+    have a header-only cov_over_time.csv (the in-container v4 aggregation
+    appended no rows) while their cov_over_time.csv.v4/snapshot-*.json.gz
+    replay artifacts are complete.  Derive the endpoint from the LAST
+    snapshot using coverage_v4.py's exact counting rule (verified against
+    batch run wrapdirect8/1: snapshot 8018/4633 == csv endpoint 8018/4633):
+    lines  = count>0 and not gcovr/noncode;
+    branch = every non-excluded branch entry, covered when count>0,
+             identity (file, line_number, branchno|ordinal)."""
+    snaps = sorted(
+        (n for n in tf.getnames()
+         if "/cov_over_time.csv.v4/snapshot-" in n and n.endswith(".json.gz")))
+    if not snaps:
+        return None, None
+    # 2026-11-07 audit fix: accumulate the ID union across ALL snapshots —
+    # trusting only the last snapshot inherits any truncation/corruption of
+    # that single artifact; the union is the endpoint the replay pipeline
+    # actually witnessed.
+    lines_covered: set = set()
+    branch_total, branch_covered = set(), set()
+    for name in snaps:
+        try:
+            data = json.loads(gzip.decompress(tf.extractfile(name).read()))
+        except (OSError, ValueError, json.JSONDecodeError, EOFError):
+            continue
+        for f in data.get("files", []):
+            fname = f.get("file", "?")
+            for ln in f.get("lines", []):
+                if ln.get("count", 0) > 0 and not ln.get("gcovr/noncode", False):
+                    lines_covered.add((fname, ln.get("line_number")))
+                for ordinal, br in enumerate(ln.get("branches", [])):
+                    if br.get("gcovr/excluded", False):
+                        continue
+                    bid = (fname, ln.get("line_number"), br.get("branchno", ordinal))
+                    branch_total.add(bid)
+                    if br.get("count", 0) > 0:
+                        branch_covered.add(bid)
+    if not lines_covered and not branch_covered:
+        return None, None
+    return len(lines_covered), len(branch_covered)
 
 
 def parse_plot_text(text: str) -> tuple[Optional[int], Optional[int]]:
@@ -218,12 +269,18 @@ def read_metrics(path: Path, status_map: dict[str, dict[str, str]], timeout_min:
             cov_text = read_text_from_tar(tf, "cov_over_time.csv")
             plot_text = read_text_from_tar(tf, "plot_data")
             stats_text = read_text_from_tar(tf, "fuzzer_stats")
+            if not (parse_cov_text(cov_text)[0] is not None):
+                # header-only csv: recover the endpoint from v4 snapshots
+                cov_text = None  # type: ignore[assignment]
     else:
         cov_text = read_text_from_dir(path, "cov_over_time.csv")
         plot_text = read_text_from_dir(path, "plot_data")
         stats_text = read_text_from_dir(path, "fuzzer_stats")
 
-    metrics.l_abs, metrics.b_abs = parse_cov_text(cov_text)
+    metrics.l_abs, metrics.b_abs = parse_cov_text(cov_text) if cov_text is not None else (None, None)
+    if metrics.l_abs is None and path.is_file() and path.suffixes[-2:] == [".tar", ".gz"]:
+        with tarfile.open(path, "r:gz") as tf:
+            metrics.l_abs, metrics.b_abs = recover_from_v4_snapshots(tf)
     metrics.nodes, metrics.edges = parse_plot_text(plot_text)
     metrics.runtime_min, metrics.start_time, metrics.last_update = parse_fuzzer_stats(stats_text)
     status_meta = status_map.get(path.name, {})

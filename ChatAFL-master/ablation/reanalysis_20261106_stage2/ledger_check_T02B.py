@@ -19,6 +19,19 @@ import tarfile
 from collections import Counter
 from pathlib import Path
 
+ALLOWED_KINDS = {"calibration", "mutation", "candidate", "shadow", "prov-annotate", "sync"}
+
+
+def _jsonl(tf, name):
+    fp = tf.extractfile(name)
+    if fp is None:
+        return []
+    rows = []
+    for line in io.TextIOWrapper(fp):
+        if line.strip():
+            rows.append(json.loads(line))
+    return rows
+
 
 def check_archive(path):
     fails = []
@@ -43,15 +56,31 @@ def check_archive(path):
                 ends.append(j)
             elif ev == "invocation_refused":
                 refused.append(j)
+            elif ev:
+                fails.append("unknown-event:" + str(ev))
 
-    # L1 unique invocation ids among started
+    allowed = [s.get("execution_kind") for s in starts]
+    unknown = sorted(set(k for k in allowed if k not in ALLOWED_KINDS))
+    if unknown:
+        fails.append("L3-unknown-execution-kind:" + ",".join(unknown))
+    if sum(Counter(allowed).values()) != len(starts):
+        fails.append("L3-kind-partition")
+
+    # L1 unique invocation ids among started and ended. Refused invocations
+    # intentionally have no invocation_id and are checked by attempt_id.
     ids = [s.get("invocation_id") for s in starts if s.get("invocation_id")]
     if len(ids) != len(set(ids)):
         fails.append("L1-duplicate-invocation-id")
-    # L2 pairing
-    end_ids = {e.get("invocation_id") for e in ends}
-    unmatched = [i for i in ids if i not in end_ids]
-    # L3 kind partition (partition is definitional; report composition)
+    end_ids = [e.get("invocation_id") for e in ends if e.get("invocation_id")]
+    if len(end_ids) != len(set(end_ids)):
+        fails.append("L2-duplicate-end-invocation-id")
+    start_set, end_set = set(ids), set(end_ids)
+    unmatched = sorted(start_set - end_set)
+    extra_ends = sorted(end_set - start_set)
+    if unmatched:
+        fails.append("L2-unmatched-starts")
+    if extra_ends:
+        fails.append("L2-extra-ends")
     kinds = Counter(s.get("execution_kind", "?") for s in starts)
     # L4 attempts one-to-one with starts
     attempts = [s.get("attempt_id") for s in starts if s.get("attempt_id") is not None]
@@ -59,6 +88,8 @@ def check_archive(path):
         fails.append("L4-attempt-reuse")
     # L5 per-root charged cap (root-level field present when a provisional
     # root owns the invocation; missing => ordinary/no-root, not capped here)
+    root_present = sum(isinstance(s.get("root"), dict) and bool(s.get("root")) for s in starts)
+    root_missing = len(starts) - root_present
     over = [r for r, n in Counter(
         s.get("root") for s in starts
         if isinstance(s.get("root"), dict) and s["root"]
@@ -74,7 +105,8 @@ def check_archive(path):
         fails.append("L5-root-over-64")
     stats = {
         "starts": len(starts), "ends": len(ends), "refused": len(refused),
-        "unpaired_starts": len(unmatched),
+        "unpaired_starts": len(unmatched), "extra_ends": len(extra_ends),
+        "root_fields_present": root_present, "root_fields_missing": root_missing,
         "kinds": dict(kinds),
         "root_cap_violations": cap_violations,
     }
@@ -94,15 +126,40 @@ def check_archive(path):
                 if j.get("event") == "run_config" and j.get("phase") == "start":
                     budget = j.get("campaign_call_budget")
                     stats["q1_policy"] = j.get("q1_policy")
+                    stats["campaign_id"] = j.get("campaign_id")
                     break
     if budget:
         stats["campaign_call_budget"] = budget
         if len(starts) > budget:
             fails.append("L7-charged-over-budget")
         stats["budget_binding"] = "cap" if len(refused) else "timeout-first-or-unbound"
-    if unmatched:
-        # tail cutoff is legitimate at campaign end but must be explicit
-        stats["note"] = "unpaired starts allowed only at campaign tail (cutoff)"
+        if len(starts) > budget:
+            fails.append("L7-charged-over-budget")
+    # A missing root is not a passing root-cap result. It is inconclusive for
+    # runs whose config advertises provisional service; ordinary-only runs are
+    # explicitly marked not-applicable.
+    if root_missing:
+        provisional = stats.get("provisional_enabled")
+        if provisional:
+            stats["root_cap_check"] = "INCONCLUSIVE-root-field-missing"
+        else:
+            stats["root_cap_check"] = "NOT_APPLICABLE"
+    else:
+        stats["root_cap_check"] = "PASS"
+    # Q1 flow rows are checked when present. A saved row must either be idle
+    # or create one reservation amount; consumed rows must bind a receiver.
+    with tarfile.open(path, "r:gz") as tf3:
+        names3 = {mm.name.split("/")[-1] for mm in tf3.getmembers()}
+        flows = _jsonl(tf3, "out-bftpd-loopfuzz/q1-budget-flow.jsonl") if "q1-budget-flow.jsonl" in names3 else []
+    if flows:
+        saved = [x for x in flows if x.get("kind") == "saved"]
+        consumed = [x for x in flows if x.get("kind") == "consumed"]
+        if any(x.get("destination") == "ordinary-pool" and not x.get("flow_id") for x in saved):
+            fails.append("L7-reflow-save-missing-flow-id")
+        if any(not x.get("receiver_invocation_id") for x in consumed):
+            fails.append("L7-reflow-consume-missing-receiver")
+        stats["q1_flow_saved"] = len(saved)
+        stats["q1_flow_consumed"] = len(consumed)
     return fails, stats
 
 
@@ -121,7 +178,10 @@ def main():
             continue
         fails, stats = check_archive(r["archive"])
         status = "PASS" if not fails else "FAIL:" + ",".join(fails)
-        out[r.get("stage2_id", r["arm"])] = {"arm": r["arm"], "status": status, **stats}
+        key = stats.get("campaign_id") or r.get("stage2_id") or r["arm"]
+        if key in out:
+            key = f"{key}::{r.get('stage2_id', r['arm'])}"
+        out[key] = {"stage2_id": r.get("stage2_id"), "arm": r["arm"], "status": status, **stats}
         npass += status == "PASS"
         nfail += status != "PASS"
     args.output.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")

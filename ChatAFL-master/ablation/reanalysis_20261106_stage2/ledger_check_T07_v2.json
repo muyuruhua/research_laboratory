@@ -1,0 +1,1950 @@
+{
+  "schema_version": 2,
+  "runs": [
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-7c37b153a72ee565db59921485db63ae",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4296,
+        "mutation": 7447,
+        "candidate": 33,
+        "shadow": 224
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 0,
+      "run_id": "run-0000",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-61af670cfbe920bc7d57516fe89c3a73",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4456,
+        "mutation": 7342,
+        "candidate": 25,
+        "shadow": 176,
+        "prov-annotate": 1
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "268": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 1,
+      "run_id": "run-0001",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-182370e2a7377295687a59ff6d17bdf8",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4472,
+        "mutation": 7313,
+        "candidate": 37,
+        "shadow": 176,
+        "prov-annotate": 2
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "265": 64,
+        "382": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 2,
+      "run_id": "run-0002",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_run_rate8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-796bdbe4e3ce69392ad7ef4b9291c604",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4528,
+        "mutation": 7263,
+        "candidate": 32,
+        "shadow": 176,
+        "prov-annotate": 1
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "283": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 3,
+      "run_id": "run-0003",
+      "arm": "cal_run_rate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_run_rate8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-9ec2680cbc33eb1211c94b0909a8603d",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 2
+      },
+      "kinds": {
+        "calibration": 4459,
+        "mutation": 7390,
+        "candidate": 23,
+        "shadow": 128
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 4,
+      "run_id": "run-0004",
+      "arm": "cal_run_rate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_run_rate8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-7c5caf52c94f419e2002e370baa0f0a5",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 5144,
+        "mutation": 6651,
+        "candidate": 29,
+        "shadow": 176
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 5,
+      "run_id": "run-0005",
+      "arm": "cal_run_rate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-e78049c03ba7885e6a7f6331a1d09231",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4568,
+        "mutation": 7294,
+        "candidate": 26,
+        "shadow": 112
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 6,
+      "run_id": "run-0006",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-b006b3ed1a026b8ff23b3feebe611254",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4216,
+        "mutation": 7544,
+        "candidate": 32,
+        "shadow": 208
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 7,
+      "run_id": "run-0007",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-3af4c252e1b06ac58296c91528213b09",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4536,
+        "mutation": 7187,
+        "candidate": 37,
+        "shadow": 240
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 8,
+      "run_id": "run-0008",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-3cbbbb35c77ff90bdb1e1f534e8946fc",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 5256,
+        "mutation": 6629,
+        "candidate": 18,
+        "shadow": 96,
+        "prov-annotate": 1
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "288": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 9,
+      "run_id": "run-0009",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-61900ceae2ccb47a92dccd5def02125b",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4664,
+        "mutation": 7055,
+        "candidate": 41,
+        "shadow": 240
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 10,
+      "run_id": "run-0010",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-c8a4696efb0e66987adb71bbd8ffb5c2",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4248,
+        "mutation": 7566,
+        "candidate": 26,
+        "shadow": 160
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 11,
+      "run_id": "run-0011",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-e4675bef2a09fdf056795ed3e4d821d0",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 2
+      },
+      "kinds": {
+        "calibration": 4200,
+        "mutation": 7700,
+        "candidate": 30,
+        "prov-annotate": 6,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "232": 64,
+        "296": 64,
+        "308": 64,
+        "317": 64,
+        "340": 64,
+        "350": 32
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 12,
+      "run_id": "run-0012",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-fb394d1c0bc627c0b51b8009471e005d",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 7
+      },
+      "kinds": {
+        "calibration": 4545,
+        "mutation": 7349,
+        "candidate": 35,
+        "prov-annotate": 7,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "227": 56,
+        "237": 45,
+        "264": 42,
+        "293": 64,
+        "301": 56,
+        "311": 64,
+        "322": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 13,
+      "run_id": "run-0013",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-d046bc94d6f217ed2b7161302d8e6264",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 5
+      },
+      "kinds": {
+        "calibration": 4907,
+        "mutation": 6936,
+        "candidate": 37,
+        "prov-annotate": 8,
+        "shadow": 112
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "221": 64,
+        "231": 45,
+        "242": 64,
+        "250": 64,
+        "355": 56,
+        "375": 64,
+        "432": 56,
+        "435": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 14,
+      "run_id": "run-0014",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-bfc70f1b15e3cd2e0f582801fa99c70b",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 2400,
+        "mutation": 9600
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 15,
+      "run_id": "run-0015",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-7fa65e1a0c3c3941d44639ce1581a5e2",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 2736,
+        "mutation": 9264
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 16,
+      "run_id": "run-0016",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-8dd62ed7ecc2ad8621e5adb3df5edbe8",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 2576,
+        "mutation": 9424
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 17,
+      "run_id": "run-0017",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-41c593bf9219399d4ad5f58b4e69891d",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 13
+      },
+      "kinds": {
+        "calibration": 4340,
+        "mutation": 7554,
+        "candidate": 37,
+        "prov-annotate": 21,
+        "shadow": 48
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "226": 64,
+        "233": 64,
+        "245": 48,
+        "254": 24,
+        "256": 48,
+        "260": 64,
+        "265": 56,
+        "274": 64,
+        "279": 64,
+        "291": 56,
+        "304": 56,
+        "310": 56,
+        "335": 64,
+        "358": 52,
+        "363": 56,
+        "373": 64,
+        "391": 56,
+        "394": 64,
+        "396": 64,
+        "402": 64,
+        "404": 48
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 18,
+      "run_id": "run-0018",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-802ae5076ec9afbf0000e30983997c44",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 19
+      },
+      "kinds": {
+        "calibration": 4351,
+        "mutation": 7572,
+        "candidate": 36,
+        "prov-annotate": 25,
+        "shadow": 16
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "221": 64,
+        "232": 64,
+        "249": 60,
+        "256": 64,
+        "261": 64,
+        "264": 39,
+        "269": 64,
+        "279": 64,
+        "281": 62,
+        "291": 64,
+        "299": 44,
+        "309": 56,
+        "312": 64,
+        "323": 64,
+        "325": 56,
+        "335": 48,
+        "345": 48,
+        "353": 64,
+        "361": 40,
+        "369": 56,
+        "374": 64,
+        "379": 59,
+        "386": 64,
+        "394": 64,
+        "402": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 19,
+      "run_id": "run-0019",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-c22547fe7b17c40dc974d1c23e0df503",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 12
+      },
+      "kinds": {
+        "calibration": 4727,
+        "mutation": 7155,
+        "candidate": 35,
+        "prov-annotate": 19,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "219": 64,
+        "231": 64,
+        "247": 56,
+        "255": 64,
+        "264": 48,
+        "272": 64,
+        "280": 64,
+        "284": 64,
+        "299": 24,
+        "306": 64,
+        "319": 48,
+        "329": 48,
+        "334": 64,
+        "349": 41,
+        "372": 64,
+        "386": 64,
+        "391": 64,
+        "394": 48,
+        "407": 40
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 20,
+      "run_id": "run-0020",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-42056cf14585a95c8947d3116538053a",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 16
+      },
+      "kinds": {
+        "calibration": 4527,
+        "mutation": 7359,
+        "candidate": 42,
+        "prov-annotate": 24,
+        "shadow": 48
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "220": 64,
+        "227": 64,
+        "236": 64,
+        "247": 40,
+        "256": 40,
+        "263": 56,
+        "273": 45,
+        "283": 64,
+        "285": 48,
+        "303": 56,
+        "309": 48,
+        "317": 64,
+        "331": 56,
+        "334": 64,
+        "349": 64,
+        "379": 56,
+        "381": 40,
+        "389": 64,
+        "402": 64,
+        "406": 64,
+        "409": 52,
+        "413": 56,
+        "417": 64,
+        "419": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 21,
+      "run_id": "run-0021",
+      "arm": "ordmatch8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-8cfbfd56d9c456ca6afb5fcc70e480fe",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 7
+      },
+      "kinds": {
+        "calibration": 4344,
+        "mutation": 7577,
+        "candidate": 29,
+        "prov-annotate": 18,
+        "shadow": 32
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "212": 64,
+        "222": 64,
+        "240": 64,
+        "248": 48,
+        "255": 64,
+        "260": 56,
+        "270": 64,
+        "277": 24,
+        "282": 64,
+        "288": 64,
+        "305": 64,
+        "324": 64,
+        "339": 64,
+        "348": 64,
+        "361": 64,
+        "372": 48,
+        "387": 56,
+        "395": 56
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 22,
+      "run_id": "run-0022",
+      "arm": "ordmatch8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-01fbf285c4f384d4d45e0d02734d75b3",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 13
+      },
+      "kinds": {
+        "calibration": 4659,
+        "mutation": 7225,
+        "candidate": 35,
+        "prov-annotate": 17,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "220": 64,
+        "237": 64,
+        "247": 40,
+        "258": 24,
+        "263": 56,
+        "266": 56,
+        "274": 48,
+        "280": 64,
+        "297": 61,
+        "303": 56,
+        "322": 48,
+        "348": 56,
+        "362": 56,
+        "372": 48,
+        "383": 64,
+        "394": 64,
+        "413": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 23,
+      "run_id": "run-0023",
+      "arm": "ordmatch8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1a8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-00888a2681f40f87ead679dd6b1287bd",
+      "q1_policy": "direct-service",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 27
+      },
+      "kinds": {
+        "calibration": 4481,
+        "mutation": 7425,
+        "candidate": 47,
+        "prov-annotate": 47
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "202": 48,
+        "215": 64,
+        "218": 64,
+        "229": 48,
+        "234": 64,
+        "237": 51,
+        "242": 64,
+        "248": 64,
+        "251": 64,
+        "258": 48,
+        "264": 64,
+        "267": 56,
+        "270": 64,
+        "273": 64,
+        "279": 64,
+        "284": 64,
+        "288": 56,
+        "290": 64,
+        "292": 64,
+        "299": 64,
+        "302": 64,
+        "316": 48,
+        "320": 64,
+        "342": 32,
+        "350": 64,
+        "352": 32,
+        "361": 56,
+        "367": 40,
+        "374": 56,
+        "380": 64,
+        "382": 48,
+        "383": 56,
+        "386": 56,
+        "388": 24,
+        "390": 64,
+        "396": 56,
+        "410": 64,
+        "420": 56,
+        "425": 58,
+        "427": 56,
+        "429": 40,
+        "431": 64,
+        "437": 64,
+        "438": 34,
+        "439": 64,
+        "444": 48
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 24,
+      "run_id": "run-0024",
+      "arm": "q1a8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1a8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-06387f620446dbe1d3fca55825b39a52",
+      "q1_policy": "direct-service",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 21
+      },
+      "kinds": {
+        "calibration": 4598,
+        "mutation": 7318,
+        "candidate": 42,
+        "prov-annotate": 42
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "205": 64,
+        "234": 64,
+        "240": 64,
+        "246": 64,
+        "254": 64,
+        "261": 64,
+        "265": 64,
+        "267": 56,
+        "278": 64,
+        "281": 64,
+        "285": 56,
+        "295": 64,
+        "299": 64,
+        "302": 64,
+        "308": 64,
+        "311": 48,
+        "315": 64,
+        "318": 64,
+        "319": 64,
+        "321": 64,
+        "322": 48,
+        "330": 56,
+        "334": 64,
+        "363": 64,
+        "369": 28,
+        "381": 64,
+        "386": 40,
+        "402": 56,
+        "407": 56,
+        "409": 64,
+        "412": 28,
+        "414": 58,
+        "420": 56,
+        "422": 64,
+        "424": 56,
+        "425": 56,
+        "427": 56,
+        "435": 56,
+        "438": 64,
+        "440": 64,
+        "441": 64,
+        "444": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 25,
+      "run_id": "run-0025",
+      "arm": "q1a8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1a8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-535894aec64d6efab7d9f59f4c7e66dd",
+      "q1_policy": "direct-service",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 25
+      },
+      "kinds": {
+        "calibration": 4517,
+        "mutation": 7407,
+        "candidate": 38,
+        "prov-annotate": 38
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "199": 32,
+        "210": 64,
+        "215": 64,
+        "225": 40,
+        "230": 64,
+        "240": 45,
+        "245": 64,
+        "249": 64,
+        "253": 64,
+        "256": 64,
+        "261": 64,
+        "264": 64,
+        "265": 64,
+        "275": 64,
+        "287": 64,
+        "294": 42,
+        "297": 64,
+        "301": 64,
+        "302": 64,
+        "305": 64,
+        "309": 48,
+        "321": 64,
+        "324": 35,
+        "338": 25,
+        "361": 64,
+        "362": 37,
+        "366": 40,
+        "374": 48,
+        "382": 48,
+        "385": 56,
+        "388": 53,
+        "390": 56,
+        "393": 64,
+        "395": 64,
+        "396": 64,
+        "397": 64,
+        "407": 54,
+        "412": 56
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 26,
+      "run_id": "run-0026",
+      "arm": "q1a8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1b8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "failures": [],
+      "inconclusive": [
+        "missing-provisional-root-identity"
+      ],
+      "campaign_id": "lf-2ef01e56d8be599c009b0a445b4f87ec",
+      "q1_policy": "no-reflow",
+      "counts": {
+        "starts": 10336,
+        "ends": 10336,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4232,
+        "mutation": 5916,
+        "candidate": 28,
+        "shadow": 160
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "INCONCLUSIVE",
+      "root_counts": {},
+      "q1_flow_status": "PASS",
+      "q1_flow": {
+        "events": 26,
+        "saved_total": 1664,
+        "reflow_consumed": 0,
+        "idle_total": 1600,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 27,
+      "run_id": "run-0027",
+      "arm": "q1b8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1b8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "failures": [],
+      "inconclusive": [
+        "missing-provisional-root-identity"
+      ],
+      "campaign_id": "lf-a6fe7f39d54adc4d8265a30e931eaf55",
+      "q1_policy": "no-reflow",
+      "counts": {
+        "starts": 9120,
+        "ends": 9120,
+        "refused": 2
+      },
+      "kinds": {
+        "calibration": 3934,
+        "mutation": 4932,
+        "candidate": 46,
+        "shadow": 208
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "INCONCLUSIVE",
+      "root_counts": {},
+      "q1_flow_status": "PASS",
+      "q1_flow": {
+        "events": 45,
+        "saved_total": 2880,
+        "reflow_consumed": 0,
+        "idle_total": 2816,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 28,
+      "run_id": "run-0028",
+      "arm": "q1b8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1b8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "failures": [],
+      "inconclusive": [
+        "missing-provisional-root-identity"
+      ],
+      "campaign_id": "lf-859e047e4087cd9157a24c274894159b",
+      "q1_policy": "no-reflow",
+      "counts": {
+        "starts": 10144,
+        "ends": 10144,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4288,
+        "mutation": 5682,
+        "candidate": 30,
+        "shadow": 144
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "INCONCLUSIVE",
+      "root_counts": {},
+      "q1_flow_status": "PASS",
+      "q1_flow": {
+        "events": 29,
+        "saved_total": 1856,
+        "reflow_consumed": 0,
+        "idle_total": 1792,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 29,
+      "run_id": "run-0029",
+      "arm": "q1b8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1c8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "FAIL",
+      "failures": [
+        "q1-saved-missing-flow-id:0",
+        "q1-saved-missing-flow-id:1",
+        "q1-saved-missing-flow-id:10",
+        "q1-saved-missing-flow-id:11",
+        "q1-saved-missing-flow-id:12",
+        "q1-saved-missing-flow-id:13",
+        "q1-saved-missing-flow-id:14",
+        "q1-saved-missing-flow-id:15",
+        "q1-saved-missing-flow-id:16",
+        "q1-saved-missing-flow-id:17",
+        "q1-saved-missing-flow-id:18",
+        "q1-saved-missing-flow-id:19",
+        "q1-saved-missing-flow-id:2",
+        "q1-saved-missing-flow-id:20",
+        "q1-saved-missing-flow-id:21",
+        "q1-saved-missing-flow-id:22",
+        "q1-saved-missing-flow-id:3",
+        "q1-saved-missing-flow-id:4",
+        "q1-saved-missing-flow-id:5",
+        "q1-saved-missing-flow-id:6",
+        "q1-saved-missing-flow-id:7",
+        "q1-saved-missing-flow-id:8",
+        "q1-saved-missing-flow-id:9",
+        "q1-saved-remaining-mismatch:0",
+        "q1-saved-remaining-mismatch:1",
+        "q1-saved-remaining-mismatch:10",
+        "q1-saved-remaining-mismatch:11",
+        "q1-saved-remaining-mismatch:12",
+        "q1-saved-remaining-mismatch:13",
+        "q1-saved-remaining-mismatch:14",
+        "q1-saved-remaining-mismatch:15",
+        "q1-saved-remaining-mismatch:16",
+        "q1-saved-remaining-mismatch:17",
+        "q1-saved-remaining-mismatch:18",
+        "q1-saved-remaining-mismatch:19",
+        "q1-saved-remaining-mismatch:2",
+        "q1-saved-remaining-mismatch:20",
+        "q1-saved-remaining-mismatch:21",
+        "q1-saved-remaining-mismatch:22",
+        "q1-saved-remaining-mismatch:3",
+        "q1-saved-remaining-mismatch:4",
+        "q1-saved-remaining-mismatch:5",
+        "q1-saved-remaining-mismatch:6",
+        "q1-saved-remaining-mismatch:7",
+        "q1-saved-remaining-mismatch:8",
+        "q1-saved-remaining-mismatch:9"
+      ],
+      "inconclusive": [],
+      "campaign_id": "lf-617da1a0701d23b5859ee3502db7e8d0",
+      "q1_policy": "reflow",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4984,
+        "mutation": 6861,
+        "candidate": 26,
+        "shadow": 128,
+        "prov-annotate": 1
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "301": 64
+      },
+      "q1_flow_status": "FAIL",
+      "q1_flow": {
+        "events": 23,
+        "saved_total": 1472,
+        "reflow_consumed": 1408,
+        "idle_total": 0,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 30,
+      "run_id": "run-0030",
+      "arm": "q1c8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1c8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "FAIL",
+      "failures": [
+        "q1-saved-missing-flow-id:0",
+        "q1-saved-missing-flow-id:1",
+        "q1-saved-missing-flow-id:10",
+        "q1-saved-missing-flow-id:11",
+        "q1-saved-missing-flow-id:12",
+        "q1-saved-missing-flow-id:13",
+        "q1-saved-missing-flow-id:14",
+        "q1-saved-missing-flow-id:15",
+        "q1-saved-missing-flow-id:16",
+        "q1-saved-missing-flow-id:17",
+        "q1-saved-missing-flow-id:18",
+        "q1-saved-missing-flow-id:19",
+        "q1-saved-missing-flow-id:2",
+        "q1-saved-missing-flow-id:20",
+        "q1-saved-missing-flow-id:21",
+        "q1-saved-missing-flow-id:22",
+        "q1-saved-missing-flow-id:23",
+        "q1-saved-missing-flow-id:24",
+        "q1-saved-missing-flow-id:25",
+        "q1-saved-missing-flow-id:26",
+        "q1-saved-missing-flow-id:27",
+        "q1-saved-missing-flow-id:28",
+        "q1-saved-missing-flow-id:29",
+        "q1-saved-missing-flow-id:3",
+        "q1-saved-missing-flow-id:30",
+        "q1-saved-missing-flow-id:31",
+        "q1-saved-missing-flow-id:32",
+        "q1-saved-missing-flow-id:33",
+        "q1-saved-missing-flow-id:34",
+        "q1-saved-missing-flow-id:35",
+        "q1-saved-missing-flow-id:36",
+        "q1-saved-missing-flow-id:4",
+        "q1-saved-missing-flow-id:5",
+        "q1-saved-missing-flow-id:6",
+        "q1-saved-missing-flow-id:7",
+        "q1-saved-missing-flow-id:8",
+        "q1-saved-missing-flow-id:9",
+        "q1-saved-remaining-mismatch:0",
+        "q1-saved-remaining-mismatch:1",
+        "q1-saved-remaining-mismatch:10",
+        "q1-saved-remaining-mismatch:11",
+        "q1-saved-remaining-mismatch:12",
+        "q1-saved-remaining-mismatch:13",
+        "q1-saved-remaining-mismatch:14",
+        "q1-saved-remaining-mismatch:15",
+        "q1-saved-remaining-mismatch:16",
+        "q1-saved-remaining-mismatch:17",
+        "q1-saved-remaining-mismatch:18",
+        "q1-saved-remaining-mismatch:19",
+        "q1-saved-remaining-mismatch:2",
+        "q1-saved-remaining-mismatch:20",
+        "q1-saved-remaining-mismatch:21",
+        "q1-saved-remaining-mismatch:22",
+        "q1-saved-remaining-mismatch:23",
+        "q1-saved-remaining-mismatch:24",
+        "q1-saved-remaining-mismatch:25",
+        "q1-saved-remaining-mismatch:26",
+        "q1-saved-remaining-mismatch:27",
+        "q1-saved-remaining-mismatch:28",
+        "q1-saved-remaining-mismatch:29",
+        "q1-saved-remaining-mismatch:3",
+        "q1-saved-remaining-mismatch:30",
+        "q1-saved-remaining-mismatch:31",
+        "q1-saved-remaining-mismatch:32",
+        "q1-saved-remaining-mismatch:33",
+        "q1-saved-remaining-mismatch:34",
+        "q1-saved-remaining-mismatch:35",
+        "q1-saved-remaining-mismatch:36",
+        "q1-saved-remaining-mismatch:4",
+        "q1-saved-remaining-mismatch:5",
+        "q1-saved-remaining-mismatch:6",
+        "q1-saved-remaining-mismatch:7",
+        "q1-saved-remaining-mismatch:8",
+        "q1-saved-remaining-mismatch:9"
+      ],
+      "inconclusive": [
+        "missing-provisional-root-identity"
+      ],
+      "campaign_id": "lf-211a553e241c0a04e4581988789c0e91",
+      "q1_policy": "reflow",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4560,
+        "mutation": 7258,
+        "candidate": 38,
+        "shadow": 144
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "INCONCLUSIVE",
+      "root_counts": {},
+      "q1_flow_status": "FAIL",
+      "q1_flow": {
+        "events": 37,
+        "saved_total": 2368,
+        "reflow_consumed": 2304,
+        "idle_total": 0,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 31,
+      "run_id": "run-0031",
+      "arm": "q1c8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_q1c8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "FAIL",
+      "failures": [
+        "q1-saved-missing-flow-id:0",
+        "q1-saved-missing-flow-id:1",
+        "q1-saved-missing-flow-id:10",
+        "q1-saved-missing-flow-id:11",
+        "q1-saved-missing-flow-id:12",
+        "q1-saved-missing-flow-id:13",
+        "q1-saved-missing-flow-id:14",
+        "q1-saved-missing-flow-id:15",
+        "q1-saved-missing-flow-id:16",
+        "q1-saved-missing-flow-id:17",
+        "q1-saved-missing-flow-id:18",
+        "q1-saved-missing-flow-id:19",
+        "q1-saved-missing-flow-id:2",
+        "q1-saved-missing-flow-id:20",
+        "q1-saved-missing-flow-id:21",
+        "q1-saved-missing-flow-id:22",
+        "q1-saved-missing-flow-id:23",
+        "q1-saved-missing-flow-id:24",
+        "q1-saved-missing-flow-id:25",
+        "q1-saved-missing-flow-id:26",
+        "q1-saved-missing-flow-id:27",
+        "q1-saved-missing-flow-id:28",
+        "q1-saved-missing-flow-id:29",
+        "q1-saved-missing-flow-id:3",
+        "q1-saved-missing-flow-id:30",
+        "q1-saved-missing-flow-id:31",
+        "q1-saved-missing-flow-id:32",
+        "q1-saved-missing-flow-id:33",
+        "q1-saved-missing-flow-id:4",
+        "q1-saved-missing-flow-id:5",
+        "q1-saved-missing-flow-id:6",
+        "q1-saved-missing-flow-id:7",
+        "q1-saved-missing-flow-id:8",
+        "q1-saved-missing-flow-id:9",
+        "q1-saved-remaining-mismatch:0",
+        "q1-saved-remaining-mismatch:1",
+        "q1-saved-remaining-mismatch:10",
+        "q1-saved-remaining-mismatch:11",
+        "q1-saved-remaining-mismatch:12",
+        "q1-saved-remaining-mismatch:13",
+        "q1-saved-remaining-mismatch:14",
+        "q1-saved-remaining-mismatch:15",
+        "q1-saved-remaining-mismatch:16",
+        "q1-saved-remaining-mismatch:17",
+        "q1-saved-remaining-mismatch:18",
+        "q1-saved-remaining-mismatch:19",
+        "q1-saved-remaining-mismatch:2",
+        "q1-saved-remaining-mismatch:20",
+        "q1-saved-remaining-mismatch:21",
+        "q1-saved-remaining-mismatch:22",
+        "q1-saved-remaining-mismatch:23",
+        "q1-saved-remaining-mismatch:24",
+        "q1-saved-remaining-mismatch:25",
+        "q1-saved-remaining-mismatch:26",
+        "q1-saved-remaining-mismatch:27",
+        "q1-saved-remaining-mismatch:28",
+        "q1-saved-remaining-mismatch:29",
+        "q1-saved-remaining-mismatch:3",
+        "q1-saved-remaining-mismatch:30",
+        "q1-saved-remaining-mismatch:31",
+        "q1-saved-remaining-mismatch:32",
+        "q1-saved-remaining-mismatch:33",
+        "q1-saved-remaining-mismatch:4",
+        "q1-saved-remaining-mismatch:5",
+        "q1-saved-remaining-mismatch:6",
+        "q1-saved-remaining-mismatch:7",
+        "q1-saved-remaining-mismatch:8",
+        "q1-saved-remaining-mismatch:9"
+      ],
+      "inconclusive": [
+        "missing-provisional-root-identity"
+      ],
+      "campaign_id": "lf-97c76217080fac9696626efa67fbcdc8",
+      "q1_policy": "reflow",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4408,
+        "mutation": 7429,
+        "candidate": 35,
+        "shadow": 128
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "INCONCLUSIVE",
+      "root_counts": {},
+      "q1_flow_status": "FAIL",
+      "q1_flow": {
+        "events": 34,
+        "saved_total": 2176,
+        "reflow_consumed": 2112,
+        "idle_total": 0,
+        "reflow_pool_left": 0,
+        "flow_closed": true,
+        "open_reservations": 0
+      },
+      "run_index": 32,
+      "run_id": "run-0032",
+      "arm": "q1c8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-c79648da51f77df702e7d9d017721bc5",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 11
+      },
+      "kinds": {
+        "calibration": 4896,
+        "mutation": 7000,
+        "candidate": 25,
+        "prov-annotate": 15,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "231": 16,
+        "257": 56,
+        "261": 40,
+        "267": 64,
+        "283": 64,
+        "295": 56,
+        "300": 64,
+        "302": 40,
+        "318": 64,
+        "325": 40,
+        "336": 64,
+        "354": 64,
+        "362": 56,
+        "390": 48,
+        "409": 48
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 33,
+      "run_id": "run-0033",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-60ccf0a30a1284738baac67aec541e56",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 12
+      },
+      "kinds": {
+        "calibration": 4408,
+        "mutation": 7490,
+        "candidate": 24,
+        "prov-annotate": 14,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "218": 35,
+        "259": 49,
+        "297": 64,
+        "305": 24,
+        "308": 64,
+        "313": 48,
+        "318": 64,
+        "338": 60,
+        "347": 48,
+        "351": 48,
+        "371": 64,
+        "375": 64,
+        "385": 64,
+        "395": 56
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 34,
+      "run_id": "run-0034",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-04bf469467747ce41a3388c54f59c033",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 9
+      },
+      "kinds": {
+        "calibration": 4690,
+        "mutation": 7201,
+        "candidate": 31,
+        "prov-annotate": 14,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "225": 64,
+        "258": 56,
+        "272": 40,
+        "278": 56,
+        "295": 56,
+        "302": 54,
+        "317": 64,
+        "342": 56,
+        "350": 64,
+        "363": 64,
+        "383": 32,
+        "394": 64,
+        "413": 64,
+        "415": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 35,
+      "run_id": "run-0035",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-5d49d15f91135e1edf4d676a2caaf06f",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 8
+      },
+      "kinds": {
+        "calibration": 4543,
+        "mutation": 7359,
+        "candidate": 23,
+        "prov-annotate": 11,
+        "shadow": 64
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "231": 13,
+        "255": 48,
+        "266": 36,
+        "273": 56,
+        "289": 64,
+        "301": 64,
+        "310": 64,
+        "329": 64,
+        "343": 48,
+        "371": 64,
+        "393": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 36,
+      "run_id": "run-0036",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-805d04cd2d2d837179e8cd1bdfdcdfef",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 13
+      },
+      "kinds": {
+        "calibration": 4571,
+        "mutation": 7368,
+        "candidate": 28,
+        "prov-annotate": 17,
+        "shadow": 16
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "218": 16,
+        "239": 32,
+        "248": 64,
+        "266": 55,
+        "285": 48,
+        "291": 64,
+        "295": 56,
+        "300": 48,
+        "305": 64,
+        "314": 64,
+        "319": 56,
+        "342": 64,
+        "353": 64,
+        "357": 62,
+        "379": 56,
+        "393": 64,
+        "397": 64
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 37,
+      "run_id": "run-0037",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-96ab12bbcf942343765eb9c9f3200039",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 15
+      },
+      "kinds": {
+        "calibration": 4396,
+        "mutation": 7523,
+        "candidate": 30,
+        "shadow": 32,
+        "prov-annotate": 19
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {
+        "228": 64,
+        "260": 64,
+        "277": 48,
+        "289": 56,
+        "291": 64,
+        "296": 64,
+        "303": 56,
+        "306": 48,
+        "316": 64,
+        "322": 56,
+        "326": 64,
+        "330": 40,
+        "337": 64,
+        "351": 53,
+        "360": 48,
+        "370": 55,
+        "377": 64,
+        "386": 40,
+        "390": 56
+      },
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 38,
+      "run_id": "run-0038",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-89efa15a948a5c96a65ec3ccad874471",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4360,
+        "mutation": 7608,
+        "candidate": 32
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 39,
+      "run_id": "run-0039",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-041933601e4e545fd43526ffad8bb734",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4416,
+        "mutation": 7547,
+        "candidate": 37
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 40,
+      "run_id": "run-0040",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-ff2da5bdefc9c3bbe0cdbc0e61dae355",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 2
+      },
+      "kinds": {
+        "calibration": 4392,
+        "mutation": 7570,
+        "candidate": 38
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 41,
+      "run_id": "run-0041",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261106T233140/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-c452e7141e8bbc72ad4ea898e7507173",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4344,
+        "mutation": 7476,
+        "candidate": 36,
+        "shadow": 144
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 42,
+      "run_id": "run-0042",
+      "arm": "wrapgate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261106T233140/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-d0272bd03ba62baa3361acba89134d0a",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4848,
+        "mutation": 6964,
+        "candidate": 28,
+        "shadow": 160
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 43,
+      "run_id": "run-0043",
+      "arm": "wrapgate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261106T233140/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "PASS",
+      "failures": [],
+      "inconclusive": [],
+      "campaign_id": "lf-f10e01e0ba282e67ee18234bab23f33c",
+      "q1_policy": "none",
+      "counts": {
+        "starts": 12000,
+        "ends": 12000,
+        "refused": 1
+      },
+      "kinds": {
+        "calibration": 4384,
+        "mutation": 7375,
+        "candidate": 33,
+        "shadow": 208
+      },
+      "campaign_call_budget": 12000,
+      "root_cap_status": "PASS",
+      "root_counts": {},
+      "q1_flow_status": "NOT_APPLICABLE",
+      "q1_flow": {
+        "events": 0
+      },
+      "run_index": 44,
+      "run_id": "run-0044",
+      "arm": "wrapgate8"
+    }
+  ],
+  "duplicate_run_keys": [],
+  "status": "FAIL"
+}

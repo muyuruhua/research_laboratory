@@ -1,0 +1,11 @@
+[MODE] container-local LoopFuzz Mock enabled (port 8099); host gateway preflight skipped
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261107T031309
+║  结果目录模式:   ablation/results-bftpd_ablation_<label>_<TS>T*/
+║  检索命令:       ls -d ablation/results-bftpd_ablation_*20261107T*
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g (down from 8g, see profuzzbench_exec_common_dev.sh)

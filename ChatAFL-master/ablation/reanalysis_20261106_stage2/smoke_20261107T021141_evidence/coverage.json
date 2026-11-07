@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "status": "INCONCLUSIVE",
+  "runs": [
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 484,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 452,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 0,
+      "run_id": "run-0000",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 491,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 471,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 1,
+      "run_id": "run-0001",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_calibrated8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 496,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 473,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 2,
+      "run_id": "run-0002",
+      "arm": "calibrated8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 496,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 453,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 3,
+      "run_id": "run-0003",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 505,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 483,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 4,
+      "run_id": "run-0004",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_shadowrand8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 494,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 453,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 5,
+      "run_id": "run-0005",
+      "arm": "shadowrand8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 489,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 469,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 6,
+      "run_id": "run-0006",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 489,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 483,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 7,
+      "run_id": "run-0007",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 500,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 481,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 8,
+      "run_id": "run-0008",
+      "arm": "wrapdirect8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 489,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 479,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 9,
+      "run_id": "run-0009",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 501,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 496,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 10,
+      "run_id": "run-0010",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_shrink_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 493,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 451,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 11,
+      "run_id": "run-0011",
+      "arm": "cal_shrink"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 478,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 468,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 12,
+      "run_id": "run-0012",
+      "arm": "wrapgate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 498,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 464,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 13,
+      "run_id": "run-0013",
+      "arm": "wrapgate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapgate8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 483,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 461,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 14,
+      "run_id": "run-0014",
+      "arm": "wrapgate8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 474,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 438,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 15,
+      "run_id": "run-0015",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 496,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 472,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 16,
+      "run_id": "run-0016",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_cal_ewma8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 483,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 425,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 17,
+      "run_id": "run-0017",
+      "arm": "cal_ewma8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 494,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 485,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 18,
+      "run_id": "run-0018",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 492,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 452,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 19,
+      "run_id": "run-0019",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordedf8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 498,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 505,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 20,
+      "run_id": "run-0020",
+      "arm": "ordedf8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 438,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 312,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 21,
+      "run_id": "run-0021",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 464,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 290,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 22,
+      "run_id": "run-0022",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 467,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 277,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 23,
+      "run_id": "run-0023",
+      "arm": "nollm8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 495,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 450,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 24,
+      "run_id": "run-0024",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 500,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 482,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 25,
+      "run_id": "run-0025",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_code_retain8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 489,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 465,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 26,
+      "run_id": "run-0026",
+      "arm": "code_retain8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 483,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 478,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 27,
+      "run_id": "run-0027",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 505,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 442,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 28,
+      "run_id": "run-0028",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 503,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 470,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 29,
+      "run_id": "run-0029",
+      "arm": "salvage8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261107T021141/out-bftpd-loopfuzz_1.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 500,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 488,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 30,
+      "run_id": "run-0030",
+      "arm": "ordmatch8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261107T021141/out-bftpd-loopfuzz_2.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 504,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 489,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 31,
+      "run_id": "run-0031",
+      "arm": "ordmatch8"
+    },
+    {
+      "archive": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261107T021141/out-bftpd-loopfuzz_3.tar.gz",
+      "status": "INCONCLUSIVE",
+      "measurement": "retained-corpus-replay-union",
+      "failures": [],
+      "inconclusive": [
+        "baseline-has-no-explicit-branch-identities",
+        "no-ever-seen-input-witness-proof"
+      ],
+      "terminal_branch_ids": 499,
+      "baseline_branch_ids": 0,
+      "seed_baseline_branch_ids": 0,
+      "n_replayed": 501,
+      "seed_subtraction_proven": false,
+      "terminal_minus_baseline_branch_ids": null,
+      "executed_input_union_proven": false,
+      "run_index": 32,
+      "run_id": "run-0032",
+      "arm": "ordmatch8"
+    }
+  ]
+}

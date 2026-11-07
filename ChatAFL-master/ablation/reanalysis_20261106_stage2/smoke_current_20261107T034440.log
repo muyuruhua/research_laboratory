@@ -1,0 +1,625 @@
+[MODE] container-local LoopFuzz Mock enabled (port 8099); host gateway preflight skipped
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261107T034440
+║  结果目录模式:   ablation/results-bftpd_ablation_<label>_<TS>T*/
+║  检索命令:       ls -d ablation/results-bftpd_ablation_*20261107T*
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g (down from 8g, see profuzzbench_exec_common_dev.sh)
+  Host total/available memory: ~62 GB / ~47 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 1, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 3 组 × 3 run = 9 容器
+  SKIPCOUNT=1
+  Docker images required: bftpd (and brokers if MQTT)
+
+[CUSTOM] 已入队 15 组: wrapdirect8 wrapgate8 shadowrand8 nollm8 ordmatch8 salvage8 code_retain8 ordedf8 calibrated8 cal_ewma8 cal_shrink cal_run_rate8 q1a8 q1b8 q1c8
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: bftpd  每组重复: 3  时长: 45 min
+  预设:   批次大小: 3 组/批
+  说明: 自定义消融组: wrapdirect8,wrapgate8,shadowrand8,nollm8,ordmatch8,salvage8,code_retain8,ordedf8,calibrated8,cal_ewma8,cal_shrink,cal_run_rate8,q1a8,q1b8,q1c8
+  结果目录: benchmark/results-bftpd_ablation_<label>/
+========================================================
+
+  [ABLATION] 15 组已入队，分 5 批执行
+  [ABLATION] 实际最大并发: 3 组 × 3 容器/组 = 9 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~59 GB (可用: ~47 GB)
+  ⚠️  CRITICAL: 实际内存不足！建议: export ABLATION_PARALLEL=2 并重试
+
+[PREFLIGHT] Mock mode: each LoopFuzz container starts and probes its own local gateway before fuzzing.
+
+  [ABLATION] === 批次 1: 启动 0-2 / 15 组 === 
+[ABLATION] 已启动 wrapdirect8 (PID=3168186)
+[ABLATION] 已启动 wrapgate8 (PID=3168188)
+[ABLATION] 已启动 shadowrand8 (PID=3168190)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:wrapdirect8] 启动 → ablation/results-bftpd_ablation_wrapdirect8_20261107T034440/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=1 MODE=direct PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[ABLATION:wrapgate8] 启动 → ablation/results-bftpd_ablation_wrapgate8_20261107T034440/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[ABLATION:shadowrand8] 启动 → ablation/results-bftpd_ablation_shadowrand8_20261107T034440/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_wrapgate8_20261107T034440
+║  预期结果路径:   benchmark/results-bftpd_ablation_wrapgate8_20261107T034440
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_wrapgate8_20261107T034440
+╚══════════════════════════════════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_wrapdirect8_20261107T034440
+║  预期结果路径:   benchmark/results-bftpd_ablation_wrapdirect8_20261107T034440
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_wrapdirect8_20261107T034440
+╚══════════════════════════════════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_shadowrand8_20261107T034440
+║  预期结果路径:   benchmark/results-bftpd_ablation_shadowrand8_20261107T034440
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_shadowrand8_20261107T034440
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-527fdec85160b308aca5b842efb8a3d0 rng=0x65099d1f71f606fd
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-88a27ad097667e53c757554764829406 rng=0xdfb075a48f4047ae
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-c89064f27ed4a77aed035938a4e0e536 rng=0xbb3254ba49951edf
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-ec22c9fdb440cc241170d8e330d14b2a rng=0x1bb36dc2a4d8d73c
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-8fabe75ea42a9e0b0deea8046313d60e rng=0xe39186803b3ad621
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-d5ee4d33fe844fe3b6783a7b6b68326f rng=0x30ecb31fe7244e25
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-32efa41a2ca40da25e6910e28ede3128 rng=0x7f2ad4d3ab4b5fb3
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-33e3307b0524a6d71bdd27c79fb5cac7 rng=0xfa089b86cde8017d
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-6717d42a63913aa0ac38fdd1d5721e2c rng=0x6404bf25dbfc722b
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: 8f80d26dc57c f96c54d0ded1 1166328e90c1
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 8f80d26dc57c
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f f96c54d0ded1
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 1166328e90c1
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop 8f80d26dc57c f96c54d0ded1 1166328e90c1
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: a6b079823e92 96cbe1eeb72d b35f197b22de
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f a6b079823e92
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 96cbe1eeb72d
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f b35f197b22de
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop a6b079823e92 96cbe1eeb72d b35f197b22de
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: 1361e8c5cd2a c46ba0909052 52b526680052
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 1361e8c5cd2a
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f c46ba0909052
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 52b526680052
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop 1361e8c5cd2a c46ba0909052 52b526680052
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 1 (container a6b079823e92)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 2 (container 96cbe1eeb72d)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 3 (container b35f197b22de)
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_shadowrand8_20261107T034440[recover] collecting out-bftpd-loopfuzz_1.tar.gz from a6b079823e92
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 1 (container 8f80d26dc57c)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 2 (container f96c54d0ded1)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 3 (container 1166328e90c1)
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_wrapgate8_20261107T034440[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 8f80d26dc57c
+Terminated
+Terminated
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 8f80d26dc57c0131ff1e6bd015628ee7cd49259b6a997e9536e6dfc138769a2c f96c54d0ded1e5b57c9848e6976da3b31d868566598ed5ce6009b070c3bfad6a 1166328e90c176867bc44a2cec29a3dacb6cdd9434d002cc43b88d8862812023
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): [WARN] No tarballs found in ../ablation/results-bftpd_ablation_wrapgate8_20261107T034440, skipping summary generation
+
+LOOPFUZZ(bftpd): [WARN] Recovery helper reported missing outputs; containers are kept for manual inspectionLOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f a6b079823e924c8b9276e6be697c3e3ccbff771fcb520099c83dc1da7b83f444 96cbe1eeb72d2580d4753b7b9de8bb20e41cf7a81d171f7b5dc20dee901bfa50 b35f197b22de77abc82c439be187541bb6cbfa0f00eee9f838547068f9a39002
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): [WARN] No tarballs found in ../ablation/results-bftpd_ablation_shadowrand8_20261107T034440, skipping summary generation
+
+LOOPFUZZ(bftpd): [WARN] Recovery helper reported missing outputs; containers are kept for manual inspection
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_wrapdirect8_20261107T034440
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 1361e8c5cd2a
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 8f80d26dc57c0131ff1e6bd015628ee7cd49259b6a997e9536e6dfc138769a2c f96c54d0ded1e5b57c9848e6976da3b31d868566598ed5ce6009b070c3bfad6a 1166328e90c176867bc44a2cec29a3dacb6cdd9434d002cc43b88d8862812023
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): I am done!
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f a6b079823e924c8b9276e6be697c3e3ccbff771fcb520099c83dc1da7b83f444 96cbe1eeb72d2580d4753b7b9de8bb20e41cf7a81d171f7b5dc20dee901bfa50 b35f197b22de77abc82c439be187541bb6cbfa0f00eee9f838547068f9a39002
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): I am done!
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_shadowrand8_20261107T034440-3168297-7512:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapgate8_20261107T034440-3168289-13813:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f a6b079823e924c8b9276e6be697c3e3ccbff771fcb520099c83dc1da7b83f444 96cbe1eeb72d2580d4753b7b9de8bb20e41cf7a81d171f7b5dc20dee901bfa50 b35f197b22de77abc82c439be187541bb6cbfa0f00eee9f838547068f9a39002
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 8f80d26dc57c0131ff1e6bd015628ee7cd49259b6a997e9536e6dfc138769a2c f96c54d0ded1e5b57c9848e6976da3b31d868566598ed5ce6009b070c3bfad6a 1166328e90c176867bc44a2cec29a3dacb6cdd9434d002cc43b88d8862812023
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+
+LOOPFUZZ(bftpd): [WARN] No tarballs found in ../ablation/results-bftpd_ablation_shadowrand8_20261107T034440, skipping summary generation
+LOOPFUZZ(bftpd): [WARN] No tarballs found in ../ablation/results-bftpd_ablation_wrapgate8_20261107T034440, skipping summary generation
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from a6b079823e92
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 8f80d26dc57c
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from c46ba0909052
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 96cbe1eeb72d
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from f96c54d0ded1
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 52b526680052
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from b35f197b22de
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 1166328e90c1
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 1361e8c5cd2aa4ea4f911c3bbf44cb9c9d2f433d2afcd3e014dcc0dbe176402e c46ba090905231111e43ef52e7cc5baafeb0e97f4166f85718a1ea6d297e6f1f 52b52668005235cc195e76e39214efac5bb0ff7229d3438666bd9a95fc1ce198
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): Generating run_summary.csv (3 tarballs, timeout=45 min)...
+LOOPFUZZ(bftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261107T034440/run_summary.csv
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 1 (container 1361e8c5cd2a)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 2 (container c46ba0909052)
+
+LOOPFUZZ(bftpd): [WARN] Mock metrics missing for run 3 (container 52b526680052)
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 1361e8c5cd2aa4ea4f911c3bbf44cb9c9d2f433d2afcd3e014dcc0dbe176402e c46ba090905231111e43ef52e7cc5baafeb0e97f4166f85718a1ea6d297e6f1f 52b52668005235cc195e76e39214efac5bb0ff7229d3438666bd9a95fc1ce198
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): I am done!
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run1-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run2-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259  (docker logs bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259 ; docker cp bftpd-loopfuzz-run3-1107-034440-ablation_wrapdirect8_20261107T034440-3168292-21259:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 1361e8c5cd2aa4ea4f911c3bbf44cb9c9d2f433d2afcd3e014dcc0dbe176402e c46ba090905231111e43ef52e7cc5baafeb0e97f4166f85718a1ea6d297e6f1f 52b52668005235cc195e76e39214efac5bb0ff7229d3438666bd9a95fc1ce198
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): Generating run_summary.csv (3 tarballs, timeout=45 min)...
+LOOPFUZZ(bftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_wrapdirect8_20261107T034440/run_summary.csv
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 1361e8c5cd2a
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:shadowrand8] 完成
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:wrapgate8] 完成
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from c46ba0909052
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 52b526680052
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:wrapdirect8] 完成
+[ABLATION] wrapdirect8 成功结束
+[ABLATION] wrapgate8 成功结束
+[ABLATION] shadowrand8 成功结束
+
+  [ABLATION] === 批次 2: 启动 3-5 / 15 组 === 
+[ABLATION] 已启动 nollm8 (PID=3183188)
+[ABLATION] 已启动 ordmatch8 (PID=3183190)
+[ABLATION] 已启动 salvage8 (PID=3183191)
+  [ABLATION] 等待批次 2 完成...
+[ABLATION:ordmatch8] 启动 → ablation/results-bftpd_ablation_ordmatch8_20261107T034558/
+[ABLATION:salvage8] 启动 → ablation/results-bftpd_ablation_salvage8_20261107T034558/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[ABLATION:nollm8] 启动 → ablation/results-bftpd_ablation_nollm8_20261107T034558/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=1 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+[MODE] container-local LoopFuzz Mock enabled (port 8099); LLM remains enabled
+
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_ordmatch8_20261107T034558
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_salvage8_20261107T034558
+║  预期结果路径:   benchmark/results-bftpd_ablation_ordmatch8_20261107T034558
+║  预期结果路径:   benchmark/results-bftpd_ablation_salvage8_20261107T034558
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_salvage8_20261107T034558
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_ordmatch8_20261107T034558
+╚══════════════════════════════════════════════════════════════╝
+
+╚══════════════════════════════════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_nollm8_20261107T034558
+║  预期结果路径:   benchmark/results-bftpd_ablation_nollm8_20261107T034558
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_nollm8_20261107T034558
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 2700 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-9697fffb70e9c487b6038726325a50dd rng=0x46c01b3f3574ab4a
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-197947c00ea657d007b719a8c1441162 rng=0x936cb1f7446254b0
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-44afe39d7231b26e9212bd7a3f6d3553 rng=0x97674a55546bae1e
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-1d5d189cf60f433263a530133dcb1907 rng=0x14272090e7b5210d
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-4d3eda880492123b95d5c89ebdcc890b rng=0xe866a722b2d0ed79
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-648cf96248e92b623e4ca65f658e9b23 rng=0xff73070cae2ed262
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-4687cf4bd27c57703e35ffef8662b7d5 rng=0x93c73bcb9164d513
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-6115c7c799b161fc335b0e2845b5ca51 rng=0xc7689db02bc700aa
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-17fd9a250d52cde2a0361bffb497c41d rng=0x0ebcd1f93d0afc32
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: 9e82a06b2a9c 729edade476a b7d35c1712b0
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 9e82a06b2a9c
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 729edade476a
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f b7d35c1712b0
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop 9e82a06b2a9c 729edade476a b7d35c1712b0
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: 9b9f9843f9fc f7e3766cc3a4 49ffdca6949c
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 9b9f9843f9fc
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f f7e3766cc3a4
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 49ffdca6949c
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop 9b9f9843f9fc f7e3766cc3a4 49ffdca6949c
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: b320624c764d 2cefb02883e3 3fe9ece3ed40
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f b320624c764d
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 2cefb02883e3
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 3fe9ece3ed40
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop b320624c764d 2cefb02883e3 3fe9ece3ed40
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: syntax error near unexpected token `then'
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: `/home/ubuntu/stateafl ]; then cp -a /tmp/stateafl-src /home/ubuntu/stateafl; fi && \'
+
+LOOPFUZZ(bftpd): [TRAP] Interrupted – waiting for containers to finish (cov_script must complete)...
+LOOPFUZZ(bftpd): [TRAP] Press Ctrl+C again to force-collect without waiting.
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: syntax error near unexpected token `then'
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: `/home/ubuntu/stateafl ]; then cp -a /tmp/stateafl-src /home/ubuntu/stateafl; fi && \'
+
+LOOPFUZZ(bftpd): [TRAP] Interrupted – waiting for containers to finish (cov_script must complete)...
+LOOPFUZZ(bftpd): [TRAP] Press Ctrl+C again to force-collect without waiting.
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_ordmatch8_20261107T034558[recover] collecting out-bftpd-loopfuzz_1.tar.gz from b320624c764d
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: syntax error near unexpected token `then'
+/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/scripts/execution/profuzzbench_exec_common_dev.sh: line 1201: `/home/ubuntu/stateafl ]; then cp -a /tmp/stateafl-src /home/ubuntu/stateafl; fi && \'
+
+LOOPFUZZ(bftpd): [TRAP] Interrupted – waiting for containers to finish (cov_script must complete)...
+LOOPFUZZ(bftpd): [TRAP] Press Ctrl+C again to force-collect without waiting.
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_salvage8_20261107T034558[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 9e82a06b2a9c
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_nollm8_20261107T034558[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 9b9f9843f9fc
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 2cefb02883e3
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from f7e3766cc3a4
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 729edade476a
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 3fe9ece3ed40
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 49ffdca6949c
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from b7d35c1712b0
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185  (docker logs bftpd-loopfuzz-run1-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185 ; docker cp bftpd-loopfuzz-run1-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185  (docker logs bftpd-loopfuzz-run2-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185 ; docker cp bftpd-loopfuzz-run2-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185:<path> .)
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185  (docker logs bftpd-loopfuzz-run3-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185 ; docker cp bftpd-loopfuzz-run3-1107-034558-ablation_ordmatch8_20261107T034558-3183297-6185:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f b320624c764ddf065938f20b7572334e1d8d94165c8220156128e5825df60039 2cefb02883e3fb283e6ce4bca8959da489ecfe27b737780c8b0b697c549db0f7 3fe9ece3ed4077b056fea7b77739bccfc9af013c98a39823bccedddcdf4ac683
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): Generating run_summary.csv (3 tarballs, timeout=45 min)...
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034558-ablation_nollm8_20261107T034558-3183292-29430  (docker logs bftpd-loopfuzz-run1-1107-034558-ablation_nollm8_20261107T034558-3183292-29430 ; docker cp bftpd-loopfuzz-run1-1107-034558-ablation_nollm8_20261107T034558-3183292-29430:<path> .)
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034558-ablation_nollm8_20261107T034558-3183292-29430  (docker logs bftpd-loopfuzz-run2-1107-034558-ablation_nollm8_20261107T034558-3183292-29430 ; docker cp bftpd-loopfuzz-run2-1107-034558-ablation_nollm8_20261107T034558-3183292-29430:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034558-ablation_nollm8_20261107T034558-3183292-29430  (docker logs bftpd-loopfuzz-run3-1107-034558-ablation_nollm8_20261107T034558-3183292-29430 ; docker cp bftpd-loopfuzz-run3-1107-034558-ablation_nollm8_20261107T034558-3183292-29430:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 9b9f9843f9fcb18be3a5144b938f44096f2605a54998a1d15ec1a756ee37416f f7e3766cc3a4e64d0c5e322070629d24909220938bdde31f4308029f312d6bca 49ffdca6949c8c0505a58a99c2248b237f697239fccf5a38d5f6995017cccaf2
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): Generating run_summary.csv (3 tarballs, timeout=45 min)...
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1107-034558-ablation_salvage8_20261107T034558-3183295-12614  (docker logs bftpd-loopfuzz-run1-1107-034558-ablation_salvage8_20261107T034558-3183295-12614 ; docker cp bftpd-loopfuzz-run1-1107-034558-ablation_salvage8_20261107T034558-3183295-12614:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1107-034558-ablation_salvage8_20261107T034558-3183295-12614  (docker logs bftpd-loopfuzz-run2-1107-034558-ablation_salvage8_20261107T034558-3183295-12614 ; docker cp bftpd-loopfuzz-run2-1107-034558-ablation_salvage8_20261107T034558-3183295-12614:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1107-034558-ablation_salvage8_20261107T034558-3183295-12614  (docker logs bftpd-loopfuzz-run3-1107-034558-ablation_salvage8_20261107T034558-3183295-12614 ; docker cp bftpd-loopfuzz-run3-1107-034558-ablation_salvage8_20261107T034558-3183295-12614:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 9e82a06b2a9cd80d6cc5de738d4dda37c9cea716ae379b91a677a088674084b4 729edade476a986e36aebd151c722f2a340920ea7622dcaba7ef0d6921499bfb b7d35c1712b03804b6fb93d8e69002698e2c173caa4b1d1028dc7ddf979e3edf
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): Generating run_summary.csv (3 tarballs, timeout=45 min)...
+LOOPFUZZ(bftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_nollm8_20261107T034558/run_summary.csv
+[ERROR] Background exec job (pid=3183292) FAILED (exit=0)
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 9b9f9843f9fc
+LOOPFUZZ(bftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_ordmatch8_20261107T034558/run_summary.csv
+[ERROR] Background exec job (pid=3183297) FAILED (exit=0)
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from b320624c764d
+LOOPFUZZ(bftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_salvage8_20261107T034558/run_summary.csv
+[ERROR] Background exec job (pid=3183295) FAILED (exit=0)
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 9e82a06b2a9c
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from f7e3766cc3a4
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 2cefb02883e3
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_1.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 729edade476a
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 49ffdca6949c
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 3fe9ece3ed40
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_2.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_2.tar.gz still incomplete – container may still be running
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete (missing required files), fetching replacement...
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from b7d35c1712b0
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-bftpd-loopfuzz_3.tar.gz
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-bftpd-loopfuzz_3.tar.gz still incomplete – container may still be running
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================

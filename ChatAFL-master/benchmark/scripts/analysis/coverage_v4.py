@@ -17,6 +17,8 @@ import sys
 import time
 
 SCHEMA = "loopfuzz-coverage-v4"
+BFTPD_EXIT_MARKER = "COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2"
+BFTPD_CHROOT_MARKER = "COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1"
 CSV_FIELDS = ("Time", "l_per", "l_abs", "b_per", "b_abs", "idx",
               "discovery_execution_id", "discovery_monotonic_ms", "campaign_id",
               "coordinate_source", "scope_sha256", "snapshot_sha256")
@@ -162,15 +164,52 @@ def instrument_identity(object_root):
     return notes
 
 
-def scope_manifest(snapshot, notes, gcovr_version, gcov_version):
+def scope_manifest(snapshot, notes, gcovr_version, gcov_version, replay_policy=None):
     value = dict(schema_version=SCHEMA, sources=snapshot.files, gcno=notes,
                  branch_ids=sorted(snapshot.branches), line_ids=sorted(snapshot.lines),
                  gcovr_format=snapshot.format_version, gcovr_version=gcovr_version,
                  gcov_version=gcov_version,
                  branch_identity="relative filename, line_number, branchno/array ordinal",
                  source_resolution=snapshot.resolution)
+    if replay_policy is not None:
+        value["replay_policy"] = replay_policy
     value["scope_sha256"] = digest_bytes(canonical(value).encode())
     return value
+
+
+def bftpd_exit_policy(cwd, allow_incomplete=False):
+    """Authenticate the coverage-only SIGPIPE normal-exit build.
+
+    A SIGPIPE in the replay harness is not evidence of a target vulnerability.
+    In particular, the coverage subject substitutes fd 2 for the data socket.
+    The coverage-only patch sets a flag on peer-close SIGPIPE and leaves the
+    command loop through normal cleanup, allowing libgcov's atexit dump. No signal-time
+    __gcov_dump call or change to the fuzz target is involved.
+    """
+    source, login, binary = Path(cwd) / "main.c", Path(cwd) / "login.c", Path(cwd) / "bftpd"
+    marker = BFTPD_EXIT_MARKER.encode()
+    verified = (source.is_file() and login.is_file() and binary.is_file() and
+                marker in source.read_bytes() and marker in binary.read_bytes() and
+                BFTPD_CHROOT_MARKER.encode() in login.read_bytes() and
+                BFTPD_CHROOT_MARKER.encode() in binary.read_bytes())
+    if not verified and not allow_incomplete:
+        raise CoverageError("bftpd coverage build lacks verified SIGPIPE normal-exit/chroot policy; "
+                            "run install_bftpd_coverage_exit.py in the gcov tree")
+    return dict(name=BFTPD_EXIT_MARKER if verified else "legacy-unverified-exit",
+                chroot_policy=BFTPD_CHROOT_MARKER if verified else "legacy-unverified-chroot",
+                verified=verified, binary_sha256=digest_file(binary) if binary.is_file() else None,
+                scope="coverage replay build only; fuzz target unchanged")
+
+
+def replay_incompleteness(replay):
+    reasons = []
+    if replay.get("session_coverage_missing"):
+        reasons.append("session-gcda-not-flushed")
+    if replay.get("server_crashed"):
+        reasons.append("server-signal-exit")
+    if replay.get("replay_anomaly"):
+        reasons.append(replay.get("anomaly_kind") or "replay-anomaly")
+    return reasons
 
 
 def load_coordinates(path):
@@ -256,9 +295,15 @@ class CoverageUnion:
             raise CoverageError("baseline is not reset to zero coverage")
         self.baseline, self.manifest = baseline, manifest
         self.covered, self.covered_lines = set(), set()
+        # The gcovr reset report is not a seed baseline when the target has no
+        # gcda yet.  Track the branch union of inputs explicitly identified as
+        # initial seeds so terminal evidence can subtract a real baseline.
+        self.seed_covered, self.seed_covered_lines = set(), set()
+        self.seed_events = []
         self.previous_snapshot, self.events, self.previous_coordinates = set(), [], None
 
-    def add(self, snapshot, coordinates, raw_sha256, expected_counter_reset=False):
+    def add(self, snapshot, coordinates, raw_sha256, expected_counter_reset=False,
+            is_seed_input=False):
         if (self.manifest.get("zero_baseline_mode") and not self.baseline.branches
                 and snapshot.branches):
             # Zero-gcda baseline: the first replayed checkpoint materializes
@@ -269,6 +314,16 @@ class CoverageUnion:
             self.baseline = Snapshot(set(snapshot.branches), set(), set(snapshot.lines),
                                      set(), dict(snapshot.files), snapshot.format_version,
                                      dict(snapshot.resolution))
+            # 2026-11-07 audit fix: the ADOPTED universe must also become the
+            # manifest universe — otherwise manifest["branch_ids"] stays
+            # empty, audit_csv divides by zero, and the finalization identity
+            # check compares the adopted baseline against a stale manifest.
+            self.manifest["branch_ids"] = sorted(
+                [list(b) if isinstance(b, (list, tuple)) else b
+                 for b in snapshot.branches])
+            self.manifest["line_ids"] = sorted(
+                [list(l) if isinstance(l, (list, tuple)) else l
+                 for l in snapshot.lines])
         for field in ("branches", "lines", "files", "format_version"):
             if getattr(snapshot, field) != getattr(self.baseline, field):
                 raise CoverageError("coverage source/branch scope changed: " + field)
@@ -280,6 +335,9 @@ class CoverageUnion:
         previous_union = set(self.covered)
         self.covered.update(snapshot.covered_branches)
         self.covered_lines.update(snapshot.covered_lines)
+        if is_seed_input:
+            self.seed_covered.update(snapshot.covered_branches)
+            self.seed_covered_lines.update(snapshot.covered_lines)
         dropped = self.previous_snapshot - snapshot.covered_branches
         event = dict(coordinates)
         event["queue_schema_version"] = event.pop("schema_version", None)
@@ -294,6 +352,9 @@ class CoverageUnion:
                      dropped_snapshot_branch_ids=sorted(dropped),
                      expected_counter_reset=expected_counter_reset,
                      unexpected_nonmonotonic_snapshot=bool(dropped and not expected_counter_reset))
+        event["is_seed_input"] = bool(is_seed_input)
+        if is_seed_input:
+            self.seed_events.append(event["idx"])
         self.events.append(event)
         self.previous_snapshot = set(snapshot.covered_branches)
         self.previous_coordinates = coordinates
@@ -326,6 +387,12 @@ def audit_csv(path, manifest, expected_events=None):
             raise CoverageError("nonmonotonic cumulative coverage CSV")
         if row.get("scope_sha256") != manifest["scope_sha256"]:
             raise CoverageError("CSV uses a different scope")
+        if not manifest["branch_ids"] or not manifest["line_ids"]:
+            raise CoverageError(
+                "empty branch/line universe: the zero-gcda adoption path "
+                "never materialized a manifest universe (2026-11-07 audit "
+                "fix — explicit INCONCLUSIVE-grade error instead of "
+                "ZeroDivisionError)")
         bp = 100 * branches / len(manifest["branch_ids"])
         lp = 100 * lines / len(manifest["line_ids"])
         if not 0 <= branches <= len(manifest["branch_ids"]) or not 0 <= lines <= len(manifest["line_ids"]):
@@ -497,7 +564,7 @@ def replay_commands(target, path, port, mode, cwd, workdir):
         server = timeout + ["./testOnDemandRTSPServer", str(port)]
     else:
         server = ["timeout", "-k", "1s", "3s", "./bftpd", "-D", "-c",
-                  str(workdir / "basic.conf")]
+                  str(target_config or (workdir / "basic.conf"))]
     return client, server
 
 
@@ -535,6 +602,9 @@ def run_reset(record, cwd, replay_log, allow_unverified):
 def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_root):
     client_command, server_command = replay_commands(target, record["path"], port, mode, cwd, workdir)
     env, remote = os.environ.copy(), None
+    exit_trace = Path(str(replay_log) + ".exit-trace")
+    if target == "bftpd":
+        env["COVERAGE_V4_EXIT_TRACE"] = str(exit_trace.resolve())
     # Targets whose server chroots (bftpd into its jail, pure-ftpd into
     # /home/fuzzing) cannot write gcda at the compiled-in absolute paths, so
     # the object tree is mirrored under the chroot prefix via GCOV_PREFIX and
@@ -545,7 +615,22 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
         remote = prefix / str(object_root).lstrip("/")
         remote.mkdir(parents=True, exist_ok=True)
         for note in object_root.rglob("*.gcno"):
-            remote_data = remote / note.relative_to(object_root).with_suffix(".gcda")
+            data_dir = remote / note.relative_to(object_root).parent
+            data_dir.mkdir(parents=True, exist_ok=True)
+            # A chroot+setuid session child (bftpd DO_CHROOT=yes demotes to
+            # the logged-in uid; gcov.patch unsets GCOV_PREFIX inside the
+            # chroot so its gcda land at the compiled-in paths mirrored
+            # here) must be able to CREATE its .gcda inside the jail.  The
+            # collector normally runs as root while the child runs as the
+            # FTP user: a root-owned 0755 mirror silently loses every
+            # logged-in session's coverage (reproduced 2026-10-31 in the
+            # bftpd image: 0755 mirror -> 0 gcda after a successful login;
+            # 0777 -> 12 gcda owned by the demoted uid).  The jail is wiped
+            # and re-staged per replay by the reset contract, so
+            # world-writable mirror dirs are safe here.
+            data_dir.chmod(0o777)
+            remote_data = note.relative_to(object_root).with_suffix(".gcda")
+            remote_data = remote / remote_data
             if remote_data.is_file():
                 remote_data.unlink()
         env["GCOV_PREFIX"] = str(prefix)
@@ -578,21 +663,24 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
                 raise CoverageError("BFTPD gcda has no corresponding gcno: " + str(source))
             shutil.copy2(source, destination)
             imported.append(source.relative_to(remote).as_posix())
-        # A session child that crashes or is killed cannot flush its gcov
-        # data (libgcov dumps only on a normal exit), so a crash-input
-        # replay legitimately yields an empty import.  It is recorded, not
-        # fatal: the union simply gains nothing from this input.
+        # Missing data is an incomplete measurement, never a zero-coverage
+        # observation. Retain any union evidence but fail strict acceptance.
         session_coverage_missing = not imported
     else:
         session_coverage_missing = False
     flags = classify_replay_exit(server_code, client_code)
-    return dict(server_exit_code=server_code, client_exit_code=client_code,
+    result = dict(server_exit_code=server_code, client_exit_code=client_code,
                 session_coverage_missing=session_coverage_missing,
                 server_crashed=flags["server_crashed"],
                 replay_anomaly=flags["replay_anomaly"],
                 anomaly_kind=flags["anomaly_kind"],
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
                 client_command=client_command, server_command=server_command)
+    result["incomplete_reasons"] = replay_incompleteness(result)
+    result["coverage_complete"] = not result["incomplete_reasons"]
+    result["sigpipe_normal_exit_observed"] = (target == "bftpd" and exit_trace.is_file() and
+        BFTPD_EXIT_MARKER in exit_trace.read_text(errors="replace"))
+    return result
 
 
 def classify_replay_exit(server_code, client_code):
@@ -638,6 +726,8 @@ def run_replay(args):
     if args.step < 1:
         raise CoverageError("step must be positive")
     source_root, object_root = profile_paths(args.target, cwd)
+    allow_incomplete = getattr(args, "allow_incomplete", False)
+    replay_policy = bftpd_exit_policy(cwd, allow_incomplete) if args.target == "bftpd" else None
     search_roots = source_search_roots(args.target, cwd, source_root)
     workdir = Path(os.environ.get("WORKDIR", str(cwd)))
     coordinates = load_coordinates(folder / "queue-checkpoints.jsonl")
@@ -674,7 +764,7 @@ def run_replay(args):
             raise
         baseline = parse_snapshot(baseline_report, source_root, search_roots, allow_empty=True)
         zero_baseline_mode = "filesystem-verified-no-gcda"
-    manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version)
+    manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version, replay_policy)
     manifest.update(source_root=str(source_root), object_root=str(object_root), target=args.target,
                     source_search_roots=[str(r) for r in search_roots],
                     zero_baseline_mode=zero_baseline_mode)
@@ -683,6 +773,7 @@ def run_replay(args):
     union = CoverageUnion(baseline, manifest)
     unexpected_drop = False
     anomaly_kinds = {}
+    incomplete_replays = []
     with output.open("x", newline="") as csv_output, (directory / "checkpoints.jsonl").open("x") as events:
         writer = csv.DictWriter(csv_output, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -692,6 +783,9 @@ def run_replay(args):
             reset = run_reset(record, cwd, directory / ("reset-%06d.log" % index), args.allow_unverified_reset)
             replay = run_one_replay(args.target, record, args.port, args.mode, cwd, workdir,
                                     directory / ("replay-%06d.log" % index), object_root)
+            incomplete = replay_incompleteness(replay)
+            if incomplete:
+                incomplete_replays.append(dict(filename=record["filename"], reasons=incomplete))
             if replay.get("replay_anomaly"):
                 anomaly_kinds[replay["anomaly_kind"]] = anomaly_kinds.get(replay["anomaly_kind"], 0) + 1
             if instrument_identity(object_root) != notes:
@@ -701,8 +795,13 @@ def run_replay(args):
             snapshot_path = directory / ("snapshot-%06d.json.gz" % index)
             with gzip.open(snapshot_path, "wb") as snapshot_output:
                 snapshot_output.write(raw)
+            # Initial queue entries are the only inputs eligible for the
+            # measured seed baseline.  Their identity comes from the append-
+            # only queue ledger, never from a zero gcovr counter report.
+            is_seed_input = record.get("kind") == "initial-queue-name"
             event = union.add(parse_snapshot(report, source_root, search_roots), record, digest_bytes(raw),
-                              expected_counter_reset=args.target in ("bftpd", "pure-ftpd"))
+                              expected_counter_reset=args.target in ("bftpd", "pure-ftpd"),
+                              is_seed_input=is_seed_input)
             event.update(replay=replay, reset=reset, gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
             events.write(canonical(event) + "\n")
             events.flush()
@@ -714,16 +813,31 @@ def run_replay(args):
     counts = audit_csv(output, manifest, union.events)
     if counts["terminal_branches"] != len(union.covered):
         raise CoverageError("terminal aggregate disagrees with branch-ID union")
-    if plan and sum(anomaly_kinds.values()) == len(plan):
-        raise CoverageError("every replay was anomalous (%s); harness is broken, refusing to emit a union"
-                            % anomaly_kinds)
+    all_resets_verified = all(event["reset"]["command_succeeded"] for event in union.events)
+    measurement_complete = (not incomplete_replays and not unreplayable and all_resets_verified and
+                            (replay_policy is None or replay_policy["verified"]))
+    # Preserve a replay-verifiable witness for every input.  The witness is
+    # the queue identity plus the content and snapshot hashes; audit_artifacts
+    # recomputes these joins instead of trusting the aggregate count.
+    input_witnesses = [dict(idx=e["idx"], filename=e["filename"],
+                            input_sha256=e["input_sha256"],
+                            snapshot_sha256=e["snapshot_sha256"])
+                      for e in union.events]
     write_json(directory / "terminal.json", dict(
         schema_version=SCHEMA, scope_sha256=manifest["scope_sha256"],
         covered_branch_ids=sorted(union.covered), covered_line_ids=sorted(union.covered_lines),
+        seed_covered_branch_ids=sorted(union.seed_covered),
+        seed_covered_line_ids=sorted(union.seed_covered_lines),
+        seed_replay_indices=sorted(union.seed_events),
+        n_seed_replayed=len(union.seed_events),
+        executed_input_witnesses=input_witnesses,
         n_replayed=len(plan), fixed_execution_coordinates_valid=bool(coordinates),
         n_unreplayable_ledger_entries=len(unreplayable),
+        coverage_complete=measurement_complete,
+        incomplete_replays=incomplete_replays,
+        acceptance="complete" if measurement_complete else "incomplete",
         replay_anomalies=dict(total=sum(anomaly_kinds.values()), kinds=anomaly_kinds),
-        all_reset_commands_succeeded=all(event["reset"]["command_succeeded"] for event in union.events),
+        all_reset_commands_succeeded=all_resets_verified,
         execution_coordinate_unit="fuzzer total_execs, not network requests",
         unexpected_snapshot_decrease=unexpected_drop, csv_audit=counts,
         reset_command=reset_command, reset_stderr=reset_stderr,
@@ -733,6 +847,9 @@ def run_replay(args):
     # No synthetic campaign-end row: terminal.json describes the last actual checkpoint.
     if unexpected_drop:
         raise CoverageError("raw snapshot decreased; union preserved, audit requires investigation")
+    if not measurement_complete and not allow_incomplete:
+        raise CoverageError("coverage is incomplete; terminal evidence preserved, "
+                            "refusing scientific acceptance (diagnostic only: --allow-incomplete)")
     return 0
 
 
@@ -755,9 +872,11 @@ def audit_artifacts(output, source_root=None):
     union = CoverageUnion(baseline, manifest)
     coordinate_fields = ("filename", "campaign_id", "queue_id", "discovery_time_ms", "monotonic_ms",
                          "discovery_execution_id", "coordinate_source")
+    saved_events = []
     with (directory / "checkpoints.jsonl").open() as source:
         for raw in source:
             saved = json.loads(raw)
+            saved_events.append(saved)
             snapshot_path = directory / saved["snapshot_file"]
             if snapshot_path.parent.resolve() != directory.resolve():
                 raise CoverageError("snapshot path escapes artifact directory")
@@ -767,16 +886,28 @@ def audit_artifacts(output, source_root=None):
                 raise CoverageError("snapshot content hash mismatch")
             event = union.add(parse_snapshot(json.loads(snapshot_bytes), root, roots),
                               {key: saved[key] for key in coordinate_fields if key in saved},
-                              saved["snapshot_sha256"], saved["expected_counter_reset"])
+                              saved["snapshot_sha256"], saved["expected_counter_reset"],
+                              saved.get("is_seed_input", False))
             for field in ("idx", "scope_sha256", "cumulative_covered_branches", "cumulative_covered_lines",
                           "snapshot_covered_branches", "snapshot_covered_lines", "newly_covered_branch_ids",
-                          "dropped_snapshot_branch_ids"):
+                          "dropped_snapshot_branch_ids", "is_seed_input"):
                 if canonical(saved[field]) != canonical(event[field]):
                     raise CoverageError("checkpoint aggregate disagrees with snapshot branch IDs: " + field)
     terminal = json.loads((directory / "terminal.json").read_text())
+    if "coverage_complete" in terminal:
+        replay_policy = manifest.get("replay_policy")
+        recomputed_complete = (not any(replay_incompleteness(event.get("replay", {})) for event in saved_events)
+                               and not terminal.get("n_unreplayable_ledger_entries", 0)
+                               and all(event.get("reset", {}).get("command_succeeded") for event in saved_events)
+                               and (replay_policy is None or replay_policy.get("verified")))
+        if terminal["coverage_complete"] is not bool(recomputed_complete):
+            raise CoverageError("terminal completeness disagrees with replay/reset evidence")
     if (terminal["covered_branch_ids"] != sorted(map(list, union.covered)) or
             terminal["covered_line_ids"] != sorted(map(list, union.covered_lines)) or
-            terminal["n_replayed"] != len(union.events)):
+            terminal["n_replayed"] != len(union.events) or
+            terminal.get("seed_covered_branch_ids") != sorted(map(list, union.seed_covered)) or
+            terminal.get("seed_covered_line_ids") != sorted(map(list, union.seed_covered_lines)) or
+            terminal.get("seed_replay_indices") != sorted(union.seed_events)):
         raise CoverageError("terminal aggregate disagrees with cumulative branch-ID union")
     return audit_csv(output, manifest, union.events)
 
@@ -794,16 +925,25 @@ def main(argv=None):
     replay.add_argument("--gcovr", default="gcovr")
     replay.add_argument("--require-coordinates", action="store_true")
     replay.add_argument("--allow-unverified-reset", action="store_true")
+    replay.add_argument("--allow-incomplete", action="store_true",
+                        help="diagnostic lower-bound union only; terminal remains incomplete")
     audit = sub.add_parser("audit")
     audit.add_argument("output", type=Path)
     audit.add_argument("--source-root", type=Path)
     args = parser.parse_args(argv)
+    existing_output = (args.command == "replay" and
+                       (args.output.exists() or Path(str(args.output) + ".v4").exists()))
     try:
         if args.command == "audit":
             print(json.dumps(audit_artifacts(args.output, args.source_root), sort_keys=True))
             return 0
         return run_replay(args)
     except (CoverageError, OSError, json.JSONDecodeError, subprocess.SubprocessError) as error:
+        if args.command == "replay" and not existing_output:
+            directory = Path(str(args.output.resolve()) + ".v4")
+            if directory.is_dir():
+                write_json(directory / "incomplete.json", dict(coverage_complete=False,
+                           failure=str(error), measurement="incomplete corpus replay; do not use as a complete endpoint"))
         print("coverage-v4: " + str(error), file=sys.stderr)
         return 2
 
