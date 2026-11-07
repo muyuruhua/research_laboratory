@@ -19,6 +19,12 @@ static u8 gating_test_driver(char **argv, u32 timeout);
 #include <stdio.h>
 #include <sys/stat.h>
 
+/* Config metadata only: the selftest never links or calls an LLM client. */
+double llm_active_top_p(void) { return 1.0; }
+int llm_active_max_tokens(void) { return 4096; }
+long chat_llm_cap_calls(void) { return -1; }
+long chat_llm_cap_tokens(void) { return -1; }
+
 static u8 test_trace_value = 1;
 static const char test_reply[] = "220 ready\r\n";
 static u32 test_reply_end = (u32)(sizeof(test_reply) - 1);
@@ -835,6 +841,40 @@ static void test_censor_frees_trial_evidence(void) {
   queue = queue_top = NULL;
 }
 
+/* Witness tomb (2026-11-07): an expiring provisional root's session file
+ * is MOVED to witness-tomb/ instead of unlinked; regions/replay copies
+ * are still removed; the removal checkpoint ledger row is still written. */
+static void test_witness_tomb_expiry_move(void) {
+  char tmpl[] = "/tmp/wt-selftest-XXXXXX";
+  if (!mkdtemp(tmpl)) return;
+  u8 *old_out = out_dir;
+  u8 *qdir = alloc_printf("%s/queue", tmpl);
+  u8 *tdir = alloc_printf("%s/witness-tomb", tmpl);
+  mkdir((char *)qdir, 0755); mkdir((char *)tdir, 0755);
+  u8 *fname = alloc_printf("%s/queue/id:000042,prov", tmpl);
+  FILE *f = fopen((char *)fname, "w");
+  if (f) { fputs("SEED", f); fclose(f); }
+  struct queue_entry q;
+  memset(&q, 0, sizeof(q));
+  q.fname = fname; q.index = 42;
+  out_dir = (u8 *)tmpl;
+  u64 before = witness_tomb_expiries;
+  event_log_enabled = 0;
+
+  provisional_invalidate_entry(&q, 0);
+
+  u8 *moved = alloc_printf("%s/witness-tomb/expired-id:000042,prov", tmpl);
+  FILE *m = fopen((char *)moved, "r");
+  assert(m != NULL);                  /* session preserved in the tomb */
+  if (m) fclose(m);
+  assert(access((char *)fname, F_OK) != 0);  /* original gone */
+  assert(witness_tomb_expiries == before + 1);
+
+  ck_free(moved); ck_free(qdir); ck_free(tdir); ck_free(fname);
+  out_dir = old_out;
+  event_log_enabled = 1;
+}
+
 /* Stage-2 T03: fixed campaign call budget — admitted invocations count
  * against the cap, the cap refusal is a planned stop, and NO_REFLOW's
  * parked quota shrinks the effective cap. */
@@ -873,6 +913,16 @@ static void test_campaign_budget_cap(void) {
   assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
   assert(campaign_budget_exhausted == 1);
 
+  /* All quota parked: effective cap is exactly zero, which is still an
+   * enabled campaign budget and therefore must refuse the first invocation.
+   * This catches the historical `if (cap && ...)` sentinel bug. */
+  campaign_budget_exhausted = 0;
+  campaign_charged_invocations = 0;
+  q1_idle_total = 2;                           /* cap 2 -> effective 0 */
+  assert(campaign_effective_call_cap() == 0);
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(campaign_budget_exhausted == 1);
+
   campaign_call_budget = saved_budget;
   campaign_charged_invocations = saved_charged;
   q1_idle_total = saved_idle; q1_reflow_pool = saved_pool;
@@ -889,19 +939,30 @@ static void test_q1_reflow_consumption(void) {
   u8 saved_reflow = q1_reflow;
   u64 saved_pool = q1_reflow_pool, saved_used = q1_reflow_consumed;
   u64 saved_ord = ord_invocation_total, saved_lin = lineage_invocation_total;
+  q1_reflow_node_t *saved_head = q1_reflow_head, *saved_tail = q1_reflow_tail;
+  u64 saved_next_id = q1_reflow_next_id;
   const char *old_kind = execution_kind;
+  q1_reflow_head = q1_reflow_tail = NULL;
+  q1_reflow_next_id = 0;
   q1_reflow = 1; q1_reflow_pool = 2; q1_reflow_consumed = 0;
+  assert(q1_register_reflow(901, 2) != 0);
   execution_kind = "mutation";
   llm_candidate_lineage_pin = 0;
 
   assert(run_target(NULL, 1) == FAULT_NONE);   /* pool 2->1 */
+  assert(q1_active_flow_id == 1 && q1_active_flow_source == 901 &&
+         q1_active_flow_remaining == 1);
   assert(run_target(NULL, 1) == FAULT_NONE);   /* pool 1->0 */
+  assert(q1_active_flow_id == 1 && q1_active_flow_source == 901 &&
+         q1_active_flow_remaining == 0);
   assert(run_target(NULL, 1) == FAULT_NONE);   /* pool empty: no burn */
   assert(q1_reflow_consumed == 2 && q1_reflow_pool == 0);
 
   q1_reflow = saved_reflow;
   q1_reflow_pool = saved_pool; q1_reflow_consumed = saved_used;
   ord_invocation_total = saved_ord; lineage_invocation_total = saved_lin;
+  q1_reflow_head = saved_head; q1_reflow_tail = saved_tail;
+  q1_reflow_next_id = saved_next_id;
   execution_kind = old_kind;
 }
 
@@ -1061,6 +1122,179 @@ static void test_opportunity_gate(void) {
   queue = queue_top = NULL;
 }
 
+/* Execute the production candidate path with a protocol-error response and
+ * real bitmap novelty. The rescue must persist the observed input without
+ * creating or charging a provisional subtree. */
+static void test_code_durable_policy_and_witness_transaction(void) {
+  char dir[] = "/tmp/loopfuzz-code-durable-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  char queue_dir[PATH_MAX], regions_dir[PATH_MAX], replay_dir[PATH_MAX];
+  snprintf(queue_dir, sizeof(queue_dir), "%s/queue", dir);
+  snprintf(regions_dir, sizeof(regions_dir), "%s/regions", dir);
+  snprintf(replay_dir, sizeof(replay_dir), "%s/replayable-queue", dir);
+  make_dir(queue_dir); make_dir(regions_dir); make_dir(replay_dir);
+  out_dir = (u8 *)dir;
+  queue = queue_top = queue_cur = q_prev100 = NULL;
+  cur_fuzz_provisional_root = NULL;
+  cur_fuzz_lineage_candidate_id = llm_candidate_lineage_pin = 0;
+  queued_paths = pending_not_fuzzed = 0;
+  state_aware_mode = corpus_read_or_sync = 0;
+  stop_soon = 0;
+  q1_direct_service = q1_no_reflow = 0; q1_reflow = 1;
+  ablation_no_admission = admission_native_retention = 0;
+  code_retain_enabled = code_durable_enabled = test_force_code_retain = 0;
+  provisional_enabled = 1; shadow_enabled = salvage_enabled = 0;
+  state_retain_enabled = 0;
+  adm_ablate_p = adm_ablate_u = adm_ablate_r = 0;
+  adm_ablate_gcode = adm_ablate_gstate = 0;
+  cal_episode_active = 0;
+  campaign_call_budget = campaign_charged_invocations = 0;
+  event_log_enabled = admission_accounting_enabled = 1;
+  extract_requests = &extract_requests_ftp;
+  extract_response_codes = &fake_ftp_extractor;
+  protocol_name = "FTP"; u_policy = 0; u_policy_name = "strict";
+  max_seed_region_count = 100;
+  kl_messages = kl_init(lms);
+  message_t *old = ck_alloc(sizeof(*old));
+  old->msize = 6; old->mdata = (char *)ck_memdup("NOOP\r\n", 6);
+  *kl_pushp(lms, kl_messages) = old;
+  M2_prev = NULL; M2_next = kl_end(kl_messages);
+  execution_kind = "mutation";
+  memset(virgin_bits, 0xff, MAP_SIZE);
+  u64 pv_admits = provisional_admitted, pv_converts = provisional_converted;
+  u64 pv_calls = prov_charged_total, beyond = prov_conv_beyond_trial;
+  u64 durable_before = code_durable_admitted, gains_before = admission_gain_events;
+  u64 saved_before = q1_saved_total;
+  u64 execs_before = total_execs;
+  u8 candidate[] = "NOOP\r\n";
+
+  /* Default off: the old hard rejection and its reflow registration remain. */
+  assert(!admission_run_llm_candidate(NULL, "selftest", "request", -1, 0,
+                                    candidate, sizeof(candidate) - 1, 1, "valid"));
+  assert(queue == NULL && queued_paths == 0);
+  assert(virgin_bits[11] == 0xff && q1_saved_total == saved_before + 64);
+  assert(code_durable_admitted == durable_before);
+  assert(total_execs == execs_before + 1);
+
+  code_durable_enabled = 1;
+  shadow_enabled = 1;
+  u64 shadows_before = shadow_validations_total;
+  u64 reflow_before_rescue = q1_saved_total;
+  assert(!admission_run_llm_candidate(NULL, "selftest", "request", -1, 0,
+                                    candidate, sizeof(candidate) - 1, 1, "valid"));
+  assert(queued_paths == 1 && queue == queue_top);
+  struct queue_entry *rescued = queue;
+  assert(!rescued->is_provisional && !rescued->prov_candidate_id);
+  assert(!rescued->prov_budget_left && !rescued->prov_code_retain);
+  assert(rescued->llm_origin_candidate_id == (u32)llm_cur_candidate_id);
+  assert(rescued->has_new_cov && virgin_bits[11] != 0xff);
+  assert(code_durable_admitted == durable_before + 1);
+  assert(admission_gain_events == gains_before + 1);
+  assert(q1_saved_total == reflow_before_rescue);
+  assert(provisional_admitted == pv_admits && provisional_converted == pv_converts);
+  assert(prov_charged_total == pv_calls && prov_conv_beyond_trial == beyond);
+  assert(total_execs == execs_before + 2); /* no annotate or forced 64 calls */
+  assert(shadow_validations_total == shadows_before);
+  shadow_enabled = 0;
+  char *replay_path = (char *)alloc_printf("%s/%s", replay_dir, basename(rescued->fname));
+  FILE *f = fopen((char *)rescued->fname, "rb");
+  char raw[7] = {0};
+  assert(f && fread(raw, 1, 6, f) == 6 && !memcmp(raw, candidate, 6)); fclose(f);
+  f = fopen(replay_path, "rb"); u32 frame_len = 0;
+  assert(f && fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 6);
+  assert(fread(raw, 1, 6, f) == 6 && !memcmp(raw, candidate, 6)); fclose(f);
+  char event_path[PATH_MAX], line[4096];
+  snprintf(event_path, sizeof(event_path), "%s/code-durable-events.jsonl", dir);
+  f = fopen(event_path, "r"); assert(f && fgets(line, sizeof(line), f)); fclose(f);
+  struct json_object *j = json_tokener_parse(line), *value;
+  assert(j && json_object_object_get_ex(j, "candidate_id", &value));
+  assert(json_object_get_int64(value) == llm_cur_candidate_id);
+  assert(json_object_object_get_ex(j, "trial_invocation_id", &value));
+  assert((u64)json_object_get_int64(value) == last_trial_invocation_id);
+  assert(last_trial_invocation_id == target_invocation_seq);
+  assert(json_object_object_get_ex(j, "queue_id", &value) && json_object_get_int(value) == 0);
+  assert(json_object_object_get_ex(j, "queue_filename", &value));
+  assert(!strcmp(json_object_get_string(value), (char *)rescued->fname));
+  assert(json_object_object_get_ex(j, "replay_filename", &value));
+  assert(!strcmp(json_object_get_string(value), replay_path));
+  assert(json_object_object_get_ex(j, "pv_conversion", &value) && !json_object_get_boolean(value));
+  json_object_put(j);
+  ck_free(replay_path);
+
+  /* No root quota exists: ordinary scheduling can execute beyond 64 calls,
+   * while lineage attribution remains separate from ancestry-free work. */
+  cur_fuzz_lineage_candidate_id = rescued->llm_origin_candidate_id;
+  for (u32 i = 0; i < 65; i++) assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(prov_charged_total == pv_calls);
+  cur_fuzz_lineage_candidate_id = 0;
+
+  /* Missing/cross-invocation evidence and forced passes cannot rescue. */
+  admission_evidence_t ev;
+  memset(&ev, 0, sizeof(ev));
+  ev.disposition = EC_CODE_RETAIN; ev.trial_mode = 1;
+  ev.p_pass = ev.r_pass = ev.g_code_pass = 1;
+  ev.p_pass_obs = ev.r_pass_obs = ev.g_code_pass_obs = 1;
+  ev.trial_hnb = last_trial_hnb = 2;
+  last_trial_evidence_valid = 1;
+  last_trial_candidate_id = (u32)llm_cur_candidate_id;
+  candidate_invocation_id = last_trial_invocation_id = target_invocation_seq;
+  last_trial_slot_count = 1;
+  memset(last_trial_new_slots, 0, sizeof(last_trial_new_slots));
+  last_trial_new_slots[11 >> 3] = 1u << (11 & 7);
+  last_common_fuzz_fault = FAULT_NONE;
+  assert(code_durable_route(&ev));
+  ev.g_code_pass_obs = 0; assert(!code_durable_route(&ev)); ev.g_code_pass_obs = 1;
+  ev.p_pass_obs = 0; assert(!code_durable_route(&ev)); ev.p_pass_obs = 1;
+  ev.r_pass_obs = 0; assert(!code_durable_route(&ev)); ev.r_pass_obs = 1;
+  ev.u_pass_obs = 1; assert(!code_durable_route(&ev)); ev.u_pass_obs = 0;
+  ev.trial_hnb = 1; assert(!code_durable_route(&ev)); ev.trial_hnb = 2;
+  last_trial_invocation_id--; assert(!code_durable_route(&ev)); last_trial_invocation_id++;
+  last_trial_candidate_id++; assert(!code_durable_route(&ev)); last_trial_candidate_id--;
+  last_trial_evidence_valid = 0; assert(!code_durable_route(&ev)); last_trial_evidence_valid = 1;
+  q1_direct_service = 1; assert(!code_durable_route(&ev)); q1_direct_service = 0;
+
+  /* The shared durable writer is transactional across raw/replay/map: a
+   * missing replay directory must leave no raw file or committed novelty. */
+  u8 map_before[MAP_SIZE]; memcpy(map_before, virgin_bits, MAP_SIZE);
+  u8 old_changed = bitmap_changed; bitmap_changed = 0;
+  memset(trace_bits, 0, MAP_SIZE); trace_bits[11] = 2;
+  assert(!admission_promote_durable(candidate, sizeof(candidate) - 1));
+  assert(memcmp(map_before, virgin_bits, MAP_SIZE) == 0 && !bitmap_changed);
+  assert(queued_paths == 1); /* hit-count novelty is not durable evidence */
+  memset(trace_bits, 0, MAP_SIZE); trace_bits[19] = 1;
+  u64 old_gains = admission_gain_events;
+  char missing[] = "/tmp/loopfuzz-durable-io-selftest-XXXXXX";
+  assert(mkdtemp(missing));
+  char missing_queue[PATH_MAX], failed_raw[PATH_MAX];
+  snprintf(missing_queue, sizeof(missing_queue), "%s/queue", missing); make_dir(missing_queue);
+  snprintf(failed_raw, sizeof(failed_raw), "%s/queue/id:%06u,llm-durable", missing, queued_paths);
+  out_dir = (u8 *)missing;
+  assert(!admission_promote_durable(candidate, sizeof(candidate) - 1));
+  assert(memcmp(map_before, virgin_bits, MAP_SIZE) == 0 && !bitmap_changed);
+  assert(access(failed_raw, F_OK) != 0 && queued_paths == 1);
+  assert(admission_gain_events == old_gains && code_durable_admitted == durable_before + 1);
+  /* First-file failure also leaves all feedback untouched. */
+  assert(rmdir(missing_queue) == 0);
+  assert(!admission_promote_durable(candidate, sizeof(candidate) - 1));
+  assert(memcmp(map_before, virgin_bits, MAP_SIZE) == 0 && !bitmap_changed);
+  bitmap_changed = old_changed;
+
+  out_dir = (u8 *)dir;
+  run_config_log("selftest", NULL);
+  snprintf(event_path, sizeof(event_path), "%s/run-config.jsonl", dir);
+  f = fopen(event_path, "r"); assert(f && fgets(line, sizeof(line), f)); fclose(f);
+  j = json_tokener_parse(line);
+  assert(j && json_object_object_get_ex(j, "code_durable", &value) && json_object_get_boolean(value));
+  assert(json_object_object_get_ex(j, "code_durable_admitted", &value));
+  assert((u64)json_object_get_int64(value) == code_durable_admitted);
+  json_object_put(j);
+  destroy_queue(); queue = queue_top = queue_cur = q_prev100 = NULL;
+  delete_kl_messages(kl_messages); kl_messages = NULL;
+  M2_prev = M2_next = NULL;
+  extract_requests = NULL; extract_response_codes = NULL;
+  code_durable_enabled = q1_reflow = 0;
+}
+
 int main(void) {
   trace_bits = ck_alloc(MAP_SIZE);
   test_candidate_ids_without_log();
@@ -1083,10 +1317,12 @@ int main(void) {
   test_channel_accounting();
   test_conversion_classification();
   test_campaign_budget_cap();
+  test_witness_tomb_expiry_move();
   test_q1_reflow_consumption();
   test_q1_direct_service_route();
   test_censor_frees_trial_evidence();
   test_opportunity_gate();
+  test_code_durable_policy_and_witness_transaction();
   puts("gating contract selftest: PASS");
   return 0;
 }

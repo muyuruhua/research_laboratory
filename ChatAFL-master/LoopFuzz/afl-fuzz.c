@@ -1099,6 +1099,10 @@ static u64  churn_fallback_used = 0;  /* linear-progress fallbacks triggered */
 static u32  churn_round_cap = 64;     /* CHATAFL_CHURN_CAP (testability knob) */
 static u32  seed_retry_cap_env = 0;   /* CHATAFL_SEED_RETRY_CAP (0 = built-in 2*states+8) */
 static u8   code_retain_enabled = 0;  /* CHATAFL_CODE_RETAIN (expert P0-3 policy) */
+/* Preserve a real code-bearing trial in the durable corpus, then leave its
+ * service to the ordinary scheduler; no provisional quota is reserved. */
+static u8   code_durable_enabled = 0; /* CHATAFL_CODE_DURABLE, opt-in */
+static u64  code_durable_admitted = 0;
 /* S2 state-evidence retention (2026-11-05): CHATAFL_STATE_RETAIN admits
  * u_fail ∧ r ∧ gstate ∧ ¬gcode candidates (the structurally empty natural
  * provisional cell) to the bounded validation tier, mirroring the
@@ -1131,11 +1135,80 @@ static u8  q1_direct_service = 0;           /* CHATAFL_Q1_DIRECT_SERVICE */
 static u64 q1_saved_total = 0, q1_idle_total = 0;
 static u64 q1_reflow_pool = 0, q1_reflow_consumed = 0;
 
+/* Witness tomb (2026-11-07, rescue-identification plan P0): rejected
+ * executable candidates' full session bytes and expiring provisional
+ * roots' sessions are preserved read-only under witness-tomb/ instead of
+ * being dropped — the rescue pool's primary input. Measurement only: the
+ * tomb never feeds back into fuzzing. */
+static u64 witness_tomb_rejects = 0, witness_tomb_expiries = 0;
+
+/* Q1 reflow reservations.  The old implementation kept only an aggregate
+ * counter, so a later ordinary mutation could consume quota without any
+ * evidence that it came from a particular rejected candidate.  Keep a FIFO
+ * reservation ledger: each saved validation slice has a stable flow_id and
+ * every receiver invocation claims one unit from that reservation.  This is
+ * deliberately scheduler-local (no extra queue entry is needed); the
+ * execution ledger carries the flow_id so the transfer is auditable. */
+typedef struct {
+  u64 flow_id;
+  u64 source_candidate_id;
+  u64 amount;
+  u64 consumed;
+} q1_reflow_reservation_t;
+/* Keep the actual links in a wrapper because the typedef's anonymous struct
+ * is not self-referential in portable C. */
+typedef struct q1_reflow_node {
+  q1_reflow_reservation_t reservation;
+  struct q1_reflow_node *next;
+} q1_reflow_node_t;
+static q1_reflow_node_t *q1_reflow_head = NULL, *q1_reflow_tail = NULL;
+static u64 q1_reflow_next_id = 0;
+/* Set only for the current admitted ordinary invocation. */
+static u64 q1_active_flow_id = 0;
+static u64 q1_active_flow_source = 0;
+static u64 q1_active_flow_remaining = 0;
+
+static u64 q1_register_reflow(u64 source_candidate_id, u64 amount) {
+  if (!amount) return 0;
+  q1_reflow_node_t *node = ck_alloc(sizeof(*node));
+  node->reservation.flow_id = ++q1_reflow_next_id;
+  node->reservation.source_candidate_id = source_candidate_id;
+  node->reservation.amount = amount;
+  node->reservation.consumed = 0;
+  node->next = NULL;
+  if (q1_reflow_tail) q1_reflow_tail->next = node;
+  else q1_reflow_head = node;
+  q1_reflow_tail = node;
+  return node->reservation.flow_id;
+}
+
+/* FIFO receiver selection.  A reservation is closed only when all its units
+ * have been claimed; retaining exhausted records makes post-run accounting
+ * deterministic and prevents flow-id reuse. */
+static u8 q1_claim_reflow_unit(u64 *flow_id, u64 *source_candidate_id,
+                               u64 *remaining) {
+  q1_reflow_node_t *node = q1_reflow_head;
+  if (!node) return 0;
+  q1_reflow_reservation_t *r = &node->reservation;
+  r->consumed++;
+  if (flow_id) *flow_id = r->flow_id;
+  if (source_candidate_id) *source_candidate_id = r->source_candidate_id;
+  if (remaining) *remaining = r->amount - r->consumed;
+  if (r->consumed == r->amount) {
+    q1_reflow_head = node->next;
+    if (!q1_reflow_head) q1_reflow_tail = NULL;
+    ck_free(node);
+  }
+  return 1;
+}
+
+
 static u64 campaign_effective_call_cap(void) {
   if (!campaign_call_budget) return 0;
   return campaign_call_budget > q1_idle_total ?
       campaign_call_budget - q1_idle_total : 0;
 }
+
 
 
 static u8   salvage_enabled = 0;      /* CHATAFL_SALVAGE (Q1): rejected candidates
@@ -3538,6 +3611,7 @@ static const char *admission_arm_name(void) {
 typedef struct {
   u8   p_pass, u_pass, r_pass, g_code_pass, g_state_pass, g_pass;
   u8   trial_mode;
+  u8   code_durable_rescue; /* policy provenance, never a PV conversion */
   u32  state_count, first_state, last_state;
   u8   has_error, target_hit;
   u32  ipsm_edge_delta, ipsm_node_delta, bitmap_delta, favored_delta;
@@ -3944,9 +4018,14 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "provisional_budget_scope", json_object_new_string(
       "unconverted candidate subtree; every run_target call incl. calibration/hang retry; first hnb=2 makes subtree durable"));
   json_object_object_add(j, "code_retain", json_object_new_boolean(code_retain_enabled));
+  json_object_object_add(j, "code_durable", json_object_new_boolean(code_durable_enabled));
+  json_object_object_add(j, "code_durable_service", json_object_new_string(
+      "durable trial witness; ordinary scheduler; no reserved validation quota"));
+  admission_json_add_u64(j, "code_durable_admitted", code_durable_admitted);
   json_object_object_add(j, "state_retain", json_object_new_boolean(state_retain_enabled));
   /* Stage-2 T03 stamps: fixed-call budget and Q1 quota-flow policy. */
   admission_json_add_u64(j, "campaign_call_budget", campaign_call_budget);
+  json_object_object_add(j, "witness_tomb", json_object_new_boolean(1));
   json_object_object_add(j, "q1_policy",
       json_object_new_string(q1_direct_service ? "direct-service" :
                              q1_reflow ? "reflow" :
@@ -3990,6 +4069,29 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   }
   json_object_object_add(j, "llm_trigger_policy",
       json_object_new_string(llm_trigger_policy_name));
+  /* Threshold provenance: record both the requested override and the value
+   * actually in force for this run.  The latter may change during adaptive
+   * scheduling, so the start/end records are intentionally both retained. */
+  {
+    const char *req = getenv("CHATAFL_ABLATION_THRESHOLD");
+    /* The start event is emitted before the adaptive state is initialized.
+     * In fixed ablation mode the environment override is already the
+     * authoritative value, so use it here instead of the stale global
+     * default.  The scheduler applies the same value immediately after
+     * initialization below. */
+    u64 resolved = adaptive_plateau_threshold;
+    if (ablation_no_adaptive && req && *req) {
+      char *end = NULL;
+      unsigned long parsed = strtoul(req, &end, 10);
+      if (end != req && *end == '\0' && parsed > 0 && parsed <= UINT_MAX)
+        resolved = (u64)parsed;
+    }
+    json_object_object_add(j, "threshold_mode",
+        json_object_new_string(ablation_no_adaptive ? "fixed" : "adaptive"));
+    json_object_object_add(j, "threshold_requested",
+        json_object_new_int((req && *req) ? atoi(req) : 0));
+    admission_json_add_u64(j, "threshold_resolved", resolved);
+  }
   /* P0-6/P0-9/P0-21 audit knobs (2026-10-29) */
   json_object_object_add(j, "provisional_preannotate", json_object_new_int(2));
   json_object_object_add(j, "ablate_p", json_object_new_boolean(adm_ablate_p));
@@ -4396,6 +4498,7 @@ static void admission_log_candidate_event(const char *source,
   ec_predicates_t pr = { ev.p_pass, ev.u_pass, ev.r_pass,
                          ev.g_code_pass, ev.g_state_pass };
   const char *disposition_reason =
+      (disposition == EC_DURABLE && durable_promoted && ev.code_durable_rescue) ? "P^!U^R^G_code (code-durable rescue; ordinary scheduling)" :
       (disposition == EC_DURABLE && ev.native_promoted) ? "native AFL retention (hnb>0, independent of gate predicates)" :
       (disposition == EC_DURABLE && forced_promoted) ? "direct-force-admit (arm C)" :
       (disposition == EC_DURABLE && durable_promoted) ? "P^U^R^G_code (gated promote)" :
@@ -4510,6 +4613,9 @@ static void admission_log_candidate_event(const char *source,
     json_object_object_add(j, "native_promoted", json_object_new_boolean(ev.native_promoted));
     json_object_object_add(j, "forced_promoted", json_object_new_boolean(forced_promoted));
     json_object_object_add(j, "durable_promoted", json_object_new_boolean(durable_promoted));
+    json_object_object_add(j, "code_durable_requested", json_object_new_boolean(ev.code_durable_rescue));
+    json_object_object_add(j, "code_durable_promoted",
+        json_object_new_boolean(ev.code_durable_rescue && durable_promoted));
     json_object_object_add(j, "provisional_queued", json_object_new_boolean(provisional_queued));
     json_object_object_add(j, "promoted", json_object_new_boolean(promoted));
     admission_json_add_u64(j, "latency_ms",
@@ -4548,6 +4654,8 @@ static void admission_log_decision_event(const admission_evidence_t *ev,
   json_object_object_add(j, "target_state_id", json_object_new_int((int)target_sid));
   json_object_object_add(j, "arm", json_object_new_string(admission_arm_name()));
   json_object_object_add(j, "trial_mode", json_object_new_boolean(ev->trial_mode));
+  json_object_object_add(j, "code_durable_requested",
+      json_object_new_boolean(ev->code_durable_rescue));
   json_object_object_add(j, "p_pass", json_object_new_boolean(ev->p_pass));
   json_object_object_add(j, "u_pass", json_object_new_boolean(ev->u_pass));
   /* CSV #8 U-policy dose: which policy judged this candidate, how many
@@ -10908,6 +11016,8 @@ static void execution_log_event(const char *event, u64 attempt_id,
   admission_json_add_u64(j, "execution_id_before", before);
   admission_json_add_u64(j, "execution_id_after", total_execs);
   json_object_object_add(j, "execution_kind", json_object_new_string(execution_kind));
+  admission_json_add_u64(j, "q1_flow_id", q1_active_flow_id);
+  admission_json_add_u64(j, "q1_flow_source_candidate", q1_active_flow_source);
   json_object_object_add(j, "episode_training_invocation",
       json_object_new_boolean(cal_last_invocation_trainable));
   if (cal_episode_active) {
@@ -11022,15 +11132,25 @@ static u8 execution_is_validation_probe(void) {
 }
 
 static void q1_log_flow_event(const char *kind, u64 candidate_id,
-                              const char *destination) {
+                              const char *destination, u64 flow_id,
+                              u64 invocation_id, u64 amount,
+                              u64 remaining) {
   if (!event_log_enabled) return;
   struct json_object *j = json_object_new_object();
   json_object_object_add(j, "event", json_object_new_string("q1_budget_flow"));
   json_object_object_add(j, "kind", json_object_new_string(kind));
   admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  /* Bind every reservation and receiver event to this campaign.  The
+   * execution ledger already carries this identity; duplicating it here
+   * lets an offline checker reject cross-run flow splicing. */
+  json_object_object_add(j, "campaign_id",
+                         json_object_new_string(evidence_campaign_id()));
   admission_json_add_u64(j, "candidate_id", candidate_id);
   json_object_object_add(j, "destination", json_object_new_string(destination));
-  admission_json_add_u64(j, "amount", provisional_budget_default);
+  admission_json_add_u64(j, "flow_id", flow_id);
+  admission_json_add_u64(j, "receiver_invocation_id", invocation_id);
+  admission_json_add_u64(j, "amount", amount);
+  admission_json_add_u64(j, "remaining", remaining);
   admission_json_add_u64(j, "saved_total", q1_saved_total);
   admission_json_add_u64(j, "idle_total", q1_idle_total);
   admission_json_add_u64(j, "reflow_pool_left", q1_reflow_pool);
@@ -11046,7 +11166,9 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
   /* Fixed-budget check precedes every per-root consideration: reaching the
    * campaign cap is a planned stop, not an integrity failure. */
   u64 cap = campaign_effective_call_cap();
-  if (cap && campaign_charged_invocations >= cap) {
+  /* cap==0 is a valid effective cap when all budget was parked by NO_REFLOW;
+   * it must not be confused with the disabled-budget sentinel. */
+  if (campaign_call_budget && campaign_charged_invocations >= cap) {
     campaign_budget_exhausted = 1;
     return 0;
   }
@@ -11073,10 +11195,21 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
     }
   } else {
     ord_invocation_total++;
-    /* REFLOW consumption: an ordinary mutation burns pool quota first. */
+    /* REFLOW consumption: an ordinary mutation burns a FIFO reservation,
+     * never an anonymous aggregate unit. */
     if (q1_reflow && !strcmp(execution_kind, "mutation") && q1_reflow_pool) {
-      q1_reflow_pool--;
-      q1_reflow_consumed++;
+      u64 remaining = 0;
+      if (q1_claim_reflow_unit(&q1_active_flow_id, &q1_active_flow_source,
+                               &remaining)) {
+        q1_reflow_pool--;
+        q1_reflow_consumed++;
+        q1_active_flow_remaining = remaining;
+      } else {
+        /* Keep the aggregate invariant observable if a caller manually
+         * mutates the counter or an archive is resumed without reservations. */
+        WARNF("Q1 reflow pool/reservation mismatch (pool=%llu)",
+              (unsigned long long)q1_reflow_pool);
+      }
     }
   }
   return 1;
@@ -11086,6 +11219,9 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
  * passes this single debit point. Refusal is an explicit non-execution. */
 static u8 run_target(char **argv, u32 timeout) {
   u64 attempt_id = ++execution_attempt_seq, before = total_execs;
+  q1_active_flow_id = 0;
+  q1_active_flow_source = 0;
+  q1_active_flow_remaining = 0;
   cal_last_invocation_trainable = 0;
   u32 cid = (corpus_read_or_sync || !strcmp(execution_kind, "sync")) ? 0 :
       (llm_candidate_lineage_pin ? llm_candidate_lineage_pin : cur_fuzz_lineage_candidate_id);
@@ -11107,6 +11243,10 @@ static u8 run_target(char **argv, u32 timeout) {
   last_execution_kind = execution_kind;
   execution_log_event("invocation_end", attempt_id, invocation_id,
       before, fault, cid, root);
+  if (q1_active_flow_id)
+    q1_log_flow_event("consumed", q1_active_flow_source,
+                      "ordinary-mutation", q1_active_flow_id,
+                      invocation_id, 1, q1_active_flow_remaining);
   return fault;
 refused:
   reset_completed_before_forkserver = 0;
@@ -13077,6 +13217,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "no_seed_stalls        : %llu\n"
              "churn_fallback_used   : %llu\n"
              "code_retain_admitted  : %llu\n"
+             "code_durable_admitted : %llu\n"
              "prov_conv_immediate_only: %llu\n"
              "prov_conv_beyond_trial  : %llu\n"
              "prov_conv_unclassified  : %llu\n"
@@ -13087,6 +13228,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "q1_idle_quota           : %llu\n"
              "q1_reflow_consumed      : %llu\n"
              "q1_reflow_pool_left     : %llu\n"
+             "witness_tomb_rejects    : %llu\n"
+             "witness_tomb_expiries   : %llu\n"
              "code_retain_converted : %llu\n"
              "salvage_enabled       : %u\n"
              "salvage_attempted     : %llu\n"
@@ -13158,6 +13301,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)no_seed_stalls,
           (unsigned long long)churn_fallback_used,
           (unsigned long long)code_retain_admitted,
+          (unsigned long long)code_durable_admitted,
           (unsigned long long)prov_conv_immediate_only,
           (unsigned long long)prov_conv_beyond_trial,
           (unsigned long long)prov_conv_unclassified,
@@ -13168,6 +13312,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)q1_idle_total,
           (unsigned long long)q1_reflow_consumed,
           (unsigned long long)q1_reflow_pool,
+          (unsigned long long)witness_tomb_rejects,
+          (unsigned long long)witness_tomb_expiries,
           (unsigned long long)code_retain_converted,
           salvage_enabled,
           (unsigned long long)salvage_attempted,
@@ -15042,7 +15188,19 @@ static void queue_debit_pending(struct queue_entry *q) {
 static void provisional_invalidate_entry(struct queue_entry *q, u8 keep_files) {
   if (!keep_files) {
   if (q->fname) {
-    unlink((char *)q->fname);
+    /* Witness tomb: the ROOT session itself moves to the tomb (read-only,
+     * append-only ledger); regions/replay copies are removed as before. */
+    u8 *dn2 = alloc_printf("%s/witness-tomb", out_dir);
+    mkdir((char *)dn2, 0755);
+    ck_free(dn2);
+    u8 *fn_tomb = alloc_printf("%s/witness-tomb/expired-%s", out_dir,
+                               basename(q->fname));
+    if (rename((char *)q->fname, (char *)fn_tomb) == 0) {
+      witness_tomb_expiries++;
+    } else {
+      unlink((char *)q->fname);
+    }
+    ck_free(fn_tomb);
     u8 *fn_regions = alloc_printf("%s/regions/%s", out_dir, basename(q->fname));
     unlink((char *)fn_regions);
     ck_free(fn_regions);
@@ -15905,6 +16063,21 @@ static u8 provisional_trial_evidence_matches_candidate(u64 candidate_id) {
       last_trial_invocation_id == candidate_invocation_id;
 }
 
+/* The rescue must be supported by the real observed tuple and the SAME
+ * trial invocation. A leave-one-out pass or test-forced CODE_RETAIN alone
+ * cannot authorize a durable save. No target execution may intervene. */
+static u8 code_durable_route(const admission_evidence_t *ev) {
+  return code_durable_enabled && ev && !q1_direct_service &&
+      ev->disposition == EC_CODE_RETAIN && ev->trial_mode &&
+      ev->p_pass && !ev->u_pass && ev->r_pass && ev->g_code_pass &&
+      ev->p_pass_obs && !ev->u_pass_obs && ev->r_pass_obs &&
+      ev->g_code_pass_obs && ev->trial_hnb == 2 && last_trial_hnb == 2 &&
+      last_common_fuzz_fault == FAULT_NONE &&
+      provisional_trial_evidence_matches_candidate((u64)llm_cur_candidate_id) &&
+      last_trial_invocation_id == target_invocation_seq &&
+      last_trial_slot_count && prov_slot_set_nonempty(last_trial_new_slots);
+}
+
 static u8 admission_provisional_queue_candidate_n(u32 target_sid,
                                                   u64 candidate_id,
                                                   const char *admit_reason,
@@ -16148,22 +16321,68 @@ static void provisional_sweep_expired(void) {
   }
 }
 
-/* Case A admission (paper §四, execute-before-promote): P∧U∧R∧G_code →
+/* A write error must not consume novelty without retaining its input. These
+ * two small writers are used only by durable admission; unlike the legacy
+ * serialization helper they report open/write/fsync/close failures. */
+static u8 admission_write_all(s32 fd, const void *data, u32 size) {
+  const u8 *next = data;
+  while (size) {
+    ssize_t written = write(fd, next, size);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) return 0;
+    next += written;
+    size -= (u32)written;
+  }
+  return 1;
+}
+
+static u8 admission_write_durable_witness(const u8 *fname, u8 replay,
+                                          u32 *payload_len) {
+  s32 fd = open((const char *)fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  if (fd < 0) return 0;
+  u8 ok = 1;
+  u32 count = 0, total = 0;
+  for (kliter_t(lms) *it = kl_begin(kl_messages);
+       it != kl_end(kl_messages) && count < messages_sent; it = kl_next(it)) {
+    message_t *message = kl_val(it);
+    if (!message || message->msize < 0 ||
+        (!message->mdata && message->msize) ||
+        (u32)message->msize > (u32)-1 - total) { ok = 0; break; }
+    u32 size = message->msize;
+    if ((replay && !admission_write_all(fd, &size, sizeof(size))) ||
+        !admission_write_all(fd, message->mdata, size)) { ok = 0; break; }
+    total += size;
+    count++;
+  }
+  if (!total || count != messages_sent) ok = 0;
+  if (ok && fsync(fd)) ok = 0;
+  if (close(fd)) ok = 0;
+  if (!ok) unlink((const char *)fname);
+  else *payload_len = total;
+  return ok;
+}
+
+/* Durable admission (paper §四, execute-before-promote): P∧U∧R∧G_code →
  * DURABLE queue entry.  Called only AFTER the decision event has been
- * logged.  Applies the trial's bitmap to the real virgin map (trace_bits
- * still holds the trial execution — no exec may intervene between the
- * trial and this call) and inserts the queue entry with its replayable
- * copy.  A durable promotion is code evidence about the CANDIDATE, so it
+ * logged. The optional code-durable policy also admits the real
+ * P∧¬U∧R∧G_code class. Preview the bitmap, persist BOTH full-session
+ * witnesses, then commit the map and queue entry. trace_bits still holds
+ * the trial execution — no exec may intervene. A durable promotion is
+ * code evidence about the CANDIDATE, so it
  * increments admission_gain_events — never code_gain_events — keeping
  * episode rewards free of trial work (P0-4 attribution separation). */
 static u8 admission_promote_durable(u8 *candidate, u32 len) {
   if (!out_dir || !kl_messages || stop_soon) return 0;
   if (!candidate || !len) return 0;
 
-  /* Re-derive and APPLY the novelty for real.  The probe said hnb==2; the
-   * same trace against the unchanged real map must agree. */
-  u8 hnb = has_new_bits(virgin_bits);
-  if (hnb != 2) return 0;   /* defensive: novelty evaporated — do not promote */
+  /* Preview without touching the shared feedback. In particular hnb==1 or
+   * an I/O failure must not swallow a future native coverage witness. */
+  u8 *commit_map = ck_alloc_nozero(MAP_SIZE);
+  memcpy(commit_map, virgin_bits, MAP_SIZE);
+  if (has_new_bits(commit_map) != 2) {
+    ck_free(commit_map);
+    return 0;
+  }
 
 #ifndef SIMPLE_FILES
   u8 *fn = alloc_printf("%s/queue/id:%06u,llm-durable", out_dir, queued_paths);
@@ -16171,22 +16390,41 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
   u8 *fn = alloc_printf("%s/queue/id_%06u_llm_durable", out_dir, queued_paths);
 #endif
 
-  u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
-  if (!full_len) {
-    unlink((char *)fn);
+  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
+                               out_dir, basename(fn));
+  u32 full_len = 0, replay_payload_len = 0;
+  if (!admission_write_durable_witness(fn, 0, &full_len)) {
+    ck_free(fn_replay);
     ck_free(fn);
+    ck_free(commit_map);
     return 0;
   }
+  if (!admission_write_durable_witness(fn_replay, 1, &replay_payload_len)) {
+    unlink((char *)fn);
+    ck_free(fn_replay);
+    ck_free(fn);
+    ck_free(commit_map);
+    return 0;
+  }
+  /* Both serializations traversed the same unchanged full session. */
+  if (full_len != replay_payload_len || stop_soon) {
+    unlink((char *)fn);
+    unlink((char *)fn_replay);
+    ck_free(fn_replay);
+    ck_free(fn);
+    ck_free(commit_map);
+    return 0;
+  }
+  ck_free(fn_replay);
+
+  memcpy(virgin_bits, commit_map, MAP_SIZE);
+  bitmap_changed = 1;
+  ck_free(commit_map);
   admission_add_to_queue(fn, full_len);
   struct queue_entry *q = queue_top;
 
   if (state_aware_mode)
     update_state_aware_variables(queue_top, 0);
-
-  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
-                               out_dir, basename(q->fname));
-  save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
-  ck_free(fn_replay);
 
   q->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
   q->has_new_cov = 1;
@@ -16198,6 +16436,27 @@ static u8 admission_promote_durable(u8 *candidate, u32 len) {
   admission_gain_events++;
   uninteresting_times = 0;   /* promoted candidate = real progress */
   return 1;
+}
+
+static void code_durable_log_admission(const struct queue_entry *q) {
+  if (!q) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("code_durable"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  admission_json_add_u64(j, "candidate_id", (u64)llm_cur_candidate_id);
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  admission_json_add_u64(j, "trial_invocation_id", last_trial_invocation_id);
+  admission_json_add_u64(j, "queue_id", q->index);
+  json_object_object_add(j, "queue_filename", json_object_new_string((char *)q->fname));
+  u8 *replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
+  json_object_object_add(j, "replay_filename", json_object_new_string((char *)replay));
+  ck_free(replay);
+  admission_json_add_u64(j, "trial_slot_count", last_trial_slot_count);
+  json_object_object_add(j, "pv_conversion", json_object_new_boolean(0));
+  json_object_object_add(j, "service_policy",
+      json_object_new_string("ordinary-scheduler; no reserved validation quota"));
+  ec_append_jsonl("code-durable-events.jsonl", j);
+  json_object_put(j);
 }
 
 /* P0-4 forward declaration */
@@ -16315,6 +16574,12 @@ static u8 admission_run_llm_candidate(char **argv,
      * with weak (mock) candidates that never produce g_code evidence. */
     if (test_force_code_retain && ev.p_pass && !ev.u_pass && ev.r_pass)
       ev.disposition = EC_CODE_RETAIN;
+    /* Preserve measured immediate code evidence without requiring this
+     * candidate to earn it a second time through a reserved PV service. */
+    if (code_durable_route(&ev)) {
+      ev.code_durable_rescue = 1;
+      ev.disposition = EC_DURABLE;
+    }
     /* Arm gate: the retention policy is opt-in (CHATAFL_CODE_RETAIN);
      * demote to the legacy hard reject when disabled. */
     if (ev.disposition == EC_CODE_RETAIN && !code_retain_enabled &&
@@ -16346,10 +16611,16 @@ static u8 admission_run_llm_candidate(char **argv,
   if ((q1_no_reflow || q1_reflow) && executed && ev.p_pass && ev.r_pass &&
       ev.disposition == EC_REJECT && !durable && !provisional && !forced) {
     q1_saved_total += provisional_budget_default;
+    u64 flow_id = 0;
+    if (q1_reflow) {
+      q1_reflow_pool += provisional_budget_default;
+      flow_id = q1_register_reflow((u64)llm_cur_candidate_id,
+                                   provisional_budget_default);
+    } else q1_idle_total += provisional_budget_default;
     q1_log_flow_event("saved", (u64)llm_cur_candidate_id,
-                      q1_reflow ? "ordinary-pool" : "idle");
-    if (q1_reflow) q1_reflow_pool += provisional_budget_default;
-    else q1_idle_total += provisional_budget_default;
+                      q1_reflow ? "ordinary-pool" : "idle", flow_id, 0,
+                      provisional_budget_default,
+                      q1_reflow ? provisional_budget_default : 0);
   }
 
   if (executed && !common_ret && !last_common_fuzz_saved &&
@@ -16360,6 +16631,10 @@ static u8 admission_run_llm_candidate(char **argv,
       forced = admission_force_queue_candidate(candidate, candidate_len);
     } else if (ev.disposition == EC_DURABLE) {
       durable = admission_promote_durable(candidate, candidate_len);
+      if (durable && ev.code_durable_rescue) {
+        code_durable_admitted++;
+        code_durable_log_admission(queue_top);
+      }
     } else if (ev.disposition == EC_PROVISIONAL) {
       provisional = admission_provisional_queue_candidate(
           target_sid, (u64)llm_cur_candidate_id,
@@ -16386,7 +16661,37 @@ static u8 admission_run_llm_candidate(char **argv,
       if (salvage_ret) provisional = 1;
     }
     /* EC_REJECT (salvage off): no queue entry — execute-before-promote
-     * said no. */
+     * said no. Preserve the executed session bytes as a read-only witness
+     * (rescue-identification input); no queue insertion, no map change. */
+    if (executed && ev.disposition == EC_REJECT && !durable && !provisional &&
+        !forced && out_dir && kl_messages && messages_sent) {
+      u8 *dn = alloc_printf("%s/witness-tomb", out_dir);
+      mkdir((char *)dn, 0755);
+      ck_free(dn);
+      u8 *fn = alloc_printf("%s/witness-tomb/reject-%llu-inv%llu",
+                            out_dir, (unsigned long long)llm_cur_candidate_id,
+                            (unsigned long long)target_invocation_seq);
+      if (save_kl_messages_to_file(kl_messages, fn, 0, messages_sent)) {
+        witness_tomb_rejects++;
+        struct json_object *j = json_object_new_object();
+        json_object_object_add(j, "event", json_object_new_string("witness_tomb"));
+        json_object_object_add(j, "kind", json_object_new_string("reject"));
+        admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+        admission_json_add_u64(j, "candidate_id", llm_cur_candidate_id);
+        admission_json_add_u64(j, "invocation_id", target_invocation_seq);
+        json_object_object_add(j, "file", json_object_new_string(basename(fn)));
+        json_object_object_add(j, "p_pass", json_object_new_boolean(ev.p_pass));
+        json_object_object_add(j, "u_pass", json_object_new_boolean(ev.u_pass));
+        json_object_object_add(j, "r_pass", json_object_new_boolean(ev.r_pass));
+        json_object_object_add(j, "g_code_pass", json_object_new_boolean(ev.g_code_pass));
+        json_object_object_add(j, "g_state_pass", json_object_new_boolean(ev.g_state_pass));
+        admission_json_add_u64(j, "trial_hnb", ev.trial_hnb);
+        admission_json_add_u64(j, "time_ms", get_cur_time());
+        ec_append_jsonl("witness-tomb.jsonl", j);
+        json_object_put(j);
+      }
+      ck_free(fn);
+    }
   }
 
   admission_take_snapshot(&after_final);
@@ -22381,6 +22686,15 @@ static void evidence_env_parse(void) {
       OKF("P0-3 code-retain policy ENABLED: U-fail-but-code-bearing "
           "candidates are retained via the provisional tier");
     }
+    const char *cd = getenv("CHATAFL_CODE_DURABLE");
+    if (cd && *cd && strcmp(cd, "0") != 0) {
+      code_durable_enabled = 1;
+      if (q1_direct_service || q1_no_reflow || ablation_no_admission ||
+          admission_native_retention)
+        FATAL("CHATAFL_CODE_DURABLE requires the gated ordinary/reflow policy");
+      OKF("CODE DURABLE: real U-fail code evidence retained immediately; "
+          "ordinary scheduling, no reserved validation quota");
+    }
     const char *sr2 = getenv("CHATAFL_STATE_RETAIN");
     if (sr2 && *sr2 && strcmp(sr2, "0") != 0) {
       state_retain_enabled = 1;
@@ -23145,6 +23459,11 @@ int main(int argc, char **argv)
      * Arm fields are final here: evidence_env_parse() ran above (P0-2
      * fix — the pre-2026-10 start events were emitted before env parsing
      * and mislabelled every arm as gated-fixed with default γ/ε). */
+    {
+      u8 *dn = alloc_printf("%s/witness-tomb", out_dir);
+      mkdir((char *)dn, 0755);
+      ck_free(dn);
+    }
     run_config_log("start", NULL);
     run_config_logged = 1;
 
@@ -23155,6 +23474,11 @@ int main(int argc, char **argv)
   if (!run_config_logged) {
     /* protocol_selected == 0 edge: still record the run config (no LLM
      * phase will happen). */
+    {
+      u8 *dn = alloc_printf("%s/witness-tomb", out_dir);
+      mkdir((char *)dn, 0755);
+      ck_free(dn);
+    }
     run_config_log("start", NULL);
     run_config_logged = 1;
   }
