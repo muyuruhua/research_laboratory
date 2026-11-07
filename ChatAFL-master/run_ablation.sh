@@ -140,6 +140,7 @@ fi
 # 但它们共享同一日期前缀（YYYYMMDD）。在脚本开头打印该前缀，
 # 用户可通过 `ls -d ablation/results-*_<前缀>T*` 检索本批全部结果。
 _BATCH_TS="$(date +%Y%m%dT%H%M%S)"
+_BATCH_EPOCH="$(date +%s)"
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  批次启动时间戳: ${_BATCH_TS}"
@@ -716,7 +717,7 @@ launch_custom_groups() {
           "CHATAFL_CODE_RETAIN=1" \
           "CHATAFL_PROV_PREFIX_PROTECT=0"
         ;;
-      q1a8|q1b8|q1c8)
+      q1a8|q1b8|q1c8|q1d8)
         # Stage-2 T03 Q1 strategies (2026-11-06): single-factor triplet on
         # the fate of the 64-call quota freed by gate rejects of executable
         # candidates. All three share the wrapgate8 generation base and the
@@ -726,12 +727,18 @@ launch_custom_groups() {
         #          gets the same bounded validation service)
         #   q1b8 = B gate + idle (freed quota parked; effective cap shrinks)
         #   q1c8 = C gate + reflow (freed quota refills ordinary mutation)
+        #   q1d8 = D evidence-priority composition (2026-11-07): U-fail∧Gcode∧R
+        #          candidates KEEP their own 64-call quota as validation
+        #          (code-retain channel, self-funded — no quota is freed for
+        #          them); only no-evidence rejects' quota flows to ordinary.
+        #          Single factor vs q1c8 = the code-evidence class's fate.
         valid+=("$name")
         local q1var=""
         case "$name" in
           q1a8) q1var="CHATAFL_Q1_DIRECT_SERVICE=1" ;;
           q1b8) q1var="CHATAFL_Q1_NO_REFLOW=1" ;;
           q1c8) q1var="CHATAFL_Q1_REFLOW=1" ;;
+          q1d8) q1var="CHATAFL_Q1_REFLOW=1,CHATAFL_CODE_RETAIN=1" ;;
         esac
         queue_group "$name" \
           "CHATAFL_ADMISSION_MODE=gate" \
@@ -1147,12 +1154,34 @@ EFFECTIVE_CONTAINERS=$(( EFFECTIVE_PARALLEL * RUNS ))
 EFFECTIVE_MEM_NEEDED=$(( EFFECTIVE_CONTAINERS * MEMORY_PER_FUZZER + EFFECTIVE_PARALLEL * 1 + 2 ))
 # ↑ fuzzers + brokers(est. ~1GB per group for stable/multi/hetero) + overhead
 echo ""
+# The cgroup limit is a hard upper bound, so it must be used for admission,
+# not only printed as a warning.  The earlier preflight uses an observed
+# steady-state estimate; that estimate is intentionally not sufficient for
+# launching a new batch because all fuzzers can simultaneously approach the
+# 6 GiB cap during compilation or coverage collection.
+if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
+  _reserve_available_gb=$(( AVAIL_MEM_GB - 2 ))
+  _per_group_reserved_gb=$(( RUNS * MEMORY_PER_FUZZER + 1 ))
+  if (( _reserve_available_gb < 1 )); then
+    _reserve_available_gb=1
+  fi
+  _hard_parallel=$(( _reserve_available_gb / _per_group_reserved_gb ))
+  (( _hard_parallel < 1 )) && _hard_parallel=1
+  if (( ABLATION_PARALLEL > _hard_parallel )); then
+    echo "  [ABLATION] 硬性内存准入：${ABLATION_PARALLEL} → ${_hard_parallel} 组/批（按每容器 ${MEMORY_PER_FUZZER}GB 上限保留）"
+    ABLATION_PARALLEL=$_hard_parallel
+  fi
+fi
+EFFECTIVE_PARALLEL=$(( ABLATION_PARALLEL < GROUP_COUNT ? ABLATION_PARALLEL : GROUP_COUNT ))
+EFFECTIVE_CONTAINERS=$(( EFFECTIVE_PARALLEL * RUNS ))
+EFFECTIVE_MEM_NEEDED=$(( EFFECTIVE_CONTAINERS * MEMORY_PER_FUZZER + EFFECTIVE_PARALLEL * 1 + 2 ))
 echo "  [ABLATION] ${GROUP_COUNT} 组已入队，分 $(( (GROUP_COUNT + ABLATION_PARALLEL - 1) / ABLATION_PARALLEL )) 批执行"
 if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
   echo "  [ABLATION] 实际最大并发: ${EFFECTIVE_PARALLEL} 组 × ${RUNS} 容器/组 = ${EFFECTIVE_CONTAINERS} fuzzer 容器"
   echo "  [ABLATION] 估算总内存需求: ~${EFFECTIVE_MEM_NEEDED} GB (可用: ~${AVAIL_MEM_GB} GB)"
   if [[ $AVAIL_MEM_GB -lt $EFFECTIVE_MEM_NEEDED ]]; then
-    echo "  ⚠️  CRITICAL: 实际内存不足！建议: export ABLATION_PARALLEL=$(( EFFECTIVE_PARALLEL - 1 >= 1 ? EFFECTIVE_PARALLEL - 1 : 1 )) 并重试"
+    echo "  ❌  CRITICAL: 硬性准入仍然不足，拒绝启动本批"
+    exit 2
   else
     echo "  ✓ 内存充足，安全余量 ~$(( AVAIL_MEM_GB - EFFECTIVE_MEM_NEEDED )) GB"
   fi
@@ -1237,6 +1266,31 @@ for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
 done
 echo "[POSTRUN] Diagnostics complete."
 
+# Contract audit is deliberately separate from run_summary.csv.  The latter
+# is a descriptive metrics table; this audit joins each archive to its status
+# sidecar and fail-closes on ledger/coverage evidence.  It is opt-in for
+# legacy ad-hoc batches, and is enabled explicitly by the smoke/formal driver.
+batch_audit_rc=0
+if [[ "${ABLATION_RUN_CONTRACT_AUDIT:-0}" == "1" ]]; then
+  mapfile -t _batch_result_dirs < <(
+    find "$RESULTS_BASE_DIR" -mindepth 1 -maxdepth 1 -type d \
+      -name "results-${TARGET}_ablation_*" -newermt "@${_BATCH_EPOCH}" -print | sort
+  )
+  _batch_audit_out="$BASE_DIR/ablation/reanalysis_20261106_stage2/contract_audit_${_BATCH_TS}.json"
+  if [[ ${#_batch_result_dirs[@]} -eq 0 ]]; then
+    echo "[POSTRUN] contract-audit FAIL: no result directories belong to batch ${_BATCH_TS}" >&2
+    batch_audit_rc=1
+  else
+    _batch_audit_args=(
+      --output "$_batch_audit_out"
+      --min-duration-sec "${ABLATION_MIN_DURATION_SEC:-0}"
+    )
+    [[ "${ABLATION_RUN_T05:-0}" == "1" ]] && _batch_audit_args+=(--t05)
+    python3 "$BASE_DIR/ablation/reanalysis_20261106_stage2/contract_audit.py" \
+      "${_batch_audit_args[@]}" "${_batch_result_dirs[@]}" || batch_audit_rc=$?
+  fi
+fi
+
 RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
@@ -1246,3 +1300,7 @@ for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
   chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$RESULTS_DIR"
   chmod -R u+rwX "$RESULTS_DIR"
 done
+
+if [[ $failed -ne 0 || $batch_audit_rc -ne 0 ]]; then
+  exit 1
+fi
