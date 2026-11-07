@@ -1126,6 +1126,12 @@ static u64  prov_conv_unclassified = 0;
  * cap shrinks — the calls are genuinely not spent), REFLOW refills the
  * ordinary-exploration pool (cap unchanged, consumption ledgered). */
 static u64 campaign_call_budget = 0;        /* CHATAFL_CAMPAIGN_CALL_BUDGET */
+static u64 mutation_call_budget = 0;        /* CHATAFL_MUTATION_CALL_BUDGET:
+                                             * stop after N admitted
+                                             * execution_kind=="mutation"
+                                             * invocations (paired-experiment
+                                             * dose control; 0 = off) */
+static u64 mutation_charged_calls = 0;
 static u64 campaign_charged_invocations = 0;
 static u8  campaign_budget_exhausted = 0;
 static u8  campaign_budget_stop_reported = 0;
@@ -11163,6 +11169,13 @@ static void q1_log_flow_event(const char *kind, u64 candidate_id,
 }
 
 static u8 execution_admit(struct queue_entry *root, u32 cid) {
+  /* Pair-dose control (2026-11-07): exactly N mutation-kind invocations per
+   * campaign, then a clean planned stop (same path as the campaign cap). */
+  if (mutation_call_budget &&
+      mutation_charged_calls >= mutation_call_budget) {
+    campaign_budget_exhausted = 1;   /* reuse the clean-stop machinery */
+    return 0;
+  }
   /* Fixed-budget check precedes every per-root consideration: reaching the
    * campaign cap is a planned stop, not an integrity failure. */
   u64 cap = campaign_effective_call_cap();
@@ -11186,6 +11199,8 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
    * line (llm_lineage_edge_gains), so the opportunity gate now compares
    * like with like. */
   campaign_charged_invocations++;
+  if (mutation_call_budget && !strcmp(execution_kind, "mutation"))
+    mutation_charged_calls++;
   if (cid) {
     lineage_invocation_total++;
     if (root && !root->prov_converted && !execution_is_validation_probe()) {
@@ -13223,6 +13238,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "prov_conv_unclassified  : %llu\n"
              "campaign_call_budget    : %llu\n"
              "campaign_charged_calls  : %llu\n"
+             "mutation_call_budget     : %llu\n"
+             "mutation_charged_calls   : %llu\n"
              "campaign_budget_exhausted: %llu\n"
              "q1_saved_quota          : %llu\n"
              "q1_idle_quota           : %llu\n"
@@ -13307,6 +13324,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)prov_conv_unclassified,
           (unsigned long long)campaign_call_budget,
           (unsigned long long)campaign_charged_invocations,
+          (unsigned long long)mutation_call_budget,
+          (unsigned long long)mutation_charged_calls,
           (unsigned long long)campaign_budget_exhausted,
           (unsigned long long)q1_saved_total,
           (unsigned long long)q1_idle_total,
@@ -22642,6 +22661,11 @@ static void evidence_env_parse(void) {
       u32 b = (u32)atoi(pb);
       if (b > 0 && b <= 100000) provisional_budget_default = b;
     }
+    const char *mb = getenv("CHATAFL_MUTATION_CALL_BUDGET");
+    if (mb && *mb) {
+      u64 b2 = (u64)atoll(mb);
+      if (b2 > 0 && b2 <= 100000000ULL) mutation_call_budget = b2;
+    }
     const char *cb = getenv("CHATAFL_CAMPAIGN_CALL_BUDGET");
     if (cb && *cb) {
       u64 b = (u64)atoll(cb);
@@ -24235,7 +24259,9 @@ stop_fuzzing:
   if (run_config_logged) {
     const char *reason =
         scheduler_integrity_failed ? "scheduler-integrity-failure" :
-        campaign_budget_exhausted ? "campaign-call-budget" :
+        campaign_budget_exhausted ?
+            (mutation_call_budget && mutation_charged_calls >= mutation_call_budget ?
+                "mutation-call-budget" : "campaign-call-budget") :
         stop_soon == 2 ? "exit_1" :
         (unique_crashes && !queue_cycle ? "early-crash" : "signal-or-timeout");
     run_config_log("end", reason);

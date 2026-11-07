@@ -1,0 +1,12 @@
+USER mockuser
+PASS mockpass
+USER ftp
+PASS ftp
+TYPE I
+PASV
+LIST
+USER ftp
+PASS ftp
+SITE HELP
+HELP SITE
+SITE CHMOD 600 notes.md

@@ -1,0 +1,20 @@
+USER ubuntu
+PASS ubuntu
+USER anonymous
+PASS mockpass
+CWM mnt/storage
+PASV
+RET data.json
+TYPE<A
+PASV
+LIST -la
+RESV 11626
+CWD test
+PWD
+XMKD test
+XCWD test
+XPWD
+CDUP
+XCUP
+PWD
+QUIT

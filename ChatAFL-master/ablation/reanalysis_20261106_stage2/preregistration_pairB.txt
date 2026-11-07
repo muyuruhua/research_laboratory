@@ -1,0 +1,24 @@
+Q2 candidate-quality PAIRED diagnostic pre-registration (2026-11-07, frozen BEFORE launch)
+Design: Codex rescue-plan design B (seed-injection form). Question: do rescue-pool
+  candidates (U-fail ∧ Gcode ∧ R, gate-rejected with immediate code evidence)
+  hold more marginal exploration value than matched ordinary queue entries at
+  EXACTLY equal dose?
+Pairs (frozen, see pairB_manifest.json): 24 pairs from wrapgate8_20261107T221658
+  tomb (3 runs); rescue = tomb file bytes; ordinary = same run's final-queue
+  file nearest byte size (deterministic tie-break by name).
+Arms: for each pair, TWO fresh fuzzer campaigns differing ONLY in seed file
+  (resc vs ord): NO_LLM=1, no mock, state-aware default, seed injected via
+  INPUTS override, dose = EXACTLY 64 mutation-kind invocations
+  (CHATAFL_MUTATION_CALL_BUDGET=64), 5-min wall cap.
+Endpoint: source-branch increment = |terminal.covered − terminal.seed_covered|
+  (single seed, so this is the session's marginal beyond-itself yield).
+Gates (frozen):
+  Dose gate: mutation_charged_calls == 64 in BOTH arms of a pair, else pair
+    excluded with count (exclusions reported, never silently dropped).
+  G1: mean paired diff (resc − ord) ≥ +1.0 branch;
+  G2: one-sided 80% t lower bound of mean diff > 0;
+  plus sign tally (descriptive).
+Interpretation boundary: positive => rescue candidates are better SEEDS under
+  equal dose (candidate-quality channel of Q2); negative/inconclusive => Q2
+  closes at paired-grade with a well-exposed test. NOT a claim about natural
+  scheduling or end-to-end system benefit.

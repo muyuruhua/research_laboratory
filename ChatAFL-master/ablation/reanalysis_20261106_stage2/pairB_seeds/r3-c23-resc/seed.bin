@@ -1,0 +1,12 @@
+USER ubuntu
+PASS ubuntu
+STAT
+USER mockuser
+PASS anonymous
+CWD pub
+PASV
+RETR data.json
+TYPE A
+PASV
+LIST -la
+REST 1683

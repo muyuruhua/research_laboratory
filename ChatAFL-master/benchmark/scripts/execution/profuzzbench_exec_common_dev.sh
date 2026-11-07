@@ -139,21 +139,76 @@ read_sample_status_value() {
   awk -F'=' -v want="$key" '$1 == want { print substr($0, index($0, "=") + 1); exit }' "$status_file"
 }
 
+archive_is_complete() {
+  local archive="$1" listing req
+  [[ -s "$archive" ]] || return 1
+  listing="$(tar tzf "$archive" 2>/dev/null)" || return 1
+  for req in fuzzer_stats cov_over_time.csv; do
+    printf '%s\n' "$listing" | grep -qE "(^|/)${req//./\\.}$" || return 1
+  done
+  return 0
+}
+
 mark_completed_samples() {
-  local idx archive_name container_id current_status exit_code
+  local idx archive_name container_id current_status exit_code oom_killed
 
   for idx in "${!cids[@]}"; do
     archive_name="${archive_names[$idx]}"
     container_id="${cids[$idx]}"
     current_status="$(read_sample_status_value "$archive_name" status)"
 
-    if [[ -z "$current_status" || "$current_status" == "running" ]]; then
+    if [[ -z "$current_status" || "$current_status" == "running" || "$current_status" == "collection_pending" ]]; then
       exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
       oom_killed="$(docker inspect --format '{{.State.OOMKilled}}' "$container_id" 2>/dev/null || true)"
+      if [[ "$exit_code" == "0" ]]; then
+        _status="collection_pending"
+        _reason="archive_pending"
+      else
+        _status="failed"
+        _reason="exit_code_${exit_code:-unknown}"
+      fi
+      write_sample_status "$archive_name" \
+        "container_id=${container_id}" \
+        "status=${_status}" \
+        "reason=${_reason}" \
+        "finished_at=$(date -Iseconds)" \
+        "oom_killed=${oom_killed}" \
+        "exit_code=${exit_code}"
+    fi
+  done
+}
+
+finalize_sample_status() {
+  local idx archive_name container_id exit_code oom_killed archive_path
+
+  for idx in "${!cids[@]}"; do
+    archive_name="${archive_names[$idx]}"
+    container_id="${cids[$idx]}"
+    archive_path="${SAVETO}/${archive_name}"
+    exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+    oom_killed="$(docker inspect --format '{{.State.OOMKilled}}' "$container_id" 2>/dev/null || true)"
+
+    if [[ "$exit_code" == "0" ]] && archive_is_complete "$archive_path"; then
       write_sample_status "$archive_name" \
         "container_id=${container_id}" \
         "status=completed" \
         "reason=completed" \
+        "finished_at=$(date -Iseconds)" \
+        "oom_killed=${oom_killed}" \
+        "exit_code=0"
+    elif [[ "$exit_code" == "0" ]]; then
+      write_sample_status "$archive_name" \
+        "container_id=${container_id}" \
+        "status=failed" \
+        "reason=archive_incomplete" \
+        "finished_at=$(date -Iseconds)" \
+        "oom_killed=${oom_killed}" \
+        "exit_code=0"
+    else
+      write_sample_status "$archive_name" \
+        "container_id=${container_id}" \
+        "status=failed" \
+        "reason=exit_code_${exit_code:-unknown}" \
         "finished_at=$(date -Iseconds)" \
         "oom_killed=${oom_killed}" \
         "exit_code=${exit_code}"
@@ -327,6 +382,9 @@ on_exit() {
   fi
   cleanup_watchdogs
   collect_results_with_recovery
+  # Collection determines whether the archive is complete.  Do not leave the
+  # provisional status written by mark_completed_samples as the final truth.
+  finalize_sample_status
   for id in "${cids[@]}"; do
     keep_or_clean_container "$id"
   done
@@ -1165,7 +1223,13 @@ for i in $(seq 1 $RUNS); do
         sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+    # Paired-experiment seed injection (2026-11-07): LOOPFUZZ_SEEDS_DIR mounts
+    # a host seed dir read-only and INPUTS overrides run.sh's -i corpus.
+    PAIR_SEED_FLAGS=""
+    if [[ "$FUZZER" == "loopfuzz" && -n "${LOOPFUZZ_SEEDS_DIR:-}" ]]; then
+      PAIR_SEED_FLAGS=" -v ${LOOPFUZZ_SEEDS_DIR}:/tmp/pair-seeds:ro -e INPUTS=/tmp/pair-seeds"
+    fi
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT}${PAIR_SEED_FLAGS} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
@@ -1219,6 +1283,10 @@ if [[ "$FUZZER" == "loopfuzz" && "${CHATAFL_MOCK_LLM:-0}" == "1" ]]; then
 fi
 
 collect_results_with_recovery
+# Reconcile exit status with the collected archive after recovery.  This is
+# deliberately after collection so exit 137/incomplete tarballs cannot remain
+# labelled as completed.
+finalize_sample_status
 
 # Retain fuzz containers (stopped) for post-mortem; opt-in removal.
 for id in "${cids[@]}"; do

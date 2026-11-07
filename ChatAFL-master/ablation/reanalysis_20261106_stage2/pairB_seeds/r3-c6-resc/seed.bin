@@ -1,0 +1,12 @@
+USER mockuser
+PASS mockpass
+SYST
+USER ftp
+PASS ftp
+TYPE I
+PASV
+USER mockuser
+PASS anonymous
+TYPE I
+PASV
+LIST
