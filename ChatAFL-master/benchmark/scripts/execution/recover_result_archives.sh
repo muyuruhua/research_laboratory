@@ -32,7 +32,12 @@ tarball_is_complete() {
     # Exact member match: a substring test once accepted the sidecar
     # directory name cov_over_time.csv.v4 as the file itself and masked
     # failed coverage collection as a complete archive.
-    if ! printf '%s\n' "$listing" | grep -qE "(^|/)${req//./\\.}$"; then
+    # SIGPIPE fix (2026-11-08): under `set -o pipefail`, `grep -q` exits at
+    # first match and printf dies on EPIPE (141), so the whole pipeline
+    # reports failure — complete archives were misclassified as incomplete
+    # whenever the required member sat late in a long listing. Here-string
+    # feeds grep without a pipe: pipefail-safe.
+    if ! grep -qE "(^|/)${req//./\\.}$" <<< "$listing"; then
       return 1
     fi
   done
@@ -69,11 +74,21 @@ collect_from_container() {
   # the replacement into place. Interrupting anywhere between the two mv's
   # leaves either the old or the new final present, never neither.
   swap_in() {
+    local rotated=""
     if [[ -s "$destination" && ! -f "${destination}.salvaged" ]]; then
-      mv "$destination" "${destination}.incomplete.$(date +%s)" 2>/dev/null || true
+      rotated="${destination}.incomplete.$(date +%s)"
+      mv "$destination" "$rotated" 2>/dev/null || rotated=""
     fi
     mv "$1" "$destination"
     fix_result_permissions "$destination"
+    # The replacement was verified complete BEFORE this swap, and it is now
+    # in place: the rotated backup has no remaining crash-safety role and is
+    # byte-redundant — remove it so successful collections leave no
+    # .incomplete.<ts> sidecars. A crash between the two mv's still leaves
+    # either the old or the new final present (never neither); a crash
+    # before this rm leaves one stale sidecar, which the end-of-run
+    # sweeper removes on the next collection.
+    [[ -n "$rotated" ]] && rm -f "$rotated"
   }
 
   rm -f "$tmp_file"
@@ -308,6 +323,14 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   # P1 fix: release the per-archive lock; on success drop any stale retry note
   flock -u 200 2>/dev/null || true
   exec 200>&-
+  # Lock-file lifecycle fix (2026-11-08): with the fd closed and the final
+  # verified complete, the 0-byte .lock has no purpose — remove it so
+  # successful runs leave a clean results dir. Concurrent collectors on the
+  # SAME archive are excluded by the flock we just held; different runners
+  # use different results dirs, so no cross-runner race exists on this path.
+  if tarball_is_complete "$destination" 2>/dev/null; then
+    rm -f "$_lock"
+  fi
   if [[ -f "${RESULTS_DIR}/.collect-pending" ]] && tarball_is_complete "$destination" 2>/dev/null; then
     grep -vxF "$archive_name" "${RESULTS_DIR}/.collect-pending" > "${RESULTS_DIR}/.collect-pending.tmp" 2>/dev/null \
       && mv "${RESULTS_DIR}/.collect-pending.tmp" "${RESULTS_DIR}/.collect-pending" || rm -f "${RESULTS_DIR}/.collect-pending.tmp"
@@ -316,6 +339,22 @@ done
 
 overall_status=$(cat "$_status_file")
 rm -f "$_status_file"
+
+# Stale-sidecar sweeper (2026-11-08): leftovers from previously interrupted
+# collections (.incomplete.<ts> rotation backups, orphan .lock files) are
+# removed for every archive whose final tarball verifies complete. Finals
+# that are missing or incomplete keep their sidecars (they may be the only
+# recoverable copy — collect_pending_archives.sh tier 2 promotes them).
+swept=0
+for final in "${RESULTS_DIR}"/out-*.tar.gz; do
+  [[ -s "$final" ]] || continue
+  tarball_is_complete "$final" 2>/dev/null || continue
+  for stale in "${final}.lock" "${final}".incomplete.* "${final}.partial"; do
+    [[ -e "$stale" ]] || continue
+    rm -f "$stale" && swept=$((swept+1))
+  done
+done
+(( swept > 0 )) && echo "[recover] swept ${swept} stale sidecar file(s) for complete archives"
 
 fix_result_permissions "$RESULTS_DIR"
 exit "$overall_status"

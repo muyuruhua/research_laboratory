@@ -16,8 +16,8 @@ verify_complete() {
   local t="$1" listing
   [[ -s "$t" ]] || return 1
   listing=$(tar tzf "$t" 2>/dev/null) || return 1
-  printf '%s\n' "$listing" | grep -qE '(^|/)fuzzer_stats$' || return 1
-  printf '%s\n' "$listing" | grep -qE '(^|/)cov_over_time\.csv$' || return 1
+  grep -qE '(^|/)fuzzer_stats$' <<< "$listing" || return 1
+  grep -qE '(^|/)cov_over_time\.csv$' <<< "$listing" || return 1
   return 0
 }
 
@@ -59,6 +59,21 @@ while (( pass_num < MAX_PASSES )); do
   done
   echo "pass ${pass_num}: ${acted} cells acted on"
   (( acted == 0 )) && break
+done
+
+# Stale-sidecar sweep (2026-11-08): for every archive whose final verifies
+# complete, remove leftover .lock / .incomplete.<ts> / .partial sidecars from
+# earlier interrupted collections. Incomplete/missing finals KEEP sidecars
+# (they may be the only recoverable copy — tier 2 above promotes them).
+for d in $PATTERN; do
+  [[ -d "$d" && -f "$d/.result_manifest.tsv" ]] || continue
+  while IFS=$'	' read -r _ _ _ _ _ _ arch; do
+    [[ "$arch" == archive_name || -z "$arch" ]] && continue
+    [[ -s "$d/$arch" ]] && verify_complete "$d/$arch" || continue
+    for stale in "$d/$arch.lock" "$d/$arch".incomplete.* "$d/$arch.partial"; do
+      [[ -e "$stale" ]] && rm -f "$stale"
+    done
+  done < <(tail -n +2 "$d/.result_manifest.tsv")
 done
 
 # Final inventory
