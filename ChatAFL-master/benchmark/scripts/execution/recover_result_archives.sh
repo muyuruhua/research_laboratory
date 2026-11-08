@@ -250,11 +250,17 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   # clobbered manually salvaged TARs).
   if [[ -f "${destination}.salvaged" ]]; then
     echo "[recover] ✓ salvaged (manual recovery marker present): ${archive_name}"
+    flock -u 200 2>/dev/null || true
+    exec 200>&-
+    rm -f "$_lock"
     continue
   fi
   if [[ -s "$destination" ]]; then
     if tarball_is_complete "$destination"; then
       echo "[recover] ✓ complete: ${archive_name}"
+      flock -u 200 2>/dev/null || true
+      exec 200>&-
+      rm -f "$_lock"
       # If it's complete AND has a .salvaged marker, it was manually verified
       # too — create the marker for idempotency.
       continue
