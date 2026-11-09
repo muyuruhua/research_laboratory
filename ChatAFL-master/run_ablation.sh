@@ -720,26 +720,25 @@ launch_custom_groups() {
           "CHATAFL_CODE_RETAIN=1" \
           "CHATAFL_PROV_PREFIX_PROTECT=0"
         ;;
-      reqgate8|pvstop8)
-        # P2/P3 mechanism arms (2026-11-09, root-cause driven):
-        #   reqgate8 = wrapgate8 base + CHATAFL_REQUEST_GATE=1 — plateau
-        #     consults are skipped when the trailing 2000-invocation window
-        #     produced zero new bitmap edges (moves the gate BEFORE the
-        #     generation cost it could never touch; baseline wrapgate8).
-        #   pvstop8  = salvage8 base + CHATAFL_PV_EARLY_STOP=16 — a
-        #     provisional root whose charged descendants show 16 consecutive
-        #     zero-novelty executions (not even hit-count) closes early and
-        #     keeps its unspent budget (baseline salvage8).
+      reqgate8|reqgate512|pvstop8|pvstop512)
+        # P2/P3 mechanism arms (2026-11-09): mock variants (8) and real-gateway
+        # variants (512). reqgate = request-level gate (skip consults on
+        # saturated window); pvstop = PV marginal early-stop (K=32 dual-signal).
         valid+=("$name")
-        local p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=500,CHATAFL_REQUEST_GATE_YIELD_FLOOR=3"
-        [[ "$name" == pvstop8 ]] && p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32"
+        local p23="" p_thr=8
+        case "$name" in
+          reqgate8)   p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=500,CHATAFL_REQUEST_GATE_YIELD_FLOOR=3" ;;
+          reqgate512) p_thr=512; p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=2000,CHATAFL_REQUEST_GATE_YIELD_FLOOR=1" ;;
+          pvstop8)    p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32" ;;
+          pvstop512)  p_thr=512; p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32" ;;
+        esac
         queue_group "$name" \
           "CHATAFL_ADMISSION_MODE=gate" \
           "CHATAFL_PROVISIONAL=1" \
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${p_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "${p23}"
         ;;
