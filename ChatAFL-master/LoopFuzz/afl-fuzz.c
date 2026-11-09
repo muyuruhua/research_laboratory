@@ -1169,6 +1169,12 @@ static u8  request_gate_enabled = 0;
 static u64 request_gate_skips = 0;
 static u64 request_gate_window_seq = 0;   /* invocation ledger seq at last eval */
 static u64 request_gate_window_gains = 0; /* code_gain_events at last eval */
+static u32 request_gate_yield_floor = 1;  /* CHATAFL_REQUEST_GATE_YIELD_FLOOR:
+                                           * skip when gains <= floor in window;
+                                           * 1 = "at most 1 new edge in 500+
+                                           * calls" (mock 10-min can reach this
+                                           * while still productive early on);
+                                           * 0 = strict zero (real-gateway) */
 static u32 request_gate_window = 2000;    /* CHATAFL_REQUEST_GATE_WINDOW:
                                            * real-gateway multi-hour = 2000
                                            * (plateau onset measured 3.6-9.2h);
@@ -11182,7 +11188,7 @@ static u8 request_gate_saturated(void) {
   u64 gains = code_gain_events - request_gate_window_gains;
   request_gate_window_seq = target_invocation_seq;
   request_gate_window_gains = code_gain_events;
-  if (gains != 0) return 0;              /* neighborhood still productive */
+  if (gains > request_gate_yield_floor) return 0; /* still productive enough */
   request_gate_skips++;
   if (event_log_enabled) {
     struct json_object *j = json_object_new_object();
@@ -22778,6 +22784,11 @@ static void evidence_env_parse(void) {
     }
     if (getenv("CHATAFL_REQUEST_GATE") &&
         strcmp(getenv("CHATAFL_REQUEST_GATE"), "0") != 0) request_gate_enabled = 1;
+    const char *rgf = getenv("CHATAFL_REQUEST_GATE_YIELD_FLOOR");
+    if (rgf && *rgf) {
+      u32 f = (u32)atoi(rgf);
+      if (f <= 10) request_gate_yield_floor = f;
+    }
     const char *rgw = getenv("CHATAFL_REQUEST_GATE_WINDOW");
     if (rgw && *rgw) {
       u32 w = (u32)atoi(rgw);
