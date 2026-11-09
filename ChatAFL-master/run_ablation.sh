@@ -720,6 +720,29 @@ launch_custom_groups() {
           "CHATAFL_CODE_RETAIN=1" \
           "CHATAFL_PROV_PREFIX_PROTECT=0"
         ;;
+      reqgate8|pvstop8)
+        # P2/P3 mechanism arms (2026-11-09, root-cause driven):
+        #   reqgate8 = wrapgate8 base + CHATAFL_REQUEST_GATE=1 — plateau
+        #     consults are skipped when the trailing 2000-invocation window
+        #     produced zero new bitmap edges (moves the gate BEFORE the
+        #     generation cost it could never touch; baseline wrapgate8).
+        #   pvstop8  = salvage8 base + CHATAFL_PV_EARLY_STOP=16 — a
+        #     provisional root whose charged descendants show 16 consecutive
+        #     zero-novelty executions (not even hit-count) closes early and
+        #     keeps its unspent budget (baseline salvage8).
+        valid+=("$name")
+        local p23="CHATAFL_REQUEST_GATE=1"
+        [[ "$name" == pvstop8 ]] && p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=16"
+        queue_group "$name" \
+          "CHATAFL_ADMISSION_MODE=gate" \
+          "CHATAFL_PROVISIONAL=1" \
+          "CHATAFL_SHADOW=1" \
+          "CHATAFL_PLAINTEXT_WRAP=1" \
+          "CHATAFL_NO_ADAPTIVE=1" \
+          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
+          "${p23}"
+        ;;
       q1a8|q1b8|q1c8|q1d8)
         # Stage-2 T03 Q1 strategies (2026-11-06): single-factor triplet on
         # the fate of the 64-call quota freed by gate rejects of executable

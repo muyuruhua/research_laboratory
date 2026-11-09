@@ -360,6 +360,7 @@ struct queue_entry
    * fallback service opportunity after regular provisional roots, while
    * CHATAFL_ORDINARY_EDF=1 opts into concurrent EDF service. */
   u8  prov_ordinary_match;
+  u32 prov_zero_novelty_streak;   /* P3: consecutive charged descendants with hnb==0 */
   /* S1 prefix protection (2026-11-05): candidate message window in the
    * SAVED session's message indexing. Under forced provisional service
    * the M2 mutation range is clamped to this window so the prefix that
@@ -1140,6 +1141,30 @@ static u8  q1_reflow = 0;                   /* CHATAFL_Q1_REFLOW */
 static u8  q1_direct_service = 0;           /* CHATAFL_Q1_DIRECT_SERVICE */
 static u64 q1_saved_total = 0, q1_idle_total = 0;
 static u64 q1_reflow_pool = 0, q1_reflow_consumed = 0;
+
+/* P2 request-level gate (2026-11-09): the admission gate acts AFTER the
+ * ~195/round grammar+enrichment generation cost is sunk (measured: gate
+ * saves only -2.8% LLM attempts). This gate acts BEFORE a plateau
+ * consultation: when the trailing invocation window produced ZERO new
+ * bitmap edges (the code neighborhood is saturated — measured t95 of all
+ * arms is 3.6-9.2h into 21h campaigns), the consult is skipped and the
+ * opportunity is consumed, moving the gate to the ~100% cost fraction it
+ * could never touch. CHATAFL_REQUEST_GATE=1 enables. */
+/* P3 PV marginal early-stop (2026-11-09): the fixed 64-call subtree budget
+ * spends nearly all of it at zero marginal yield once the campaign is on
+ * the coverage plateau (measured t95 3.6-9.2h in 21h+ campaigns). A root
+ * whose charged descendants produce K consecutive executions with NO
+ * novelty of any kind (not even hit-count changes) is closed early; the
+ * unspent budget stays unspent (or flows to ordinary under
+ * CHATAFL_Q1_REFLOW). Any novelty event resets the streak. */
+static u32 pv_early_stop_k = 0;         /* CHATAFL_PV_EARLY_STOP (0 = off) */
+static u64 pv_early_stops = 0;
+static u8  request_gate_enabled = 0;
+static u64 request_gate_skips = 0;
+static u64 request_gate_window_seq = 0;   /* invocation ledger seq at last eval */
+static u64 request_gate_window_gains = 0; /* code_gain_events at last eval */
+#define REQUEST_GATE_WINDOW 2000
+
 
 /* Witness tomb (2026-11-07, rescue-identification plan P0): rejected
  * executable candidates' full session bytes and expiring provisional
@@ -4032,6 +4057,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   /* Stage-2 T03 stamps: fixed-call budget and Q1 quota-flow policy. */
   admission_json_add_u64(j, "campaign_call_budget", campaign_call_budget);
   json_object_object_add(j, "witness_tomb", json_object_new_boolean(1));
+  json_object_object_add(j, "request_gate", json_object_new_boolean(request_gate_enabled));
+  admission_json_add_u64(j, "pv_early_stop_k", pv_early_stop_k);
   json_object_object_add(j, "q1_policy",
       json_object_new_string(q1_direct_service ? "direct-service" :
                              q1_reflow ? "reflow" :
@@ -11137,6 +11164,29 @@ static u8 execution_is_validation_probe(void) {
   return execution_kind && !strcmp(execution_kind, "prov-annotate");
 }
 
+static u8 request_gate_saturated(void) {
+  if (target_invocation_seq < request_gate_window_seq + REQUEST_GATE_WINDOW)
+    return 0;                            /* window not yet elapsed */
+  u64 gains = code_gain_events - request_gate_window_gains;
+  request_gate_window_seq = target_invocation_seq;
+  request_gate_window_gains = code_gain_events;
+  if (gains != 0) return 0;              /* neighborhood still productive */
+  request_gate_skips++;
+  if (event_log_enabled) {
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("request_gate"));
+    json_object_object_add(j, "kind", json_object_new_string("skipped-saturated"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    admission_json_add_u64(j, "window_invocations", REQUEST_GATE_WINDOW);
+    admission_json_add_u64(j, "window_gains", gains);
+    admission_json_add_u64(j, "skips_total", request_gate_skips);
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    ec_append_jsonl("trigger-events.jsonl", j);
+    json_object_put(j);
+  }
+  return 1;
+}
+
 static void q1_log_flow_event(const char *kind, u64 candidate_id,
                               const char *destination, u64 flow_id,
                               u64 invocation_id, u64 amount,
@@ -12446,6 +12496,20 @@ static void write_crash_readme(void)
   fclose(f);
 }
 
+/* P3 streak tracker: called with the descendant execution's hnb BEFORE any
+ * early return; trial-mode calls never reach here. */
+static void pv_early_stop_track(u8 hnb) {
+  struct queue_entry *r = cur_fuzz_provisional_root;
+  if (!pv_early_stop_k || !r || !r->is_provisional || r->prov_expired ||
+      r->prov_converted)
+    return;
+  if (hnb) { r->prov_zero_novelty_streak = 0; return; }
+  if (++r->prov_zero_novelty_streak < pv_early_stop_k) return;
+  pv_early_stops++;
+  r->prov_zero_novelty_streak = 0;
+  provisional_expire(r, "early-stop-no-novelty");
+}
+
 /* Check if the result of an execve() during routine fuzzing is interesting,
    save or queue the input test case for further analysis if so. Returns 1 if
    entry is saved, 0 otherwise. */
@@ -12506,19 +12570,24 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       hnb = has_new_bits(virgin_bits);
       lineage_evidence_valid = hnb_capture_end() > 0;
       if (hnb != 2) lineage_evidence_valid = 0;
+      pv_early_stop_track(hnb);
       if (!hnb) {
         if (crash_mode)
           total_crashes++;
         mqtt_record_state_stall();
         return 0;
       }
-    } else if (!(hnb = has_new_bits(virgin_bits)))
-    {
-      if (crash_mode)
-        total_crashes++;
-      /* P6: Record state stall (no new coverage from this execution) */
-      mqtt_record_state_stall();
-      return 0;
+    } else {
+      hnb = has_new_bits(virgin_bits);
+      pv_early_stop_track(hnb);
+      if (!hnb)
+      {
+        if (crash_mode)
+          total_crashes++;
+        /* P6: Record state stall (no new coverage from this execution) */
+        mqtt_record_state_stall();
+        return 0;
+      }
     }
     last_common_fuzz_hnb = hnb;
 
@@ -13247,6 +13316,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "q1_reflow_pool_left     : %llu\n"
              "witness_tomb_rejects    : %llu\n"
              "witness_tomb_expiries   : %llu\n"
+             "request_gate_skips      : %llu\n"
+             "pv_early_stops          : %llu\n"
              "code_retain_converted : %llu\n"
              "salvage_enabled       : %u\n"
              "salvage_attempted     : %llu\n"
@@ -13333,6 +13404,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)q1_reflow_pool,
           (unsigned long long)witness_tomb_rejects,
           (unsigned long long)witness_tomb_expiries,
+          (unsigned long long)request_gate_skips,
+          (unsigned long long)pv_early_stops,
           (unsigned long long)code_retain_converted,
           salvage_enabled,
           (unsigned long long)salvage_attempted,
@@ -17796,7 +17869,18 @@ AFLNET_REGIONS_SELECTION:;
       llm_trigger_policy == 1 ? response_gap_rounds :
       llm_trigger_policy == 2 ? rounds_since_llm_trigger :
       uninteresting_times;
-  if (trigger_counter >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
+  /* P2 request-level gate: evaluate saturation BEFORE consuming the
+   * opportunity; a skipped consult resets the trigger counters (the
+   * opportunity is spent) but performs no generation, no trial, and no
+   * candidate execution. */
+  u8 request_gate_skip = 0;
+  if (request_gate_enabled &&
+      trigger_counter >= adaptive_plateau_threshold &&
+      chat_times < CHATTING_THRESHOLD &&
+      request_gate_saturated())
+    request_gate_skip = 1;
+  if (trigger_counter >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD
+      && !request_gate_skip)
   {
     /* Trigger ledger: every LLM consultation opportunity is recorded with
      * the policy, its counter, the threshold and the cost context, so the
@@ -22661,6 +22745,14 @@ static void evidence_env_parse(void) {
       u32 b = (u32)atoi(pb);
       if (b > 0 && b <= 100000) provisional_budget_default = b;
     }
+    const char *pes = getenv("CHATAFL_PV_EARLY_STOP");
+    if (pes && *pes) {
+      u32 k = (u32)atoi(pes);
+      if (k >= 4 && k <= 64) pv_early_stop_k = k;
+      else WARNF("CHATAFL_PV_EARLY_STOP=%s out of [4,64], disabled", pes);
+    }
+    if (getenv("CHATAFL_REQUEST_GATE") &&
+        strcmp(getenv("CHATAFL_REQUEST_GATE"), "0") != 0) request_gate_enabled = 1;
     const char *mb = getenv("CHATAFL_MUTATION_CALL_BUDGET");
     if (mb && *mb) {
       u64 b2 = (u64)atoll(mb);

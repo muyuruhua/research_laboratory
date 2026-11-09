@@ -875,6 +875,73 @@ static void test_witness_tomb_expiry_move(void) {
   event_log_enabled = 1;
 }
 
+/* P2 request gate: saturated window (>=2000 invocations, zero new edges)
+ * skips; productive window does not; window boundary advances on eval. */
+static void test_request_gate(void) {
+  u8 saved_en = request_gate_enabled;
+  u64 saved_seq = request_gate_window_seq, saved_g = request_gate_window_gains;
+  u64 saved_skips = request_gate_skips, saved_cg = code_gain_events;
+  u64 saved_inv = target_invocation_seq;
+  u8 old_log = event_log_enabled; event_log_enabled = 0;
+  request_gate_enabled = 1;
+
+  target_invocation_seq = 1000; request_gate_window_seq = 0;
+  request_gate_window_gains = code_gain_events;
+  assert(request_gate_saturated() == 0);      /* window not elapsed */
+
+  target_invocation_seq = 2500;               /* elapsed, ZERO gains */
+  assert(request_gate_saturated() == 1);
+  assert(request_gate_skips == saved_skips + 1);
+
+  target_invocation_seq = 5000; code_gain_events += 3;  /* productive */
+  assert(request_gate_saturated() == 0);
+  assert(request_gate_skips == saved_skips + 1);
+
+  request_gate_enabled = saved_en;
+  request_gate_window_seq = saved_seq; request_gate_window_gains = saved_g;
+  request_gate_skips = saved_skips; code_gain_events = saved_cg;
+  target_invocation_seq = saved_inv; event_log_enabled = old_log;
+}
+
+/* P3 early stop: K consecutive zero-novelty charged descendants close the
+ * root; any novelty resets the streak; disabled knob is a no-op. */
+static void test_pv_early_stop(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 51; root.is_provisional = 1;
+  root.prov_candidate_id = 55; root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  queue = queue_top = &root;
+  u32 saved_k = pv_early_stop_k; u64 saved_stops = pv_early_stops;
+  pv_early_stop_k = 4;
+
+  cur_fuzz_provisional_root = &root;
+  pv_early_stop_track(0); pv_early_stop_track(0);
+  pv_early_stop_track(1);                  /* novelty resets */
+  assert(root.prov_zero_novelty_streak == 0 && root.prov_expired == 0);
+  pv_early_stop_track(0); pv_early_stop_track(0);
+  pv_early_stop_track(0);
+  assert(root.prov_expired == 0);           /* 3 < K */
+  pv_early_stop_track(0);                   /* 4 == K -> early stop */
+  assert(root.prov_expired == 1);
+  assert(pv_early_stops == saved_stops + 1);
+
+  pv_early_stop_k = 0;                      /* disabled: no-op on a fresh root */
+  struct queue_entry root2;
+  memset(&root2, 0, sizeof(root2));
+  root2.is_provisional = 1; root2.prov_candidate_id = 56;
+  root2.prov_budget_left = 64;
+  root2.prov_deadline_ms = get_cur_time() + 60000;
+  queue = &root2; queue_top = &root2;
+  cur_fuzz_provisional_root = &root2;
+  for (int i = 0; i < 10; i++) pv_early_stop_track(0);
+  assert(root2.prov_expired == 0);
+
+  pv_early_stop_k = saved_k; pv_early_stops = saved_stops;
+  cur_fuzz_provisional_root = NULL;
+  queue = queue_top = NULL;
+}
+
 /* Stage-2 T03: fixed campaign call budget — admitted invocations count
  * against the cap, the cap refusal is a planned stop, and NO_REFLOW's
  * parked quota shrinks the effective cap. */
@@ -1318,6 +1385,8 @@ int main(void) {
   test_conversion_classification();
   test_campaign_budget_cap();
   test_witness_tomb_expiry_move();
+  test_request_gate();
+  test_pv_early_stop();
   test_q1_reflow_consumption();
   test_q1_direct_service_route();
   test_censor_frees_trial_evidence();
