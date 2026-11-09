@@ -731,7 +731,7 @@ launch_custom_groups() {
         #     zero-novelty executions (not even hit-count) closes early and
         #     keeps its unspent budget (baseline salvage8).
         valid+=("$name")
-        local p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=200,CHATAFL_REQUEST_GATE_YIELD_FLOOR=5"
+        local p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=500,CHATAFL_REQUEST_GATE_YIELD_FLOOR=3"
         [[ "$name" == pvstop8 ]] && p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32"
         queue_group "$name" \
           "CHATAFL_ADMISSION_MODE=gate" \
