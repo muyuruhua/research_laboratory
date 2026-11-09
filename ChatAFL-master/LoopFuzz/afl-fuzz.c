@@ -1157,13 +1157,23 @@ static u64 q1_reflow_pool = 0, q1_reflow_consumed = 0;
  * novelty of any kind (not even hit-count changes) is closed early; the
  * unspent budget stays unspent (or flows to ordinary under
  * CHATAFL_Q1_REFLOW). Any novelty event resets the streak. */
-static u32 pv_early_stop_k = 0;         /* CHATAFL_PV_EARLY_STOP (0 = off) */
+static u32 pv_early_stop_k = 0;         /* CHATAFL_PV_EARLY_STOP (0 = off, set by arm) */
+/* P3 dual-signal: a root is only "dead" when BOTH code novelty (hnb==0)
+ * AND state novelty (no new IPSM transitions) are silent for K consecutive
+ * charged descendants. State exploration alone resets the streak —
+ * measured on salvage8: late conversions (exec 42-59) had 41-58 zero-code
+ * calls but were still traversing new states. */
+static u8 pv_early_stop_dual = 1;       /* CHATAFL_PV_EARLY_STOP_DUAL=0 disables */
 static u64 pv_early_stops = 0;
 static u8  request_gate_enabled = 0;
 static u64 request_gate_skips = 0;
 static u64 request_gate_window_seq = 0;   /* invocation ledger seq at last eval */
 static u64 request_gate_window_gains = 0; /* code_gain_events at last eval */
-#define REQUEST_GATE_WINDOW 2000
+static u32 request_gate_window = 2000;    /* CHATAFL_REQUEST_GATE_WINDOW:
+                                           * real-gateway multi-hour = 2000
+                                           * (plateau onset measured 3.6-9.2h);
+                                           * mock smoke can use 500 to reach
+                                           * zero-gain windows within minutes */
 
 
 /* Witness tomb (2026-11-07, rescue-identification plan P0): rejected
@@ -4059,6 +4069,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "witness_tomb", json_object_new_boolean(1));
   json_object_object_add(j, "request_gate", json_object_new_boolean(request_gate_enabled));
   admission_json_add_u64(j, "pv_early_stop_k", pv_early_stop_k);
+  json_object_object_add(j, "pv_early_stop_dual", json_object_new_boolean(pv_early_stop_dual));
+  admission_json_add_u64(j, "request_gate_window", request_gate_window);
   json_object_object_add(j, "q1_policy",
       json_object_new_string(q1_direct_service ? "direct-service" :
                              q1_reflow ? "reflow" :
@@ -11165,7 +11177,7 @@ static u8 execution_is_validation_probe(void) {
 }
 
 static u8 request_gate_saturated(void) {
-  if (target_invocation_seq < request_gate_window_seq + REQUEST_GATE_WINDOW)
+  if (target_invocation_seq < request_gate_window_seq + request_gate_window)
     return 0;                            /* window not yet elapsed */
   u64 gains = code_gain_events - request_gate_window_gains;
   request_gate_window_seq = target_invocation_seq;
@@ -11177,7 +11189,7 @@ static u8 request_gate_saturated(void) {
     json_object_object_add(j, "event", json_object_new_string("request_gate"));
     json_object_object_add(j, "kind", json_object_new_string("skipped-saturated"));
     admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
-    admission_json_add_u64(j, "window_invocations", REQUEST_GATE_WINDOW);
+    admission_json_add_u64(j, "window_invocations", request_gate_window);
     admission_json_add_u64(j, "window_gains", gains);
     admission_json_add_u64(j, "skips_total", request_gate_skips);
     admission_json_add_u64(j, "time_ms", get_cur_time());
@@ -12504,6 +12516,17 @@ static void pv_early_stop_track(u8 hnb) {
       r->prov_converted)
     return;
   if (hnb) { r->prov_zero_novelty_streak = 0; return; }
+  /* Dual-signal: new IPSM state edges also reset the streak. The global
+   * ipsm_new_edge_events counter is monotone — a delta since the last
+   * check means this execution (or a sibling) found new state territory,
+   * so the subtree is still exploring even without new code edges. */
+  static u64 pv_last_ipsm_events = 0;
+  if (pv_early_stop_dual && ipsm_new_edge_events > pv_last_ipsm_events) {
+    pv_last_ipsm_events = ipsm_new_edge_events;
+    r->prov_zero_novelty_streak = 0;
+    return;
+  }
+  pv_last_ipsm_events = ipsm_new_edge_events;
   if (++r->prov_zero_novelty_streak < pv_early_stop_k) return;
   pv_early_stops++;
   r->prov_zero_novelty_streak = 0;
@@ -22745,6 +22768,8 @@ static void evidence_env_parse(void) {
       u32 b = (u32)atoi(pb);
       if (b > 0 && b <= 100000) provisional_budget_default = b;
     }
+    if (getenv("CHATAFL_PV_EARLY_STOP_DUAL") &&
+        strcmp(getenv("CHATAFL_PV_EARLY_STOP_DUAL"), "0") == 0) pv_early_stop_dual = 0;
     const char *pes = getenv("CHATAFL_PV_EARLY_STOP");
     if (pes && *pes) {
       u32 k = (u32)atoi(pes);
@@ -22753,6 +22778,11 @@ static void evidence_env_parse(void) {
     }
     if (getenv("CHATAFL_REQUEST_GATE") &&
         strcmp(getenv("CHATAFL_REQUEST_GATE"), "0") != 0) request_gate_enabled = 1;
+    const char *rgw = getenv("CHATAFL_REQUEST_GATE_WINDOW");
+    if (rgw && *rgw) {
+      u32 w = (u32)atoi(rgw);
+      if (w >= 100 && w <= 100000) request_gate_window = w;
+    }
     const char *mb = getenv("CHATAFL_MUTATION_CALL_BUDGET");
     if (mb && *mb) {
       u64 b2 = (u64)atoll(mb);
