@@ -1271,18 +1271,19 @@ mark_completed_samples
 cleanup_watchdogs
 
 if [[ "$FUZZER" == "loopfuzz" && "${CHATAFL_MOCK_LLM:-0}" == "1" ]]; then
-  MOCK_METRICS_DIR="${SAVETO}/mock_metrics"
-  mkdir -p "$MOCK_METRICS_DIR"
+  # Flat layout (2026-11-09): mock stats files sit at the result-root level
+  # with the SAME run numbering as the tarballs — no mock_metrics/ subdir, so
+  # mock and real-gateway result directories share an identical structure
+  # (mock just has a few extra flat .mock-stats.json files).
   for run_index in "${!cids[@]}"; do
     id="${cids[$run_index]}"
-    metric_path="${MOCK_METRICS_DIR}/${OUTDIR}_run$((run_index + 1)).json"
+    metric_path="${SAVETO}/${OUTDIR}_$((run_index + 1)).mock-stats.json"
     if docker cp "${id}:/tmp/loopfuzz_mock_stats.json" "$metric_path" >/dev/null 2>&1; then
       printf "\n${LOG_TAG}: [MOCK] metrics saved: %s\n" "$metric_path"
     else
       printf "\n${LOG_TAG}: [WARN] Mock metrics missing for run %d (container %s)\n" "$((run_index + 1))" "${id:0:12}"
     fi
   done
-  fix_result_permissions "$MOCK_METRICS_DIR"
 fi
 
 collect_results_with_recovery
