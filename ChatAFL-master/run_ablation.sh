@@ -94,7 +94,7 @@ fi
 # 预检与每个批次前按"全机 fuzz 容器实际内存占用"（非 6G 上限）自动收敛本值。
 # 设1=串行（最安全最慢），设3=半并行
 ABLATION_PARALLEL="${ABLATION_PARALLEL:-6}"
-MEMORY_PER_FUZZER=6  # must match --memory in profuzzbench_exec_common_dev.sh
+MEMORY_PER_FUZZER=${ABLATION_MEM_PER_FUZZER:-6}  # Docker --memory cap; override with ABLATION_MEM_PER_FUZZER for hosts with tight available memory (actual steady-state usage is ~1GB/container, the 6GB is just the cgroup ceiling)
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESULTS_BASE_DIR="${BASE_DIR}/ablation"
