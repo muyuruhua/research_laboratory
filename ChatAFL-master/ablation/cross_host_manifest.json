@@ -1,0 +1,148 @@
+{
+  "benchmark/scripts/execution/profuzzbench_exec_common_dev.sh": "412b8f554aa9de980095314a0863f7831dd06ed2fac1b6da58229fa563e90f66",
+  "dicts": {
+    "FTP/BFTPD/ftp.dict": "40685cc548adc96640570ae0780bc854bb5d5ea3e027361c9ea3b9deddeaf013",
+    "FTP/LightFTP/ftp.dict": "40685cc548adc96640570ae0780bc854bb5d5ea3e027361c9ea3b9deddeaf013",
+    "FTP/ProFTPD/ftp.dict": "40685cc548adc96640570ae0780bc854bb5d5ea3e027361c9ea3b9deddeaf013",
+    "FTP/PureFTPD/ftp.dict": "40685cc548adc96640570ae0780bc854bb5d5ea3e027361c9ea3b9deddeaf013",
+    "HTTP/Lighttpd1/http.dict": "e06940ce6062939caee167cdb3e031cf7084528befaa4012919522224ee8c787",
+    "RTSP/Live555/rtsp.dict": "635367688bf9cff8f1c9241f105c9a3dcc12a51cd002799f794c9b782e67a8fe",
+    "SMTP/Exim/smtp.dict": "490e2df938b1e7a27d47cf14dc2fb716ea9c7627569dda25128455f3b5b419c1"
+  },
+  "fuzzer_source": {
+    "files": 69,
+    "sha256": "3ccc1c684f02d11fa8bd81c876a799ffcef4b34889021adf0f6951c0667baec0"
+  },
+  "generated": "2026-11-13T14:02:20+08:00",
+  "git_commit": "516ec441800f53744b8851f5500f3c10e937bc70",
+  "images": {
+    "bftpd": "sha256:fc0cc2871d5fe5d412d86bc9c136f287ee89f7478e9758e4169ba96d392266f7",
+    "exim": "sha256:fc5d4df85fa8c78e44633077f4daf15c8749fd0914eaaf703572270f4f66261d",
+    "kamailio": "sha256:e98d280fe6c91c57163511fb4a071a318272e3a3e503738cbc827390f4e238a3",
+    "live555": "sha256:876d852975a9248a1227d123ad3d0e5c5946fc1dee63b9f028f23e5681819dcf"
+  },
+  "run_ablation.sh": "689664f8638680fe3214869fc142dec2c141bfe809c2105e4928e4a957346ad9",
+  "seeds": {
+    "DAAP/forked-daapd/in-daap": {
+      "count": 2,
+      "sha256": "37a863951f2fd427ba0c3eae3b58ea418d4ec2a8ab4757a2e50b6c1caddc6c9f"
+    },
+    "DAAP/forked-daapd/in-daap-pcap": {
+      "count": 2,
+      "sha256": "2e4f2a7bf0dfb891f2e710c2f532a3e92470843d570c833e4b539d477cf35af0"
+    },
+    "DAAP/forked-daapd/in-daap-replay": {
+      "count": 2,
+      "sha256": "2fb882453682deff735c0ce8a39a721f355e5a86b11bb665e98887573201c951"
+    },
+    "DAAP/forked-daapd/in-daap-single": {
+      "count": 2,
+      "sha256": "7887e53dae60ce6234fb4e111f5740a3f6c584397db7370cd45af373cefe0b20"
+    },
+    "FTP/BFTPD/in-ftp": {
+      "count": 4,
+      "sha256": "424403f757d57c97c4db9f212d9bce76065c303855458f137428fc64d9b12ad9"
+    },
+    "FTP/BFTPD/in-ftp-pcap": {
+      "count": 13,
+      "sha256": "1f4767cdde4cf87cb8a9670c8c607cf2b37aad8e4be7059460005bd7a326e54d"
+    },
+    "FTP/BFTPD/in-ftp-replay": {
+      "count": 13,
+      "sha256": "858b77fed0c4a6d350dbac5407a0845899c783f8a7adae7f626dab1ccbe2caa5"
+    },
+    "FTP/LightFTP/in-ftp": {
+      "count": 2,
+      "sha256": "f694197be2483a0a7ccc773e71636f7a6821886d8d63e0801300dc3a59d25e46"
+    },
+    "FTP/LightFTP/in-ftp-pcap": {
+      "count": 2,
+      "sha256": "63089dd525c3c682cc9b2478f7750b7b7c14e3d5ba862eeb92fcfbc90f32576b"
+    },
+    "FTP/LightFTP/in-ftp-replay": {
+      "count": 2,
+      "sha256": "a4cc6fcc703d4c73d3c4a65ad5adabff7fdf164afa3a24271c399c0c72500d7a"
+    },
+    "FTP/ProFTPD/in-ftp": {
+      "count": 4,
+      "sha256": "424403f757d57c97c4db9f212d9bce76065c303855458f137428fc64d9b12ad9"
+    },
+    "FTP/ProFTPD/in-ftp-pcap": {
+      "count": 13,
+      "sha256": "e3626575ace5a4012bd6da13850bd1f3efff3db3f26b147b6732b80fc23d8eca"
+    },
+    "FTP/ProFTPD/in-ftp-replay": {
+      "count": 13,
+      "sha256": "68684c1942ecab1f2c913f1c04b6ad502c3308c5a766e591f74c93c13c3c16c5"
+    },
+    "FTP/PureFTPD/in-ftp": {
+      "count": 4,
+      "sha256": "72e5ee221c77f8cc6faf17c97d970b8ad6709a504daab990e5e831f929d8c256"
+    },
+    "FTP/PureFTPD/in-ftp-pcap": {
+      "count": 13,
+      "sha256": "dec8144271e8e6b15e6b909f8c1439bb74ded692355af540d1ddc7ead291c8b7"
+    },
+    "FTP/PureFTPD/in-ftp-replay": {
+      "count": 13,
+      "sha256": "b570a835a6cefbafd09443d7ea86ad9a6c293d9939f34bbeeda4c4ee3a98f4ae"
+    },
+    "HTTP/Lighttpd1/in-http": {
+      "count": 3,
+      "sha256": "13adf5f0c32df8ccd980ca2f3dd1a0d26fb02ff6d9724ed4b20cb61f6ec0c192"
+    },
+    "MQTT/Mosquitto-v2.0.18/in-mqtt": {
+      "count": 8,
+      "sha256": "0231ba70d1a65676033ab3201df76f7e97bdf77f8e08ad25c896bfb4d2f625d6"
+    },
+    "MQTT/Mosquitto-v2.1.2/in-mqtt": {
+      "count": 8,
+      "sha256": "0231ba70d1a65676033ab3201df76f7e97bdf77f8e08ad25c896bfb4d2f625d6"
+    },
+    "MQTT/Mosquitto/in-mqtt": {
+      "count": 1,
+      "sha256": "8552d6f81d03679c765e90953aa3eb522cab3b19947a11ef118a3d3741c6ed0b"
+    },
+    "RTSP/Live555/in-rtsp": {
+      "count": 7,
+      "sha256": "98e4e084d51396e3e482e6ba538e0518546897e0b0b16fb269c5303bb8a26957"
+    },
+    "RTSP/Live555/in-rtsp-pcap": {
+      "count": 7,
+      "sha256": "18427c67947aff5cc3b30b134c43803f8610cf607b793c2b994835c0db5075c1"
+    },
+    "RTSP/Live555/in-rtsp-replay": {
+      "count": 7,
+      "sha256": "62e5e9f44723cea45e376ef2242e86e3f725eb122a135dcfec3ab301662fc917"
+    },
+    "SIP/Kamailio/in-sip": {
+      "count": 1,
+      "sha256": "5f951ff91106042e4cfc8b6033addef9373f756842c5d7d0dc823e133ae67743"
+    },
+    "SIP/Kamailio/in-sip-pcap": {
+      "count": 1,
+      "sha256": "8ddd1ee465ab228561d4eca0e4123398d96e314f4d2e6189bb58c3de3c8158c9"
+    },
+    "SIP/Kamailio/in-sip-replay": {
+      "count": 1,
+      "sha256": "7b13891d6e312e195af7f89e54b27c8bed6192a4bc538625e86ca5f1da29ad85"
+    },
+    "SMTP/Exim/in-smtp": {
+      "count": 2,
+      "sha256": "96743a3037237632a60467c77a8242057aeb4272f66b98d2e5ff34a463bc69a6"
+    },
+    "SMTP/Exim/in-smtp-pcap": {
+      "count": 2,
+      "sha256": "e6927001450024de19a6ea5c4ec5338cb434cde2e4aae17019e24ba841c44485"
+    },
+    "SMTP/Exim/in-smtp-replay": {
+      "count": 2,
+      "sha256": "5994dc0f53115e52b599d998db884d95481feed84eb44b9f833d53c8ce48fe4e"
+    }
+  },
+  "target_binaries": {
+    "bftpd:bftpd": "2a6877bb22898ad876cc13cf2e91bdad54be2675200b0568fae083d59e363bf2",
+    "kamailio:kamailio": "e8d958f743fa6ead4fa8696d7ddae326179bae7423f9524df136a9f715d76e95",
+    "live555:testOnDemandRTSPServer": "7b6530b8b4960dca74f243f9d6fe1d37274dddb176e7ea838800568dcd96644a"
+  }
+}
