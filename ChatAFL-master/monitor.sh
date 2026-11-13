@@ -25,8 +25,10 @@
 #   6. LLM Token Cost:   llm_total_calls, prompt/completion tokens
 #   7. Ablation/Arm:     direct | gated_fixed | calibrated | cal_gamma099/100
 #                        | wo_* 消融组 — fuzzer_stats 的 arm 字段为运行时真值,
-#                        /proc/1/environ 仅作回退 (与 run_ablation.sh 组名等价)
+#                        run-config.jsonl / 启动环境仅作字段缺失时回退 (与 run_ablation.sh 组名等价)
 #                        | salvageN / wrapgateN / wrapdirectN (Q1 固定阈值族)
+#                        | lopN/louN/lorN/logcN/logsN (P0-9 谓词 leave-one-out)
+#                        | shadowrandN (P0-21 无偏随机影子抽样)
 #   8. 宿主机磁盘:       根分区 used/total/avail + 使用率, 超 DISK_WARN_PCT
 #                        (默认85%) 变黄、超 DISK_CRIT_PCT (默认92%) 变红加 ⚠
 #
@@ -59,6 +61,8 @@
 # ============================================================================
 
 set -euo pipefail
+
+MONITOR_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # ─── 颜色 ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
@@ -141,6 +145,9 @@ detect_outdir() {
         fi
         if [ -z "$d" ]; then
             d=$(ls -d /home/ubuntu/experiments/*/*/*/out-* 2>/dev/null | head -1)
+        fi
+        if [ -z "$d" ]; then
+            d=$(ls -d /home/ubuntu/experiments/*/*/*/*/out-* 2>/dev/null | head -1)
         fi
         echo "$d"
     ' 2>/dev/null || echo ""
@@ -344,8 +351,9 @@ resolve_ablation_label() {
 get_ipsm_stats() {
     local cid="$1" dot_path="$2"
     local nodes edges
-    nodes=$(docker exec "$cid" grep -c '\[color=' "$dot_path" 2>/dev/null || echo "0")
-    edges=$(docker exec "$cid" grep -c '\->' "$dot_path" 2>/dev/null || echo "0")
+    nodes=$(docker exec "$cid" grep -c '\[color=' "$dot_path" 2>/dev/null) || true
+    edges=$(docker exec "$cid" grep -c '\->' "$dot_path" 2>/dev/null) || true
+    nodes=${nodes:--}; edges=${edges:--}
     echo "${nodes} ${edges}"
 }
 
@@ -581,6 +589,14 @@ discover_containers() {
     echo "${cids[*]:-}"
 }
 
+# Read only a bounded configuration tail; never scan per-execution ledgers on
+# every refresh. The host parser normalizes JSON booleans and ignores a partial
+# last line while keeping the last complete run configuration.
+monitor_read_run_config() {
+    docker exec "$1" tail -n 32 "$2/run-config.jsonl" 2>/dev/null |
+        python3 "$MONITOR_SCRIPT_DIR/scripts/monitor_run_config.py"
+}
+
 # ─── 采集单个容器的数据 ────────────────────────────────────────────────────
 
 collect_one() {
@@ -602,10 +618,13 @@ collect_one() {
     # 读取 fuzzer_stats (只执行一次 docker exec, 批量 grep)
     local stats_blob
     stats_blob=$(docker exec "$cid" cat "$stats_file" 2>/dev/null || echo "")
-    
-    if [[ -z "$stats_blob" ]]; then
-        return 1
-    fi
+
+    # During grammar/enrichment startup LoopFuzz has written run-config but
+    # not fuzzer_stats yet. Supplement missing identity fields with that
+    # structured configuration; live stats always occur first and take priority.
+    local config_blob
+    config_blob=$(monitor_read_run_config "$cid" "$outdir" || true)
+    stats_blob="${stats_blob}${stats_blob:+$'\n'}${config_blob}"
 
     # 解析关键字段
     local start_time bitmap paths_total paths_favored execs_done execs_per_sec
@@ -613,43 +632,50 @@ collect_one() {
     local chat_times llm_total_calls llm_prompt_tokens llm_completion_tok
     local hyp_count hyp_fitness plateau_calls plateau_threshold
 
-    start_time=$(echo "$stats_blob"    | grep -m1 '^start_time'        | sed 's/.*: *//' | tr -d '[:space:]')
-    bitmap=$(echo "$stats_blob"        | grep -m1 '^bitmap_cvg'        | sed 's/.*: *//' | tr -d '[:space:]')
-    paths_total=$(echo "$stats_blob"   | grep -m1 '^paths_total'       | sed 's/.*: *//' | tr -d '[:space:]')
-    paths_favored=$(echo "$stats_blob" | grep -m1 '^paths_favored'     | sed 's/.*: *//' | tr -d '[:space:]')
-    execs_done=$(echo "$stats_blob"    | grep -m1 '^execs_done'        | sed 's/.*: *//' | tr -d '[:space:]')
-    execs_per_sec=$(echo "$stats_blob" | grep -m1 '^execs_per_sec'     | sed 's/.*: *//' | tr -d '[:space:]')
-    unique_crashes=$(echo "$stats_blob"| grep -m1 '^unique_crashes'    | sed 's/.*: *//' | tr -d '[:space:]')
-    unique_hangs=$(echo "$stats_blob"  | grep -m1 '^unique_hangs'      | sed 's/.*: *//' | tr -d '[:space:]')
-    cycles_done=$(echo "$stats_blob"   | grep -m1 '^cycles_done'       | sed 's/.*: *//' | tr -d '[:space:]')
-    pending_total=$(echo "$stats_blob" | grep -m1 '^pending_total'     | sed 's/.*: *//' | tr -d '[:space:]')
-    stability=$(echo "$stats_blob"     | grep -m1 '^stability'         | sed 's/.*: *//' | tr -d '[:space:]')
+    start_time=$(monitor_ablation_stat "$stats_blob" start_time)
+    bitmap=$(monitor_ablation_stat "$stats_blob" bitmap_cvg)
+    paths_total=$(monitor_ablation_stat "$stats_blob" paths_total)
+    paths_favored=$(monitor_ablation_stat "$stats_blob" paths_favored)
+    execs_done=$(monitor_ablation_stat "$stats_blob" execs_done)
+    execs_per_sec=$(monitor_ablation_stat "$stats_blob" execs_per_sec)
+    unique_crashes=$(monitor_ablation_stat "$stats_blob" unique_crashes)
+    unique_hangs=$(monitor_ablation_stat "$stats_blob" unique_hangs)
+    cycles_done=$(monitor_ablation_stat "$stats_blob" cycles_done)
+    pending_total=$(monitor_ablation_stat "$stats_blob" pending_total)
+    stability=$(monitor_ablation_stat "$stats_blob" stability)
 
     # ChatAFL/Opt 专有字段 (不存在时默认 -)
-    chat_times=$(echo "$stats_blob"       | grep -m1 '^plateau_calls'        | sed 's/.*: *//' | tr -d '[:space:]')
-    llm_total_calls=$(echo "$stats_blob"  | grep -m1 '^llm_total_calls'      | sed 's/.*: *//' | tr -d '[:space:]')
-    llm_prompt_tokens=$(echo "$stats_blob"| grep -m1 '^llm_prompt_tokens'    | sed 's/.*: *//' | tr -d '[:space:]')
-    llm_completion_tok=$(echo "$stats_blob"|grep -m1 '^llm_completion_tok'    | sed 's/.*: *//' | tr -d '[:space:]')
-    hyp_count=$(echo "$stats_blob"        | grep -m1 '^hypothesis_count'     | sed 's/.*: *//' | tr -d '[:space:]')
-    hyp_fitness=$(echo "$stats_blob"      | grep -m1 '^hypothesis_avg_fitness'| sed 's/.*: *//' | tr -d '[:space:]')
-    plateau_calls=$(echo "$stats_blob"    | grep -m1 '^plateau_calls'        | sed 's/.*: *//' | tr -d '[:space:]')
-    plateau_threshold=$(echo "$stats_blob"| grep -m1 '^plateau_threshold'    | sed 's/.*: *//' | tr -d '[:space:]')
+    chat_times=$(monitor_ablation_stat "$stats_blob" plateau_calls)
+    llm_total_calls=$(monitor_ablation_stat "$stats_blob" llm_total_calls)
+    llm_prompt_tokens=$(monitor_ablation_stat "$stats_blob" llm_prompt_tokens)
+    llm_completion_tok=$(monitor_ablation_stat "$stats_blob" llm_completion_tok)
+    hyp_count=$(monitor_ablation_stat "$stats_blob" hypothesis_count)
+    hyp_fitness=$(monitor_ablation_stat "$stats_blob" hypothesis_avg_fitness)
+    plateau_calls=$(monitor_ablation_stat "$stats_blob" plateau_calls)
+    plateau_threshold=$(monitor_ablation_stat "$stats_blob" plateau_threshold)
 
     # ── Protocol Oracle: 只取唯一violation计数 ──
     local oracle_unique_viol
-    oracle_unique_viol=$(echo "$stats_blob"  | grep -m1 '^oracle_unique_violations' | sed 's/.*: *//' | tr -d '[:space:]')
+    oracle_unique_viol=$(monitor_ablation_stat "$stats_blob" oracle_unique_violations)
     oracle_unique_viol=${oracle_unique_viol:-"-"}
 
     # ── MQTT Differential Fuzzing 字段 (仅 MQTT 协议, 不存在时默认 -) ──
     local mqtt_diff_obs mqtt_diff_pos mqtt_diff_avg mqtt_diff_last
-    mqtt_diff_obs=$(echo "$stats_blob"   | grep -m1 '^mqtt_diff_obs'     | sed 's/.*: *//' | tr -d '[:space:]')
-    mqtt_diff_pos=$(echo "$stats_blob"   | grep -m1 '^mqtt_diff_pos'     | sed 's/.*: *//' | tr -d '[:space:]')
-    mqtt_diff_avg=$(echo "$stats_blob"   | grep -m1 '^mqtt_diff_avg'     | sed 's/.*: *//' | tr -d '[:space:]')
-    mqtt_diff_last=$(echo "$stats_blob"  | grep -m1 '^mqtt_diff_last'    | sed 's/.*: *//' | tr -d '[:space:]')
+    mqtt_diff_obs=$(monitor_ablation_stat "$stats_blob" mqtt_diff_obs)
+    mqtt_diff_pos=$(monitor_ablation_stat "$stats_blob" mqtt_diff_pos)
+    mqtt_diff_avg=$(monitor_ablation_stat "$stats_blob" mqtt_diff_avg)
+    mqtt_diff_last=$(monitor_ablation_stat "$stats_blob" mqtt_diff_last)
     mqtt_diff_obs=${mqtt_diff_obs:-"-"}
     mqtt_diff_pos=${mqtt_diff_pos:-"-"}
     mqtt_diff_avg=${mqtt_diff_avg:-"-"}
     mqtt_diff_last=${mqtt_diff_last:-"-"}
+
+    # Startup/config-only rows retain their identity while counters are unknown.
+    local missing_field
+    for missing_field in bitmap paths_total paths_favored execs_done execs_per_sec \
+                         unique_crashes unique_hangs cycles_done pending_total stability; do
+        [[ -n "${!missing_field}" ]] || printf -v "$missing_field" '%s' '-'
+    done
 
     # 默认值
     chat_times=${chat_times:-"-"}
@@ -675,9 +701,9 @@ collect_one() {
     # arm/calibration/cal_gamma 由 fuzzer 实时写入 fuzzer_stats, 是运行时
     # 真值; /proc/1/environ 只作 arm 字段缺失时的回退 (见 resolve_ablation_label)
     local arm_name cal_flag cal_gamma_fs
-    arm_name=$(echo "$stats_blob"     | grep -m1 -E '^arm[[:space:]]*:'         | sed 's/.*: *//' | tr -d '[:space:]')
-    cal_flag=$(echo "$stats_blob"     | grep -m1 -E '^calibration[[:space:]]*:' | sed 's/.*: *//' | tr -d '[:space:]')
-    cal_gamma_fs=$(echo "$stats_blob" | grep -m1 -E '^cal_gamma[[:space:]]*:'   | sed 's/.*: *//' | tr -d '[:space:]')
+    arm_name=$(monitor_ablation_stat "$stats_blob" arm)
+    cal_flag=$(monitor_ablation_stat "$stats_blob" calibration)
+    cal_gamma_fs=$(monitor_ablation_stat "$stats_blob" cal_gamma)
 
     # Keep the legacy 14 fields on the first line; extensions use named keys.
     local env_flags env_snapshot env_extensions=""
@@ -740,7 +766,7 @@ collect_one() {
 
     # plot_data 最后一行的时间戳 (用于判断是否还在活跃更新)
     local last_plot_ts
-    last_plot_ts=$(docker exec "$cid" tail -1 "${outdir}/plot_data" 2>/dev/null | awk -F',' '{print $1}' | tr -d '[:space:]')
+    last_plot_ts=$(docker exec "$cid" tail -1 "${outdir}/plot_data" 2>/dev/null | awk -F',' '{print $1}' | tr -d '[:space:]' || true)
     local last_update_ago="?"
     if [[ -n "$last_plot_ts" && "$last_plot_ts" =~ ^[0-9]+$ ]]; then
         last_update_ago=$(( $(date +%s) - last_plot_ts ))
@@ -906,10 +932,12 @@ print_table() {
             local _ptok="${llm_ptok//[^0-9]/}"
             local _ctok="${llm_ctok//[^0-9]/}"
             local _rmin="${runtime//[^0-9]/}"
-            local _cost_usd _tok_per_24h _cost_per_24h
-            _cost_usd=$(awk "BEGIN{printf \"%.4f\", (${_ptok:-0} * 0.15 + ${_ctok:-0} * 0.60) / 1000000}")
-            _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", (${_ptok:-0}+${_ctok:-0})/r*1440; else print \"-\"}")
-            _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", (${_ptok:-0}*0.15+${_ctok:-0}*0.60)/1000000/r*1440; else print \"-\"}")
+            local _cost_usd='-' _tok_per_24h='-' _cost_per_24h='-'
+            if [[ "$llm_ptok" =~ ^[0-9]+$ && "$llm_ctok" =~ ^[0-9]+$ ]]; then
+                _cost_usd=$(awk "BEGIN{printf \"%.4f\", ($_ptok * 0.15 + $_ctok * 0.60) / 1000000}")
+                _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", ($_ptok+$_ctok)/r*1440; else print \"-\"}")
+                _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", ($_ptok*0.15+$_ctok*0.60)/1000000/r*1440; else print \"-\"}")
+            fi
 
             printf "  ${fc}%-14s${RST} %-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s\n" \
                 "$fuzzer" "$target" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
@@ -925,36 +953,25 @@ print_table() {
         "FUZZER" "N" "AvgTime" "Bitmap" "Paths" "Execs" "Crash" "Hangs" "Nodes" "Edges" "Viola" "Ablation"
     echo -e "  ${DIM}$(printf '─%.0s' {1..120})${RST}"
 
-    local -A sum_bitmap sum_paths sum_execs sum_crashes sum_hangs sum_nodes sum_edges sum_runtime count_by_fuzzer
-    local -A sum_viol
-
+    local -A metric_sums metric_counts count_by_fuzzer
     while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                           crashes hangs cycles pending stab nodes edges \
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
                           plat_calls plat_thresh last_upd token_source \
                           ora_uviol viol_tot mqtt_dobs mqtt_dpos mqtt_davg mqtt_dlast ablation; do
         local key="${target}::${fuzzer}::${ablation}"
-        local bval
-        bval=$(echo "$bitmap" | tr -d '%')
-
-        local _paths="${paths_total%%.*}"; _paths="${_paths//[^0-9]/}"
-        local _execs="${execs%%.*}";       _execs="${_execs//[^0-9]/}"
-        local _crashes="${crashes%%.*}";   _crashes="${_crashes//[^0-9]/}"
-        local _hangs="${hangs%%.*}";       _hangs="${_hangs//[^0-9]/}"
-        local _nodes="${nodes%%.*}";       _nodes="${_nodes//[^0-9]/}"
-        local _edges="${edges%%.*}";       _edges="${_edges//[^0-9]/}"
-        local _runtime="${runtime%%.*}";   _runtime="${_runtime//[^0-9]/}"
-        local _viol="${viol_tot//[^0-9]/}"; _viol="${_viol:-0}"
-
-        sum_bitmap[$key]=$(awk "BEGIN{print ${sum_bitmap[$key]:-0} + ${bval:-0}}")
-        sum_paths[$key]=$(( ${sum_paths[$key]:-0} + ${_paths:-0} ))
-        sum_execs[$key]=$(( ${sum_execs[$key]:-0} + ${_execs:-0} ))
-        sum_crashes[$key]=$(( ${sum_crashes[$key]:-0} + ${_crashes:-0} ))
-        sum_hangs[$key]=$(( ${sum_hangs[$key]:-0} + ${_hangs:-0} ))
-        sum_nodes[$key]=$(( ${sum_nodes[$key]:-0} + ${_nodes:-0} ))
-        sum_edges[$key]=$(( ${sum_edges[$key]:-0} + ${_edges:-0} ))
-        sum_runtime[$key]=$(( ${sum_runtime[$key]:-0} + ${_runtime:-0} ))
-        sum_viol[$key]=$(( ${sum_viol[$key]:-0} + ${_viol:-0} ))
+        local measurement metric value metric_key
+        # Startup rows have no counters yet. Exclude unavailable values from
+        # each mean instead of converting missing data to measured zeroes.
+        for measurement in "bmp:${bitmap%%%}" "paths:$paths_total" "execs:$execs" \
+                           "crashes:$crashes" "hangs:$hangs" "nodes:$nodes" \
+                           "edges:$edges" "runtime:$runtime" "viol:$viol_tot"; do
+            metric=${measurement%%:*}; value=${measurement#*:}
+            [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] || continue
+            metric_key="$key::$metric"
+            metric_sums[$metric_key]=$(awk -v s="${metric_sums[$metric_key]:-0}" -v v="$value" 'BEGIN{print s+v}')
+            metric_counts[$metric_key]=$(( ${metric_counts[$metric_key]:-0} + 1 ))
+        done
         count_by_fuzzer[$key]=$(( ${count_by_fuzzer[$key]:-0} + 1 ))
     done <<< "$sorted"
 
@@ -971,15 +988,17 @@ print_table() {
         local abl="${rest##*::}"
 
         local avg_bmp avg_paths avg_execs avg_crashes avg_hangs avg_nodes avg_edges avg_runtime avg_viol
-        avg_bmp=$(awk "BEGIN{printf \"%.2f%%\", ${sum_bitmap[$key]} / $n}")
-        avg_paths=$(( ${sum_paths[$key]} / n ))
-        avg_execs=$(( ${sum_execs[$key]} / n ))
-        avg_crashes=$(( ${sum_crashes[$key]} / n ))
-        avg_hangs=$(( ${sum_hangs[$key]} / n ))
-        avg_nodes=$(( ${sum_nodes[$key]} / n ))
-        avg_edges=$(( ${sum_edges[$key]} / n ))
-        avg_runtime=$(( ${sum_runtime[$key]} / n ))
-        avg_viol=$(( ${sum_viol[$key]:-0} / n ))
+        for metric in bmp paths execs crashes hangs nodes edges runtime viol; do
+            metric_key="$key::$metric"
+            local mean='-'
+            if (( ${metric_counts[$metric_key]:-0} > 0 )); then
+                local mean_format='%.0f'
+                [[ "$metric" == "bmp" ]] && mean_format='%.2f%%'
+                mean=$(awk -v s="${metric_sums[$metric_key]}" -v n="${metric_counts[$metric_key]}" \
+                           -v fmt="$mean_format" 'BEGIN{printf fmt, s/n}')
+            fi
+            printf -v "avg_$metric" '%s' "$mean"
+        done
 
         local fc="$RST"
         case "$fzr" in
@@ -1027,15 +1046,17 @@ write_csv() {
         local _csv_ptok="${llm_ptok//[^0-9]/}"
         local _csv_ctok="${llm_ctok//[^0-9]/}"
         local _csv_rmin="${runtime//[^0-9]/}"
-        local _csv_cost _csv_ptok24 _csv_ctok24 _csv_cost24
-        _csv_cost=$(awk "BEGIN{printf \"%.6f\", (${_csv_ptok:-0}*0.15+${_csv_ctok:-0}*0.60)/1000000}")
-        _csv_ptok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", ${_csv_ptok:-0}/r*1440; else print 0}")
-        _csv_ctok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", ${_csv_ctok:-0}/r*1440; else print 0}")
-        _csv_cost24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.6f\", (${_csv_ptok:-0}*0.15+${_csv_ctok:-0}*0.60)/1000000/r*1440; else print 0}")
+        local _csv_cost='-' _csv_ptok24='-' _csv_ctok24='-' _csv_cost24='-'
+        if [[ "$llm_ptok" =~ ^[0-9]+$ && "$llm_ctok" =~ ^[0-9]+$ ]]; then
+            _csv_cost=$(awk "BEGIN{printf \"%.6f\", ($_csv_ptok*0.15+$_csv_ctok*0.60)/1000000}")
+            _csv_ptok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", $_csv_ptok/r*1440; else print \"-\"}")
+            _csv_ctok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", $_csv_ctok/r*1440; else print \"-\"}")
+            _csv_cost24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.6f\", ($_csv_ptok*0.15+$_csv_ctok*0.60)/1000000/r*1440; else print \"-\"}")
+        fi
 
         # Sanitize numeric fields
-        local _csv_vtot="${viol_tot//[^0-9]/}"; _csv_vtot="${_csv_vtot:-0}"
-        local _csv_ora="${ora_uviol:-0}"
+        local _csv_vtot="${viol_tot:--}"
+        local _csv_ora="${ora_uviol:--}"
 
         echo "${ts},${human_ts},${cid:0:12},${target},${fuzzer},${runtime},${bval},${paths_total},${paths_fav},${execs},${execs_sec},${crashes},${hangs},${cycles},${pending},${stab_val},${nodes},${edges},${plat_calls:-},${llm_calls:-},${llm_ptok:-},${llm_ctok:-},${hyp_cnt:-},${hyp_fit:-},${plat_thresh:-},${_csv_cost},${_csv_ptok24},${_csv_ctok24},${_csv_cost24},${token_source:-},${_csv_ora},${_csv_vtot},${mqtt_dobs:-0},${mqtt_dpos:-0},${mqtt_davg:-0},${mqtt_dlast:-0},${ablation:-\"?\"}" \
             >> "$csv_file"
@@ -1111,28 +1132,28 @@ main() {
 #   bug 签名 = llm_calls>0 且 tokens==0）、run-config 臂身份。
 # ════════════════════════════════════════════════════════════════════════════
 
-# 单容器采集：一次 docker exec 取 fuzzer_stats 机制字段 + run-config 身份
+# 单容器采集：与主表共享输出目录探测、stats/config 身份来源
 mech_collect_one() {
-    local cid="$1" cname payload
-    cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed -E 's/^\///; s/-loopfuzz-run.*//')
-    payload=$(docker exec "$cid" bash -c '
-        d=$(ls -d /home/ubuntu/experiments/*/out-* /home/ubuntu/experiments/*/*/out-* \
-             /home/ubuntu/experiments/*/*/*/out-* /home/ubuntu/experiments/*/*/*/*/out-* 2>/dev/null | head -1)
-        [ -z "$d" ] && exit 1
-        s="$d/fuzzer_stats"; r="$d/run-config.jsonl"
-        [ -f "$s" ] || exit 1
-        g(){ grep -m1 "^$1" "$s" 2>/dev/null | sed "s/.*: *//" | tr -d "[:space:]"; }
-        rc(){ grep -o "\"$1\": *[^,}]*" "$r" 2>/dev/null | head -1 | cut -d: -f2- | tr -d "\" "; }
-        printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n" \
-          "$(rc arm)" "$(rc fuzzer_commit)" "$(rc no_llm)" "$(rc code_retain)" "$(rc state_select_override)" \
-          "$(g execs_done)" "$(g paths_total)" "$(g cal_episodes)" "$(g cal_eps_zero_mut)" \
-          "$(g churn_fallback_used)" "$(g seed_fallback_used)" "$(g no_seed_stalls)" \
-          "$(g provisional_admitted)" "$(g provisional_converted)" "$(g provisional_expired)" \
-          "$(g llm_lineage_entries)" "$(g llm_lineage_edge_gains)" "$(g code_retain_admitted)" \
-          "$(g llm_total_calls)" "$(g llm_prompt_tokens)"
-    ' 2>/dev/null)
-    [[ -z "$payload" ]] && return 1
-    printf '%s|%s\n' "$cname" "$payload"
+    local cid="$1" outdir stats_blob config_blob field
+    outdir=$(detect_outdir "$cid")
+    [[ -n "$outdir" ]] || return 1
+    [[ "$(fuzzer_label "$outdir")" == "loopfuzz" ]] || return 1
+    stats_blob=$(docker exec "$cid" cat "$outdir/fuzzer_stats" 2>/dev/null || true)
+    config_blob=$(monitor_read_run_config "$cid" "$outdir" || true)
+    stats_blob="${stats_blob}${stats_blob:+$'\n'}${config_blob}"
+    local -a values=("$(target_label "$outdir")")
+    for field in arm fuzzer_commit no_llm_mode code_retain state_select_override \
+                 execs_done paths_total cal_episodes cal_eps_zero_mut \
+                 churn_fallback_used seed_fallback_used no_seed_stalls \
+                 provisional_admitted provisional_converted provisional_expired \
+                 llm_lineage_entries llm_lineage_edge_gains code_retain_admitted \
+                 llm_total_calls llm_prompt_tokens; do
+        local value
+        value=$(monitor_ablation_stat "$stats_blob" "$field")
+        values+=("${value:--}")
+    done
+    local IFS='|'
+    printf '%s\n' "${values[*]}"
 }
 
 # 打印机制面板（含告警列）
@@ -1148,16 +1169,21 @@ mech_print_table() {
         IFS='|' read -r target arm commit _ _ _ execs paths epi zero churn sfb stall prov conv _ lin gain _ calls tokens _ <<< "$row"
         commit=${commit:--}; flags=""
         flags=""
-        local e=${epi:-0} ch=${churn:-0} st=${stall:-0} cl=${calls:-0} tk=${tokens:-0}
+        local e=0 ch=0 st=0 cl=0 tk=0 token_display='-'
+        [[ "$epi" =~ ^[0-9]+$ ]] && e=$epi
+        [[ "$churn" =~ ^[0-9]+$ ]] && ch=$churn
+        [[ "$stall" =~ ^[0-9]+$ ]] && st=$stall
+        [[ "$calls" =~ ^[0-9]+$ ]] && cl=$calls
+        if [[ "$tokens" =~ ^[0-9]+$ ]]; then tk=$tokens; token_display="$((tk / 1000))k"; fi
         (( e > 5000 ))    && flags="${flags}SPIN! "
         (( ch > 1000 ))   && flags="${flags}CHURN-BURN! "
         (( st > 0 ))      && flags="${flags}STALL! "
-        if (( cl > 0 )) && (( tk == 0 )); then flags="${flags}FAKE-LLM-CNT "; fi
+        if [[ "$tokens" =~ ^[0-9]+$ ]] && (( cl > 0 && tk == 0 )); then flags="${flags}FAKE-LLM-CNT "; fi
         [ -z "$flags" ] && flags="ok"
         printf "  %-12s %-13s %7s %8s %7s %5s %5s %5s %5s %5s %5s %6s %5s %6s %-8s %b\n" \
             "$target" "${arm:--}" "${execs:--}" "${paths:--}" "${epi:--}" "${zero:--}" \
             "${churn:--}" "${sfb:--}" "${stall:--}" "${prov:--}" "${conv:--}" "${lin:--}" \
-            "${gain:--}" "$(( tk / 1000 ))k" "${commit:0:8}" "${flags}"
+            "${gain:--}" "$token_display" "${commit:0:8}" "${flags}"
         :
     done
     echo -e "  ${DIM}告警阈值: SPIN epi>5000 | CHURN>1000 | STALL>0 | FAKE-LLM calls>0且tokens=0（计数语义bug签名）${RST}"
@@ -1188,7 +1214,7 @@ mech_section() {
 }
 
 # Arm extensions are registered separately; the original resolver is the fallback.
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/scripts/monitor_arms.sh"
+source "$MONITOR_SCRIPT_DIR/scripts/monitor_arms.sh"
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     trap 'echo -e "\n${YELLOW}Monitor stopped.${RST}"; exit 0' INT TERM

@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 /*
- * export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI"
+ * export KEY="sk-UR69kx99PgOpCHwgasKOqN0cywQwFg5J7fGKivNQPQu2biSj"
  * Optional: LLM_MODEL and CHATAFL_LLM_BASE (the complete chat endpoint URL).
  * gcc -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
  */

@@ -37,6 +37,59 @@ validation evidence). The execution layer injects them as the default
 `COVERAGE_V4_RESET_COMMAND_JSON` for lightftp, bftpd, forked-daapd, lighttpd1
 and kamailio; operator-supplied commands always take precedence.
 
+## Chroot targets and world-writable gcda mirrors (2026-10-31 fix)
+
+bftpd (`DO_CHROOT=yes`) logs in, chroots into `/home/ubuntu/ftpshare`, drops to
+the FTP user's uid, and the subject's `gcov.patch` unsets `GCOV_PREFIX` inside
+the chroot — so the demoted session child writes its `.gcda` at the
+compiled-in object paths **as resolved inside the jail**, i.e. exactly the
+mirror tree this module stages under the chroot prefix. The collector usually
+runs as root while the child runs as the FTP user: a root-owned 0755 mirror
+silently loses **every logged-in session's** coverage (93–95% of checkpoints
+in the 20261027/20261031 batches, perfectly correlated with successful login).
+`run_one_replay` therefore `chmod 0777`s every staged mirror directory before
+the replay; the reset contract wipes and re-stages the jail per input, so this
+is safe in the measurement containers. Verification:
+`smoke_tests/bftpd_login_gcda_smoke.sh` (fails on the pre-fix module, passes
+after). Missing session data is an incomplete measurement, not a zero-coverage
+observation. The SIGPIPE issue described below needs the coverage-build fix as
+well as writable mirror directories.
+
+## BFTPD peer-close SIGPIPE and strict completeness (2026-11-01)
+
+The coverage subject substitutes fd 2 for a data connection. A LIST or a peer
+closing its control socket can produce SIGPIPE before libgcov writes gcda. This
+is a measurement failure; a successful replay client does not establish that the
+server flushed coverage. In the audited October batch, empty imports coincided
+with server exit -13, so the previous branch union was a lower bound.
+
+`install_bftpd_coverage_exit.py` patches and rebuilds only `bftpd-gcov`. The
+coverage-only policy `COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2` handles SIGPIPE by
+writing an optional trace through a descriptor opened before chroot, ignoring
+subsequent SIGPIPE, and setting a `sig_atomic_t` flag. The command loop then exits
+normally and libgcov dumps through atexit. Neither `exit` nor `__gcov_dump` runs
+inside this handler. The fuzz target and crash signal handlers are unchanged.
+The policy is armed only when coverage replay sets `COVERAGE_V4_EXIT_TRACE`.
+
+The BFTPD Dockerfile applies `coverage-exit.patch` after `gcov.patch`; the dev
+executor also installs this policy into existing images before experiments.
+Strict replay checks the marker in source and binary. The source hashes, gcno
+hashes, binary SHA and exit policy enter the pinned scope identity. These outputs
+must not be pooled with older scopes or used to backfill historical results.
+
+Every checkpoint records `coverage_complete`, `incomplete_reasons` and
+`sigpipe_normal_exit_observed`. Terminal completeness also requires no missing
+replayable inputs and verified reset-command completion. Missing gcda, signaled
+server exits or replay anomalies preserve a labelled partial union and return
+failure after writing terminal evidence. `--allow-incomplete` is diagnostic only:
+it never changes the incomplete label. Earlier pipeline failures write
+`incomplete.json` where an artifact directory has already been created.
+
+Run `smoke_tests/bftpd_login_gcda_smoke.sh` for normal QUIT, invalid login, LIST
+and early peer-close fixtures. It keeps its evidence directory, a matching source
+copy, per-input snapshots, policy hashes and an independent artifact audit. This
+small integration test is a measurement check, not evidence of fuzzing benefit.
+
 ## Inputs and Coordinates
 
 `queue-checkpoints.jsonl` in the fuzzer output directory must provide exactly one
@@ -173,9 +226,9 @@ coordinates -> terminal branch-ID union -> archive collection):
 - Graceful server shutdown signals are per target (fftp/lighttpd/live555/
   forked-daapd: SIGUSR1; exim/proftpd/pure-ftpd/kamailio: SIGTERM); proftpd
   and exim coverage comes from per-session children.
-- Crash inputs: a server killed by a signal, a client aborting on the same
-  crash, or a session child that cannot flush its gcov data are recorded
-  (`server_crashed`, `session_coverage_missing`) and never abort measurement.
+- Crash inputs: signal exits and missing flushes preserve available evidence,
+  mark the endpoint incomplete, and fail strict scientific acceptance. They
+  cannot silently count as zero new branch coverage.
 - Ledger supersets: imported seeds without a structured replay form are
   disclosed via `unreplayable-ledger-entries.json` and
   `n_unreplayable_ledger_entries` instead of failing the join.

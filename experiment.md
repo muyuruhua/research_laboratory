@@ -72,3 +72,25 @@ cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && e
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && export CHATAFL_MAX_TOKENS=4096 && export CHATAFL_LLM_TIMEOUT_MS=300000 && ABLATION_SHUFFLE=1 && export LLM_MODEL=gpt-6-astra &&./run_ablation.sh proftpd 1 1540 --groups direct, native, gate_only, gate, calibrated, cal_ewma
 
+
+
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && export CHATAFL_MAX_TOKENS=4096 && export CHATAFL_LLM_TIMEOUT_MS=300000 && ABLATION_SHUFFLE=1 && export LLM_MODEL=gpt-6-astra &&./run_ablation.sh proftpd 1 1540 --groups direct, native, gate_only, gate, calibrated, cal_ewma
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

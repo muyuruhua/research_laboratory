@@ -1,0 +1,116 @@
+--- bftpd-gcov/main.c
++++ bftpd-gcov/main.c
+@@ -165,6 +165,23 @@
+ {
+         bftpdutmp_end();
+ 	exit(0);	/* Force normal termination so that end_child() is called */
++}
++
++
++/* COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2: measurement build only.
++ * Request normal cleanup at the next command-loop boundary.
++ * Only signal/write/flag run in the handler; libgcov dumps via atexit.
++ * The trace fd was opened before
++ * chroot/setuid; protocol fd 2 is never used for this diagnostic. */
++static int coverage_replay_exit_fd = -1;
++static volatile sig_atomic_t coverage_replay_broken_peer = 0;
++static void coverage_replay_sigpipe(int signum)
++{
++    static const char message[] = "COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2\n";
++    signal(SIGPIPE, SIG_IGN);
++    if (coverage_replay_exit_fd >= 0)
++        (void) write(coverage_replay_exit_fd, message, sizeof(message) - 1);
++    coverage_replay_broken_peer = 1;
+ }
+ 
+ void handler_sigalrm(int signum)
+@@ -328,6 +345,19 @@
+         }
+ 	init_everything();
+ 	atexit(end_child);
++        /* COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2 */
++        {
++            const char *trace = getenv("COVERAGE_V4_EXIT_TRACE");
++            if (trace && trace[0]) {
++                coverage_replay_exit_fd = open(trace, O_WRONLY | O_CREAT | O_APPEND, 0600);
++                if (coverage_replay_exit_fd < 0) {
++                    perror("coverage exit trace");
++                    exit(2);
++                }
++                signal(SIGPIPE, coverage_replay_sigpipe);
++            }
++        }
++
+ 	signal(SIGTERM, handler_sigterm);
+         signal(SIGALRM, handler_sigalrm);
+ 
+@@ -446,7 +476,7 @@
+         alarm(control_timeout);
+         
+ 	/* Read lines from client and execute appropriate commands */
+-	while (fgets(str, MAXCMD, stdin)) {
++	while (!coverage_replay_broken_peer && fgets(str, MAXCMD, stdin)) {
+                 int string_length;
+                 alarm(control_timeout);
+                 string_length = strlen(str) - 2;
+--- bftpd-gcov/login.c
++++ bftpd-gcov/login.c
+@@ -62,6 +62,22 @@
+ 
+ struct passwd userinfo;
+ char userinfo_set = 0;
++
++
++/* COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1: measurement build only.
++ * GCOV_PREFIX already names the jail in the parent namespace.  After a
++ * successful chroot, compiled-in object paths resolve inside that jail;
++ * retaining the prefix would write to a second, nested jail instead.
++ * Use this for regular, anonymous and FILE_AUTH logins alike. */
++static int coverage_replay_chroot(const char *path)
++{
++    int result = chroot(path);
++    if (result == 0 && unsetenv("GCOV_PREFIX") != 0) {
++        perror("COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1");
++        exit(2);
++    }
++    return result;
++}
+ 
+ char *mygetpwuid(int uid, FILE * file, char *name)
+ {
+@@ -181,7 +197,7 @@
+ 	wtmp_init();
+ #endif
+     if (foo[0]) { /* Initial chroot */
+-        if (chroot(foo) == -1) {
++        if (coverage_replay_chroot(foo) == -1) {
+             control_printf(SL_FAILURE, "421 Initial chroot failed.\r\n.");
+             exit(1);
+         }
+@@ -383,7 +399,7 @@
+         }
+ 	initgroups(userinfo.pw_name, userinfo.pw_gid);
+ 	if (strcasecmp(config_getoption("DO_CHROOT"), "no")) {
+-		if (chroot(str)) {
++		if (coverage_replay_chroot(str)) {
+ 			control_printf(SL_FAILURE, "421 Unable to change root directory.\r\n%s.",
+ 					strerror(errno));
+ 			exit(0);
+@@ -428,7 +444,7 @@
+           /* should we chroot? */
+           if ( strcasecmp(config_getoption("DO_CHROOT"), "no") )
+           {
+-             if ( chroot(str) )
++             if ( coverage_replay_chroot(str) )
+              {
+                  control_printf(SL_FAILURE, "421 Unable to change root directory.\r\n");
+                  exit(0);
+@@ -453,7 +469,7 @@
+             /* see if we should change root */
+             if ( strcasecmp(config_getoption("DO_CHROOT"), "no") )
+             {
+-                if ( chroot(home_directory) )
++                if ( coverage_replay_chroot(home_directory) )
+                 {
+                     control_printf(SL_FAILURE, "421 Unable to change root directory.\r\n");
+                     exit(0);

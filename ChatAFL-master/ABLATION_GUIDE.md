@@ -1,8 +1,19 @@
-# LoopFuzz 消融实验指南（11 臂 + Q1 证据回收 3 族）
+# LoopFuzz 消融实验指南（11 臂 + Q1 回收 3 族 + P0-9/P0-21 6 臂）
 
-本指南定义当前 `LoopFuzz` 消融矩阵的 **11 个臂**、运行方式与结果解读。
+本指南定义当前 `LoopFuzz` 消融矩阵的 **11 个基础臂 + 3 个 Q1 固定阈值族 +
+6 个 2026-10-29 新增机制臂**、运行方式与结果解读。
 旧版 wo_\*/full/fixed\* 消融组已废弃，本文档不再包含。
 
+> 代码核对状态（2026-10-29）：P0-6 修复 no-executable-M2 死锁
+> （provisional 准入后立即探测执行一次并用真实响应预注释 region，
+> `provisional_preannotate()`；此前 20261029 真实网关批 67/67 条目
+> 零后代零转换，冒烟复测 7 条目 260 后代执行 2 转换）。
+> 新增 P0-9 leave-one-out 谓词臂 lop8/lou8/lor8/logc8/logs8 与
+> P0-21 无偏影子抽样臂 shadowrand8；monitor.sh 经
+> `scripts/monitor_arms.sh` 解析器注册表识别新臂（开闭原则）；
+> `run_summary.py` 增加平面 csv 只有表头时从 v4 快照回退恢复
+> l_abs/b_abs（exim 两格已回填）。调度器联合加权抽样统计测试
+> （300 万抽样）入 `scheduler_contract_selftest.c`。
 > 代码核对状态（2026-10-27）：salvage/wrap 已入 C 代码
 > （`LoopFuzz/afl-fuzz.c`，`CHATAFL_SALVAGE`/`CHATAFL_PLAINTEXT_WRAP`，
 > 默认关闭）并注册为 run_ablation.sh 正式臂族（salvageN/wrapgateN/
@@ -13,7 +24,7 @@
 
 ---
 
-## 一、11 臂定义
+## 一、臂定义（11 基础臂 + 3 阈值族 + 6 机制臂）
 
 ### 机制层级图
 
@@ -31,6 +42,10 @@ Level 4: calibrated (E) ★ 满效果 = 论文提出的完整系统
 Q1 侧支（与 E 正交，叠加在 D/C 之上）：
 Level D': salvageN      D + 证据回收（被拒候保留无错消息前缀入 provisional）
                           + 纯文本回复包装（真实网关剂量）+ 固定阈值 N
+
+P0-9/P0-21 侧支（2026-10-29，全部固定阈值 8）：
+  lo{p,u,r,gc,gs}8      wrapgate8 基座 + 恰好一个准入谓词被禁（强制通过）
+  shadowrand8           salvage8 基座 + 影子验证改为全体被拒者均匀随机抽样
 ```
 
 ### 臂表
@@ -51,6 +66,12 @@ Level D': salvageN      D + 证据回收（被拒候保留无错消息前缀入 
 | **salvageN** | `MODE=gate PROV=1 SHADOW=1 SALVAGE=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 处理组：D+证据回收+文本包装+固定阈值（N∈{8..512}） |
 | **wrapgateN** | `MODE=gate PROV=1 SHADOW=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 对照1：与 salvageN 单因子差 SALVAGE |
 | **wrapdirectN** | `MODE=direct NO_ADMISSION=1 WRAP=1 NO_ADAPTIVE=1 THRESHOLD=N` | Q1 对照2：可解析全收（C+WRAP+阈值对齐） |
+| **lop8** | `gate + PROV=1 SHADOW=1 WRAP=1 固定阈值8 TTL=3600000 + ADMIT_NO_P=1` | P0-9：P 谓词 leave-one-out |
+| **lou8** | 同上但 `ADMIT_NO_U=1` | P0-9：U 谓词 leave-one-out（#8/#9 核心） |
+| **lor8** | 同上但 `ADMIT_NO_R=1` | P0-9：R 谓词 leave-one-out |
+| **logc8** | 同上但 `ADMIT_NO_GCODE=1` | P0-9：G_code 谓词 leave-one-out |
+| **logs8** | 同上但 `ADMIT_NO_GSTATE=1` | P0-9：G_state 谓词 leave-one-out |
+| **shadowrand8** | `salvage8 全部 + SHADOW_SAMPLE=random SHADOW_RATE=0.25` | P0-21：全体被拒者均匀随机影子（无偏误拒率） |
 
 说明：
 - E 系臂（calibrated/cal_ewma/cal_run_rate/cal_gamma\*）继承 D 的完整准入
@@ -116,6 +137,9 @@ gate (D)       vs code_retain      → 加 U 旁路，被拒的有价值候选�
 | gate vs gate_only + code_retain | 发现2：证据分离有价值 |
 | gate 的 execution-events | 发现3：验证/工作量/调度三方权衡 |
 | **salvageN vs wrapgateN** | **Q1：证据回收挽回多少被拒价值？（⭐ 真实网关核心）** |
+| **lou8 vs wrapgate8** | **#9：U 谓词的边际贡献（挡掉价值还是省下浪费）** |
+| shadowrand8 vs salvage8 | #21：影子抽样设计换为无偏（覆盖应无差，差异=shadow 副作用警报） |
+| shadowrand8 的 shadow-events | #21：总体误拒率首次无偏估计（trigger=random-sample） |
 | salvageN vs wrapdirectN | Q1：证据分配 vs 全收（真实流 87-95% 垃圾时全收浪费最大） |
 | salvageN 的 provisional-events | Q1：`reason:"salvage"` 的 admit→convert 生命周期 |
 
@@ -136,6 +160,31 @@ gate (D)       vs code_retain      → 加 U 旁路，被拒的有价值候选�
 - 三臂对比：`-g wrapdirect8,wrapgate8,salvage8`；CHATAFL_SALVAGE /
   CHATAFL_PLAINTEXT_WRAP 已入臂隔离 unset 清单，父 shell 导出不再穿透，
   臂语义完全自含。
+
+### P0-9/P0-21 机制组（2026-10-29 新增）
+
+| 臂名 | 环境变量 | 一句话 |
+|------|----------|--------|
+| **lop8/lou8/lor8/logc8/logs8** | `wrapgate8 基座 + 恰好一个 CHATAFL_ADMIT_NO_{P,U,R,GCODE,GSTATE}=1` | 被禁谓词强制通过，决策 = 其余谓词的 AND；与 wrapgate8 单因子差即为该谓词的边际贡献 |
+| **shadowrand8** | `salvage8 基座 + CHATAFL_SHADOW_SAMPLE=random + CHATAFL_SHADOW_RATE=0.25` | 影子验证对全体（未被 salvage 回收的）被拒者均匀 Bernoulli 抽样，估计总体误拒率 |
+
+- leave-one-out 臂的语义：被禁谓词**强制通过**，事件账本中的
+  `p_pass/u_pass/...` 字段是生效元组；真实观测由两处承载
+  （2026-10-31 审计修复）：(1) `fuzzer_stats` 的 `admission_*_fail`
+  计数器统计**强制前的真实观测**（lou8 自身可直接读 U 剂量；
+  修复前计数发生在强制之后，lou8 恒为 0，须借 wrapgate8 估剂量）；
+  (2) 决策事件在谓词消融激活时额外携带 `*_pass_observed` 字段
+  （强制前真值）。
+- shadowrand8 与 salvage8 的模糊测试行为**完全相同**（shadow 是非破坏性
+  探测）；差异仅在测量设计。两者的覆盖结果应无系统差异——若出现显著
+  差异即证明 shadow 有副作用，本身是效度检验。
+- shadowrand8 的抽样总体是"gate+salvage 之后仍被拒"的候选（被回收入
+  provisional 的候选不触发 shadow）；若要估"gate 拒绝总量（含可回收
+  部分）"的误拒率，需要 wrapgate8 基座 + 随机影子（未注册，一行可加）。
+- 冒烟实测（2026-10-29 mock bftpd 30min）：shadowrand8 臂 7 条目 260 后代
+  执行、2 次 convert（史上首批）、2 条 serviceable=False 的诚实过期；
+  lou8 臂机制三层激活（横幅/run-config/事件字段），但窗口内 3 个候选
+  全部自然通过 U，翻转实例待长窗口。
 
 ### 精简建议：6 臂最小集
 
@@ -184,7 +233,7 @@ ABLATION_SHUFFLE=1 ./run_ablation.sh 1 1540 lightftp custom \
   direct,native,gate_only,gate,calibrated,cal_ewma
 ```
 
-### Q1 证据回收组（真实网关，salvage8 三臂）
+### Q1 证据回收 + P0 机制组（真实网关）
 
 ```bash
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && \
@@ -194,8 +243,10 @@ export KEY="sk-有效KEY" SKIPCOUNT=100 CHATAFL_MAX_TOKENS=4096 \
 # 单臂机制验证（看 plaintext_wraps / salvage_attempted / provisional convert）
 ./run_ablation.sh bftpd 1 95 -g salvage8
 
-# 三臂对比（runs=3 即 3 种子）
-./run_ablation.sh bftpd 3 95 -g wrapdirect8,wrapgate8,salvage8
+# 五臂电池（2026-10-29 推荐，一次产出 Q1/Q2 重评 + U 边际 + 无偏误拒率；
+# ABLATION_PARALLEL=3 与 20261028 批同形态 9 容器并发，绝对数字可比）
+export ABLATION_PARALLEL=3
+./run_ablation.sh bftpd 3 95 -g wrapdirect8,wrapgate8,salvage8,shadowrand8,lou8
 ```
 
 注意事项：
@@ -203,7 +254,12 @@ export KEY="sk-有效KEY" SKIPCOUNT=100 CHATAFL_MAX_TOKENS=4096 \
   已替换；其它目标需同样 `docker cp` 二进制后 `docker commit`）；
 - KEY 失效时所有调用 api-error（llm-calls.jsonl 可查），三臂全空转；
 - 开跑 15 分钟自检：llm-calls 状态应含 `ok`、fuzzer_stats 的
-  `plaintext_wraps` 应 > 0。
+  `plaintext_wraps` 应 > 0；gate 系臂容器日志应出现
+  `ADMISSION FACTORS: mode=gate`，lou8 加 `ADMISSION LEAVE-ONE-OUT`，
+  shadowrand8 加 `SHADOW SAMPLING: random`；
+- P0-6 修复后自检：首批 provisional 入队后 `provisional-events.jsonl`
+  应出现 `kind:"preannotate"` 事件，`serviceable_after_probe` 为真；
+  后代执行 > 0（`no-executable-M2` 只允许出现在 serviceable=false 条目）。
 
 ### Mock 网关运行（机制验证/无真实网关时）
 
@@ -233,7 +289,7 @@ export CHATAFL_LLM_BASE=http://172.17.0.1:8099/v1/chat/completions
 
 ## 三、每臂环境变量与数据流
 
-### 环境变量一览（仅 11 臂涉及的）
+### 环境变量一览（全部臂涉及的）
 
 | 变量 | 作用 |
 |------|------|
@@ -242,6 +298,9 @@ export CHATAFL_LLM_BASE=http://172.17.0.1:8099/v1/chat/completions
 | `CHATAFL_SHADOW` | 0/1，拒绝候选影子验证测量开关 |
 | `CHATAFL_CODE_RETAIN` | 0/1，P∧R∧¬U 保留通道（EC_CODE_RETAIN 否则降级为 reject） |
 | `CHATAFL_SALVAGE` | 0/1，证据回收：被拒候选(P∧executed∧REJECT)保留无错消息前缀进 provisional（Q1；默认关） |
+| `CHATAFL_ADMIT_NO_P/_U/_R/_GCODE/_GSTATE` | 存在即禁用该准入谓词（强制通过，决策=其余谓词 AND；P0-9 leave-one-out；仅 gate 模式生效） |
+| `CHATAFL_SHADOW_SAMPLE` | `evidence`（默认，只测带证据被拒者，有偏）/ `random`（全体被拒者均匀 Bernoulli，无偏；P0-21） |
+| `CHATAFL_SHADOW_RATE` | random 模式抽样概率，(0,1]，默认 0.25 |
 | `CHATAFL_PLAINTEXT_WRAP` | 0/1，纯文本 plateau 回复包装为 suggested_request 过 P 校验（真实网关剂量；默认关） |
 | `CHATAFL_CALIBRATION` | 0/1，在线状态效用调度总开关 |
 | `CHATAFL_STATE_SELECT` | `calibrated`(Thompson) / `ewma` / `run_rate` |
@@ -275,6 +334,11 @@ docker exec <容器ID> grep -o '"admission_mode[^,]*' \
 # salvage/wrap 臂追加核验：
 docker exec <容器ID> grep -oE '"(salvage_enabled|plaintext_wrap_enabled)": *[a-z]+' \
   <outdir>/run-config.jsonl   # 期望两者均 true（salvageN 臂）
+# P0-9/P0-21 臂追加核验：
+docker exec <容器ID> grep -oE '"(ablate_u|shadow_sample_mode|provisional_preannotate)[^,]*' \
+  <outdir>/run-config.jsonl
+# lou8 期望 ablate_u:true；shadowrand8 期望 shadow_sample_mode:"random"、
+# provisional_preannotate:2（所有 gate 系臂同值，标识 P0-6 修复在位）
 ```
 
 ---
@@ -293,11 +357,12 @@ benchmark/results-<target>_<timestamp含臂标签>/out-<target>-loopfuzz_1.tar.g
 |------|------|-----------|
 | `fuzzer_stats` | execs/paths/crashes/LLM 计数 | Q1 执行预算 |
 | `cov_over_time.csv.v4/terminal.json` | 分支 ID 并集 + 回放数 | 覆盖终值（唯一可信源） |
-| `admission-events.jsonl` | 每候选 P/U/R/G 裁决（`intended_disposition`） | Q1/Q2 |
-| `provisional-events.jsonl` | admit/convert/expire 生命周期 | Q2 |
+| `admission-events.jsonl` | 每候选 P/U/R/G 裁决（`intended_disposition`；P0-9 臂带 `predicate_ablation` 标明被禁谓词，谓词字段为生效元组） | Q1/Q2 |
+| `provisional-events.jsonl` | admit/**preannotate**/convert/expire 生命周期（preannotate 含 `regions_annotated`/`serviceable_after_probe`，P0-6 修复的探测执行；探测执行在 execution-events 记为 `prov-annotate` 并计入验证预算） | Q2 |
 | `scheduler-selections.jsonl` | 每次状态选择的 θ̃ 依据 | Q3 |
 | `llm-calls.jsonl` | 每次调用状态（`status:"ok"` 计健康度） | 全部（数据有效性校验） |
-| `execution-events.jsonl` | 逐执行 workload 账本 | 发现3 |
+| `execution-events.jsonl` | 逐执行 workload 账本（含 `prov-annotate` 探测与 `shadow` 影子执行分类） | 发现3 |
+| `run_summary.py` 汇总 | 平面 cov csv 只有表头时自动从 v4 快照回退恢复 l_abs/b_abs（口径与 coverage_v4.py 逐分支 ID 一致，20261029 批 exim 两格已回填） | 覆盖终值 |
 
 ### 推荐指标与归一化
 
@@ -328,7 +393,15 @@ benchmark/results-<target>_<timestamp含臂标签>/out-<target>-loopfuzz_1.tar.g
 ```
 
 `monitor.sh` 读容器 `/proc/1/environ` 的 `CHATAFL_ADMISSION_MODE/PROVISIONAL/
-SHADOW/STATE_SELECT/CODE_RETAIN` 组合判定 11 臂标签，与本文档臂名一致。
+SHADOW/STATE_SELECT/CODE_RETAIN` 及扩展键（`CHATAFL_ADMIT_NO_*`、
+`CHATAFL_SHADOW_SAMPLE` 等）解析臂标签，与本文档臂名一致。
+
+臂解析走 `scripts/monitor_arms.sh` 的**解析器注册表**（开闭原则）：
+`monitor_resolve_predicate_shadow_arm`（P0-9/P0-21 臂，注册在最前，
+否则会被 wrapped 族吞成 wrapgate8/salvage8）→ `monitor_resolve_wrapped_arm`
+（salvageN/wrapgateN/wrapdirectN 族）→ legacy `resolve_ablation_label`
+（11 基础臂）。新增臂只需追加解析器 + `MONITOR_ABLATION_ENV_KEYS`，
+不改 monitor.sh 主流程。
 
 ---
 
@@ -350,8 +423,14 @@ env | grep '^CHATAFL_' || echo "环境已干净"   # 跑完确认
 
 ## 七、已知限制与设计注意
 
-1. **provisional 剂量结构性偏窄**：P∧U∧R∧¬G_code∧G_state 谓词决定了
-   2h 窗口内准入通常只有 0~3 次；这是准入条件本身，不是机制故障。
+1. **provisional 剂量与死锁史（2026-10-29 更新）**：固定阈值 8 下
+   真实网关实测每 seed 10~40 次准入决策（20261029 批）；但该批 67/67
+   条目死于 no-executable-M2 结构性死锁（region 注释依赖首次执行、
+   服务检查却要求执行前非空），零后代零转换。**已修复**
+   （`provisional_preannotate()` 准入后探测执行一次 + 真实响应预注释），
+   mock 冒烟 7 条目 260 后代执行、2 转换；`serviceable=false` 条目的
+   no-executable-M2 是诚实失败（会话确实无法完成），非机制故障。
+   修复前的 provisional/convert 数据不可与修复后直接对比。
 2. **跨波次比较的混淆风险**：若用共享 mock 网关分波跑臂
    （先 direct/gate_only/native，后 gate/calibrated/cal_ewma），mock 的
    全局状态（请求序号阶段、per-protocol 记忆）会让不同波拿到系统性
@@ -359,8 +438,26 @@ env | grep '^CHATAFL_' || echo "环境已干净"   # 跑完确认
    campaign 独立 mock 实例；跨波差分必须标注存疑。
 3. **code_retain 与 D 的差异只有一个因子**（CODE_RETAIN），但 EC_CODE_RETAIN
    通道的触发依赖 P∧R∧¬U 候选出现频率，剂量同样偏窄。
-4. fork 隔离、bounded execution、dedup ring 等始终开启，无对应开关；
+4. **lou 臂的翻转剂量依赖**：leave-one-out 的效果要在窗口内出现
+   u_fail（错误响应）候选才能观测；mock 30min 冒烟 3 个候选全部自然
+   通过 U，未出现翻转实例。短窗口下 lou8 vs wrapgate8 差异可能全为 0，
+   属剂量不足，需报告窗口内 `admission_u_fail` 计数佐证。
+5. **shadowrand8 的估计量（estimand）**：抽样总体 = gate+salvage 之后
+   仍被拒的候选（被回收者不触发 shadow）；报告误拒率时必须写明分母。
+6. **gcov 平面 csv 可能只有表头**（容器内 v4 聚合偶发不追加行，
+   20261029 批 exim 2/9 运行）：快照数据不丢，`run_summary.py` 已自动
+   回退恢复；发现空格时优先重跑汇总脚本而非重跑实验。
+7. fork 隔离、bounded execution、dedup ring 等始终开启，无对应开关；
    结论表述应为"当前 shipped 行为下某机制的净效应"。
-5. 收集层（宿主 TAR 收集/恢复）与网关无关：真实网关与 mock 同样受
+8. **exit 137 ≠ OOM（2026-10-31 定性更正）**：镜像内 `timeout -k 30s`
+   在战役到期发 SIGTERM 后只等 30s；若 afl-fuzz 阻塞在在途 LLM 调用
+   （上限 300s）即被 SIGKILL=137。20261031T170854 批的 2/18（salvagepg8-r2、
+   shadowrand8-r3）即此机制：死亡时刻宿主内存 77% 可用、无内核 OOM 记录、
+   exit 恰在 132min 到期点（已用 run_summary.py --timeout-min 132 重标为
+   timeout_kill，原 csv 备份为 *.bak_oomlabel）。执行脚本已把容器内
+   run 的宽限期 sed 到 360s。真内核 OOM 的判别依据是
+   /var/log/syslog 的 "Memory cgroup out of memory" 记录（如 20261024
+   forked-daapd anon-rss 6.1GB 一例），不要凭 137 直接断言。
+8. 收集层（宿主 TAR 收集/恢复）与网关无关：真实网关与 mock 同样受
    flock 竞争影响。多臂并行时保持 `CHATAFL_CLEAN_CONTAINERS=0` 保留
    容器，收集用串行恢复 + 只认最终 `*.tar.gz`（勿用 `tar.gz*` 通配）。

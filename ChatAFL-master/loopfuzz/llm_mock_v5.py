@@ -36,7 +36,7 @@ def _parse_mix(raw):
     if abs(total - 100.0) > 0.01 or set(mix) != {"deep", "rare", "bad", "mut"}:
         raise SystemExit("CHATAFL_MOCK_MIX must be deep=,rare=,bad=,mut= summing to 100")
     return mix
-MIX = _parse_mix(os.environ.get("CHATAFL_MOCK_MIX", "deep=40,rare=25,bad=15,mut=20"))
+MIX = _parse_mix(os.environ.get("CHATAFL_MOCK_MIX") or "deep=40,rare=25,bad=15,mut=20")
 _MIX_ORDER = ["mut", "bad", "rare", "deep"]
 _MIX_CUM = []
 _acc = 0.0
@@ -47,10 +47,43 @@ for _k in _MIX_ORDER:
 LATENCY_MODE = int(os.environ.get("MOCK_LATENCY", "1"))
 ERROR_RATE = float(os.environ.get("MOCK_ERROR_RATE", "1.5"))
 MODEL_NAME = os.environ.get("MOCK_MODEL", "gpt-4o-mini-2024-07-18")
+MOCK_SEED = int(os.environ.get("MOCK_SEED", "20261102"))
+MOCK_PORT = int(os.environ.get("MOCK_PORT", "8099"))
 
 # ── Conversation memory (per-protocol suggestion tracking) ──
 _suggested = {}  # proto -> set of hash(candidate_str)
 _lock = threading.Lock()
+_metrics_lock = threading.Lock()
+_request_seq = 0
+_metrics = {
+    "requests": 0,
+    "http_200": 0,
+    "http_429": 0,
+    "http_500": 0,
+    "truncated": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "latency_ms_total": 0,
+    "latency_samples": 0,
+    "by_proto": {},
+    "requests_by_class": {"startup_preflight": 0, "campaign": 0},
+    "models_seen": {},
+}
+
+def _register_request(proto, request_class, model):
+    global _request_seq
+    with _metrics_lock:
+        _request_seq += 1
+        _metrics["requests"] += 1
+        _metrics["by_proto"][proto] = _metrics["by_proto"].get(proto, 0) + 1
+        _metrics["requests_by_class"][request_class] += 1
+        _metrics["models_seen"][model] = _metrics["models_seen"].get(model, 0) + 1
+        return _request_seq
+
+def _record_metric(**increments):
+    with _metrics_lock:
+        for key, value in increments.items():
+            _metrics[key] += value
 
 def _remember(proto, candidate):
     with _lock:
@@ -63,11 +96,12 @@ def _repeat_count(proto, candidate):
         return 1 if hash(candidate) in _suggested.get(proto, set()) else 0
 
 # ── Latency simulation (exponential distribution like real LLM) ──
-def _simulated_latency(temp, prompt_len):
+def _simulated_latency(temp, prompt_len, rng=None):
     if LATENCY_MODE == 0:
         return 0.0
+    rng = rng or random
     # Base: 2-8s, longer for bigger prompts (more tokens to process)
-    base = random.expovariate(1.0 / 4.0)  # mean 4s
+    base = rng.expovariate(1.0 / 4.0)  # mean 4s
     # Temperature affects generation length → latency
     if temp >= 1.0:
         base *= 1.3  # creative mode = longer generation
@@ -332,16 +366,22 @@ def detect_proto(prompt):
     if "USER " in up or "PASS " in up: return "FTP"
     return "FTP"
 
-def reply_for(prompt, temperature=0.5):
+def reply_for(prompt, temperature=0.5, request_id=None, count_reply_class=True):
     proto = detect_proto(prompt)
     bank = BANKS[proto]
     if "message templates" in prompt:
-        reqs["templates"] += 1
+        if count_reply_class:
+            with _metrics_lock:
+                reqs["templates"] += 1
         return "\n".join(f'{c}: ["{c} <<VALUE>>\\r\\n"]' for c in bank["tpl"])
     if "ONLY valid JSON" in prompt or "suggested_request" in prompt:
-        reqs["plateau"] += 1
-        i = reqs["plateau"]
-        r = random.Random(int(time.time() * 1000) + i)
+        if count_reply_class:
+            with _metrics_lock:
+                reqs["plateau"] += 1
+                i = reqs["plateau"]
+        else:
+            i = 0
+        r = random.Random(MOCK_SEED + (request_id if request_id is not None else i))
         ph = _phase(i)
         ctx = _context_states(prompt)
         seeds = _extract_seeds(prompt)
@@ -380,10 +420,56 @@ def reply_for(prompt, temperature=0.5):
         return json.dumps({
             "analysis": f"mock-v5: {proto} phase={ph} ctx={len(ctx)} seeds={len(seeds)} temp={temperature}",
             "suggested_request": candidate if candidate.endswith("\n") else candidate + "\r\n"})
-    reqs["seed"] += 1
+    if count_reply_class:
+        with _metrics_lock:
+            reqs["seed"] += 1
     return bank["seed"]
 
 class H(http.server.BaseHTTPRequestHandler):
+    def _send_json(self, status, payload, headers=None):
+        out = json.dumps(payload, sort_keys=True).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(out)
+
+    def do_GET(self):
+        if self.path == "/healthz":
+            self._send_json(200, {"status": "ok", "service": "loopfuzz-mock-v5"})
+            return
+        if self.path == "/__mock__/stats":
+            with _metrics_lock:
+                snapshot = dict(_metrics)
+                snapshot["by_proto"] = dict(_metrics["by_proto"])
+                snapshot["requests_by_class"] = dict(_metrics["requests_by_class"])
+                snapshot["models_seen"] = dict(_metrics["models_seen"])
+                snapshot["reply_classes"] = dict(reqs)
+            config = {
+                "error_rate_percent": ERROR_RATE,
+                "error_rate_semantics": "configured budget; 67% is tested as HTTP 500, 33% as truncation after non-500/non-429 responses",
+                "mix": dict(MIX),
+                "mix_semantics": "base selection weights; temperature may remap mut/bad replies",
+                "response_model_default": MODEL_NAME,
+                "seed": MOCK_SEED,
+                "latency": LATENCY_MODE,
+                "port": MOCK_PORT,
+                "rate_limit_conditional_percent": 0.3,
+                "error_500_fraction": 0.67,
+                "truncation_fraction": 0.33,
+            }
+            snapshot["effective_config"] = config
+            snapshot.update({"response_model_default": MODEL_NAME, "seed": MOCK_SEED,
+                             "latency_mode": LATENCY_MODE, "port": MOCK_PORT,
+                             "error_rate_percent": ERROR_RATE, "mix": dict(MIX)})
+            snapshot["campaign_requests"] = snapshot["requests_by_class"]["campaign"]
+            snapshot["startup_preflight_requests"] = snapshot["requests_by_class"]["startup_preflight"]
+            self._send_json(200, snapshot)
+            return
+        self._send_json(404, {"error": "not_found"})
+
     def do_POST(self):
         t0 = time.time()
         n = int(self.headers.get("Content-Length", 0))
@@ -393,36 +479,37 @@ class H(http.server.BaseHTTPRequestHandler):
                          if m.get("role") == "user")
         temp = req.get("temperature", 0.5)
         model = req.get("model", MODEL_NAME)
+        proto = detect_proto(prompt)
+        request_class = "startup_preflight" if prompt.strip() == "Reply OK." else "campaign"
+        request_id = _register_request(proto, request_class, model)
+        rng = random.Random(MOCK_SEED + request_id)
 
         # Sporadic errors
-        if random.random() * 100 < ERROR_RATE * 0.67:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            e = json.dumps({"error": {"message": "Internal server error", "type": "server_error"}}).encode()
-            self.send_header("Content-Length", str(len(e)))
-            self.end_headers()
-            self.wfile.write(e)
+        if rng.random() * 100 < ERROR_RATE * 0.67:
+            self._send_json(500, {"error": {"message": "Internal server error", "type": "server_error"}})
+            _record_metric(http_500=1,
+                           latency_ms_total=int((time.time() - t0) * 1000),
+                           latency_samples=1)
             return
-        if random.random() * 100 < 0.3:
-            self.send_response(429)
-            self.send_header("Retry-After", "5")
-            self.send_header("Content-Type", "application/json")
-            e = json.dumps({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}).encode()
-            self.send_header("Content-Length", str(len(e)))
-            self.end_headers()
-            self.wfile.write(e)
+        if rng.random() * 100 < 0.3:
+            self._send_json(429, {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}},
+                            {"Retry-After": "5"})
+            _record_metric(http_429=1,
+                           latency_ms_total=int((time.time() - t0) * 1000),
+                           latency_samples=1)
             return
 
         # Simulated latency
-        latency = _simulated_latency(temp, len(prompt))
+        latency = _simulated_latency(temp, len(prompt), rng)
         if latency > 0:
             time.sleep(latency)
 
-        content = reply_for(prompt, temp)
+        content = reply_for(prompt, temp, request_id,
+                            count_reply_class=request_class == "campaign")
 
         # Sporadic truncation
         finish = "stop"
-        if random.random() * 100 < ERROR_RATE * 0.33:
+        if rng.random() * 100 < ERROR_RATE * 0.33:
             content = content[:len(content)//2]
             finish = "length"
 
@@ -446,6 +533,9 @@ class H(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(out)
         elapsed = time.time() - t0
+        _record_metric(http_200=1, truncated=int(finish == "length"),
+                       prompt_tokens=pt, completion_tokens=ct,
+                       latency_ms_total=int(elapsed * 1000), latency_samples=1)
         print(f"[mock-v5] #{sum(reqs.values())} proto={proto_counts} class={reqs} "
               f"temp={temp} latency={elapsed:.1f}s tokens={pt}+{ct} "
               f"prompt_head={prompt[:30]!r}", flush=True)
@@ -461,8 +551,7 @@ class Srv(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 if __name__ == "__main__":
-    port = int(os.environ.get("MOCK_PORT", "8099"))
-    with Srv(("0.0.0.0", port), H) as s:
-        print(f"[mock-v5] port={port} model={MODEL_NAME} latency={LATENCY_MODE} "
+    with Srv(("127.0.0.1", MOCK_PORT), H) as s:
+        print(f"[mock-v5] bind=127.0.0.1 port={MOCK_PORT} model={MODEL_NAME} latency={LATENCY_MODE} seed={MOCK_SEED} "
               f"error_rate={ERROR_RATE}% mix={MIX}", flush=True)
         s.serve_forever()

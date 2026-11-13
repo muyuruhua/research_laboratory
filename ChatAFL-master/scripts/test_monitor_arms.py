@@ -4,6 +4,7 @@
 Run with: python3 scripts/test_monitor_arms.py
 """
 
+import re
 import shlex
 import subprocess
 import unittest
@@ -11,7 +12,58 @@ from pathlib import Path
 
 
 MONITOR = Path(__file__).resolve().parents[1] / "monitor.sh"
+LAUNCHER = MONITOR.with_name("run_ablation.sh")
 THRESHOLDS = (8, 16, 32, 64, 150, 200, 300, 512)
+PAPER_ARMS = (
+    "pvstop512", "salvage512", "nollm512", "wrapgate512", "native512",
+    "calibrated512", "cal_ewma512", "cal_run_rate512",
+)
+
+
+def launcher_environments(arms=PAPER_ARMS):
+    """Read the actual launcher arm specifications without running its main.
+
+    Only the function definition is evaluated. Its queue is captured by a
+    harmless stub; preflight, Docker, and campaign code are never executed.
+    """
+    source = LAUNCHER.read_text()
+    definition = re.search(r"^launch_custom_groups\(\) \{.*?^\}", source,
+                           re.MULTILINE | re.DOTALL)
+    if definition is None:
+        raise AssertionError("launch_custom_groups definition not found")
+    script = """
+queue_group() {
+    printf 'SPEC:%s|' "$1"
+    shift
+    printf '%s,' "$@"
+    printf '\\n'
+}
+ABLATION_SHUFFLE=0
+""" + definition.group() + "\nlaunch_custom_groups " + shlex.quote(",".join(arms))
+    completed = subprocess.run(["bash", "-c", script], check=True, text=True,
+                               capture_output=True, timeout=10)
+    environments = {}
+    for line in completed.stdout.splitlines():
+        if not line.startswith("SPEC:"):
+            continue
+        arm, assignments = line[5:].split("|", 1)
+        environments[arm] = dict(item.split("=", 1) for item in assignments.split(",") if item)
+    if set(environments) != set(arms):
+        raise AssertionError(f"launcher returned unexpected arms: {set(environments)}")
+    return environments
+
+
+def flags_for_environment(environment):
+    """Build the documented public flags interface from launch settings."""
+    return legacy_flags(
+        no_adaptive=int("CHATAFL_NO_ADAPTIVE" in environment),
+        cal=int(environment.get("CHATAFL_CALIBRATION") == "1"),
+        threshold=environment.get("CHATAFL_ABLATION_THRESHOLD", "-"),
+        mode=environment.get("CHATAFL_ADMISSION_MODE", "-"),
+        prov=environment.get("CHATAFL_PROVISIONAL", "-"),
+        shadow=environment.get("CHATAFL_SHADOW", "-"),
+        state_select=environment.get("CHATAFL_STATE_SELECT", "-"),
+    )
 
 
 def legacy_flags(**changes):
@@ -105,6 +157,101 @@ class MonitorArmTests(unittest.TestCase):
         for family in ("wrapdirect", "wrapgate", "salvage"):
             with self.subTest(family=family):
                 self.assertEqual(self.wrapped(family, stats="", arm=""), f"{family}8")
+
+    def test_eight_paper_arms_use_actual_launcher_environments_at_startup(self):
+        for arm, environment in launcher_environments().items():
+            for missing in ("", "-"):
+                with self.subTest(arm=arm, missing=missing):
+                    self.assertEqual(self.resolve(
+                        missing, missing, missing, flags_for_environment(environment),
+                        env=extension_env(**environment)), arm)
+
+    def test_eight_paper_arms_use_current_fuzzer_stats_field_names(self):
+        for arm, environment in launcher_environments().items():
+            with self.subTest(arm=arm):
+                calibration = int(environment.get("CHATAFL_CALIBRATION") == "1")
+                mode = environment["CHATAFL_ADMISSION_MODE"]
+                identity = ("loopfuzz-native-retention" if mode == "native" else
+                            "loopfuzz-gated-calibrated" if calibration else
+                            "loopfuzz-gated-fixed")
+                stats = (
+                    "plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+                    f"salvage_enabled: {int(environment.get('CHATAFL_SALVAGE') == '1')}\n"
+                    f"no_llm_mode: {int(environment.get('CHATAFL_NO_LLM') == '1')}\n"
+                    # This is a count of stops, not an enabled/disabled flag.
+                    "pv_early_stops: 0\n"
+                )
+                self.assertEqual(self.resolve(
+                    identity, str(calibration), "0.9950", flags_for_environment(environment),
+                    stats, extension_env(**environment)), arm)
+
+    def test_no_llm_runtime_field_overrides_conflicting_launch_flag(self):
+        environment = launcher_environments()["nollm512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            "plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+            "salvage_enabled: 0\nno_llm_mode: 0\n",
+            extension_env(**environment)), "wrapgate512")
+
+    def test_live_no_llm_field_enables_512_arm_without_launch_flag(self):
+        environment = launcher_environments()["wrapgate512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            "plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+            "salvage_enabled: 0\nno_llm_mode: 1\n",
+            extension_env(**environment)), "nollm512")
+
+    def test_native_and_calibration_runtime_identity_override_launch_settings(self):
+        environment = launcher_environments()["native512"]
+        stats = "plateau_threshold: 512\nplaintext_wrap_enabled: 1\nsalvage_enabled: 0\n"
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            stats, extension_env(**environment)), "wrapgate512")
+        environment = launcher_environments()["cal_ewma512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            stats, extension_env(**environment)), "wrapgate512")
+
+    def test_runtime_estimator_and_threshold_override_launch_settings(self):
+        environment = launcher_environments()["cal_ewma512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-calibrated", "1", "0.9950", flags_for_environment(environment),
+            "plateau_threshold: 32\nplaintext_wrap_enabled: 1\n"
+            "salvage_enabled: 0\ncal_estimator: run_rate\n",
+            extension_env(**environment)), "cal_run_rate32")
+
+    def test_placeholder_threshold_uses_available_launch_threshold(self):
+        environment = launcher_environments()["salvage512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "-", flags_for_environment(environment),
+            "plateau_threshold: -\nplaintext_wrap_enabled: 1\nsalvage_enabled: 1\n",
+            extension_env(**environment)), "salvage512")
+
+    def test_generic_afl_stats_do_not_create_an_ablation_arm(self):
+        self.assertEqual(self.resolve(stats="start_time: 1\nexecs_done: 100\n"), "-")
+
+    def test_runtime_disabled_mechanisms_override_enabled_launch_settings(self):
+        environment = launcher_environments()["pvstop512"]
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            "plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+            "salvage_enabled: 1\npv_early_stop_k: 0\n",
+            extension_env(**environment)), "salvage512")
+        for key, runtime_name in (("CHATAFL_REQUEST_GATE", "request_gate_enabled"),
+                                  ("CHATAFL_STATE_RETAIN", "state_retain_enabled")):
+            with self.subTest(mechanism=key):
+                environment = dict(launcher_environments()["wrapgate512"], **{key: "1"})
+                self.assertEqual(self.resolve(
+                    "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+                    "plateau_threshold: 512\nplaintext_wrap_enabled: 1\nsalvage_enabled: 0\n"
+                    f"{runtime_name}: 0\n", extension_env(**environment)), "wrapgate512")
+
+    def test_runtime_adaptive_threshold_does_not_claim_fixed_arm(self):
+        environment = launcher_environments()["wrapgate512"]
+        self.assertNotEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            "plateau_threshold: 512\nplaintext_wrap_enabled: 1\nsalvage_enabled: 0\n"
+            "no_adaptive: 0\n", extension_env(**environment)), "wrapgate512")
 
     def test_runtime_disabled_flags_override_enabled_environment(self):
         self.assertEqual(
@@ -345,6 +492,22 @@ mech_print_table() { printf '%s\\n' "$@"; }
 mech_section mock-container 'mock-container|other-fields|salvage8'
 """)
         self.assertEqual(output.split("|")[:3], ["bftpd", "salvage8", "commit"])
+
+    def test_mechanism_panel_preserves_unknown_tokens_without_false_counter_alert(self):
+        output = self.shell("""
+mech_print_table 'exim|cal_run_rate512|commit|0|0|run_rate|-|-|-|-|-|-|-|-|-|-|-|-|-|1|-'
+""")
+        self.assertIn("cal_run_rate512", output)
+        self.assertNotIn("FAKE-LLM-CNT", output)
+        data_row = next(line for line in output.splitlines() if "cal_run_rate512" in line)
+        self.assertEqual(data_row.split()[-3:], ["-", "commit", "ok"])
+
+    def test_zero_ipsm_matches_do_not_append_a_second_zero(self):
+        output = self.shell("""
+docker() { printf '%s\\n' 0; return 1; }
+get_ipsm_stats fixture-container ignored.dot
+""")
+        self.assertEqual(output, "0 0")
 
 
 if __name__ == "__main__":

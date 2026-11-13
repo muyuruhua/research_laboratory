@@ -1,24 +1,0 @@
-USER anonymous
-PASS anonymous
-TYPE I
-PASV
-LIST pub
-EPSV
-NLST pub
-SIZE index.html
-MDTM index.html
-
-PORT 127,0,0,1,14,178
-EPRT ,2,0:0:0:0:0:0:0:0,1025,
-LIST
-MLST /
-sSTAT
-LIST
-NLST
-MLSD /QUI:0:PASS mockpass
-s
-SYST
-
-PASS mockpass
-SYST
-

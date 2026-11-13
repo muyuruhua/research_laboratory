@@ -60,6 +60,15 @@ class CoverageFixtureTests(unittest.TestCase):
         self.assertTrue(crash["server_crashed"])
         self.assertFalse(crash["replay_anomaly"])  # crash finding, not anomaly
         self.assertEqual(crash["anomaly_kind"], "server-crash-finding")
+        self.assertIn("server-signal-exit", cov.replay_incompleteness(
+            dict(server_crashed=True, session_coverage_missing=True)))
+        self.assertEqual(cov.replay_incompleteness(dict(
+            server_crashed=False, session_coverage_missing=False)), [])
+
+    def test_unpatched_bftpd_is_not_accepted(self):
+        with self.assertRaisesRegex(cov.CoverageError, "SIGPIPE normal-exit"):
+            cov.bftpd_exit_policy(self.root)
+        self.assertFalse(cov.bftpd_exit_policy(self.root, True)["verified"])
 
     def test_replay_exit_classification_lone_client_failure(self):
         f = cov.classify_replay_exit(0, 1)
@@ -78,6 +87,18 @@ class CoverageFixtureTests(unittest.TestCase):
         self.assertEqual(second["cumulative_covered_branches"], 2)
         self.assertEqual(len(second["dropped_snapshot_branch_ids"]), 1)
         self.assertFalse(second["unexpected_nonmonotonic_snapshot"])
+
+    def test_seed_union_is_explicit_and_separate_from_replay_union(self):
+        union = cov.CoverageUnion(self.baseline, self.manifest)
+        event = union.add(self.snapshot(0), self.coordinates(1), "a",
+                          expected_counter_reset=True, is_seed_input=True)
+        union.add(self.snapshot(1), self.coordinates(2), "b",
+                  expected_counter_reset=True, is_seed_input=False)
+        self.assertTrue(event["is_seed_input"])
+        self.assertEqual(union.seed_covered, self.snapshot(0).covered_branches)
+        self.assertEqual(union.covered, self.snapshot(0).covered_branches |
+                         self.snapshot(1).covered_branches)
+        self.assertEqual(union.seed_events, [1])
 
     def test_unexpected_snapshot_decrease_is_detected(self):
         union = cov.CoverageUnion(self.baseline, self.manifest)
@@ -353,6 +374,7 @@ class RealGcovTests(unittest.TestCase):
             try:
                 os.chdir(root)
                 with mock.patch.object(cov, "run_one_replay", side_effect=local_replay), \
+                     mock.patch.object(cov, "bftpd_exit_policy", return_value={"verified": True, "name": "unit-fixture"}), \
                         mock.patch.dict(os.environ, {"COVERAGE_V4_RESET_COMMAND_JSON": '["/usr/bin/true"]'}):
                     self.assertEqual(cov.run_replay(args), 0)
             finally:
@@ -367,6 +389,32 @@ class RealGcovTests(unittest.TestCase):
             events = [json.loads(row) for row in (directory / "checkpoints.jsonl").read_text().splitlines()]
             self.assertGreater(events[1]["cumulative_covered_branches"], events[0]["cumulative_covered_branches"])
             self.assertEqual(events[1]["cumulative_covered_branches"], events[2]["cumulative_covered_branches"])
+            # A valid partial branch union cannot authenticate an unflushed
+            # replay; preserve evidence but fail strict acceptance.
+            incomplete_args = argparse.Namespace(**vars(args))
+            incomplete_args.output = root / "incomplete.csv"
+            def incomplete_replay(*arguments, **keywords):
+                result = local_replay(*arguments, **keywords)
+                result.update(session_coverage_missing=True, server_crashed=True)
+                return result
+            try:
+                os.chdir(root)
+                with mock.patch.object(cov, "run_one_replay", side_effect=incomplete_replay), \
+                     mock.patch.object(cov, "bftpd_exit_policy", return_value={"verified": True, "name": "unit-fixture"}), \
+                     mock.patch.dict(os.environ, {"COVERAGE_V4_RESET_COMMAND_JSON": '["/usr/bin/true"]'}):
+                    with self.assertRaisesRegex(cov.CoverageError, "coverage is incomplete"):
+                        cov.run_replay(incomplete_args)
+            finally:
+                os.chdir(original)
+            incomplete_directory = Path(str(incomplete_args.output) + ".v4")
+            partial = json.loads((incomplete_directory / "terminal.json").read_text())
+            self.assertFalse(partial["coverage_complete"])
+            self.assertEqual(len(partial["incomplete_replays"]), 3)
+            cov.audit_artifacts(incomplete_args.output)
+            partial["coverage_complete"] = True
+            cov.write_json(incomplete_directory / "terminal.json", partial)
+            with self.assertRaisesRegex(cov.CoverageError, "completeness"):
+                cov.audit_artifacts(incomplete_args.output)
             # Percentages can be self-consistent while counts disagree with identities.
             terminal["covered_branch_ids"].pop()
             cov.write_json(directory / "terminal.json", terminal)

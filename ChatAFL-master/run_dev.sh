@@ -109,7 +109,26 @@ list_requires_llm_key() {
     return 1
 }
 
-if [[ "${CHATAFL_NO_LLM:-0}" == "1" ]]; then
+if [[ "${CHATAFL_MOCK_LLM:-0}" == "1" ]]; then
+    if [[ "$FUZZER_LIST" != "loopfuzz" ]]; then
+        echo "[ERROR] CHATAFL_MOCK_LLM=1 is supported only with the loopfuzz fuzzer." >&2
+        exit 2
+    fi
+    MOCK_PORT="${MOCK_PORT:-8099}"
+    if [[ ! "$MOCK_PORT" =~ ^[0-9]+$ ]] || (( MOCK_PORT < 1 || MOCK_PORT > 65535 )); then
+        echo "[ERROR] MOCK_PORT must be an integer in [1, 65535]" >&2
+        exit 2
+    fi
+    KEY="${KEY:-loopfuzz-mock-key}"
+    # Do NOT force =0 here: a nollm8 arm exports CHATAFL_NO_LLM=1 and this
+    # line ran AFTER the arm export, silently re-enabling all LLM channels
+    # (reproduced 2026-11-02: 225 live calls in a "no-LLM" arm).  Only
+    # default to enabled when the caller said nothing.
+    CHATAFL_NO_LLM="${CHATAFL_NO_LLM:-0}"
+    CHATAFL_LLM_BASE="http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
+    export CHATAFL_MOCK_LLM MOCK_PORT CHATAFL_NO_LLM CHATAFL_LLM_BASE
+    echo "[MODE] container-local LoopFuzz Mock enabled (port ${MOCK_PORT}); LLM remains enabled"
+elif [[ "${CHATAFL_NO_LLM:-0}" == "1" ]]; then
     KEY=""
     echo "[MODE] CHATAFL_NO_LLM=1：无 LLM 模式（无富集，语法假设/种子富集/高原突破全部关闭）"
 elif ! list_requires_llm_key "$FUZZER_LIST"; then
@@ -197,6 +216,13 @@ PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   CHATAFL_MAX_TOKENS="${CHATAFL_MAX_TOKENS:-}" \
   CHATAFL_LLM_TIMEOUT_MS="${CHATAFL_LLM_TIMEOUT_MS:-}" \
   CHATAFL_LLM_BASE="${CHATAFL_LLM_BASE:-}" \
+  CHATAFL_MOCK_LLM="${CHATAFL_MOCK_LLM:-0}" \
+  MOCK_PORT="${MOCK_PORT:-8099}" \
+  MOCK_LATENCY="${MOCK_LATENCY:-1}" \
+  MOCK_ERROR_RATE="${MOCK_ERROR_RATE:-1.5}" \
+  MOCK_SEED="${MOCK_SEED:-20261102}" \
+  MOCK_MODEL="${MOCK_MODEL:-}" \
+  CHATAFL_MOCK_MIX="${CHATAFL_MOCK_MIX:-}" \
   CHATAFL_EPISODE_ENERGY="${CHATAFL_EPISODE_ENERGY:-}" \
   CHATAFL_LLM_TOTAL_CALL_CAP="${CHATAFL_LLM_TOTAL_CALL_CAP:-}" \
   CHATAFL_TOKEN_CAP="${CHATAFL_TOKEN_CAP:-}" \
