@@ -11,14 +11,10 @@ set -uo pipefail
 cd "$(dirname "$0")/../../" || exit 1   # benchmark/
 PATTERN="${1:-results-*}"
 MAX_PASSES="${2:-3}"
+source "$(dirname "$0")/archive_contract.sh"
 
 verify_complete() {
-  local t="$1" listing
-  [[ -s "$t" ]] || return 1
-  listing=$(tar tzf "$t" 2>/dev/null) || return 1
-  grep -qE '(^|/)fuzzer_stats$' <<< "$listing" || return 1
-  grep -qE '(^|/)cov_over_time\.csv$' <<< "$listing" || return 1
-  return 0
+  archive_tar_is_structurally_complete "$1"
 }
 
 promote_sidecar() { # dir archive-basename -> 0 if promoted

@@ -30,7 +30,12 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}/
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
+  RESET_ARGS=()
+  if [ "$FUZZER" = "loopfuzz" ]; then
+    RESET_ARGS=(-c "bash /tmp/coverage-v4-src/fuzz_runtime/lighttpd1.sh")
+    [ -f /tmp/coverage-v4-src/fuzz_runtime/lighttpd1.sh ] || { echo "missing live reset script" >&2; exit 2; }
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS "${RESET_ARGS[@]}" ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
 
   STATUS=$?
 

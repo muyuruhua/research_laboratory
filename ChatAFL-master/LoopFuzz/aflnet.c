@@ -1550,53 +1550,75 @@ unsigned int *extract_response_codes_rtsp(unsigned char *buf, unsigned int buf_s
 
 unsigned int *extract_response_codes_ftp(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref)
 {
-  char *mem;
-  unsigned int byte_count = 0;
-  unsigned int mem_count = 0;
-  unsigned int mem_size = 1024;
+  /* RFC 959 multi-line state machine (2026-11-16, GLM53 plan 2.3).
+   *
+   * A reply is "ddd" SP text (single line) or "ddd-" text ... "ddd" SP text
+   * (multi-line; the closing line repeats the opening code followed by a
+   * space). Lines inside a multi-line body may contain anything, including
+   * other three-digit prefixes (Pure-FTPd FEAT bodies have " MFMT"-style and
+   * digit-leading lines); the previous implementation stopped at the first
+   * line whose first three bytes were not digits, losing every later reply —
+   * including the server's final 421 close — and corrupting runtime state
+   * feedback and replay classification.
+   *
+   * Rules: the leading 0 sentinel is preserved; non-reply text outside a
+   * multi-line body is skipped, never fatal; a multi-line body is bounded by
+   * its opening code and by the buffer itself (an unterminated body emits
+   * nothing for it); a trailing line without CRLF is treated as complete only
+   * when the buffer ends (senders may omit the final CRLF); binary garbage
+   * cannot make the scanner read past buf_size. */
   unsigned int *state_sequence = NULL;
   unsigned int state_count = 0;
-  char terminator[2] = {0x0D, 0x0A};
-
-  mem = (char *)ck_alloc(mem_size);
+  unsigned int line_start = 0;
+  unsigned int pending_code = 0;
+  int in_multiline = 0;
 
   state_count++;
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0;
 
-  while (byte_count < buf_size)
-  {
-    memcpy(&mem[mem_count], buf + byte_count++, 1);
-
-    if ((mem_count > 0) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0))
-    {
-      // Extract the response code which is the first 3 bytes
-      char temp[4];
-      memcpy(temp, mem, 4);
-      temp[3] = 0x0;
-      unsigned int message_code = (unsigned int)atoi(temp);
-
-      if (message_code == 0)
+  while (line_start < buf_size) {
+    unsigned int line_end = line_start;
+    int has_crlf = 0;
+    while (line_end < buf_size) {
+      if (buf[line_end] == 0x0D && line_end + 1 < buf_size && buf[line_end + 1] == 0x0A) {
+        has_crlf = 1;
         break;
-
-      state_count++;
-      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-      state_sequence[state_count - 1] = message_code;
-      mem_count = 0;
-    }
-    else
-    {
-      mem_count++;
-      if (mem_count == mem_size)
-      {
-        // enlarge the mem buffer
-        mem_size = mem_size * 2;
-        mem = (char *)ck_realloc(mem, mem_size);
       }
+      line_end++;
     }
+    unsigned int line_len = line_end - line_start; /* without CRLF */
+    int line_complete = has_crlf || (line_end >= buf_size); /* buffer end closes the last line */
+
+    if (line_complete && line_len >= 3) {
+      int c0 = buf[line_start] - '0', c1 = buf[line_start + 1] - '0', c2 = buf[line_start + 2] - '0';
+      int is_code = (c0 >= 0 && c0 <= 9 && c1 >= 0 && c1 <= 9 && c2 >= 0 && c2 <= 9);
+      unsigned int code = is_code ? (unsigned int)(c0 * 100 + c1 * 10 + c2) : 0;
+      int fourth = line_len >= 4 ? (int)buf[line_start + 3] : ' ';
+
+      if (in_multiline) {
+        if (is_code && code == pending_code && fourth == ' ') {
+          in_multiline = 0;
+          state_count++;
+          state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+          state_sequence[state_count - 1] = code;
+        }
+        /* body text, including digit-prefixed lines: skipped */
+      } else if (is_code && fourth == '-') {
+        pending_code = code;
+        in_multiline = 1;
+      } else if (is_code && (fourth == ' ' || line_len == 3)) {
+        state_count++;
+        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+        state_sequence[state_count - 1] = code;
+      }
+      /* non-reply text outside a body: skipped, scanning continues */
+    }
+
+    if (!has_crlf) break; /* buffer exhausted */
+    line_start = line_end + 2;
   }
-  if (mem)
-    ck_free(mem);
+
   *state_count_ref = state_count;
   return state_sequence;
 }
@@ -2000,7 +2022,10 @@ u32 save_kl_messages_to_file(klist_t(lms) * kl_messages, u8 *fname, u8 replay_en
   u32 len = 0, message_size = 0;
   kliter_t(lms) * it;
 
-  s32 fd = open(fname, O_WRONLY | O_CREAT, 0600);
+  /* Replay/archive paths can be rewritten during recovery or repeated
+   * queue handling. Truncate first so a shorter (or empty) new witness can
+   * never retain a valid-looking tail from an older save. */
+  s32 fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (fd < 0)
     PFATAL("Unable to create file '%s'", fname);
 

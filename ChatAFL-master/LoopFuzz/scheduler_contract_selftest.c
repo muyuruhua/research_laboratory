@@ -231,6 +231,81 @@ static void test_episode_attribution(state_info_t *st, u32 sid) {
  * the map consumes it exactly once and its ordinary parent earns reward.
  * A new hit-count bucket alone, or controller-only calibration, cannot
  * create a positive training example. */
+static void test_fixed_dose_calibration(state_info_t *st, u32 sid) {
+  u8 old_log = event_log_enabled;
+  u32 old_window = cal_reward_window_invocations;
+  state_info_t saved = *st;
+  event_log_enabled = 0;
+  cal_reward_window_invocations = 4;
+  target_state_id = sid;
+  full_session_m2_override = admission_trial_mode = 0;
+  scheduler_selection_reason = "weighted-eligible";
+  st->cal_alpha = st->cal_beta = 1.0;
+  st->cal_ewma = 0.5;
+  st->cal_episodes = st->cal_episode_rewards = 0;
+  u64 windows = cal_training_windows, rewarded = cal_training_windows_rewarded;
+  u64 censored = cal_training_censored_invocations;
+
+  cal_episode_begin(sid);
+  cal_episode_note_invocation("mutation");
+  cal_nested_mutation_context = 1;
+  cal_episode_note_invocation("calibration");
+  cal_nested_mutation_context = 0;
+  /* Controller gains cannot contaminate this otherwise unproductive
+   * fixed-dose window, even when their code executes between mutations. */
+  cal_episode_note_invocation("candidate"); cal_episode_note_code_gain();
+  cal_episode_note_invocation("shadow"); cal_episode_note_code_gain();
+  admission_trial_mode = 1;
+  cal_episode_note_invocation("mutation"); cal_episode_note_code_gain();
+  admission_trial_mode = 0;
+  cal_episode_note_invocation("mutation");
+  cal_episode_note_invocation("mutation");
+  assert(st->cal_episodes == 0); /* fourth gain observation not closed yet */
+  cal_episode_note_invocation("mutation"); /* closes the four real calls */
+  assert(st->cal_episodes == 1 && st->cal_episode_rewards == 0);
+  assert(st->cal_alpha == 1.0 && st->cal_beta == 2.0);
+  /* Three more eligible calls complete a second window.  A gain exactly
+   * on its last invocation belongs to this window, not the next one. */
+  for (u32 i = 0; i < 3; i++) cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == 2 && st->cal_episode_rewards == 1);
+  assert(fabs(st->cal_alpha - 2.0) < 1e-12);
+  assert(fabs(st->cal_beta - (1.0 + cal_gamma)) < 1e-12);
+  assert(cal_training_windows == windows + 2 &&
+         cal_training_windows_rewarded == rewarded + 1);
+  assert(cal_training_censored_invocations == censored);
+  assert(cal_training_window.completed_windows == 2 &&
+         cal_training_window.rewarded_windows == 1);
+  assert(fabs(st->cal_ewma - ec_ewma_step(ec_ewma_step(0.5, cal_ewma_alpha, 0),
+                                      cal_ewma_alpha, 1)) < 1e-12);
+
+  double alpha = st->cal_alpha, beta = st->cal_beta;
+  cal_episode_begin(sid);
+  for (u32 i = 0; i < 3; i++) cal_episode_note_invocation("mutation");
+  cal_episode_note_code_gain();
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == 2 && st->cal_alpha == alpha && st->cal_beta == beta);
+  assert(cal_training_censored_invocations == censored + 3);
+  /* Full-session PV service cannot train a response-state posterior. */
+  full_session_m2_override = 1;
+  cal_episode_begin(sid);
+  for (u32 i = 0; i < 8; i++) {
+    cal_episode_note_invocation("mutation"); cal_episode_note_code_gain();
+  }
+  cal_episode_finalize(0);
+  assert(st->cal_episodes == 2 && st->cal_alpha == alpha && st->cal_beta == beta);
+  full_session_m2_override = 0;
+  cal_episode_begin(sid);
+  for (u32 i = 0; i < 4; i++) cal_episode_note_invocation("mutation");
+  cal_episode_finalize(1);
+  assert(st->cal_episodes == 2 && st->cal_alpha == alpha && st->cal_beta == beta);
+  assert(cal_training_censored_invocations == censored + 7);
+  *st = saved;
+  cal_reward_window_invocations = old_window;
+  event_log_enabled = old_log;
+}
+
 static void test_inline_calibration_reward(state_info_t *st, u32 sid) {
   u8 old_log = event_log_enabled;
   u8 *old_trace = trace_bits;
@@ -466,6 +541,7 @@ static void test_registration_and_scheduler(void) {
   assert(choose_target_state(INVALID_SELECTION) == SCHEDULER_NO_STATE);
 
   test_episode_attribution(reachable, a);
+  test_fixed_dose_calibration(reachable, a);
   test_inline_calibration_reward(reachable, a);
 
   destroy_ipsm();

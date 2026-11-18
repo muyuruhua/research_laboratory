@@ -83,7 +83,16 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
   cd $WORKDIR/${TARGET_DIR}
 
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR ${KAM_NET} $OPTIONS ${KAM_EXTRA_TMO} -c ${WORKDIR}/run_pjsip ./src/kamailio ${KAM_CFG} -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 ${KAM_NODAEMON} -E
+  RESET_ARGS=()
+  HELPER_ARG=""
+  if [ "$FUZZER" = "loopfuzz" ]; then
+    RESET_ARGS=(-c "bash /tmp/coverage-v4-src/fuzz_runtime/kamailio.sh")
+    [ -f /tmp/coverage-v4-src/fuzz_runtime/kamailio.sh ] || { echo "missing live reset script" >&2; exit 2; }
+    HELPER_ARG="-H ${WORKDIR}/run_pjsip"
+  else
+    HELPER_ARG="-c ${WORKDIR}/run_pjsip"
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR ${KAM_NET} $OPTIONS ${KAM_EXTRA_TMO} "${RESET_ARGS[@]}" $HELPER_ARG ./src/kamailio ${KAM_CFG} -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 ${KAM_NODAEMON} -E
 
   STATUS=$?
 

@@ -13,5 +13,18 @@ flags=()
 if [[ ${COVERAGE_V4_REQUIRE_COORDINATES:-1} == 1 ]]; then
   flags+=(--require-coordinates)
 fi
+if [[ ${COVERAGE_V4_SAMPLED_CHECKPOINTS:-0} == 1 ]]; then
+  flags+=(--sampled-checkpoints)
+fi
+if [[ ${COVERAGE_V4_SMOKE:-0} == 1 ]]; then
+  flags+=(--smoke)
+fi
+if [[ -n ${COVERAGE_V4_MAX_REPLAY_INPUTS:-} ]]; then
+  [[ ${COVERAGE_V4_SMOKE:-0} == 1 ]] || {
+    echo "coverage-v4: COVERAGE_V4_MAX_REPLAY_INPUTS requires COVERAGE_V4_SMOKE=1" >&2
+    exit 2
+  }
+  flags+=(--max-replay-inputs "$COVERAGE_V4_MAX_REPLAY_INPUTS")
+fi
 exec python3 "$module" replay --target live555 --folder "$1" --port "$2" \
   --step "$3" --output "$4" --mode "$5" "${flags[@]}"

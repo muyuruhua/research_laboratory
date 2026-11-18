@@ -43,6 +43,7 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
+
 #include "mutation-ops.h"
 #include "grammar-hypothesis.h"
 #include "hypothesis-adapter.h"
@@ -89,6 +90,8 @@
 #include <poll.h>          /* P1-fix: non-blocking connect timeout */
 
 #include "aflnet.h"
+/* Also used by the per-root response-transition evidence below. */
+KHASH_SET_INIT_INT64(hs64)
 #include "sha256.h"
 #include <graphviz/gvc.h>
 #include <math.h>
@@ -346,6 +349,8 @@ struct queue_entry
   u8  prov_expired;        /* 1 = budget/TTL exhausted, entry invalidated */
   u32 prov_candidate_id;   /* originating candidate-events.jsonl id */
   u32 prov_budget_left;    /* descendant executions still allowed */
+  u32 prov_budget_released; /* unused validation quota closed or promoted */
+  u32 prov_budget_uncredited; /* unused quota blocked by campaign cap */
   u64 prov_deadline_ms;    /* absolute wall-clock validation deadline */
   u64 prov_admit_ms;       /* admission timestamp */
   u32 prov_desc_execs;     /* descendant executions consumed so far */
@@ -361,18 +366,21 @@ struct queue_entry
    * CHATAFL_ORDINARY_EDF=1 opts into concurrent EDF service. */
   u8  prov_ordinary_match;
   u32 prov_zero_novelty_streak;   /* P3: consecutive charged descendants with hnb==0 */
+  khash_t(hs32) *prov_response_states;
+  khash_t(hs64) *prov_response_transitions;
+  u8 prov_last_invocation_state_gain;
   /* S1 prefix protection (2026-11-05): candidate message window in the
    * SAVED session's message indexing. Under forced provisional service
    * the M2 mutation range is clamped to this window so the prefix that
    * reached the candidate position (e.g. FTP USER/PASS) replays verbatim
    * and only the candidate suffix mutates.  count==0 = window unknown →
-   * legacy full-session M2.  Salvage entries save only the stripped
-   * candidate messages, so their window spans the whole saved session
-   * and their M2 is unchanged by this field. */
+   * legacy full-session M2. FTP salvage preserves the pre-candidate
+   * reaching prefix and records its clean candidate suffix here. */
   u32 prov_cand_first;
   u32 prov_cand_count;
-  /* Exact map-slot set seen during the candidate trial. Salvage changes
-   * the saved input, so it deliberately has no comparable trial set. */
+  /* Exact new-edge map-slot set seen during this saved session's baseline:
+   * original trial for unchanged bytes, existing saved-session probe for
+   * salvage. Legacy prov_trial_* names remain in the event schema. */
   u8 *prov_trial_slots;
   u8 prov_trial_evidence_valid;
   u32 prov_trial_slot_count;
@@ -385,6 +393,7 @@ struct queue_entry
   u32 prov_conv_save_slot_count;
   u32 prov_conv_overlap_slot_count;
   u32 prov_conv_beyond_trial_slot_count;
+  u8 prov_baseline_saved_session; /* exact saved-session probe, not original trial */
 
   /* ── Lineage (paper §queue-pollution measurement) ────────────────
    * 0 = ordinary havoc/splice entry (no LLM ancestry).  >0 = the
@@ -695,6 +704,7 @@ static mqtt_diff_result_t mqtt_last_field_diff;
 static u8 mqtt_last_field_diff_valid = 0;  /* 1 if mqtt_last_field_diff is fresh */
 EXP_ST u8 session_virgin_bits[MAP_SIZE]; /* Regions yet untouched while the SUT is still running */
 EXP_ST u8 *cleanup_script;               /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
+EXP_ST u8 *exchange_helper_script;        /* optional peer/helper action before each network exchange */
 EXP_ST u8 *netns_name;                   /* network namespace name to run server in */
 char **was_fuzzed_map = NULL;            /* A 2D array keeping state-specific was_fuzzed information */
 u32 fuzzed_map_states = 0;
@@ -944,6 +954,13 @@ static u64  provisional_live = 0;
 
 static u64  cal_episodes_total = 0;
 static u64  cal_episodes_rewarded = 0;
+/* Opt-in equal-dose calibration, revision fixed-invocation-window-v1.
+ * Zero retains the archived episode-Bernoulli reward definition. */
+static u32 cal_reward_window_invocations = 0;
+static ec_reward_window_t cal_training_window;
+static u64 cal_training_windows = 0;
+static u64 cal_training_windows_rewarded = 0;
+static u64 cal_training_censored_invocations = 0;
 
 /* Monotone code-progress event counters.  code_save_events counts EVERY
  * native coverage save (has_new_bits != 0, INCLUDING hit-count-only changes,
@@ -993,6 +1010,13 @@ static u8 last_trial_evidence_valid = 0;
 static u32 last_trial_slot_count = 0;
 static u32 last_trial_candidate_id = 0;
 static u64 last_trial_invocation_id = 0;
+/* A salvaged session has different bytes from its original trial. Capture
+ * its own existing non-destructive probe; never compare it with a stale
+ * original-trial bitmap and never execute an extra target for measurement. */
+static u8 salvage_probe_new_slots[HNB_SLOT_SET_BYTES];
+static u8 salvage_probe_evidence_valid = 0;
+static u32 salvage_probe_candidate_id = 0;
+static u64 salvage_probe_invocation_id = 0;
 
 /* P0-6 (no-executable-M2 deadlock): argv captured at startup so the
  * provisional pre-annotation probe can execute the freshly-queued file
@@ -1051,7 +1075,7 @@ static u64   ordinary_match_admits = 0;
 static u64   ordinary_match_closed = 0;
 static u64   ordinary_match_converted = 0;
 
-KHASH_SET_INIT_INT64(hs64)             /* u64 set: (from<<32)|to transitions */
+/* hs64 is declared above queue_entry for response-transition evidence. */
 static khash_t(hs32) *observed_state_ledger = NULL;  /* state ids seen by trials */
 static khash_t(hs64) *observed_trans_ledger = NULL;  /* transitions seen by trials */
 
@@ -1136,11 +1160,17 @@ static u64 mutation_charged_calls = 0;
 static u64 campaign_charged_invocations = 0;
 static u8  campaign_budget_exhausted = 0;
 static u8  campaign_budget_stop_reported = 0;
+static u64 campaign_budget_exhausted_time_ms = 0;
+static u8  campaign_wallclock_mode = 0;     /* call cap is optional */
+static u64 campaign_duration_sec = 0;       /* includes grammar/enrichment */
+static u8  campaign_wallclock_expired = 0;
 static u8  q1_no_reflow = 0;                /* CHATAFL_Q1_NO_REFLOW */
 static u8  q1_reflow = 0;                   /* CHATAFL_Q1_REFLOW */
 static u8  q1_direct_service = 0;           /* CHATAFL_Q1_DIRECT_SERVICE */
 static u64 q1_saved_total = 0, q1_idle_total = 0;
+static u64 q1_idle_uncredited_total = 0;
 static u64 q1_reflow_pool = 0, q1_reflow_consumed = 0;
+static u64 controller_probe_invocation_total = 0;
 
 /* P2 request-level gate (2026-11-09): the admission gate acts AFTER the
  * ~195/round grammar+enrichment generation cost is sunk (measured: gate
@@ -1169,6 +1199,8 @@ static u8  request_gate_enabled = 0;
 static u64 request_gate_skips = 0;
 static u64 request_gate_window_seq = 0;   /* invocation ledger seq at last eval */
 static u64 request_gate_window_gains = 0; /* code_gain_events at last eval */
+static u64 request_gate_window_states = 0;
+static u8 request_gate_parked = 0;
 static u32 request_gate_yield_floor = 1;  /* CHATAFL_REQUEST_GATE_YIELD_FLOOR:
                                            * skip when gains <= floor in window;
                                            * 1 = "at most 1 new edge in 500+
@@ -1254,6 +1286,33 @@ static u64 campaign_effective_call_cap(void) {
   if (!campaign_call_budget) return 0;
   return campaign_call_budget > q1_idle_total ?
       campaign_call_budget - q1_idle_total : 0;
+}
+
+static const char *campaign_resource_basis(void) {
+  if (!campaign_wallclock_mode) return "target-calls";
+  return campaign_call_budget ? "elapsed-time-with-call-cap" : "elapsed-time";
+}
+
+/* Keep unsupported treatments explicit: NO_REFLOW only has an operational
+ * effect by reducing a finite shared call cap. Its counters alone are not
+ * an implementation of parking elapsed time. */
+static const char *campaign_policy_error(void) {
+  if (campaign_wallclock_mode && !campaign_duration_sec)
+    return "Wallclock mode requires a positive campaign duration";
+  if (campaign_wallclock_mode && mutation_call_budget)
+    return "Wallclock mode cannot use CHATAFL_MUTATION_CALL_BUDGET dose stopping";
+  if (campaign_wallclock_mode && !campaign_call_budget && q1_no_reflow)
+    return "Q1 NO_REFLOW requires a finite common call budget; elapsed-time-only parking is not implemented";
+  if (!campaign_wallclock_mode && !campaign_call_budget &&
+      (q1_no_reflow || q1_reflow || q1_direct_service))
+    return "Q1 call-budget policy requires a positive CHATAFL_CAMPAIGN_CALL_BUDGET";
+  return NULL;
+}
+
+static const char *campaign_budget_termination_reason(void) {
+  if (campaign_wallclock_mode) return "wallclock-call-cap-violation";
+  return mutation_call_budget && mutation_charged_calls >= mutation_call_budget ?
+      "mutation-call-budget" : "campaign-call-budget";
 }
 
 
@@ -1466,6 +1525,7 @@ u32 mut_ur(u32 bound) { return UR(bound); }
 static void bug_log_event(const char *kind, const char *fname,
                           const char *signature, const char *detail);
 static u64 get_cur_time(void);
+static u8 campaign_deadline_reached(void);
 EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len);
 
 
@@ -4024,8 +4084,15 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "run_id",
       json_object_new_string(basename((char *)out_dir)));
   admission_json_add_u64(j, "pid", (u64)getpid());
+  json_object_object_add(j, "protocol_name", json_object_new_string(
+      (protocol_name && *protocol_name) ? protocol_name : "UNKNOWN"));
   if (orig_cmdline)
     json_object_object_add(j, "orig_cmdline", json_object_new_string((char *)orig_cmdline));
+  {
+    const char *source_sha = getenv("CHATAFL_LOOPFUZZ_SOURCE_SHA256");
+    json_object_object_add(j, "loopfuzz_source_sha256",
+        json_object_new_string((source_sha && *source_sha) ? source_sha : "unrecorded"));
+  }
   {
     const char *gc = getenv("CHATAFL_GIT_COMMIT");
     json_object_object_add(j, "fuzzer_commit",
@@ -4034,6 +4101,15 @@ static void run_config_log(const char *phase, const char *termination_reason) {
     json_object_object_add(j, "target",
         json_object_new_string((td && *td) ? td : "unknown"));
   }
+  json_object_object_add(j, "target_reset_enabled",
+      json_object_new_boolean(cleanup_script != NULL));
+  json_object_object_add(j, "exchange_helper_enabled",
+      json_object_new_boolean(exchange_helper_script != NULL));
+  json_object_object_add(j, "reset_helper_semantics",
+      json_object_new_string("-c=pre-invocation-reset;-H=pre-network-exchange-helper"));
+  if (exchange_helper_script)
+    json_object_object_add(j, "exchange_helper",
+        json_object_new_string((char *)exchange_helper_script));
   /* LLM configuration (paper §九: matched configs must be auditable). */
   {
     const char *m = getenv("LLM_MODEL");
@@ -4072,10 +4148,24 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "state_retain", json_object_new_boolean(state_retain_enabled));
   /* Stage-2 T03 stamps: fixed-call budget and Q1 quota-flow policy. */
   admission_json_add_u64(j, "campaign_call_budget", campaign_call_budget);
+  json_object_object_add(j, "campaign_stop_mode", json_object_new_string(
+      campaign_wallclock_mode ? "wallclock" : "call-budget"));
+  json_object_object_add(j, "campaign_resource_basis",
+      json_object_new_string(campaign_resource_basis()));
+  admission_json_add_u64(j, "campaign_duration_sec", campaign_duration_sec);
+  admission_json_add_u64(j, "campaign_budget_exhausted_time_ms",
+                         campaign_budget_exhausted_time_ms);
+  admission_json_add_u64(j, "run_start_time_ms", run_start_time_ms);
+  admission_json_add_u64(j, "campaign_elapsed_ms", run_start_time_ms ?
+      get_cur_time() - run_start_time_ms : 0);
+  json_object_object_add(j, "campaign_budget_censored",
+      json_object_new_boolean(campaign_wallclock_mode && campaign_budget_exhausted));
   json_object_object_add(j, "witness_tomb", json_object_new_boolean(1));
   json_object_object_add(j, "request_gate", json_object_new_boolean(request_gate_enabled));
   admission_json_add_u64(j, "pv_early_stop_k", pv_early_stop_k);
   json_object_object_add(j, "pv_early_stop_dual", json_object_new_boolean(pv_early_stop_dual));
+  json_object_object_add(j, "pv_state_progress_signal", json_object_new_string(
+      "same-invocation-response-states-and-transitions; per-root; excludes-probe-dose"));
   admission_json_add_u64(j, "request_gate_window", request_gate_window);
   json_object_object_add(j, "q1_policy",
       json_object_new_string(q1_direct_service ? "direct-service" :
@@ -4089,7 +4179,11 @@ static void run_config_log(const char *phase, const char *termination_reason) {
    * unclassified conversions. Do not pool-compare across these stamps. */
   json_object_object_add(j, "p64_conversion_classified", json_object_new_boolean(1));
   json_object_object_add(j, "p64_conversion_evidence", json_object_new_string(
-      "full-map-slot-set-candidate-invocation-v2"));
+      "exact-saved-session-baseline-map-slot-set-v3"));
+  json_object_object_add(j, "request_gate_semantics", json_object_new_string(
+      "park-zero-yield-window; reopen-on-code-or-state-gain; one-periodic-consult"));
+  json_object_object_add(j, "q1_flow_unit", json_object_new_string(
+      "unallocated-validation-quota; actual-invocations-observed-at-receiver"));
   json_object_object_add(j, "salvage_enabled", json_object_new_boolean(salvage_enabled));
   json_object_object_add(j, "salvage_probe_gate", json_object_new_boolean(salvage_probe_gate));
   if (salvage_opportunity_threshold > 0.0) {
@@ -4213,6 +4307,9 @@ static void run_config_log(const char *phase, const char *termination_reason) {
    * reward semantics (new-edge-only since schema v3), and trial-mode
    * admission (execute-before-promote with a non-destructive probe). */
   admission_json_add_u64(j, "episode_energy_cap", episode_energy_cap);
+  admission_json_add_u64(j, "cal_reward_window_invocations", cal_reward_window_invocations);
+  json_object_object_add(j, "calibration_revision", json_object_new_string(
+      cal_reward_window_invocations ? "fixed-invocation-window-v1" : "episode-bernoulli-v1"));
   json_object_object_add(j, "code_reward_semantics",
       json_object_new_string("new-edge-only-hnb2"));
   json_object_object_add(j, "calibration_attribution",
@@ -4321,6 +4418,8 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
   json_object_object_add(j, "generating_state", json_object_new_int((int)q->generating_state_id));
   admission_json_add_u64(j, "validation_budget", provisional_budget_default);
   admission_json_add_u64(j, "budget_left", q->prov_budget_left);
+  admission_json_add_u64(j, "budget_released", q->prov_budget_released);
+  admission_json_add_u64(j, "budget_uncredited", q->prov_budget_uncredited);
   admission_json_add_u64(j, "ttl_deadline_ms", q->prov_deadline_ms);
   admission_json_add_u64(j, "descendant_execs", q->prov_desc_execs);
   admission_json_add_u64(j, "descendant_code_gain", q->prov_desc_code_gain);
@@ -4348,6 +4447,13 @@ static void provisional_log_event(const char *kind, struct queue_entry *q,
                          q->prov_conv_overlap_slot_count);
   admission_json_add_u64(j, "conversion_beyond_trial_slot_count",
                          q->prov_conv_beyond_trial_slot_count);
+  json_object_object_add(j, "baseline_source", json_object_new_string(
+      q->prov_baseline_saved_session ? "saved-session-probe" : "original-candidate-trial"));
+  json_object_object_add(j, "baseline_evidence_valid",
+      json_object_new_boolean(q->prov_trial_evidence_valid));
+  json_object_object_add(j, "conversion_relative_to_baseline", json_object_new_string(
+      q->prov_conv_class == 1 ? "baseline-slots-only" :
+      q->prov_conv_class == 2 ? "contains-beyond-baseline-slots" : "unknown"));
   admission_json_add_u64(j, "first_productive_descendant",
       q->prov_first_gain_queue);
   admission_json_add_u64(j, "first_gain_execution_id", q->prov_first_gain_execution);
@@ -4478,6 +4584,14 @@ static void episode_log_event(u32 state_id, s32 seed_index,
   json_object_object_add(j, "completed", json_object_new_boolean(completed));
   json_object_object_add(j, "posterior_updated", json_object_new_boolean(posterior_updated));
   admission_json_add_u64(j, "episode_energy_cap", episode_energy_cap);
+  admission_json_add_u64(j, "cal_reward_window_invocations", cal_reward_window_invocations);
+  json_object_object_add(j, "calibration_revision", json_object_new_string(
+      cal_reward_window_invocations ? "fixed-invocation-window-v1" : "episode-bernoulli-v1"));
+  if (cal_reward_window_invocations) {
+    admission_json_add_u64(j, "training_observations", cal_training_window.completed_windows);
+    admission_json_add_u64(j, "training_rewarded_observations", cal_training_window.rewarded_windows);
+    admission_json_add_u64(j, "training_censored_invocations", cal_training_window.censored_invocations);
+  }
   admission_json_add_u64(j, "energy_used", energy_used);
   json_object_object_add(j, "energy_exhausted",
       json_object_new_boolean(energy_exhausted));
@@ -4778,13 +4892,14 @@ void setup_llm_grammars()
 
   for (int iter = 0; iter < TEMPLATE_CONSISTENCY_COUNT; iter++)
   {
+    if (campaign_deadline_reached()) break;
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, LLM_DEFAULT_MODEL, GRAMMAR_RETRIES, 0.5);
     llm_total_prompt_tokens += llm_last_prompt_tokens;
     llm_total_completion_tokens += llm_last_completion_tokens;
     if (templates_answer != NULL) llm_total_calls++;
-    if (templates_answer == NULL)
+    if (templates_answer == NULL || campaign_deadline_reached())
       goto free_templates_answer;
 
     // printf("## Answer from LLM:\n %s\n", templates_answer);
@@ -5740,12 +5855,10 @@ u32 update_scores_and_select_next_state(u8 mode)
               ec_thompson_sample(state->cal_alpha, state->cal_beta);
           double factor = ec_calibrated_factor(theta_t, cal_epsilon);
           double score = frontier_score * factor;
-          state->score = !isfinite(score) || score <= 0.0 ? 0 :
-              (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
+          state->score = ec_positive_score_weight(score);
           state->last_sampled_theta = theta_t;
         } else {
-          state->score = !isfinite(frontier_score) || frontier_score <= 0.0 ? 0 :
-              (frontier_score >= (double)((u32)-1) ? (u32)-1 : (u32)frontier_score);
+          state->score = ec_positive_score_weight(frontier_score);
           /* Arm D does not act on the posterior; record its mean purely for
            * counterfactual logging (what calibration would have said). */
           state->last_sampled_theta =
@@ -5789,8 +5902,7 @@ u32 update_scores_and_select_next_state(u8 mode)
         khint_t state_key = kh_get(hms, khms_states, state_ids[state_index]);
         state_info_t *candidate = kh_val(khms_states, state_key);
         double score = candidate->last_frontier_score;
-        u64 weight = !isfinite(score) || score <= 0.0 ? 0 :
-            (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
+        u64 weight = ec_positive_score_weight(score);
         frontier_total += weight;
       }
       if (frontier_total) {
@@ -5803,8 +5915,7 @@ u32 update_scores_and_select_next_state(u8 mode)
           khint_t state_key = kh_get(hms, khms_states, candidate_id);
           state_info_t *candidate = kh_val(khms_states, state_key);
           double score = candidate->last_frontier_score;
-          u64 weight = !isfinite(score) || score <= 0.0 ? 0 :
-              (score >= (double)((u32)-1) ? (u32)-1 : (u32)score);
+          u64 weight = ec_positive_score_weight(score);
           cumulative += weight;
           if (scaled_draw < cumulative) {
             scheduler_calibration_counterfactual_state = candidate_id;
@@ -5913,6 +6024,42 @@ unsigned int choose_target_state(u8 mode)
  * All predictions logged are PRE-update (posterior_mean_before), so
  * reliability/Brier/ECE metrics computed offline carry no leakage. */
 
+/* Apply one observation whose dose is declared by the reward revision.
+ * All estimators see exactly the same outcomes and exposure. */
+static void cal_apply_observation(state_info_t *st, int reward) {
+  if (!st) return;
+  if (cal_reward_window_invocations && event_log_enabled) {
+    struct json_object *j = json_object_new_object();
+    json_object_object_add(j, "event", json_object_new_string("calibration_training_window"));
+    admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+    json_object_object_add(j, "revision", json_object_new_string("fixed-invocation-window-v1"));
+    admission_json_add_u64(j, "time_ms", get_cur_time());
+    admission_json_add_u64(j, "selected_state", st->id);
+    admission_json_add_u64(j, "invocation_id", target_invocation_seq);
+    admission_json_add_u64(j, "window_id", cal_training_windows + 1);
+    admission_json_add_u64(j, "training_invocations", cal_reward_window_invocations);
+    admission_json_add_f64(j, "posterior_mean_before", st->cal_alpha / (st->cal_alpha + st->cal_beta));
+    admission_json_add_f64(j, "ewma_before", st->cal_ewma);
+    admission_json_add_f64(j, "run_rate_before", ec_run_rate_estimate(st->cal_episode_rewards, st->cal_episodes));
+    json_object_object_add(j, "reward", json_object_new_int(reward));
+    ec_append_jsonl("calibration-windows.jsonl", j);
+    json_object_put(j);
+  }
+  ec_posterior_t post = { st->cal_alpha, st->cal_beta, cal_gamma };
+  ec_posterior_update(&post, reward);
+  st->cal_alpha = post.alpha;
+  st->cal_beta = post.beta;
+  st->cal_episodes++;
+  if (reward > 0) st->cal_episode_rewards++;
+  st->cal_ewma = ec_ewma_step(st->cal_ewma, cal_ewma_alpha, reward > 0 ? 1.0 : 0.0);
+  cal_run_episode_updates++;
+  if (reward > 0) cal_run_episode_rewarded++;
+  if (cal_reward_window_invocations) {
+    cal_training_windows++;
+    if (reward > 0) cal_training_windows_rewarded++;
+  }
+}
+
 static void cal_episode_begin(u32 state_id) {
   khint_t k = kh_get(hms, khms_states, state_id);
   if (k == kh_end(khms_states)) return;
@@ -5920,6 +6067,8 @@ static void cal_episode_begin(u32 state_id) {
 
   cal_episode_active = 1;
   cal_episode_state = state_id;
+  if (cal_reward_window_invocations)
+    ec_reward_window_init(&cal_training_window, cal_reward_window_invocations);
   cal_episode_seed_index = -1;
   cal_episode_start_ms = get_cur_time();
   cal_episode_total_invocations = 0;
@@ -5960,6 +6109,13 @@ static void cal_episode_note_invocation(const char *kind) {
   if (!cal_episode_train_eligible || admission_trial_mode ||
       target_state_id != cal_episode_state || (!mutation && !nested)) return;
   cal_last_invocation_trainable = 1;
+  if (cal_reward_window_invocations) {
+    int reward;
+    if (ec_reward_window_begin_invocation(&cal_training_window, &reward)) {
+      khint_t k = kh_get(hms, khms_states, cal_episode_state);
+      if (k != kh_end(khms_states)) cal_apply_observation(kh_val(khms_states, k), reward);
+    }
+  }
   cal_episode_training_invocations++;
   if (mutation) cal_episode_mutation_invocations++;
   else cal_episode_nested_invocations++;
@@ -5968,7 +6124,10 @@ static void cal_episode_note_invocation(const char *kind) {
 static void cal_episode_note_code_gain(void) {
   if (!cal_episode_active) return;
   cal_episode_all_code_gains++;
-  if (cal_last_invocation_trainable) cal_episode_code_gains++;
+  if (cal_last_invocation_trainable) {
+    cal_episode_code_gains++;
+    if (cal_reward_window_invocations) ec_reward_window_note_gain(&cal_training_window);
+  }
 }
 
 static void cal_episode_note_state_gain(void) {
@@ -6009,22 +6168,21 @@ static void cal_episode_finalize(u8 interrupted) {
   double alpha_after = cal_episode_alpha_before;
   double beta_after = cal_episode_beta_before;
   u8 posterior_updated = 0;
-  if (eligible) {
-    ec_posterior_t post = { st->cal_alpha, st->cal_beta, cal_gamma };
-    ec_posterior_update(&post, reward);
-    st->cal_alpha = post.alpha;
-    st->cal_beta = post.beta;
-    st->cal_episodes++;
-    if (reward > 0) st->cal_episode_rewards++;
-    st->cal_ewma = ec_ewma_step(st->cal_ewma, cal_ewma_alpha, reward > 0 ? 1.0 : 0.0);
-    alpha_after = post.alpha;
-    beta_after = post.beta;
+  if (cal_reward_window_invocations) {
+    int window_reward;
+    if (ec_reward_window_close(&cal_training_window, !eligible, &window_reward))
+      cal_apply_observation(st, window_reward);
+    cal_training_censored_invocations += cal_training_window.censored_invocations;
+    posterior_updated = cal_training_window.completed_windows > 0;
+    if (st) {
+      alpha_after = st->cal_alpha;
+      beta_after = st->cal_beta;
+    }
+  } else if (eligible) {
+    cal_apply_observation(st, reward);
+    alpha_after = st->cal_alpha;
+    beta_after = st->cal_beta;
     posterior_updated = 1;
-    /* Pooled run-level counters feed the shrinkage estimator's base rate
-     * (CSV #12).  Updated after the per-state update but read only at the
-     * NEXT selection, so predictions stay pre-update/leak-free. */
-    cal_run_episode_updates++;
-    if (reward > 0) cal_run_episode_rewarded++;
   }
 
   cal_episodes_total++;
@@ -6603,19 +6761,40 @@ int send_over_network()
   struct sockaddr_in serv_addr;
   struct sockaddr_in local_serv_addr;
 
-  /* Reset is checked before starting a target in run_target(), never
-   * while the current target already has its files/database open.
-   *
-   * Additionally run the -c script before every network exchange (legacy
-   * behavior).  Kamailio's run_pjsip is not a cleanup but a per-exchange
-   * helper relaunch (pjsua, --duration=10): removing this call made every
-   * UDP exchange hit a dead helper, so responses came back empty and the
-   * campaign aborted with "No server states have been detected" — a
-   * regression bisected between v3.6 (686c57d7a, healthy) and the phase2
-   * scheduler commit (7c8670869).  Restoring the call revived kamailio
-   * (2029 execs, 2 cal episodes vs 40-92 execs, 0 episodes). */
-  if (cleanup_script && !mqtt_persistent_skip_kill)
-    system(cleanup_script);
+  /* -c is strictly a pre-invocation target reset (phase2_target_reset).
+   * Per-exchange peer actions such as Kamailio's PJSUA relaunch use -H,
+   * so a database/filesystem reset can never run while the target has
+   * those resources open. */
+  if (exchange_helper_script && !mqtt_persistent_skip_kill) {
+    int helper_status = system((char *)exchange_helper_script);
+    struct json_object *helper = json_object_new_object();
+    json_object_object_add(helper, "event", json_object_new_string("exchange_helper"));
+    admission_json_add_u64(helper, "schema_version", EC_SCHEMA_VERSION);
+    json_object_object_add(helper, "campaign_id",
+        json_object_new_string(evidence_campaign_id()));
+    admission_json_add_u64(helper, "execution_id", target_invocation_seq);
+    admission_json_add_u64(helper, "time_ms", get_cur_time());
+    json_object_object_add(helper, "helper",
+        json_object_new_string((char *)exchange_helper_script));
+    json_object_object_add(helper, "system_status", json_object_new_int(helper_status));
+    json_object_object_add(helper, "success", json_object_new_boolean(
+        helper_status != -1 && WIFEXITED(helper_status) && WEXITSTATUS(helper_status) == 0));
+    ec_append_jsonl("exchange-helper-events.jsonl", helper);
+    json_object_put(helper);
+    if (helper_status == -1 || !WIFEXITED(helper_status) || WEXITSTATUS(helper_status) != 0) {
+      /* Fail-closed applies to live campaigns only.  The 900s campaign TERM
+       * can catch the per-exchange helper mid-run (observed 2026-11-15:
+       * kamailio run_pjsip died with signal 15 during shutdown, converting
+       * an orderly stop into PROGRAM ABORT/exit 1 and losing the end-config
+       * row on 11/24 runs).  stop_soon is set before the shutdown wave can
+       * reach the helper, so a helper failure with stop_soon set is part of
+       * the orderly stop: the ledger row above keeps the evidence and the
+       * send continues; the main loop exits through its normal save path. */
+      if (!stop_soon)
+        FATAL("Per-exchange helper failed (status %d): %s",
+              helper_status, exchange_helper_script);
+    }
+  }
 
   // Wait a bit for the server initialization
   // A1-fix: Use adaptive wait — full sleep only on first exec or after
@@ -7734,6 +7913,18 @@ static u64 get_cur_time(void)
   return (tv.tv_sec * 1000ULL) + (tv.tv_usec / 1000);
 }
 
+/* The deadline is independent of invocation rate and call counters. It is
+ * checked during scheduler progress as well as before target admissions. */
+static u8 campaign_deadline_reached(void) {
+  if (!campaign_wallclock_mode || !run_start_time_ms) return 0;
+  u64 now = get_cur_time();
+  if (now < run_start_time_ms ||
+      now - run_start_time_ms < campaign_duration_sec * 1000ULL) return 0;
+  campaign_wallclock_expired = 1;
+  stop_soon = 2;
+  return 1;
+}
+
 /* Get unix time in microseconds */
 
 static u64 get_cur_time_us(void)
@@ -8322,6 +8513,8 @@ EXP_ST void __attribute__((unused)) destroy_queue(void)
       ck_free(q->regions);
     if (q->prov_trial_slots)
       ck_free(q->prov_trial_slots);
+    if (q->prov_response_states) kh_destroy(hs32, q->prov_response_states);
+    if (q->prov_response_transitions) kh_destroy(hs64, q->prov_response_transitions);
     ck_free(q);
     q = n;
   }
@@ -9070,8 +9263,8 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
   OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
 
-  /* Fix-8: call curl_global_init ONCE before any worker threads */
-  chat_llm_global_init();
+  /* The main startup initializes curl and the shared campaign budget before
+   * grammar discovery, worker threads, and plateau helper forks. */
 
   int seeds_processed = 0;
   int total_enriched = 0;
@@ -11052,6 +11245,8 @@ static struct queue_entry *provisional_root_for_candidate(u32 candidate_id) {
   return NULL;
 }
 
+static u8 execution_is_independent_controller_probe(void);
+
 static void execution_log_event(const char *event, u64 attempt_id,
                                 u64 invocation_id, u64 before, u8 fault,
                                 u32 candidate_id, struct queue_entry *root) {
@@ -11067,6 +11262,9 @@ static void execution_log_event(const char *event, u64 attempt_id,
   admission_json_add_u64(j, "execution_id_before", before);
   admission_json_add_u64(j, "execution_id_after", total_execs);
   json_object_object_add(j, "execution_kind", json_object_new_string(execution_kind));
+  json_object_object_add(j, "accounting_channel", json_object_new_string(
+      execution_is_independent_controller_probe() ? "controller" :
+      candidate_id ? "lineage" : "ordinary"));
   admission_json_add_u64(j, "q1_flow_id", q1_active_flow_id);
   admission_json_add_u64(j, "q1_flow_source_candidate", q1_active_flow_source);
   json_object_object_add(j, "episode_training_invocation",
@@ -11182,13 +11380,50 @@ static u8 execution_is_validation_probe(void) {
   return execution_kind && !strcmp(execution_kind, "prov-annotate");
 }
 
+/* Salvage's saved-session probe is controller work: it remains charged to
+ * the campaign call cap, but has no parent lineage and is excluded from
+ * ordinary and validation yield-rate denominators. */
+static u8 execution_is_independent_controller_probe(void) {
+  return execution_kind && !strcmp(execution_kind, "salvage-probe");
+}
+
 static u8 request_gate_saturated(void) {
-  if (target_invocation_seq < request_gate_window_seq + request_gate_window)
-    return 0;                            /* window not yet elapsed */
   u64 gains = code_gain_events - request_gate_window_gains;
-  request_gate_window_seq = target_invocation_seq;
-  request_gate_window_gains = code_gain_events;
-  if (gains > request_gate_yield_floor) return 0; /* still productive enough */
+  u64 state_gains = ipsm_new_edge_events - request_gate_window_states;
+  u64 elapsed = target_invocation_seq - request_gate_window_seq;
+  /* A rejected consultation must stay rejected until the next observation
+   * window. Previously only ONE consultation was skipped per window: at
+   * threshold=1 the very next round made the same costly request again.
+   * New code/state progress opens the gate immediately; otherwise one
+   * periodic consultation is still allowed per parked window so an LLM
+   * can help escape a genuinely saturated ordinary-mutation neighborhood. */
+  if (request_gate_parked && (gains > request_gate_yield_floor || state_gains)) {
+    request_gate_parked = 0;
+    request_gate_window_seq = target_invocation_seq;
+    request_gate_window_gains = code_gain_events;
+    request_gate_window_states = ipsm_new_edge_events;
+    return 0;
+  }
+  if (!request_gate_parked && elapsed < request_gate_window) return 0;
+  if (request_gate_parked && elapsed >= request_gate_window) {
+    request_gate_window_seq = target_invocation_seq;
+    request_gate_window_gains = code_gain_events;
+    request_gate_window_states = ipsm_new_edge_events;
+    return 0; /* bounded exploration: exactly one parked-window consult */
+  }
+  if (!request_gate_parked &&
+      (gains > request_gate_yield_floor || state_gains)) {
+    request_gate_window_seq = target_invocation_seq;
+    request_gate_window_gains = code_gain_events;
+    request_gate_window_states = ipsm_new_edge_events;
+    return 0;
+  }
+  if (!request_gate_parked) {
+    request_gate_parked = 1;
+    request_gate_window_seq = target_invocation_seq;
+    request_gate_window_gains = code_gain_events;
+    request_gate_window_states = ipsm_new_edge_events;
+  }
   request_gate_skips++;
   if (event_log_enabled) {
     struct json_object *j = json_object_new_object();
@@ -11197,6 +11432,9 @@ static u8 request_gate_saturated(void) {
     admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
     admission_json_add_u64(j, "window_invocations", request_gate_window);
     admission_json_add_u64(j, "window_gains", gains);
+    admission_json_add_u64(j, "window_state_gains", state_gains);
+    admission_json_add_u64(j, "observed_window_invocations", elapsed);
+    json_object_object_add(j, "parked", json_object_new_boolean(request_gate_parked));
     admission_json_add_u64(j, "skips_total", request_gate_skips);
     admission_json_add_u64(j, "time_ms", get_cur_time());
     ec_append_jsonl("trigger-events.jsonl", j);
@@ -11208,7 +11446,7 @@ static u8 request_gate_saturated(void) {
 static void q1_log_flow_event(const char *kind, u64 candidate_id,
                               const char *destination, u64 flow_id,
                               u64 invocation_id, u64 amount,
-                              u64 remaining) {
+                              u64 remaining, u64 requested_amount) {
   if (!event_log_enabled) return;
   struct json_object *j = json_object_new_object();
   json_object_object_add(j, "event", json_object_new_string("q1_budget_flow"));
@@ -11224,9 +11462,13 @@ static void q1_log_flow_event(const char *kind, u64 candidate_id,
   admission_json_add_u64(j, "flow_id", flow_id);
   admission_json_add_u64(j, "receiver_invocation_id", invocation_id);
   admission_json_add_u64(j, "amount", amount);
+  admission_json_add_u64(j, "requested_amount", requested_amount);
+  admission_json_add_u64(j, "uncredited_amount",
+                         requested_amount > amount ? requested_amount - amount : 0);
   admission_json_add_u64(j, "remaining", remaining);
   admission_json_add_u64(j, "saved_total", q1_saved_total);
   admission_json_add_u64(j, "idle_total", q1_idle_total);
+  admission_json_add_u64(j, "idle_uncredited_total", q1_idle_uncredited_total);
   admission_json_add_u64(j, "reflow_pool_left", q1_reflow_pool);
   admission_json_add_u64(j, "reflow_consumed", q1_reflow_consumed);
   admission_json_add_u64(j, "charged_invocations", campaign_charged_invocations);
@@ -11236,12 +11478,60 @@ static void q1_log_flow_event(const char *kind, u64 candidate_id,
   json_object_put(j);
 }
 
+/* Quota is an allocation counter, not a measurement of CPU time or actual
+ * target invocations avoided. The latter are recorded only at consumption.
+ * Call after the real admission outcome, never before a salvage route. */
+static u64 q1_release_validation_quota(u64 candidate_id, u64 amount,
+                                        const char *kind) {
+  if ((!q1_no_reflow && !q1_reflow) || !amount) return 0;
+  u64 credited = amount;
+  /* NO_REFLOW lowers the campaign cap by the amount parked. A late release
+   * must not retroactively lower the cap below calls already charged, so
+   * only still-unspent global budget can enter the idle ledger. */
+  if (q1_no_reflow && campaign_call_budget) {
+    u64 headroom = campaign_call_budget > q1_idle_total ?
+        campaign_call_budget - q1_idle_total : 0;
+    headroom = headroom > campaign_charged_invocations ?
+        headroom - campaign_charged_invocations : 0;
+    if (credited > headroom) credited = headroom;
+    q1_idle_uncredited_total += amount - credited;
+  }
+  q1_saved_total += credited;
+  u64 flow_id = 0;
+  if (q1_reflow) {
+    q1_reflow_pool += credited;
+    if (credited) flow_id = q1_register_reflow(candidate_id, credited);
+  } else q1_idle_total += credited;
+  q1_log_flow_event(kind, candidate_id,
+                    q1_reflow ? "ordinary-pool" : "idle", flow_id, 0,
+                    credited, q1_reflow ? credited : 0, amount);
+  return credited;
+}
+
+/* Closing or promoting a validation root returns its unused quota exactly
+ * once. Preserve the amount on the root so lifecycle events can reconcile
+ * initial quota = charged descendants + released quota + live remainder. */
+static void provisional_release_unused_quota(struct queue_entry *q,
+                                             const char *kind) {
+  if (!q || !q->prov_budget_left) return;
+  u32 amount = q->prov_budget_left;
+  q->prov_budget_left = 0;
+  u64 credited = q1_release_validation_quota(q->prov_candidate_id, amount, kind);
+  q->prov_budget_released += (u32)credited;
+  q->prov_budget_uncredited += amount - (u32)credited;
+}
+
 static u8 execution_admit(struct queue_entry *root, u32 cid) {
+  /* The fixed-time endpoint includes LLM setup. Refuse target work after
+   * the deadline even while the external timeout allows shutdown grace. */
+  if (campaign_deadline_reached()) return 0;
   /* Pair-dose control (2026-11-07): exactly N mutation-kind invocations per
    * campaign, then a clean planned stop (same path as the campaign cap). */
-  if (mutation_call_budget &&
+  if (!strcmp(execution_kind, "mutation") && mutation_call_budget &&
       mutation_charged_calls >= mutation_call_budget) {
     campaign_budget_exhausted = 1;   /* reuse the clean-stop machinery */
+    if (!campaign_budget_exhausted_time_ms)
+      campaign_budget_exhausted_time_ms = get_cur_time();
     return 0;
   }
   /* Fixed-budget check precedes every per-root consideration: reaching the
@@ -11251,6 +11541,8 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
    * it must not be confused with the disabled-budget sentinel. */
   if (campaign_call_budget && campaign_charged_invocations >= cap) {
     campaign_budget_exhausted = 1;
+    if (!campaign_budget_exhausted_time_ms)
+      campaign_budget_exhausted_time_ms = get_cur_time();
     return 0;
   }
   if (!execution_ready(root)) return 0;
@@ -11269,7 +11561,9 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
   campaign_charged_invocations++;
   if (mutation_call_budget && !strcmp(execution_kind, "mutation"))
     mutation_charged_calls++;
-  if (cid) {
+  if (execution_is_independent_controller_probe()) {
+    controller_probe_invocation_total++;
+  } else if (cid) {
     lineage_invocation_total++;
     if (root && !root->prov_converted && !execution_is_validation_probe()) {
       root->prov_budget_left--;
@@ -11298,6 +11592,36 @@ static u8 execution_admit(struct queue_entry *root, u32 cid) {
   return 1;
 }
 
+/* Response progress is measured from THIS invocation, independently of a
+ * native queue save. The IPSM is updated only for retained inputs, so its
+ * global edge counter cannot protect a code-silent but state-exploring PV
+ * subtree. Per-root sets also prevent another root's progress resetting
+ * this root's no-novelty streak. This is response-state evidence, not code
+ * novelty, and does not update the scheduler IPSM or the admission ledger. */
+static u8 provisional_observe_response(struct queue_entry *root) {
+  if (!root || !pv_early_stop_k || !pv_early_stop_dual ||
+      !extract_response_codes || !response_buf || response_buf_size <= 0 ||
+      response_invocation_id != target_invocation_seq) return 0;
+  u32 count = 0;
+  u32 *states = extract_response_codes(response_buf, response_buf_size, &count);
+  if (!states) return 0;
+  if (!root->prov_response_states) root->prov_response_states = kh_init(hs32);
+  if (!root->prov_response_transitions) root->prov_response_transitions = kh_init(hs64);
+  u8 novel = 0;
+  int absent;
+  for (u32 i = 0; i < count; i++) {
+    if (!states[i]) continue;
+    kh_put(hs32, root->prov_response_states, states[i], &absent);
+    if (absent) novel = 1;
+    if (!i || !states[i - 1]) continue;
+    u64 edge = ((u64)states[i - 1] << 32) | states[i];
+    kh_put(hs64, root->prov_response_transitions, edge, &absent);
+    if (absent) novel = 1;
+  }
+  ck_free(states);
+  return novel;
+}
+
 /* Every target invocation, including nested calibration and timeout retry,
  * passes this single debit point. Refusal is an explicit non-execution. */
 static u8 run_target(char **argv, u32 timeout) {
@@ -11306,9 +11630,11 @@ static u8 run_target(char **argv, u32 timeout) {
   q1_active_flow_source = 0;
   q1_active_flow_remaining = 0;
   cal_last_invocation_trainable = 0;
-  u32 cid = (corpus_read_or_sync || !strcmp(execution_kind, "sync")) ? 0 :
+  u32 cid = (corpus_read_or_sync || !strcmp(execution_kind, "sync") ||
+             execution_is_independent_controller_probe()) ? 0 :
       (llm_candidate_lineage_pin ? llm_candidate_lineage_pin : cur_fuzz_lineage_candidate_id);
   struct queue_entry *root = provisional_root_for_candidate(cid);
+  if (root) root->prov_last_invocation_state_gain = 0;
   if (!execution_ready(root)) goto refused;
   if (!reset_completed_before_forkserver &&
       !phase2_target_reset("invocation", attempt_id)) goto refused;
@@ -11323,13 +11649,18 @@ static u8 run_target(char **argv, u32 timeout) {
 #else
   u8 fault = run_target_impl(argv, timeout);
 #endif
+  if (root && root->is_provisional && fault == FAULT_NONE) {
+    u8 response_gain = provisional_observe_response(root);
+    if (!execution_is_validation_probe())
+      root->prov_last_invocation_state_gain = response_gain;
+  }
   last_execution_kind = execution_kind;
   execution_log_event("invocation_end", attempt_id, invocation_id,
       before, fault, cid, root);
   if (q1_active_flow_id)
     q1_log_flow_event("consumed", q1_active_flow_source,
                       "ordinary-mutation", q1_active_flow_id,
-                      invocation_id, 1, q1_active_flow_remaining);
+                      invocation_id, 1, q1_active_flow_remaining, 1);
   return fault;
 refused:
   reset_completed_before_forkserver = 0;
@@ -12040,6 +12371,111 @@ static void periodic_hypothesis_refinement(void)
   }
 }
 
+/* Persist the raw corpus entry and its framed replay witness from one
+ * explicit message extent.  FULL_CHAIN is for a queue artifact that should
+ * replay exactly as stored. EXECUTED_PREFIX is for evidence that deliberately
+ * represents only the prefix sent during an execution; a zero-length prefix
+ * is rejected rather than silently replaced with the full candidate. */
+typedef enum {
+  KL_SAVE_FULL_CHAIN,
+  KL_SAVE_EXECUTED_PREFIX
+} kl_save_extent_t;
+
+static u32 save_kl_message_pair(klist_t(lms) *messages, const u8 *corpus_path,
+                                const u8 *replay_path,
+                                kl_save_extent_t extent,
+                                u32 executed_prefix, u32 *saved_count_out) {
+  u32 staged_count = 0, selected_count = 0;
+  u64 payload_size = 0;
+  if (saved_count_out) *saved_count_out = 0;
+
+  for (kliter_t(lms) *it = kl_begin(messages); it != kl_end(messages);
+       it = kl_next(it)) {
+    message_t *message = kl_val(it);
+    if (!message || !message->mdata || message->msize <= 0) goto invalid;
+    payload_size += (u32)message->msize;
+    if (payload_size > 0xffffffffULL) goto invalid;
+    staged_count++;
+  }
+
+  if (extent == KL_SAVE_FULL_CHAIN) {
+    selected_count = staged_count;
+  } else {
+    if (!executed_prefix || executed_prefix > staged_count) goto invalid;
+    selected_count = executed_prefix;
+    payload_size = 0;
+    u32 counted = 0;
+    for (kliter_t(lms) *it = kl_begin(messages);
+         it != kl_end(messages) && counted < selected_count;
+         it = kl_next(it), counted++)
+      payload_size += (u32)kl_val(it)->msize;
+  }
+
+  if (!selected_count || payload_size > 0xffffffffULL - 4ULL * selected_count)
+    goto invalid;
+
+  u32 raw_len = save_kl_messages_to_file(messages, (u8 *)corpus_path, 0,
+                                         selected_count);
+  u32 replay_len = save_kl_messages_to_file(messages, (u8 *)replay_path, 1,
+                                            selected_count);
+  u32 expected_replay_len = (u32)payload_size + 4 * selected_count;
+  if (raw_len != (u32)payload_size || replay_len != expected_replay_len) {
+    unlink((const char *)corpus_path);
+    unlink((const char *)replay_path);
+    return 0;
+  }
+  if (saved_count_out) *saved_count_out = selected_count;
+  return raw_len;
+
+invalid:
+  /* A failed rewrite must not leave a prior witness looking current. */
+  unlink((const char *)corpus_path);
+  unlink((const char *)replay_path);
+  return 0;
+}
+
+/* Imported inputs have queue coordinates before calibration starts. Preserve
+ * their exact framed bytes at that same boundary, not after each slow dry run:
+ * an interrupted calibration must not leave a ledger full of missing inputs.
+ * Do not rewrite q->fname: pivot_inputs() may have hard-linked a user's seed. */
+static u8 materialize_initial_seed_replay(struct queue_entry *q) {
+  klist_t(lms) *messages = construct_kl_messages(q->fname, q->regions,
+                                                q->region_count);
+  if (!messages) return 0;
+  u64 payload_size = 0;
+  u32 message_count = 0;
+  for (kliter_t(lms) *it = kl_begin(messages); it != kl_end(messages);
+       it = kl_next(it)) {
+    message_t *message = kl_val(it);
+    if (!message || !message->mdata || message->msize <= 0) goto invalid;
+    payload_size += (u32)message->msize;
+    message_count++;
+  }
+  if (!message_count || payload_size != q->len ||
+      payload_size > 0xffffffffULL - 4ULL * message_count) goto invalid;
+
+  u8 *path = alloc_printf("%s/replayable-queue/%s", out_dir,
+                          basename(q->fname));
+  u8 *temporary = alloc_printf("%s.initial-tmp-%ld", path, (long)getpid());
+  u32 expected = (u32)payload_size + 4 * message_count;
+  u32 written = save_kl_messages_to_file(messages, temporary, 1, message_count);
+  struct stat st;
+  if (written != expected || stat((char *)temporary, &st) ||
+      st.st_size != expected) {
+    unlink((char *)temporary);
+    ck_free(temporary); ck_free(path);
+    goto invalid;
+  }
+  if (rename((char *)temporary, (char *)path))
+    PFATAL("Unable to publish replayable seed '%s'", path);
+  ck_free(temporary); ck_free(path);
+  delete_kl_messages(messages);
+  return 1;
+invalid:
+  delete_kl_messages(messages);
+  return 0;
+}
+
 /* Perform dry run of all test cases to confirm that the app is working as
    expected. This is done only for the initial inputs, and only once. */
 
@@ -12085,10 +12521,9 @@ static void perform_dry_run(char **argv)
     if (state_aware_mode)
       update_state_aware_variables(q, 1);
 
-    /* save the seed to file for replaying */
-    u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
-    save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
-    ck_free(fn_replay);
+    /* pivot_inputs() already preserved the complete imported input before
+     * publishing its checkpoint. Calibration may update regions or send only
+     * a prefix; neither is a reason to overwrite that original witness. */
 
     /* AFLNet delete the kl_messages */
     delete_kl_messages(kl_messages);
@@ -12404,6 +12839,9 @@ static void pivot_inputs(void)
     link_or_copy(q->fname, nfn);
     ck_free(q->fname);
     q->fname = nfn;
+    if (!materialize_initial_seed_replay(q))
+      FATAL("Unable to preserve complete replayable seed '%s'", q->fname);
+    q->is_initial_seed = 1;
     queue_checkpoint_log(q, "initial-queue-name");
 
     /* Make sure that the passed_det value carries over, too. */
@@ -12522,17 +12960,10 @@ static void pv_early_stop_track(u8 hnb) {
       r->prov_converted)
     return;
   if (hnb) { r->prov_zero_novelty_streak = 0; return; }
-  /* Dual-signal: new IPSM state edges also reset the streak. The global
-   * ipsm_new_edge_events counter is monotone — a delta since the last
-   * check means this execution (or a sibling) found new state territory,
-   * so the subtree is still exploring even without new code edges. */
-  static u64 pv_last_ipsm_events = 0;
-  if (pv_early_stop_dual && ipsm_new_edge_events > pv_last_ipsm_events) {
-    pv_last_ipsm_events = ipsm_new_edge_events;
+  if (pv_early_stop_dual && r->prov_last_invocation_state_gain) {
     r->prov_zero_novelty_streak = 0;
     return;
   }
-  pv_last_ipsm_events = ipsm_new_edge_events;
   if (++r->prov_zero_novelty_streak < pv_early_stop_k) return;
   pv_early_stops++;
   r->prov_zero_novelty_streak = 0;
@@ -12631,10 +13062,23 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 
 #endif /* ^!SIMPLE_FILES */
 
-    u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
+    u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir,
+                                 basename(fn));
+    u32 saved_message_count = 0;
+    u32 full_len = save_kl_message_pair(kl_messages, fn, fn_replay,
+                                        KL_SAVE_FULL_CHAIN, messages_sent,
+                                        &saved_message_count);
+    if (!full_len)
+      FATAL("Unable to preserve full queue/replay chain '%s'", fn);
 
-    /* We use the actual length of all messages (full_len), not the len of the mutated message subsequence (len)*/
+    /* Queue bytes, regions and replay witness all describe the same staged
+     * chain. messages_sent is response-side progress; keep it unchanged
+     * outside add_to_queue(), whose region conversion needs the input count. */
+    u32 response_message_count = messages_sent;
+    messages_sent = saved_message_count;
     add_to_queue(fn, full_len, 0);
+    messages_sent = response_message_count;
+    ck_free(fn_replay);
     /* v3.3c lineage accounting: entries whose lineage was stamped by the
      * pin (arm-C native save of the LLM candidate itself) or the mirror
      * (a descendant save while fuzzing a lineage-bearing entry) are
@@ -12671,11 +13115,6 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 
     if (state_aware_mode)
       update_state_aware_variables(queue_top, 0);
-
-    /* save the seed to file for replaying */
-    u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
-    save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
-    ck_free(fn_replay);
 
     if (hnb == 2)
     {
@@ -13341,6 +13780,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "campaign_budget_exhausted: %llu\n"
              "q1_saved_quota          : %llu\n"
              "q1_idle_quota           : %llu\n"
+             "q1_idle_quota_uncredited : %llu\n"
              "q1_reflow_consumed      : %llu\n"
              "q1_reflow_pool_left     : %llu\n"
              "witness_tomb_rejects    : %llu\n"
@@ -13429,6 +13869,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)campaign_budget_exhausted,
           (unsigned long long)q1_saved_total,
           (unsigned long long)q1_idle_total,
+          (unsigned long long)q1_idle_uncredited_total,
           (unsigned long long)q1_reflow_consumed,
           (unsigned long long)q1_reflow_pool,
           (unsigned long long)witness_tomb_rejects,
@@ -13446,6 +13887,16 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)ipsm_new_edge_events,
           ablation_no_admission,
           admission_accounting_enabled);
+  fprintf(f, "calibration_revision : %s\n"
+             "cal_reward_window_invocations : %u\n"
+             "cal_training_windows : %llu\n"
+             "cal_training_windows_rewarded : %llu\n"
+             "cal_training_censored_invocations : %llu\n",
+          cal_reward_window_invocations ? "fixed-invocation-window-v1" : "episode-bernoulli-v1",
+          cal_reward_window_invocations,
+          (unsigned long long)cal_training_windows,
+          (unsigned long long)cal_training_windows_rewarded,
+          (unsigned long long)cal_training_censored_invocations);
 
   fprintf(f, "knowledge_level       : %u\n", (u32)kl_level());
   fprintf(f, "kl_cve_catalog_compiled : %u\n",
@@ -15267,21 +15718,27 @@ static u8 admission_force_queue_candidate(u8 *candidate, u32 len) {
   u8 *fn = alloc_printf("%s/queue/id_%06u_no_admission", out_dir, queued_paths);
 #endif
 
-  u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
+  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
+                               out_dir, basename(fn));
+  u32 saved_message_count = 0;
+  u32 full_len = save_kl_message_pair(kl_messages, fn, fn_replay,
+                                      KL_SAVE_FULL_CHAIN, messages_sent,
+                                      &saved_message_count);
   if (!full_len) {
     unlink((char *)fn);
+    unlink((char *)fn_replay);
+    ck_free(fn_replay);
     ck_free(fn);
     return 0;
   }
+  u32 response_message_count = messages_sent;
+  messages_sent = saved_message_count;
   admission_add_to_queue(fn, full_len);
+  messages_sent = response_message_count;
+  ck_free(fn_replay);
 
   if (state_aware_mode)
     update_state_aware_variables(queue_top, 0);
-
-  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
-                               out_dir, basename(queue_top->fname));
-  save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
-  ck_free(fn_replay);
 
   queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
   /* v3.3 lineage: arm C's force-admission channel. */
@@ -15373,11 +15830,58 @@ static void provisional_free_trial_evidence(struct queue_entry *q) {
   if (q->prov_trial_slots) ck_free(q->prov_trial_slots);
   q->prov_trial_slots = NULL;
   q->prov_trial_evidence_valid = 0;
+  if (q->prov_response_states) kh_destroy(hs32, q->prov_response_states);
+  if (q->prov_response_transitions) kh_destroy(hs64, q->prov_response_transitions);
+  q->prov_response_states = NULL;
+  q->prov_response_transitions = NULL;
+}
+
+/* One record per lifecycle boundary. In particular, campaign-end roots
+ * are censored, never silently counted as unproductive. The window records
+ * charged descendants (including inline calibration), not wall time and
+ * not a claim about a counterfactual ordinary-mutation run. */
+static void provisional_log_productivity(struct queue_entry *q,
+                                          const char *outcome,
+                                          const char *reason) {
+  if (!event_log_enabled || !q) return;
+  struct json_object *j = json_object_new_object();
+  json_object_object_add(j, "event", json_object_new_string("candidate_productivity"));
+  admission_json_add_u64(j, "schema_version", EC_SCHEMA_VERSION);
+  json_object_object_add(j, "campaign_id", json_object_new_string(evidence_campaign_id()));
+  admission_json_add_u64(j, "candidate_id", q->prov_candidate_id);
+  admission_json_add_u64(j, "root_queue_id", q->index);
+  json_object_object_add(j, "cohort", json_object_new_string(
+      q->prov_ordinary_match ? "ordinary-match" : "provisional"));
+  json_object_object_add(j, "outcome", json_object_new_string(outcome));
+  json_object_object_add(j, "reason", json_object_new_string(reason ? reason : ""));
+  admission_json_add_u64(j, "descendant_invocations", q->prov_desc_execs);
+  admission_json_add_u64(j, "budget_total", q->prov_desc_execs +
+                          q->prov_budget_left + q->prov_budget_released +
+                          q->prov_budget_uncredited);
+  admission_json_add_u64(j, "budget_left", q->prov_budget_left);
+  admission_json_add_u64(j, "budget_released", q->prov_budget_released);
+  admission_json_add_u64(j, "budget_uncredited", q->prov_budget_uncredited);
+  json_object_object_add(j, "censored", json_object_new_boolean(!strcmp(outcome, "censor")));
+  json_object_object_add(j, "converted", json_object_new_boolean(q->prov_converted));
+  json_object_object_add(j, "baseline_valid", json_object_new_boolean(q->prov_trial_evidence_valid));
+  json_object_object_add(j, "baseline_source", json_object_new_string(
+      q->prov_baseline_saved_session ? "saved-session-probe" : "original-candidate-trial"));
+  admission_json_add_u64(j, "baseline_invocation_id", q->prov_trial_invocation_id);
+  admission_json_add_u64(j, "baseline_new_edge_slots", q->prov_trial_slot_count);
+  admission_json_add_u64(j, "conversion_class", q->prov_conv_class);
+  admission_json_add_u64(j, "conversion_invocation_id", q->prov_conv_evidence_invocation);
+  admission_json_add_u64(j, "beyond_baseline_slots", q->prov_conv_beyond_trial_slot_count);
+  admission_json_add_u64(j, "observed_response_states",
+      q->prov_response_states ? kh_size(q->prov_response_states) : 0);
+  admission_json_add_u64(j, "observed_response_transitions",
+      q->prov_response_transitions ? kh_size(q->prov_response_transitions) : 0);
+  admission_json_add_u64(j, "time_ms", get_cur_time());
+  ec_append_jsonl("productivity-events.jsonl", j);
+  json_object_put(j);
 }
 
 static void provisional_expire(struct queue_entry *q, const char *reason) {
   if (!q || q->prov_expired || !q->is_provisional) return;
-  provisional_free_trial_evidence(q);
   /* Every close path, including EDF eligibility failures, must preserve
    * the ordinary cohort's files and leave provisional_live unchanged. */
   if (q->prov_ordinary_match) {
@@ -15388,6 +15892,9 @@ static void provisional_expire(struct queue_entry *q, const char *reason) {
   q->is_provisional = 0;
   if (provisional_live) provisional_live--;
   provisional_expired_total++;
+  provisional_release_unused_quota(q, "validation-closed-unused");
+  provisional_log_productivity(q, "expire", reason);
+  provisional_free_trial_evidence(q);
   provisional_remove_entry_files(q);
 
   /* Before conversion, hit-count-only saves remain in the same bounded
@@ -15420,10 +15927,12 @@ static void provisional_expire(struct queue_entry *q, const char *reason) {
  * comparison therefore differs ONLY in retention/scheduling policy. */
 static void ordinary_match_close(struct queue_entry *q, const char *reason) {
   if (!q || q->prov_expired || !q->is_provisional) return;
-  provisional_free_trial_evidence(q);
   q->prov_expired = 1;
   q->is_provisional = 0;
   ordinary_match_closed++;
+  provisional_release_unused_quota(q, "ordinary-window-closed-unused");
+  provisional_log_productivity(q, "ordinary-close", reason);
+  provisional_free_trial_evidence(q);
   provisional_invalidate_entry(q, 1 /* keep files: corpus retention */);
   for (struct queue_entry *d = queue; d; d = d->next) {
     if (d == q || d->prov_expired ||
@@ -15457,6 +15966,7 @@ static void provisional_note_gain(u32 candidate_id, u32 queue_index,
   q->prov_first_gain_invocation = target_invocation_seq;
   q->prov_first_gain_ms = get_cur_time();
   q->prov_desc_code_gain = 1;
+  provisional_release_unused_quota(q, "validation-converted-unused");
   q->prov_converted = 1;
   q->is_provisional = 0;
   /* Conversion classification (2026-11-06 audit fix): split the first
@@ -15494,6 +16004,7 @@ static void provisional_note_gain(u32 candidate_id, u32 queue_index,
   provisional_converted++;
   if (q->prov_ordinary_match) ordinary_match_converted++;
   if (q->prov_code_retain) code_retain_converted++;
+  provisional_log_productivity(q, "convert", "first-native-new-edge-save");
   provisional_log_event("convert", q,
       q->prov_ordinary_match ?
           "first native new-edge save (ordinary-match cohort)" :
@@ -15686,6 +16197,14 @@ static u32 salvage_collect_clean(void) {
 }
 /* Forward declaration */
 static u8 admission_provisional_queue_candidate_n(u32 target_sid, u64 candidate_id, const char *admit_reason, u32 skip_msgs, u32 n_msgs);
+static u8 admission_materialize_provisional_pair(
+    const u8 *corpus_path, const u8 *replay_path,
+    klist_t(lms) *messages, u32 message_count, u32 *payload_len_out,
+    u32 *saved_count_out);
+#ifdef LOOPFUZZ_EXECUTION_TEST_DRIVER
+static u8 admission_test_exit_after_replay_publish;
+static u8 admission_test_exit_after_pair_publish;
+#endif
 
 
 /* Heisenbug defense: data validation + SIGABRT recovery */
@@ -15712,6 +16231,8 @@ static u8 *salvage_snap_data[64];
 static u32 salvage_snap_size[64];
 static u32 salvage_snap_count = 0;
 static u32 salvage_clean_count = 0;
+static u32 salvage_snap_prefix_count = 0;
+static u32 salvage_snap_candidate_count = 0;
 
 typedef struct {
   klist_t(lms) *messages;
@@ -15745,27 +16266,69 @@ static klist_t(lms) *salvage_snapshot_messages(void) {
 
 static void salvage_take_snapshot(void) {
   for (u32 i = 0; i < 64; i++) { salvage_snap_data[i] = NULL; salvage_snap_size[i] = 0; }
-  salvage_snap_count = 0;
+  salvage_snap_count = salvage_snap_prefix_count = salvage_snap_candidate_count = 0;
   if (!kl_messages) return;
+  u32 snap_bytes = 0;
+  u8 preserve_ftp_prefix = protocol_name &&
+      strcasecmp(protocol_name, "FTP") == 0;
+  /* FTP candidate commands can depend on a login prefix (for example,
+   * USER/PASS for BFTPD). Keep that prefix byte-for-byte in the replayed
+   * session, and reserve the candidate window for clean M2 messages only. */
+  if (preserve_ftp_prefix && candidate_message_first > 64) return;
   kliter_t(lms) *it;
   u32 idx = 0;
-  for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && salvage_snap_count < 64; it = kl_next(it), idx++) {
-    if (idx < candidate_message_first) continue;
+  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it), idx++) {
+    if (idx < candidate_message_first) {
+      if (!preserve_ftp_prefix) continue;
+      if (salvage_snap_count >= 64 || !kl_val(it)->mdata ||
+          kl_val(it)->msize <= 0)
+        goto reject_snapshot;
+      u32 sz = (u32)kl_val(it)->msize;
+      if (sz > (16u << 20) - snap_bytes) goto reject_snapshot;
+      salvage_snap_data[salvage_snap_count] = (u8 *)ck_alloc(sz);
+      memcpy(salvage_snap_data[salvage_snap_count], kl_val(it)->mdata, sz);
+      salvage_snap_size[salvage_snap_count++] = sz;
+      salvage_snap_prefix_count++;
+      snap_bytes += sz;
+      continue;
+    }
     u32 rel = idx - candidate_message_first;
     if (rel >= candidate_message_count) break;
     for (u32 j = 0; j < salvage_clean_count; j++) {
       if (salvage_clean_window_idx[j] == rel) {
         u32 sz = (u32)kl_val(it)->msize;
         if (salvage_data_valid(kl_val(it)->mdata, sz)) {
+          if (salvage_snap_count >= 64 || !kl_val(it)->mdata ||
+              sz > (16u << 20) - snap_bytes)
+            goto reject_snapshot;
           salvage_snap_data[salvage_snap_count] = (u8 *)ck_alloc(sz);
           memcpy(salvage_snap_data[salvage_snap_count], kl_val(it)->mdata, sz);
           salvage_snap_size[salvage_snap_count] = sz;
           salvage_snap_count++;
+          salvage_snap_candidate_count++;
+          snap_bytes += sz;
         }
         break;
       }
     }
   }
+  if (preserve_ftp_prefix && salvage_snap_prefix_count != candidate_message_first)
+    goto reject_snapshot;
+  return;
+
+reject_snapshot:
+  for (u32 i = 0; i < salvage_snap_count; i++) {
+    if (salvage_snap_data[i]) ck_free(salvage_snap_data[i]);
+    salvage_snap_data[i] = NULL;
+    salvage_snap_size[i] = 0;
+  }
+  salvage_snap_count = salvage_snap_prefix_count = salvage_snap_candidate_count = 0;
+}
+
+static void salvage_set_candidate_window(struct queue_entry *q) {
+  if (!q) return;
+  q->prov_cand_first = salvage_snap_prefix_count;
+  q->prov_cand_count = salvage_snap_candidate_count;
 }
 
 static void salvage_free_snapshot(void) {
@@ -15773,33 +16336,7 @@ static void salvage_free_snapshot(void) {
     if (salvage_snap_data[i]) { ck_free(salvage_snap_data[i]); salvage_snap_data[i] = NULL; }
     salvage_snap_size[i] = 0;
   }
-  salvage_snap_count = 0;
-}
-
-static u32 salvage_save_messages(const u8 *fname, u32 n_idx, u8 replay_enabled) {
-  s32 fd = open((const char *)fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) return 0;
-  u8 *mem = NULL; u32 len = 0;
-  u32 count = n_idx < salvage_snap_count ? n_idx : salvage_snap_count;
-  for (u32 i = 0; i < count; i++) {
-    if (!salvage_snap_data[i] || salvage_snap_size[i] == 0) continue;
-    u32 msize = salvage_snap_size[i];
-    if (replay_enabled) {
-      mem = (u8 *)ck_realloc(mem, 4 + len + msize);
-      u32 *psize = (u32 *)&mem[len]; *psize = msize;
-      memcpy(&mem[len + 4], salvage_snap_data[i], msize);
-      len = 4 + len + msize;
-    } else {
-      mem = (u8 *)ck_realloc(mem, len + msize);
-      memcpy(&mem[len], salvage_snap_data[i], msize);
-      len += msize;
-    }
-  }
-  if (len) ck_write(fd, mem, len, (const char *)fname);
-  else unlink((char *)fname);
-  close(fd);
-  if (mem) ck_free(mem);
-  return len;
+  salvage_snap_count = salvage_snap_prefix_count = salvage_snap_candidate_count = 0;
 }
 
 /* ── SMTP transactional skeleton ── */
@@ -15949,8 +16486,8 @@ static void salvage_rtsp_skeleton(void) {
 }
 
 /* Layer-2 fix: execute the stripped snapshot ONCE as a non-destructive
- * controller probe (trial mode, uncharged: the candidate has no queue
- * entry yet, so run_target's debit point sees no provisional root).
+ * controller probe (trial mode, excluded from descendant quota; still
+ * charged against total campaign target invocations).
  * Serviceable == every snapshot message was actually sent and elicited a
  * non-empty response span.  On pass, the response globals stay populated
  * so the queue step can annotate regions without a second execution. */
@@ -15977,12 +16514,28 @@ static u8 salvage_probe_snapshot(void) {
 
   admission_trial_mode = 1;            /* non-destructive probe */
   execution_kind = "salvage-probe";
-  llm_candidate_lineage_pin = 0;       /* controller work: charge nothing */
+  llm_candidate_lineage_pin = 0;       /* controller channel; no descendant debit */
 
   admission_session_context_t context;
   admission_session_enter(&context, salvage_snapshot_messages());
   write_to_testcase(buf, total);
+  u64 before_invocation = target_invocation_seq;
   u8 probe_fault = run_target(g_admission_argv, exec_tmout);
+  /* run_target does not call save_if_interesting. Measure the exact probe
+   * trace here, against a private virgin-map copy, before any next target
+   * invocation can replace it. An empty set is valid baseline evidence. */
+  salvage_probe_evidence_valid = 0;
+  if (probe_fault == FAULT_NONE && target_invocation_seq > before_invocation) {
+    if (!trial_virgin_scratch) trial_virgin_scratch = ck_alloc_nozero(MAP_SIZE);
+    memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
+    hnb_capture_begin();
+    has_new_bits(trial_virgin_scratch);
+    hnb_capture_end();
+    memcpy(salvage_probe_new_slots, hnb_capture_slots, HNB_SLOT_SET_BYTES);
+    salvage_probe_evidence_valid = 1;
+    salvage_probe_candidate_id = (u32)llm_cur_candidate_id;
+    salvage_probe_invocation_id = target_invocation_seq;
+  }
   admission_session_leave(&context);
 
   llm_candidate_lineage_pin = old_pin;
@@ -16026,8 +16579,10 @@ static void salvage_log_probe_reject(u64 candidate_id, u32 msgs, u32 sent) {
 static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
   void (*old_handler)(int) = signal(SIGABRT, salvage_sigabrt_handler);
   salvage_active = 1;
+  salvage_probe_evidence_valid = 0;
   if (sigsetjmp(salvage_jmp, 1) != 0) {
     salvage_snap_count = 0;
+    salvage_snap_prefix_count = salvage_snap_candidate_count = 0;
     signal(SIGABRT, old_handler);
     salvage_active = 0;
     return 0;
@@ -16038,7 +16593,8 @@ static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
   salvage_attempted++;
   if (keep < 2) { signal(SIGABRT, old_handler); salvage_active = 0; return 0; }
   salvage_take_snapshot();
-  if (salvage_snap_count < 2) {
+  u8 ftp_salvage = protocol_name && strcasecmp(protocol_name, "FTP") == 0;
+  if ((ftp_salvage ? salvage_snap_candidate_count : salvage_snap_count) < 2) {
     salvage_free_snapshot();
     signal(SIGABRT, old_handler); salvage_active = 0; return 0;
   }
@@ -16047,7 +16603,14 @@ static u8 admission_salvage_candidate(u32 target_sid, u64 candidate_id) {
     else if (strcasecmp(protocol_name, "HTTP") == 0) salvage_complete_http_snapshot();
     else if (strcasecmp(protocol_name, "RTSP") == 0) salvage_rtsp_skeleton();
   }
-  if (salvage_snap_count < 2) {
+  /* These protocol-specific skeletons may reorder or rewrite their saved
+   * messages. Their complete transformed session is therefore the M2
+   * window. FTP keeps its original reaching prefix and clean M2 boundary. */
+  if (!protocol_name || strcasecmp(protocol_name, "FTP") != 0) {
+    salvage_snap_prefix_count = 0;
+    salvage_snap_candidate_count = salvage_snap_count;
+  }
+  if ((ftp_salvage ? salvage_snap_candidate_count : salvage_snap_count) < 2) {
     salvage_free_snapshot();
     signal(SIGABRT, old_handler); salvage_active = 0; return 0;
   }
@@ -16143,7 +16706,22 @@ static void provisional_preannotate(struct queue_entry *q) {
   admission_session_context_t context;
   admission_session_enter(&context, probe_messages);
   write_to_testcase(buf, q->len);
-  run_target(g_admission_argv, exec_tmout);
+  u64 before_invocation = target_invocation_seq;
+  u8 probe_fault = run_target(g_admission_argv, exec_tmout);
+  if (q->prov_baseline_saved_session && probe_fault == FAULT_NONE &&
+      target_invocation_seq > before_invocation) {
+    if (!trial_virgin_scratch) trial_virgin_scratch = ck_alloc_nozero(MAP_SIZE);
+    memcpy(trial_virgin_scratch, virgin_bits, MAP_SIZE);
+    hnb_capture_begin();
+    has_new_bits(trial_virgin_scratch);
+    hnb_capture_end();
+    q->prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+    memcpy(q->prov_trial_slots, hnb_capture_slots, HNB_SLOT_SET_BYTES);
+    q->prov_trial_evidence_valid = 1;
+    q->prov_trial_slot_count = prov_slot_set_count(hnb_capture_slots);
+    q->prov_trial_candidate_id = q->prov_candidate_id;
+    q->prov_trial_invocation_id = target_invocation_seq;
+  }
   admission_session_leave(&context);
 
   llm_candidate_lineage_pin = old_pin;
@@ -16227,13 +16805,13 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   u8 *fn = alloc_printf("%s/queue/id_%06u_prov", out_dir, queued_paths);
 #endif
 
-  u32 full_len;
-  if (admit_reason && strcmp(admit_reason, "salvage") == 0)
-    full_len = salvage_save_messages(fn, n_msgs, 0);
-  else
-    full_len = save_kl_messages_to_file(kl_messages, fn, 0, n_msgs);
-  if (!full_len) {
-    unlink((char *)fn);
+  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
+                               out_dir, basename(fn));
+  u32 full_len = 0, saved_message_count = 0;
+  if (!admission_materialize_provisional_pair(
+          fn, fn_replay, kl_messages, n_msgs, &full_len,
+          &saved_message_count)) {
+    ck_free(fn_replay);
     ck_free(fn);
     if (is_salvage) {
       messages_sent = caller_messages_sent;
@@ -16241,9 +16819,11 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
     }
     return 0;
   }
+  u32 response_message_count = messages_sent;
+  messages_sent = saved_message_count;
   admission_add_to_queue(fn, full_len);
   struct queue_entry *q = queue_top;
-  if (is_salvage) messages_sent = caller_messages_sent;
+  messages_sent = is_salvage ? caller_messages_sent : response_message_count;
 
   /* Early registration joins only state 0 (regions are annotated later);
    * ordinary-match roots defer registration until after their probe
@@ -16251,12 +16831,6 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   if (state_aware_mode && !is_salvage && !ordinary_cohort)
     update_state_aware_variables(queue_top, 0);
 
-  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
-                               out_dir, basename(q->fname));
-  if (admit_reason && strcmp(admit_reason, "salvage") == 0)
-    salvage_save_messages(fn_replay, n_msgs, 1);
-  else
-    save_kl_messages_to_file(kl_messages, fn_replay, 1, n_msgs);
   ck_free(fn_replay);
 
   q->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
@@ -16285,17 +16859,23 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
   }
   q->llm_origin_candidate_id = (u32)candidate_id;  /* v3.3 lineage */
   llm_lineage_entries++;
-  /* S1 prefix protection: record the candidate window in the SAVED
-   * session's indexing. Salvage saves only the stripped candidate
-   * messages (snapshot), so its window spans the whole saved session and
-   * its M2 is unchanged; every other channel saves the full surrounding
-   * session, and the window is the global candidate bounds (valid until
-   * admission_clear_response_capture() runs after this call returns). */
+  /* Record the candidate window in saved-session coordinates. FTP salvage
+   * includes its reaching prefix, so mutations remain restricted to the
+   * clean M2 suffix. Other salvage skeletons use the complete transformed
+   * snapshot as M2. */
   if (is_salvage) {
-    q->prov_cand_first = 0;
-    q->prov_cand_count = salvage_snap_count;
-    /* Salvage saves the STRIPPED session, whose trace differs from the
-     * trial's — trial positions would misclassify, so none recorded. */
+    salvage_set_candidate_window(q);
+    q->prov_baseline_saved_session = 1;
+    if (salvage_probe_evidence_valid &&
+        salvage_probe_candidate_id == (u32)candidate_id &&
+        salvage_probe_invocation_id == target_invocation_seq) {
+      q->prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+      memcpy(q->prov_trial_slots, salvage_probe_new_slots, HNB_SLOT_SET_BYTES);
+      q->prov_trial_evidence_valid = 1;
+      q->prov_trial_slot_count = prov_slot_set_count(salvage_probe_new_slots);
+      q->prov_trial_candidate_id = (u32)candidate_id;
+      q->prov_trial_invocation_id = salvage_probe_invocation_id;
+    }
   } else {
     q->prov_cand_first = candidate_message_first;
     q->prov_cand_count = candidate_message_count;
@@ -16336,6 +16916,8 @@ static u8 admission_provisional_queue_candidate_n(u32 target_sid,
     /* Layer-2 probe-gate: the pre-admission probe already executed this
      * session; annotate from its (still-live) responses and verify. */
     provisional_annotate_regions(q);
+    (void)provisional_observe_response(q); /* seed state baseline from reused probe */
+    q->prov_last_invocation_state_gain = 0;
     u8 ok8 = entry_can_fuzz_full_session(q);
     struct json_object *j = json_object_new_object();
     json_object_object_add(j, "event", json_object_new_string("provisional"));
@@ -16412,6 +16994,7 @@ static void provisional_censor_all_at_shutdown(void) {
       provisional_censored++;
       q->is_provisional = 0;
       q->prov_expired = 1;  /* stop any further lifecycle action */
+      provisional_log_productivity(q, "censor", "campaign-end");
       provisional_log_event("censor", q, "campaign-end");
       provisional_free_trial_evidence(q);
     }
@@ -16443,8 +17026,8 @@ static void provisional_sweep_expired(void) {
 }
 
 /* A write error must not consume novelty without retaining its input. These
- * two small writers are used only by durable admission; unlike the legacy
- * serialization helper they report open/write/fsync/close failures. */
+ * writers report open/write/fsync/close failures instead of relying on the
+ * legacy serializer, which treats open errors as fatal. */
 static u8 admission_write_all(s32 fd, const void *data, u32 size) {
   const u8 *next = data;
   while (size) {
@@ -16455,6 +17038,117 @@ static u8 admission_write_all(s32 fd, const void *data, u32 size) {
     size -= (u32)written;
   }
   return 1;
+}
+
+/* Stage both provisional artifacts outside queue/ so an interrupted write
+ * cannot be mistaken for an input on resume. Publish the framed witness
+ * first, then the raw queue file as the pair's commit marker. Queue insertion
+ * and its discovery checkpoint happen only after this function succeeds. */
+static u8 admission_materialize_provisional_pair(
+    const u8 *corpus_path, const u8 *replay_path,
+    klist_t(lms) *messages, u32 message_count, u32 *payload_len_out,
+    u32 *saved_count_out) {
+  if (payload_len_out) *payload_len_out = 0;
+  if (saved_count_out) *saved_count_out = 0;
+  if (!corpus_path || !replay_path || !messages || !message_count) return 0;
+
+  u8 *staging_dir = alloc_printf("%s/.admission-staging", out_dir);
+  if (mkdir((char *)staging_dir, 0700) && errno != EEXIST) {
+    ck_free(staging_dir);
+    return 0;
+  }
+  struct stat staging_stat;
+  if (stat((char *)staging_dir, &staging_stat) ||
+      !S_ISDIR(staging_stat.st_mode)) {
+    ck_free(staging_dir);
+    return 0;
+  }
+  const char *queue_name = strrchr((const char *)corpus_path, '/');
+  queue_name = queue_name ? queue_name + 1 : (const char *)corpus_path;
+  u8 *raw_tmp = alloc_printf("%s/%s-%ld-%llu.raw", staging_dir,
+      queue_name, (long)getpid(), (unsigned long long)target_invocation_seq);
+  u8 *replay_tmp = alloc_printf("%s/%s-%ld-%llu.replay", staging_dir,
+      queue_name, (long)getpid(), (unsigned long long)target_invocation_seq);
+  ck_free(staging_dir);
+
+  s32 raw_fd = open((char *)raw_tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  if (raw_fd < 0) goto fail;
+  s32 replay_fd = open((char *)replay_tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  if (replay_fd < 0) {
+    close(raw_fd);
+    goto fail;
+  }
+
+  u8 ok = 1;
+  u32 count = 0;
+  u64 raw_len = 0, replay_len = 0;
+  for (kliter_t(lms) *it = kl_begin(messages);
+       it != kl_end(messages) && count < message_count; it = kl_next(it)) {
+    message_t *message = kl_val(it);
+    if (!message || !message->mdata || message->msize <= 0) {
+      ok = 0;
+      break;
+    }
+    u32 size = (u32)message->msize;
+    if (raw_len + size > 0xffffffffULL ||
+        replay_len + sizeof(size) + size > 0xffffffffULL ||
+        !admission_write_all(raw_fd, message->mdata, size) ||
+        !admission_write_all(replay_fd, &size, sizeof(size)) ||
+        !admission_write_all(replay_fd, message->mdata, size)) {
+      ok = 0;
+      break;
+    }
+    raw_len += size;
+    replay_len += sizeof(size) + size;
+    count++;
+  }
+  if (count != message_count || !raw_len || !ok) ok = 0;
+  if (ok && (fsync(raw_fd) || fsync(replay_fd))) ok = 0;
+  if (close(raw_fd)) ok = 0;
+  if (close(replay_fd)) ok = 0;
+  if (!ok) goto fail;
+
+  struct stat raw_stat, replay_stat;
+  if (stat((char *)raw_tmp, &raw_stat) ||
+      stat((char *)replay_tmp, &replay_stat) ||
+      raw_stat.st_size != (off_t)raw_len ||
+      replay_stat.st_size != (off_t)replay_len)
+    goto fail;
+
+  /* link() gives each final pathname an atomic, no-replace publication. */
+  if (link((char *)replay_tmp, (char *)replay_path)) goto fail;
+  if (unlink((char *)replay_tmp)) {
+    unlink((char *)replay_path);
+    goto fail;
+  }
+#ifdef LOOPFUZZ_EXECUTION_TEST_DRIVER
+  if (admission_test_exit_after_replay_publish) _exit(77);
+#endif
+  if (link((char *)raw_tmp, (char *)corpus_path)) {
+    unlink((char *)replay_path);
+    goto fail;
+  }
+  if (unlink((char *)raw_tmp)) {
+    unlink((char *)corpus_path);
+    unlink((char *)replay_path);
+    goto fail;
+  }
+#ifdef LOOPFUZZ_EXECUTION_TEST_DRIVER
+  if (admission_test_exit_after_pair_publish) _exit(78);
+#endif
+
+  if (payload_len_out) *payload_len_out = (u32)raw_len;
+  if (saved_count_out) *saved_count_out = count;
+  ck_free(raw_tmp);
+  ck_free(replay_tmp);
+  return 1;
+
+fail:
+  unlink((char *)raw_tmp);
+  unlink((char *)replay_tmp);
+  ck_free(raw_tmp);
+  ck_free(replay_tmp);
+  return 0;
 }
 
 static u8 admission_write_durable_witness(const u8 *fname, u8 replay,
@@ -16725,25 +17419,6 @@ static u8 admission_run_llm_candidate(char **argv,
 
   admission_log_decision_event(&ev, source, action_type, seed_id, target_sid);
 
-  /* T03 flow ledger: an executed, parseable, replayable candidate that the
-   * gate rejected frees its would-be 64-call service quota. NO_REFLOW parks
-   * the quota (effective cap shrinks by it); REFLOW hands it to the
-   * ordinary-exploration pool (consumption tracked in execution_admit). */
-  if ((q1_no_reflow || q1_reflow) && executed && ev.p_pass && ev.r_pass &&
-      ev.disposition == EC_REJECT && !durable && !provisional && !forced) {
-    q1_saved_total += provisional_budget_default;
-    u64 flow_id = 0;
-    if (q1_reflow) {
-      q1_reflow_pool += provisional_budget_default;
-      flow_id = q1_register_reflow((u64)llm_cur_candidate_id,
-                                   provisional_budget_default);
-    } else q1_idle_total += provisional_budget_default;
-    q1_log_flow_event("saved", (u64)llm_cur_candidate_id,
-                      q1_reflow ? "ordinary-pool" : "idle", flow_id, 0,
-                      provisional_budget_default,
-                      q1_reflow ? provisional_budget_default : 0);
-  }
-
   if (executed && !common_ret && !last_common_fuzz_saved &&
       last_common_fuzz_fault == FAULT_NONE && !stop_soon) {
     if (admission_native_retention) {
@@ -16814,6 +17489,18 @@ static u8 admission_run_llm_candidate(char **argv,
       ck_free(fn);
     }
   }
+
+  /* Only a genuinely unallocated candidate can release the entire
+   * validation slice. Salvage may admit an EC_REJECT candidate above; the
+   * old pre-route accounting credited those already-served roots too. */
+  if (executed && !common_ret && !last_common_fuzz_saved &&
+      last_common_fuzz_fault == FAULT_NONE && !stop_soon &&
+      ev.p_pass && ev.r_pass && ev.disposition == EC_REJECT &&
+      !durable && !provisional && !forced &&
+      !ablation_no_admission && !admission_native_retention)
+    q1_release_validation_quota((u64)llm_cur_candidate_id,
+                                provisional_budget_default,
+                                "candidate-unallocated");
 
   admission_take_snapshot(&after_final);
   admission_log_candidate_event(source, action_type, seed_id, target_sid,
@@ -17909,7 +18596,7 @@ AFLNET_REGIONS_SELECTION:;
       request_gate_saturated())
     request_gate_skip = 1;
   if (trigger_counter >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD
-      && !request_gate_skip)
+      && !request_gate_skip && !campaign_deadline_reached())
   {
     /* Trigger ledger: every LLM consultation opportunity is recorded with
      * the policy, its counter, the threshold and the cost context, so the
@@ -18445,14 +19132,15 @@ AFLNET_REGIONS_SELECTION:;
         {
           pid_t w = waitpid(pid, &status, WNOHANG);
           if (w == pid) break;
+          if (campaign_deadline_reached()) break;
           sleep(1);
           elapsed++;
         }
-        if (elapsed >= max_wait)
+        if (elapsed >= max_wait || campaign_wallclock_expired)
         {
           kill(pid, SIGKILL);
           waitpid(pid, &status, 0);
-          fprintf(stderr, "[plateau] LLM helper timed out and was killed\n");
+          fprintf(stderr, "[plateau] LLM helper stopped at timeout or campaign deadline\n");
         }
 
         if (state_ctx) { free(state_ctx); state_ctx = NULL; }
@@ -21609,6 +22297,7 @@ static void usage(u8 *argv0)
        "  -R            - enable region-level mutation operators (see README.md)\n"
        "  -F            - enable false negative reduction mode (see README.md)\n"
        "  -c cleanup    - name or full path to the server cleanup script (see README.md)\n"
+       "  -H helper     - optional helper command run before each network exchange\n"
        "  -q algo       - state selection algorithm (See aflnet.h for all available options)\n"
        "  -s algo       - seed selection algorithm (See aflnet.h for all available options)\n\n"
 
@@ -22757,6 +23446,18 @@ static void evidence_env_parse(void) {
       OKF("CALIBRATION: online state-productivity posterior ENABLED "
           "(arm E: loopfuzz-gated-calibrated, Score=Frontier·[ε+(1−ε)θ̃])");
     }
+    const char *cw = getenv("CHATAFL_CAL_REWARD_WINDOW");
+    if (cw && *cw) {
+      char *end = NULL;
+      errno = 0;
+      unsigned long parsed = strtoul(cw, &end, 10);
+      if (errno || !end || *end || *cw == '-' || parsed > 1000000)
+        FATAL("CHATAFL_CAL_REWARD_WINDOW must be 0..1000000");
+      cal_reward_window_invocations = (u32)parsed;
+      OKF("CALIBRATION reward: %s (charged training invocations/window=%u)",
+          parsed ? "fixed-invocation-window-v1" : "episode-bernoulli-v1",
+          cal_reward_window_invocations);
+    }
     const char *g = getenv("CHATAFL_CAL_GAMMA");
     if (g && *g) {
       double gv = atof(g);
@@ -22805,12 +23506,32 @@ static void evidence_env_parse(void) {
       if (b > 0 && b <= 100000000ULL) campaign_call_budget = b;
       else WARNF("CHATAFL_CAMPAIGN_CALL_BUDGET=%s invalid, budget off", cb);
     }
+    const char *sm = getenv("CHATAFL_CAMPAIGN_STOP_MODE");
+    if (sm && *sm && strcmp(sm, "call-budget")) {
+      if (strcmp(sm, "wallclock")) FATAL("Unknown CHATAFL_CAMPAIGN_STOP_MODE=%s", sm);
+      campaign_wallclock_mode = 1;
+    }
+    const char *ds = getenv("CHATAFL_CAMPAIGN_DURATION_SEC");
+    if (ds && *ds) {
+      char *end = NULL;
+      unsigned long long duration = strtoull(ds, &end, 10);
+      if (*end || *ds == '-' || !duration || duration > 604800ULL)
+        FATAL("CHATAFL_CAMPAIGN_DURATION_SEC must be in [1, 604800]");
+      campaign_duration_sec = (u64)duration;
+    }
     if (getenv("CHATAFL_Q1_NO_REFLOW") &&
         strcmp(getenv("CHATAFL_Q1_NO_REFLOW"), "0") != 0) q1_no_reflow = 1;
     if (getenv("CHATAFL_Q1_REFLOW") &&
         strcmp(getenv("CHATAFL_Q1_REFLOW"), "0") != 0) q1_reflow = 1;
     if (getenv("CHATAFL_Q1_DIRECT_SERVICE") &&
         strcmp(getenv("CHATAFL_Q1_DIRECT_SERVICE"), "0") != 0) q1_direct_service = 1;
+    /* These are mutually exclusive policy treatments.  Accepting more than
+     * one makes run-config's precedence label disagree with the active
+     * accounting/retention paths, which invalidates a fixed-dose comparison. */
+    if ((q1_no_reflow + q1_reflow + q1_direct_service) > 1)
+      FATAL("CHATAFL_Q1_NO_REFLOW, CHATAFL_Q1_REFLOW, and CHATAFL_Q1_DIRECT_SERVICE are mutually exclusive");
+    const char *campaign_error = campaign_policy_error();
+    if (campaign_error) FATAL("%s", campaign_error);
     const char *pt = getenv("CHATAFL_PROVISIONAL_TTL_MS");
     if (pt && *pt) {
       u32 t = (u32)atoi(pt);
@@ -22985,7 +23706,7 @@ int main(int argc, char **argv)
   srandom(afl_rng_seed_value);
   ec_rng_seed(ec_rng_seed_value);
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:H:l:")) > 0)
 
     switch (opt)
     {
@@ -23347,6 +24068,12 @@ int main(int argc, char **argv)
       cleanup_script = optarg;
       break;
 
+    case 'H': /* per-exchange helper */
+      if (exchange_helper_script)
+        FATAL("Multiple -H options not supported");
+      exchange_helper_script = optarg;
+      break;
+
     case 'l': /* local port to connect from */
       // This option is only used for targets that send responses to a specific port number
       // The Kamailio SIP server is an example
@@ -23545,10 +24272,12 @@ int main(int argc, char **argv)
    * protocol argument (target hash silently "unknown") and out_dir could
    * be unset. */
   evidence_env_parse();
-  /* Resolve LLM sampling/caps BEFORE the run-config start record so its
-   * cap fields are final at start (chat_llm_global_init otherwise runs
-   * later, inside the grammar phase, leaving start=-1).  Idempotent. */
-  chat_llm_apply_sampling_env();
+  chat_llm_set_campaign_deadline(campaign_wallclock_mode ?
+      run_start_time_ms + campaign_duration_sec * 1000ULL : 0);
+  /* Initialize curl, sampling, and the shared campaign budget BEFORE grammar
+   * requests, enrichment threads, or plateau forks. The run-config start
+   * record must carry these effective limits. */
+  chat_llm_global_init();
   /* v3 (P0-2): pin binary/corpus/config identity into the run-config, and
    * register the per-call LLM ledger so every gateway call (starting with
    * the grammar phase below) is recorded. */
@@ -24036,6 +24765,7 @@ retry_state_aware:
     while (1)
     {
       u8 skipped_fuzz;
+      if (campaign_deadline_reached()) break;
       u64 episode_code_gains_before = code_gain_events;
 
       /* v3.3 (TTL fix): sweep BEFORE selection as well.  The only other
@@ -24172,12 +24902,27 @@ retry_state_aware:
       }
       if (campaign_budget_exhausted && !campaign_budget_stop_reported) {
         campaign_budget_stop_reported = 1;
-        scheduler_selection_reason = "campaign-call-budget-exhausted";
+        scheduler_selection_reason = campaign_wallclock_mode ?
+            "wallclock-budget-exhausted-hold" : "campaign-call-budget-exhausted";
         scheduler_log_selection(NULL);
-        stop_soon = 2;
-        WARNF("Campaign call budget exhausted: %llu charged, cap %llu",
-              campaign_charged_invocations, campaign_effective_call_cap());
-        break;
+        WARNF("Campaign call budget exhausted: %llu charged, cap %llu%s",
+              campaign_charged_invocations, campaign_effective_call_cap(),
+              campaign_wallclock_mode ? "; holding until wallclock deadline" : "");
+        if (!campaign_wallclock_mode) {
+          stop_soon = 2;
+          break;
+        }
+        /* Fixed-time mode keeps the process alive after the common target
+         * dose is consumed. No further target invocation is admitted; the
+         * remaining wallclock is recorded as budget-censored idle time. */
+        if (run_start_time_ms && get_cur_time() - run_start_time_ms >=
+            campaign_duration_sec * 1000ULL) {
+          campaign_wallclock_expired = 1;
+          stop_soon = 2;
+          break;
+        }
+        usleep(100000);
+        continue;
       }
       if (stop_soon || !selected_seed) break;
       if (!full_session_m2_override && target_state_id == 0 &&
@@ -24271,6 +25016,7 @@ retry_state_aware:
     {
 
       u8 skipped_fuzz;
+      if (campaign_deadline_reached()) break;
 
       cull_queue();
 
@@ -24389,12 +25135,21 @@ stop_fuzzing:
    * is complete (termination reason, end time). */
   cal_episode_finalize(1);
   provisional_censor_all_at_shutdown();
+  /* Every orderly exit, including a timeout during initial calibration,
+   * reaches this label. Emit the terminal quota row here exactly once,
+   * after censoring roots, and persist the matching final counters. */
+  q1_log_flow_event("campaign-final", 0, "none", 0,
+                    target_invocation_seq, 0, 0, 0);
+  write_stats_file(0, 0, 0);
   if (run_config_logged) {
     const char *reason =
         scheduler_integrity_failed ? "scheduler-integrity-failure" :
+        campaign_wallclock_mode && campaign_wallclock_expired ? "wallclock-duration" :
         campaign_budget_exhausted ?
-            (mutation_call_budget && mutation_charged_calls >= mutation_call_budget ?
-                "mutation-call-budget" : "campaign-call-budget") :
+            campaign_budget_termination_reason() :
+        campaign_wallclock_mode && (
+            (run_start_time_ms && get_cur_time() - run_start_time_ms >=
+             campaign_duration_sec * 1000ULL)) ? "wallclock-duration" :
         stop_soon == 2 ? "exit_1" :
         (unique_crashes && !queue_cycle ? "early-crash" : "signal-or-timeout");
     run_config_log("end", reason);

@@ -130,7 +130,7 @@ evidence_selftest: evidence_selftest.c evidence-cal.c evidence-cal.h
 # Contract tests include the production translation unit under AFL_LIB.  Keep
 # these separate from `all`: they are mandatory pre-experiment gates and do
 # not launch a target, forkserver, network client, or LLM request.
-scheduler_contract_selftest: scheduler_contract_selftest.c afl-fuzz.c evidence-cal.c evidence-cal.h $(COMM_HDR)
+scheduler_contract_selftest: scheduler_contract_selftest.c afl-fuzz.c evidence-cal.c evidence-cal.h mutation-ops.o $(COMM_HDR)
 	$(CC) -D_GNU_SOURCE -O1 -g -ffunction-sections -fdata-sections -Wno-pointer-sign -Wno-unused-result \
 		-o $@ scheduler_contract_selftest.c mutation-ops.o -Wl,--gc-sections -lcgraph -lm -ljson-c
 

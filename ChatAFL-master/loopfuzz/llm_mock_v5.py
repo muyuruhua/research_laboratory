@@ -49,6 +49,13 @@ ERROR_RATE = float(os.environ.get("MOCK_ERROR_RATE", "1.5"))
 MODEL_NAME = os.environ.get("MOCK_MODEL", "gpt-4o-mini-2024-07-18")
 MOCK_SEED = int(os.environ.get("MOCK_SEED", "20261102"))
 MOCK_PORT = int(os.environ.get("MOCK_PORT", "8099"))
+MOCK_PROTOCOL = os.environ.get("MOCK_PROTOCOL", "").strip().upper()
+MOCK_TARGET = (os.environ.get("MOCK_TARGET") or
+               os.environ.get("CHATAFL_TARGET_NAME", "")).strip().lower()
+MOCK_TARGET = MOCK_TARGET.rsplit("/", 1)[-1].split(":", 1)[0]
+VALID_PROTOCOLS = frozenset({"FTP", "SMTP", "RTSP", "SIP", "DAAP", "HTTP"})
+if MOCK_PROTOCOL and MOCK_PROTOCOL not in VALID_PROTOCOLS:
+    raise SystemExit(f"MOCK_PROTOCOL must be one of {sorted(VALID_PROTOCOLS)}")
 
 # ── Conversation memory (per-protocol suggestion tracking) ──
 _suggested = {}  # proto -> set of hash(candidate_str)
@@ -56,6 +63,10 @@ _lock = threading.Lock()
 _metrics_lock = threading.Lock()
 _request_seq = 0
 _metrics = {
+    # requests/by_proto/requests_by_class count all POST attempts. When the
+    # runner pins MOCK_PROTOCOL, `by_proto` records the response bank actually
+    # selected for every request, independent of prompt wording. Standalone
+    # mock use without a pin retains prompt-based protocol inference.
     "requests": 0,
     "http_200": 0,
     "http_429": 0,
@@ -286,6 +297,91 @@ def http_deep(r, i, ph, ctx, seeds):
         f"POST /form{r.randint(1,9)} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {r.randint(10,500)}\r\n\r\na={r.randint(1,999999)}&b=x\r\n",
     ])
 
+def forked_daapd_request(method, path, body=""):
+    headers = "Host: 127.0.0.1:3689\r\n"
+    if body:
+        headers += "Content-Type: application/json\r\n"
+        headers += f"Content-Length: {len(body.encode())}\r\n"
+    elif method in {"POST", "PUT", "PATCH"}:
+        headers += "Content-Length: 0\r\n"
+    return f"{method} {path} HTTP/1.1\r\n{headers}\r\n{body}"
+
+def forked_daapd_http_deep(r, i, ph, ctx, seeds):
+    # The corpus contains modern JSON API requests; keep seed-derived
+    # mutations within those routes instead of falling back to generic HTTP.
+    if ph == 0:
+        return forked_daapd_request("GET", "/api/config")
+    if seeds and r.random() < 0.35:
+        candidates = [line for line in seeds if line.startswith(("GET /api/", "POST /api/", "PUT /api/", "DELETE /api/", "GET /artwork/"))]
+        if candidates:
+            line = r.choice(candidates).splitlines()[0]
+            parts = line.split()
+            if len(parts) >= 2:
+                method, path = parts[0], parts[1]
+                if "?" in path:
+                    path += r.choice(["&limit=3", "&offset=0", "&state=true", "&state=false"])
+                return forked_daapd_request(method, path)
+    track = r.randint(1, 6)
+    artist = r.choice([6812574504550889270, 1267017029468087345, 694971154903243579])
+    album = r.choice([7888021095875713269, 6721547971723107633, 3587305042194852879, 310695667224764332])
+    candidates = [
+        forked_daapd_request("GET", f"/api/library/files?directory=%2Ftmp%2FMP3%2F{r.choice(['David+Hilowitz', 'Mild_Wild', 'Scott+Holmes'])}"),
+        forked_daapd_request("GET", f"/api/library/artists/{artist}"),
+        forked_daapd_request("GET", f"/api/library/albums/{album}/tracks?limit={r.choice([-1, 3, 20])}&offset={r.randint(0, 4)}"),
+        forked_daapd_request("GET", f"/api/search?type={r.choice(['album', 'albums', 'track,artist,album,playlist'])}&limit={r.randint(1, 10)}&offset={r.randint(0, 5)}"),
+        forked_daapd_request("POST", f"/api/queue/items/add?uris=library:track:{track}&position={r.randint(0, 3)}"),
+        forked_daapd_request("GET", "/api/queue"),
+        forked_daapd_request("PUT", f"/api/player/{r.choice(['play', 'pause'])}"),
+        forked_daapd_request("PUT", f"/api/player/volume?volume={r.randint(0, 100)}"),
+        forked_daapd_request("PUT", f"/api/player/{r.choice(['shuffle', 'consume'])}?state={r.choice(['true', 'false'])}"),
+        forked_daapd_request("PUT", f"/api/player/repeat?state={r.choice(['off', 'single', 'all'])}"),
+        forked_daapd_request("DELETE", f"/api/queue/items/{r.randint(1, 200)}"),
+        forked_daapd_request("GET", f"/artwork/group/{r.randint(1, 6)}?maxwidth=600&maxheight=600"),
+    ]
+    return r.choice(candidates)
+
+def forked_daapd_http_bad(r, ph):
+    return r.choice([
+        forked_daapd_request("GET", "/api/library/files?directory=%ZZ"),
+        forked_daapd_request("POST", "/api/queue/items/add?uris=unknown:track:-1"),
+        forked_daapd_request("PUT", f"/api/player/volume?volume={r.choice([-1, 101, 2**31])}"),
+        forked_daapd_request("DELETE", "/api/queue/items/not-an-id"),
+        forked_daapd_request("GET", "/api/search?limit=-999999999999999999999"),
+    ])
+
+def forked_daapd_http_rare(r, ph, ctx, seeds):
+    return r.choice([
+        forked_daapd_request("GET", "/api/settings"),
+        forked_daapd_request("GET", "/api/outputs"),
+        forked_daapd_request("GET", "/api/spotify"),
+        forked_daapd_request("PUT", "/api/queue/clear"),
+        forked_daapd_request("GET", "/api/library/genres"),
+        forked_daapd_request("GET", "/api/library/albums/3587305042194852879/tracks?limit=-1&offset=0"),
+    ])
+
+def forked_daapd_http_mut(r, seeds):
+    routes = [
+        ("GET", "/api/player"), ("GET", "/api/queue"),
+        ("GET", f"/api/library/files?directory=%2Ftmp%2FMP3%2F{r.choice(['David+Hilowitz', 'Mild_Wild', 'Scott+Holmes'])}"),
+        ("GET", f"/api/search?type=album&limit={r.randint(1, 10)}&offset={r.randint(0, 5)}"),
+        ("POST", f"/api/queue/items/add?uris=library:track:{r.randint(1, 6)}"),
+        ("PUT", f"/api/player/volume?volume={r.randint(0, 100)}"),
+    ]
+    method, path = r.choice(routes)
+    return forked_daapd_request(method, path)
+
+def _mutate_forked_daapd_seed(seed_line, r):
+    match = re.search(r"(?m)^(GET|POST|PUT|DELETE) (/(?:api/|artwork/)[^\s]*)", seed_line)
+    if not match:
+        return forked_daapd_http_mut(r, [])
+    method, path = match.groups()
+    if "?" in path:
+        path += r.choice(["&limit=3", "&offset=0", "&state=true", "&state=false"])
+    elif path == "/api/player":
+        path = "/api/player/" + r.choice(["play", "pause"])
+        method = "PUT"
+    return forked_daapd_request(method, path)
+
 def daap_deep(r, i, ph, ctx, seeds):
     if ph == 0: return "GET /server-info HTTP/1.1\r\nHost: localhost\r\n\r\n"
     return r.choice([
@@ -354,8 +450,27 @@ BANKS = {
 
 PROTO_ORDER = ["FTP", "SMTP", "RTSP", "SIP", "DAAP", "HTTP"]
 
+def _is_forked_daapd_http():
+    return MOCK_PROTOCOL == "HTTP" and MOCK_TARGET == "forked-daapd"
+
 def detect_proto(prompt):
+    # Prompt content can mention transport or related protocols. The runner
+    # pins MOCK_PROTOCOL for experiments; retain inference for standalone use.
+    if MOCK_PROTOCOL:
+        return MOCK_PROTOCOL
+    # forked-daapd is fuzzed as HTTP (-P HTTP). DAAP can appear in target
+    # names and explanatory prompts, so it must not override that target's
+    # wire-protocol attribution when the launcher omitted a pin.
+    if MOCK_TARGET == "forked-daapd":
+        return "HTTP"
     up = prompt.upper()
+    # Prefer concrete wire syntax over descriptive protocol names. The string
+    # "DAAP HTTP/1.1" describes HTTP traffic to forked-daapd; matching the
+    # DAAP token first would select the wrong response bank.
+    if re.search(r"\bHTTP/\d(?:\.\d)?", up) or re.search(
+        r"\b(?:GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\s+(?:/|\*)", up
+    ):
+        return "HTTP"
     for p in PROTO_ORDER:
         if f" {p} " in up or f"{p} PROTOCOL" in up or f"/{p}" in up:
             return p
@@ -369,10 +484,28 @@ def detect_proto(prompt):
 def reply_for(prompt, temperature=0.5, request_id=None, count_reply_class=True):
     proto = detect_proto(prompt)
     bank = BANKS[proto]
+    if _is_forked_daapd_http():
+        bank = dict(bank)
+        bank.update(
+            seed=forked_daapd_request("GET", "/api/config"),
+            deep=forked_daapd_http_deep,
+            rare=forked_daapd_http_rare,
+            bad=forked_daapd_http_bad,
+            mut=forked_daapd_http_mut,
+        )
     if "message templates" in prompt:
         if count_reply_class:
             with _metrics_lock:
                 reqs["templates"] += 1
+        if _is_forked_daapd_http():
+            return (
+                'GET_API_CONFIG: ["GET /api/config HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "\\r\\n"]\n'
+                'GET_API_LIBRARY: ["GET /api/library/files?directory=<<VALUE>> HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "\\r\\n"]\n'
+                'GET_API_SEARCH: ["GET /api/search?type=<<VALUE>>&limit=<<VALUE>> HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "\\r\\n"]\n'
+                'GET_API_QUEUE: ["GET /api/queue HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "\\r\\n"]\n'
+                'POST_API_QUEUE_ADD: ["POST /api/queue/items/add?uris=<<VALUE>> HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "Content-Length: 0\\r\\n", "\\r\\n"]\n'
+                'PUT_API_PLAYER: ["PUT /api/player/<<VALUE>> HTTP/1.1\\r\\n", "Host: 127.0.0.1:3689\\r\\n", "Content-Length: 0\\r\\n", "\\r\\n"]'
+            )
         return "\n".join(f'{c}: ["{c} <<VALUE>>\\r\\n"]' for c in bank["tpl"])
     if "ONLY valid JSON" in prompt or "suggested_request" in prompt:
         if count_reply_class:
@@ -396,7 +529,8 @@ def reply_for(prompt, temperature=0.5, request_id=None, count_reply_class=True):
             if kind == "mut" and r.random() < 0.5: kind = "rare"
             if kind == "bad" and r.random() < 0.3: kind = "deep"
         if kind == "mut":
-            ins = bank["mut"](r, seeds)
+            ins = (forked_daapd_http_mut(r, seeds) if _is_forked_daapd_http()
+                   else bank["mut"](r, seeds))
             _remember(proto, ins)
             return json.dumps({
                 "analysis": f"mock-v5: mutate seed ({proto}) phase={ph} seeds={len(seeds)}",
@@ -415,7 +549,9 @@ def reply_for(prompt, temperature=0.5, request_id=None, count_reply_class=True):
             candidate = bank["deep"](r, i, ph, ctx, seeds)
         # Conversation memory: if repeat, try a mutation of an actual seed
         if _repeat_count(proto, candidate) and seeds:
-            candidate = _mutate_seed(r.choice(seeds), r, proto)
+            candidate = (_mutate_forked_daapd_seed(r.choice(seeds), r)
+                         if _is_forked_daapd_http()
+                         else _mutate_seed(r.choice(seeds), r, proto))
         _remember(proto, candidate)
         return json.dumps({
             "analysis": f"mock-v5: {proto} phase={ph} ctx={len(ctx)} seeds={len(seeds)} temp={temperature}",
@@ -447,7 +583,22 @@ class H(http.server.BaseHTTPRequestHandler):
                 snapshot["requests_by_class"] = dict(_metrics["requests_by_class"])
                 snapshot["models_seen"] = dict(_metrics["models_seen"])
                 snapshot["reply_classes"] = dict(reqs)
+            # `truncated` describes HTTP 200 responses with a shortened body;
+            # it is a subset of `http_200`, not an additional HTTP status.
+            # Reply classes are successful campaign response kinds only:
+            # they exclude the generic startup preflight and HTTP errors.
+            snapshot["counter_semantics"] = {
+                "requests": "all POST attempts",
+                "by_proto": ("pinned response-bank protocol used for every request"
+                             if MOCK_PROTOCOL else
+                             "prompt-inferred response-bank protocol; no target pin configured"),
+                "requests_by_class": "all POST attempts split into startup_preflight and campaign",
+                "http_200_http_429_http_500": "mutually exclusive response status counts; sum to requests",
+                "truncated": "subset of http_200; do not add to HTTP status total",
+                "reply_classes": "successful campaign reply kinds; excludes startup_preflight and HTTP errors",
+            }
             config = {
+                "protocol": MOCK_PROTOCOL or None,
                 "error_rate_percent": ERROR_RATE,
                 "error_rate_semantics": "configured budget; 67% is tested as HTTP 500, 33% as truncation after non-500/non-429 responses",
                 "mix": dict(MIX),
@@ -553,5 +704,5 @@ class Srv(socketserver.ThreadingTCPServer):
 if __name__ == "__main__":
     with Srv(("127.0.0.1", MOCK_PORT), H) as s:
         print(f"[mock-v5] bind=127.0.0.1 port={MOCK_PORT} model={MODEL_NAME} latency={LATENCY_MODE} seed={MOCK_SEED} "
-              f"error_rate={ERROR_RATE}% mix={MIX}", flush=True)
+              f"protocol={MOCK_PROTOCOL or 'prompt-inferred'} error_rate={ERROR_RATE}% mix={MIX}", flush=True)
         s.serve_forever()

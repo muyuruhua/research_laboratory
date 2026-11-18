@@ -153,6 +153,66 @@ gcovr's structured deletion API clears preexisting gcda, then a separate baselin
 must verify zero covered lines/branches. No original archive is opened or changed.
 Existing coverage outputs or artifact directories are never overwritten.
 
+## Optional sampled checkpoints for accumulated gcda (schema v5)
+
+By default the command remains v4: it runs gcovr and saves a full JSON snapshot
+after every replayed input, while `--step` only controls CSV rows. An explicit
+`--sampled-checkpoints` option enables the separate
+`loopfuzz-coverage-v5-sampled-checkpoints` schema and `.v5` artifact directory.
+It is accepted only for targets whose counters accumulate in the fixed gcda
+tree: LightFTP, Lighttpd1, Forked-daapd, Kamailio, Exim, ProFTPD and Live555.
+BFTPD and Pure-FTPd keep per-input snapshots because their collection paths
+import or reset per-session counters.
+
+Sampled mode still verifies every input hash before replay, executes the
+target-specific reset and replay, verifies gcno identity, and writes a
+`replay-ledger.jsonl` record for every input with reset/replay results. It runs
+gcovr and saves a compressed snapshot at each `--step` boundary, at the end of
+the initial-seed prefix when present, and at the final input. The last checkpoint
+is always present. `checkpoints.jsonl` and `cov_over_time.csv` contain only
+those sampled points; each checkpoint links back to its replay input index. The
+auditor checks policy-derived indices, all per-input records, each snapshot
+hash, fixed branch identities, cumulative branch/line unions, CSV rows, and the
+terminal endpoint. This mode relies on the listed target's gcda actually
+accumulating across its replay processes; it must not be used if a reset command
+or target startup clears gcda.
+
+The existing subject wrappers and `run_ablation.sh` defaults stay on v4. To
+opt in manually in a prepared target environment, invoke the module with the
+same five positional values the wrapper normally passes, plus the explicit
+flag:
+
+```bash
+python3 "$COVERAGE_V4_MODULE" replay \
+  --target exim --folder "$CORPUS" --port 25 --step 16 \
+  --output "$OUTPUT/cov_over_time.csv" --mode 1 \
+  --require-coordinates --sampled-checkpoints
+```
+
+## Smoke-only replay cap
+
+The 15-minute integrity smoke can bound replay work without changing the
+formal fixed-dose path. Set both `COVERAGE_V4_SMOKE=1` and
+`COVERAGE_V4_MAX_REPLAY_INPUTS=N`; the subject wrapper passes
+`--smoke --max-replay-inputs N`. A capped run records `replay_truncated=true`,
+the full `planned_n_replayed` count, and `acceptance=incomplete` in
+`terminal.json`. Its branch union is a diagnostic lower bound and cannot pass
+the fixed-dose coverage gate. A cap without the smoke marker is rejected, and
+formal runs leave the variable unset so all corpus inputs are replayed.
+
+The sampled output is audited with the same command and automatically resolved
+from the `.v5` suffix:
+
+```bash
+python3 "$COVERAGE_V4_MODULE" audit "$OUTPUT/cov_over_time.csv"
+```
+
+The Q1 smoke archive auditor also accepts `.v5` only for those seven targets and
+independently reconstructs its sampled union. It requires exactly one of `.v4`
+or `.v5` in an archive; it never interprets a legacy v4 artifact as sampled
+coverage. Sampled results must not be pooled with v4 results without reporting
+their distinct schema and checkpoint policy.
+
 ## Outputs and Independent Audit
 
 The main CSV retains `Time,l_per,l_abs,b_per,b_abs,idx` and adds exact discovery

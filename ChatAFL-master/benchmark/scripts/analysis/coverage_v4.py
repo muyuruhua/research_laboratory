@@ -2,6 +2,7 @@
 """Source-scoped branch identities and auditable cumulative corpus replay."""
 
 import argparse
+import contextlib
 import csv
 import dataclasses
 import gzip
@@ -11,12 +12,24 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import struct
 import tempfile
 import subprocess
 import sys
 import time
 
 SCHEMA = "loopfuzz-coverage-v4"
+SAMPLED_SCHEMA = "loopfuzz-coverage-v5-sampled-checkpoints"
+SAMPLED_ARTIFACT_SUFFIX = ".v5"
+LEGACY_ARTIFACT_SUFFIX = ".v4"
+# These targets retain gcda counters between replay inputs. BFTPD imports
+# chrooted per-session gcda and Pure-FTPd resets counters during session exit;
+# their per-input snapshots remain necessary for the established union audit.
+ACCUMULATING_GCDA_TARGETS = (
+    "lightftp", "lighttpd1", "forked-daapd", "kamailio", "exim", "proftpd", "live555")
+REPLAY_HARNESS_VERSION = "20261116b-frame-ledger-strict-proptpd-v4-pureftpd-sm-v1"
+LOOPFUZZ_REPLAYER_ENV = "COVERAGE_V4_LOOPFUZZ_REPLAYER"
+_VERIFIED_LOOPFUZZ_REPLAYERS = {}
 BFTPD_EXIT_MARKER = "COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2"
 BFTPD_CHROOT_MARKER = "COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1"
 CSV_FIELDS = ("Time", "l_per", "l_abs", "b_per", "b_abs", "idx",
@@ -164,8 +177,27 @@ def instrument_identity(object_root):
     return notes
 
 
-def scope_manifest(snapshot, notes, gcovr_version, gcov_version, replay_policy=None):
-    value = dict(schema_version=SCHEMA, sources=snapshot.files, gcno=notes,
+SCOPE_IDENTITY_FIELDS = (
+    "schema_version", "sources", "gcno", "branch_ids", "line_ids",
+    "gcovr_format", "gcovr_version", "gcov_version", "branch_identity",
+    "source_resolution", "replay_policy", "checkpoint_policy",
+    "replay_harness_version",
+)
+
+
+def scope_identity_payload(manifest):
+    """Return fields that define measurement identity, excluding locations."""
+    return {field: manifest[field] for field in SCOPE_IDENTITY_FIELDS if field in manifest}
+
+
+def scope_identity_hash(manifest):
+    return digest_bytes(canonical(scope_identity_payload(manifest)).encode())
+
+
+def scope_manifest(snapshot, notes, gcovr_version, gcov_version, replay_policy=None,
+                   schema=SCHEMA, checkpoint_policy=None):
+    value = dict(schema_version=schema, sources=snapshot.files, gcno=notes,
+                 replay_harness_version=REPLAY_HARNESS_VERSION,
                  branch_ids=sorted(snapshot.branches), line_ids=sorted(snapshot.lines),
                  gcovr_format=snapshot.format_version, gcovr_version=gcovr_version,
                  gcov_version=gcov_version,
@@ -173,7 +205,14 @@ def scope_manifest(snapshot, notes, gcovr_version, gcov_version, replay_policy=N
                  source_resolution=snapshot.resolution)
     if replay_policy is not None:
         value["replay_policy"] = replay_policy
-    value["scope_sha256"] = digest_bytes(canonical(value).encode())
+    if checkpoint_policy is not None:
+        value["checkpoint_policy"] = checkpoint_policy
+    return seal_scope_manifest(value)
+
+
+def seal_scope_manifest(value):
+    """Hash measurement identity, leaving provenance paths outside the digest."""
+    value["scope_sha256"] = scope_identity_hash(value)
     return value
 
 
@@ -201,6 +240,74 @@ def bftpd_exit_policy(cwd, allow_incomplete=False):
                 scope="coverage replay build only; fuzz target unchanged")
 
 
+def proftpd_replay_policy():
+    """Pin the supervised listener lifecycle used for ProFTPD corpus replay."""
+    return dict(name="proftpd-ready-client-graceful-exit-v4", verified=True,
+                readiness="bound-tcp-listener",
+                shutdown="natural-exit-first;harness-sigterm-after-client-completion",
+                handled_shutdown_exit_signal=-signal.SIGSEGV,
+                handled_harness_shutdown_signal="SIGTERM",
+                acceptance_requires=["harness-requested-sigterm-shutdown",
+                                     "server-ready", "client-exit-0",
+                                     "no-client-timeout", "successful-reset",
+                                     "ledger-verified-full-send",
+                                     "session-gcda-touched"],
+                scope="coverage replay harness only; fuzz target unchanged")
+
+
+def pureftpd_source_patch_markers(source_bytes):
+    expected_regions = (
+        b"void _EXIT(const int status)\n{\n    delete_atomic_file();\n"
+        b"#ifdef FTPWHO\n    ftpwho_exit();\n#endif\n    exit(status);\n}",
+        b"addreply(230, MSG_CURRENT_DIR_IS, wd);\n    }\n"
+        b"    unsetenv(\"GCOV_PREFIX\");\n\n#ifndef NON_ROOT_FTP",
+        b"sigaddset(&set, SIGCHLD);\n    sigprocmask(SIG_BLOCK, &set, NULL);\n"
+        b"    nb_children++;\n    child = 0;",
+    )
+    return bool(source_bytes) and all(region in source_bytes for region in expected_regions)
+
+
+def pureftpd_replay_policy(cwd, allow_incomplete=False):
+    """Check source patch markers and executable presence for replay policy.
+
+    The hashes are retained as evidence. This check does not prove that the
+    executable was built from the source file in this directory.
+    """
+    source = Path(cwd) / "src/ftpd.c"
+    binary = Path(cwd) / "src/pure-ftpd"
+    source_bytes = source.read_bytes() if source.is_file() else b""
+    source_patch_markers = pureftpd_source_patch_markers(source_bytes)
+    binary_present = binary.is_file() and os.access(binary, os.X_OK)
+    verified = bool(source_bytes) and source_patch_markers and binary_present
+    if not verified and not allow_incomplete:
+        raise CoverageError("pure-ftpd gcov source lacks the verified single-process "
+                            "session-exit/coverage-flush patch")
+    return dict(name="pure-ftpd-gcov-die-421-exit-251-252-v2",
+                verified=verified,
+                verified_scope="source patch markers present and executable present",
+                source_patch_markers_verified=bool(source_bytes) and source_patch_markers,
+                executable_present=binary_present,
+                source_binary_build_association="not-verified",
+                readiness="bound-tcp-listener",
+                shutdown="harness-sigterm-after-client-completion",
+                handled_session_exit_codes=[251, 252],
+                handled_terminal_ftp_reply=421,
+                acceptance_requires=["verified-source-patch", "successful-reset",
+                                     "server-ready", "client-exit-0", "no-client-timeout",
+                                     "final-ftp-reply-421", "session-gcda-imported"],
+                source_sha256=digest_file(source) if source.is_file() else None,
+                binary_sha256=digest_file(binary) if binary.is_file() else None,
+                scope="coverage replay build only; fuzz target unchanged")
+
+
+def forked_daapd_replay_policy():
+    """Pin DAAP replay readiness and the gcov build's normal-exit signal."""
+    return dict(name="forked-daapd-ready-client-sigusr1-exit0-v1", verified=True,
+                readiness="bound-tcp-listener",
+                shutdown="harness-sigusr1-after-client-completion;gcov-patch-exit0",
+                scope="coverage replay harness only; fuzz target unchanged")
+
+
 def replay_incompleteness(replay):
     reasons = []
     if replay.get("session_coverage_missing"):
@@ -209,7 +316,483 @@ def replay_incompleteness(replay):
         reasons.append("server-signal-exit")
     if replay.get("replay_anomaly"):
         reasons.append(replay.get("anomaly_kind") or "replay-anomaly")
+    if replay.get("client_timed_out"):
+        reasons.append("client-timeout")
+    if replay.get("server_ready") is False:
+        reasons.append("server-not-ready")
+    if replay.get("helper_ready") is False:
+        reasons.append("helper-not-ready")
+    if (("send_completeness" in replay or
+            replay.get("harness_policy") == "proftpd-ready-client-graceful-exit-v4") and
+            replay.get("send_completeness") != "complete"):
+        reasons.append("frame-ledger-incomplete")
     return reasons
+
+
+def ftp_reply_codes(text):
+    """RFC 959 multi-line state machine, mirroring extract_response_codes_ftp.
+
+    Emits single-line "ddd SP" replies and multi-line "ddd-" ... "ddd SP"
+    bodies as their opening/closing code; body text (including digit-prefixed
+    lines such as FEAT bodies) never emits. Non-reply lines are skipped.
+    """
+    codes = []
+    pending, in_multiline = 0, False
+    for raw in text.split("\r\n"):
+        line = raw
+        if len(line) >= 3 and line[:3].isdigit():
+            code = int(line[:3])
+            fourth = line[3] if len(line) >= 4 else " "
+            if in_multiline:
+                if code == pending and fourth == " ":
+                    codes.append(code)
+                    in_multiline = False
+            elif fourth == "-":
+                pending, in_multiline = code, True
+            elif fourth == " " or len(line) == 3:
+                codes.append(code)
+        # non-reply text outside a body: skipped
+    return codes
+
+
+def pureftpd_final_reply_code(replay_log):
+    """Read the final FTP reply only when summary and transcript agree.
+
+    Both accountings use the multi-line state machine (2026-11-16, GLM53
+    2.3): the client summary is produced by the same extractor, so agreement
+    is required and any disagreement stays unparsed. The legacy
+    prefix-extension rule for pre-state-machine summaries was removed;
+    archives produced by the old extractor keep their recorded
+    classification and are not re-derived.
+    """
+    try:
+        text = Path(replay_log).read_text(errors="replace")
+    except OSError:
+        return None
+    lines = text.splitlines()
+    summary_indices = [i for i, line in enumerate(lines)
+                       if line.strip().startswith("Responses from server:")]
+    details_indices = [i for i, line in enumerate(lines)
+                       if line.strip() == "Responses in details:"]
+    if len(summary_indices) != 1 or len(details_indices) != 1:
+        return None
+    summary_index, details_index = summary_indices[0], details_indices[0]
+    if details_index <= summary_index:
+        return None
+    summary = lines[summary_index].partition(":")[2].strip().strip("-")
+    summary_parts = summary.split("-")
+    if summary_parts and summary_parts[0] == "0":
+        summary_parts = summary_parts[1:]
+    if not summary_parts or any(len(part) != 3 or not part.isdigit()
+                                for part in summary_parts):
+        return None
+    detail_lines = []
+    for line in lines[details_index + 1:]:
+        if line.strip().startswith("--------------------------------"):
+            break
+        detail_lines.append(line)
+    transcript_codes = ftp_reply_codes("\r\n".join(detail_lines))
+    if [str(code) for code in transcript_codes] != summary_parts:
+        return None
+    return transcript_codes[-1] if transcript_codes else None
+
+
+def apply_pureftpd_session_exit_policy(flags, server_code, client_code,
+                                       server_ready, client_timed_out,
+                                       shutdown_requested, final_reply_code,
+                                       imported_gcda, reset_succeeded):
+    """Accept only observed Pure-FTPd 421-driven exits with full evidence."""
+    evidence = dict(server_exit_code=server_code, client_exit_code=client_code,
+                    server_ready=bool(server_ready),
+                    client_timed_out=bool(client_timed_out),
+                    harness_shutdown_requested=bool(shutdown_requested),
+                    final_ftp_reply_code=final_reply_code,
+                    imported_gcda_count=len(imported_gcda or []),
+                    reset_command_succeeded=bool(reset_succeeded))
+    accepted = (server_code in (251, 252) and client_code == 0 and
+                server_ready is True and client_timed_out is False and
+                shutdown_requested is False and final_reply_code == 421 and
+                bool(imported_gcda) and reset_succeeded is True and
+                flags.get("server_crashed") is False and
+                flags.get("server_anomalous_exit") is True and
+                flags.get("client_anomalous_exit") is False and
+                flags.get("anomaly_kind") == "server-exit-%s" % server_code)
+    result = dict(flags)
+    result["pureftpd_session_exit_expected"] = bool(accepted)
+    result["pureftpd_session_exit_evidence"] = evidence
+    if accepted:
+        result.update(server_crashed=False, server_anomalous_exit=False,
+                      client_anomalous_exit=False, client_aborted_on_crash=False,
+                      replay_anomaly=False, anomaly_kind="")
+    return result
+
+
+def framed_input_frames(path):
+    """Count length-prefixed frames in a replayable-queue input file."""
+    data = Path(path).read_bytes()
+    frames, offset = 0, 0
+    while offset + 4 <= len(data):
+        (length,) = struct.unpack_from("<I", data, offset)
+        if length > len(data) - offset - 4:
+            raise CoverageError("framed replay input is corrupt: " + str(path))
+        frames += 1
+        offset += 4 + length
+    if offset != len(data):
+        raise CoverageError("framed replay input has trailing bytes: " + str(path))
+    return frames
+
+
+def transcript_packets_sent(replay_log):
+    """Count the replay client's per-packet banners in a transcript.
+
+    LEGACY EVIDENCE ONLY (2026-11-16, GLM53 plan 2.1): banners print BEFORE
+    the send attempt, so a banner count proves loop entry, not delivery.
+    New replays carry loopfuzz-replay-frame-ledger-v1; read_frame_ledger is
+    the send-completeness authority for them.
+    """
+    try:
+        return Path(replay_log).read_bytes().count(b"Size of the current packet")
+    except OSError:
+        return None
+
+
+def read_frame_ledger(path, framed_bytes=None):
+    """Validate a loopfuzz-replay-frame-ledger-v1 JSONL and count true sends.
+
+    send_complete is only what the replayer recorded as net_send returning the
+    full frame length; banners are never counted. When framed_bytes is given,
+    every ledger frame length must match the framed input's prefixes exactly.
+    """
+    rows = []
+    with open(path) as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict) or "event" not in row:
+                raise CoverageError(f"frame ledger row {number} is malformed")
+            rows.append(row)
+    if not rows or rows[0].get("event") != "session_begin" or rows[0].get("schema") != "loopfuzz-replay-frame-ledger-v1":
+        raise CoverageError("frame ledger lacks a valid session_begin row")
+    frames = [row for row in rows if row.get("event") == "frame"]
+    ends = [row for row in rows if row.get("event") == "session_end"]
+    if len(ends) != 1 or rows[-1].get("event") != "session_end":
+        raise CoverageError("frame ledger must end with exactly one session_end row")
+    for index, row in enumerate(frames, 1):
+        if row.get("frame") != index:
+            raise CoverageError(f"frame ledger sequence breaks at frame {index}")
+        if not isinstance(row.get("len"), int) or row["len"] < 0:
+            raise CoverageError(f"frame ledger frame {index} has an invalid length")
+    if framed_bytes is not None:
+        expected, offset = [], 0
+        data = framed_bytes
+        while offset + 4 <= len(data):
+            (length,) = struct.unpack_from("<I", data, offset)
+            if length > len(data) - offset - 4:
+                raise CoverageError("framed input is corrupt while validating ledger")
+            expected.append(length)
+            offset += 4 + length
+        if offset != len(data):
+            raise CoverageError("framed input has trailing bytes outside any frame")
+        # The ledger may record a strict PREFIX of the input's frames (the
+        # server can close mid-input and the client stops reading); a prefix
+        # is valid evidence of partial delivery, never completeness.
+        led_lens = [row["len"] for row in frames]
+        if led_lens != expected[:len(led_lens)] or len(led_lens) > len(expected):
+            raise CoverageError("frame ledger lengths disagree with the framed input")
+        input_frame_count = len(expected)
+    else:
+        input_frame_count = None
+    if ends[0].get("frames_total") != len(frames):
+        raise CoverageError("frame ledger summary disagrees with its frame rows")
+    # Per-frame state consistency (GLM53 verification 2.2 counterexamples): a
+    # full send requires read_complete, a successful pre-recv, an attempted
+    # send that wrote exactly the frame length with zero errno, and a
+    # successful post-recv. Contradictory rows (e.g. sent_bytes==len with
+    # nonzero errno, or a send claimed after a failed pre-recv) can never
+    # count as complete delivery.
+    consistent = True
+    sent_complete = 0
+    attempted = 0
+    for row in frames:
+        sent_bytes, length = row.get("sent_bytes"), row.get("len")
+        if not isinstance(sent_bytes, int) or not isinstance(length, int):
+            raise CoverageError("frame ledger has non-integer byte counts")
+        if sent_bytes not in (-2, -1) and (sent_bytes < 0 or sent_bytes > length):
+            raise CoverageError("frame ledger sent_bytes is out of range")
+        if row.get("read_complete") is not True:
+            consistent = False
+        if row.get("send_attempt") is True:
+            attempted += 1
+            if row.get("pre_recv_ok") is not True:
+                consistent = False
+            if row.get("send_errno") not in (0, None):
+                consistent = False
+            if sent_bytes == length and row.get("post_recv_ok") is True:
+                sent_complete += 1
+        elif sent_bytes not in (-2, None):
+            consistent = False
+    send_complete = bool(consistent and len(frames) > 0 and
+                         sent_complete == len(frames) and attempted == len(frames) and
+                         ends[0].get("stop_reason") == "eof" and
+                         (input_frame_count is None or len(frames) == input_frame_count))
+    # Unattempted = every input frame the ledger never attempted, whether the
+    # ledger ended early (prefix) or recorded an explicit not-attempted row.
+    frames_unattempted = (input_frame_count - attempted) if input_frame_count is not None else None
+    return dict(frames_total=len(frames), frames_unattempted=frames_unattempted,
+                frames_attempted=attempted,
+                frames_sent_complete=sent_complete,
+                stop_reason=ends[0].get("stop_reason"),
+                send_complete=send_complete)
+
+
+def apply_proftpd_shutdown_exit_policy(flags, server_code, client_code, supervised,
+                                       reset_succeeded, frames_expected=None,
+                                       packets_sent=None, ledger_send_complete=None,
+                                       session_gcda_touched=None):
+    """Accept harness-initiated ProFTPD shutdowns whose gcov listener dies by
+    SIGSEGV inside the graceful-shutdown teardown.
+
+    The supervised harness sends SIGTERM (ProFTPD's graceful shutdown signal)
+    only after the replay client completed all frames. The gcov-instrumented
+    listener's signal-handler re-raise can segfault during that teardown and
+    surface exit code -11 instead of -15; the observed 2026-11-15 rerun set
+    had 62/62 flagged inputs in exactly this shape (harness SIGTERM, client
+    exit 0, ready, no timeout, reset OK) with benign USER/PASS/SYST content
+    whose identical corpus copies replayed clean elsewhere. The v3 acceptance
+    additionally requires transcript frame completeness (packets sent equals
+    the framed input's frame count): the replay client can exit 0 after a
+    partial send, so the client exit code alone is not send evidence.
+    Unrequested signals (real mid-session crashes), client failures, failed
+    resets, and partial sends remain anomalies.
+    """
+    evidence = dict(server_exit_code=server_code, client_exit_code=client_code,
+                    server_ready=bool(supervised.get("server_ready")),
+                    client_timed_out=bool(supervised.get("client_timed_out")),
+                    harness_shutdown_requested=bool(supervised.get("harness_shutdown_requested")),
+                    harness_shutdown_signal=supervised.get("harness_shutdown_signal"),
+                    reset_command_succeeded=bool(reset_succeeded),
+                    frames_expected=frames_expected, packets_sent=packets_sent,
+                    ledger_send_complete=ledger_send_complete,
+                    session_gcda_touched=sorted(session_gcda_touched or []))
+    accepted = (server_code == -signal.SIGSEGV and
+                supervised.get("harness_shutdown_requested") is True and
+                supervised.get("harness_shutdown_signal") == "SIGTERM" and
+                client_code == 0 and
+                supervised.get("server_ready") is True and
+                supervised.get("client_timed_out") is False and
+                reset_succeeded is True and
+                frames_expected is not None and packets_sent == frames_expected and
+                ledger_send_complete is True and
+                bool(session_gcda_touched) and
+                flags.get("anomaly_kind") == "server-crash-finding")
+    result = dict(flags)
+    result["proftpd_shutdown_exit_expected"] = bool(accepted)
+    result["proftpd_shutdown_exit_evidence"] = evidence
+    if accepted:
+        result.update(server_crashed=False, server_anomalous_exit=False,
+                      client_anomalous_exit=False, client_aborted_on_crash=False,
+                      replay_anomaly=False, anomaly_kind="")
+    return result
+
+
+def verify_pureftpd_replay_evidence(replay, reset, artifact_dir, index,
+                                   instrumented_objects=None):
+    """Recompute Pure-FTPd replay classification from immutable log evidence."""
+    errors = []
+    artifact_dir = Path(artifact_dir)
+    replay_name = "replay-%06d.log" % index
+    reset_name = "reset-%06d.log" % index
+    replay_path = artifact_dir / replay_name
+    reset_path = artifact_dir / reset_name
+    if (replay.get("replay_log_file") != replay_name or not replay_path.is_file() or
+            replay.get("replay_log_sha256") != digest_file(replay_path)):
+        errors.append("replay-log-hash-mismatch")
+    if (reset.get("log_file") != reset_name or not reset_path.is_file() or
+            reset.get("log_sha256") != digest_file(reset_path)):
+        errors.append("reset-log-hash-mismatch")
+
+    parsed_reply = pureftpd_final_reply_code(replay_path) if replay_path.is_file() else None
+    if replay.get("final_ftp_reply_code") != parsed_reply:
+        errors.append("final-ftp-reply-disagrees-with-transcript")
+    imported = replay.get("imported_gcda")
+    if not isinstance(imported, list):
+        imported = []
+        errors.append("invalid-imported-gcda-list")
+    if replay.get("session_coverage_missing") is bool(imported):
+        errors.append("session-gcda-status-disagrees-with-import-list")
+    if len(imported) != len(set(imported)):
+        errors.append("duplicate-imported-gcda-entry")
+    if instrumented_objects is not None:
+        expected_gcda = {str(Path(name).with_suffix(".gcda"))
+                         for name in instrumented_objects}
+        if not set(imported).issubset(expected_gcda):
+            errors.append("imported-gcda-not-in-pinned-instrumentation")
+
+    server_code, client_code = replay.get("server_exit_code"), replay.get("client_exit_code")
+    flags = classify_replay_exit(server_code, client_code)
+    if replay.get("harness_shutdown_requested") is True and server_code == -signal.SIGTERM:
+        flags = classify_replay_exit(124, client_code)
+    reset_succeeded = (isinstance(reset.get("command"), list) and bool(reset["command"]) and
+                       reset.get("command_succeeded") is True and
+                       reset.get("exit_code") == 0 and
+                       "reset-log-hash-mismatch" not in errors)
+    expected = apply_pureftpd_session_exit_policy(
+        flags, server_code, client_code, replay.get("server_ready"),
+        replay.get("client_timed_out"), replay.get("harness_shutdown_requested"),
+        parsed_reply, imported, reset_succeeded)
+    for field in ("server_crashed", "server_anomalous_exit", "client_anomalous_exit",
+                  "client_aborted_on_crash", "replay_anomaly", "anomaly_kind",
+                  "pureftpd_session_exit_expected", "pureftpd_session_exit_evidence"):
+        if replay.get(field) != expected[field]:
+            errors.append("replay-classification-mismatch:" + field)
+    incomplete_state = dict(expected, session_coverage_missing=not imported,
+                            client_timed_out=replay.get("client_timed_out"),
+                            server_ready=replay.get("server_ready"),
+                            helper_ready=replay.get("helper_ready"))
+    expected_incomplete = replay_incompleteness(incomplete_state)
+    if replay.get("incomplete_reasons") != expected_incomplete:
+        errors.append("incomplete-reasons-mismatch")
+    if replay.get("coverage_complete") is not (not expected_incomplete):
+        errors.append("coverage-complete-flag-mismatch")
+    return sorted(set(errors))
+
+
+def verify_proftpd_replay_evidence(replay, reset, artifact_dir, index, require_frames=False):
+    """Recompute ProFTPD replay classification from immutable log evidence."""
+    errors = []
+    artifact_dir = Path(artifact_dir)
+    replay_name = "replay-%06d.log" % index
+    reset_name = "reset-%06d.log" % index
+    replay_path = artifact_dir / replay_name
+    reset_path = artifact_dir / reset_name
+    if (replay.get("replay_log_file") != replay_name or not replay_path.is_file() or
+            replay.get("replay_log_sha256") != digest_file(replay_path)):
+        errors.append("replay-log-hash-mismatch")
+    if (reset.get("log_file") != reset_name or not reset_path.is_file() or
+            reset.get("log_sha256") != digest_file(reset_path)):
+        errors.append("reset-log-hash-mismatch")
+    server_code, client_code = replay.get("server_exit_code"), replay.get("client_exit_code")
+    supervised = {key: replay.get(key) for key in
+                  ("server_ready", "client_timed_out", "harness_shutdown_requested",
+                   "harness_shutdown_signal")}
+    reset_succeeded = (isinstance(reset.get("command"), list) and bool(reset["command"]) and
+                       reset.get("command_succeeded") is True and
+                       reset.get("exit_code") == 0 and
+                       "reset-log-hash-mismatch" not in errors)
+    frames_expected = None
+    packets_sent = None
+    ledger_send_complete = None
+    session_gcda_touched = None
+    if require_frames:
+        client_command = replay.get("client_command") or []
+        if len(client_command) > 1 and isinstance(client_command[1], str):
+            frames_expected = framed_input_frames(client_command[1])
+        packets_sent = transcript_packets_sent(replay_path)
+        ledger_name = replay.get("frame_ledger_file")
+        ledger_path = artifact_dir / str(ledger_name or "")
+        if (isinstance(ledger_name, str) and ledger_path.is_file() and
+                replay.get("frame_ledger_sha256") == digest_file(ledger_path)):
+            framed_bytes = None
+            if len(client_command) > 1 and isinstance(client_command[1], str):
+                try:
+                    framed_bytes = Path(client_command[1]).read_bytes()
+                except OSError:
+                    framed_bytes = None
+            try:
+                ledger = read_frame_ledger(ledger_path, framed_bytes)
+                ledger_send_complete = ledger["send_complete"]
+            except CoverageError:
+                ledger_send_complete = None
+        evidence = replay.get("proftpd_shutdown_exit_evidence") or {}
+        touched = evidence.get("session_gcda_touched")
+        session_gcda_touched = touched if isinstance(touched, list) else None
+    flags = classify_replay_exit(server_code, client_code)
+    if (supervised.get("harness_shutdown_requested") is True and
+            server_code == -signal.SIGTERM):
+        flags = classify_replay_exit(124, client_code)
+    expected = apply_proftpd_shutdown_exit_policy(flags, server_code, client_code,
+                                                  supervised, reset_succeeded,
+                                                  frames_expected=frames_expected,
+                                                  packets_sent=packets_sent,
+                                                  ledger_send_complete=ledger_send_complete,
+                                                  session_gcda_touched=session_gcda_touched)
+    for field in ("server_crashed", "server_anomalous_exit", "client_anomalous_exit",
+                  "client_aborted_on_crash", "replay_anomaly", "anomaly_kind",
+                  "proftpd_shutdown_exit_expected", "proftpd_shutdown_exit_evidence"):
+        if replay.get(field) != expected[field]:
+            errors.append("replay-classification-mismatch:" + field)
+    incomplete_state = dict(expected, session_coverage_missing=replay.get("session_coverage_missing"),
+                            client_timed_out=replay.get("client_timed_out"),
+                            server_ready=replay.get("server_ready"),
+                            helper_ready=replay.get("helper_ready"))
+    expected_incomplete = replay_incompleteness(incomplete_state)
+    if replay.get("incomplete_reasons") != expected_incomplete:
+        errors.append("incomplete-reasons-mismatch")
+    if replay.get("coverage_complete") is not (not expected_incomplete):
+        errors.append("coverage-complete-flag-mismatch")
+    return sorted(set(errors))
+
+
+def pureftpd_policy_audit_report(replay_policy, events):
+    inputs = []
+    for index, event in enumerate(events, 1):
+        replay = event.get("replay", {})
+        reset = event.get("reset", {})
+        evidence = replay.get("pureftpd_session_exit_evidence", {})
+        inputs.append(dict(
+            idx=index, filename=event.get("filename"),
+            server_exit_code=replay.get("server_exit_code"),
+            client_exit_code=replay.get("client_exit_code"),
+            server_ready=replay.get("server_ready"),
+            client_timed_out=replay.get("client_timed_out"),
+            harness_shutdown_requested=replay.get("harness_shutdown_requested"),
+            final_ftp_reply_code=replay.get("final_ftp_reply_code"),
+            imported_gcda_count=len(replay.get("imported_gcda", [])),
+            reset_command_succeeded=reset.get("command_succeeded") is True,
+            expected_session_exit=replay.get("pureftpd_session_exit_expected") is True,
+            anomaly_kind=replay.get("anomaly_kind"),
+            incomplete_reasons=replay.get("incomplete_reasons", []),
+            policy_evidence=evidence))
+    accepted = sum(row["expected_session_exit"] for row in inputs)
+    return dict(schema_version="pureftpd-session-exit-audit-v1",
+                policy_name=replay_policy.get("name"),
+                policy_verified=replay_policy.get("verified") is True,
+                verified_scope=replay_policy.get("verified_scope"),
+                source_sha256=replay_policy.get("source_sha256"),
+                binary_sha256=replay_policy.get("binary_sha256"),
+                source_binary_build_association=
+                    replay_policy.get("source_binary_build_association", "not-verified"),
+                n_inputs=len(inputs), n_expected_session_exits=accepted,
+                n_other_inputs=len(inputs) - accepted, inputs=inputs)
+
+
+def proftpd_policy_audit_report(replay_policy, events):
+    inputs = []
+    for index, event in enumerate(events, 1):
+        replay = event.get("replay", {})
+        reset = event.get("reset", {})
+        evidence = replay.get("proftpd_shutdown_exit_evidence", {})
+        inputs.append(dict(
+            idx=index, filename=event.get("filename"),
+            server_exit_code=replay.get("server_exit_code"),
+            client_exit_code=replay.get("client_exit_code"),
+            server_ready=replay.get("server_ready"),
+            client_timed_out=replay.get("client_timed_out"),
+            harness_shutdown_requested=replay.get("harness_shutdown_requested"),
+            harness_shutdown_signal=replay.get("harness_shutdown_signal"),
+            reset_command_succeeded=reset.get("command_succeeded") is True,
+            expected_shutdown_exit=replay.get("proftpd_shutdown_exit_expected") is True,
+            anomaly_kind=replay.get("anomaly_kind"),
+            incomplete_reasons=replay.get("incomplete_reasons", []),
+            policy_evidence=evidence))
+    accepted = sum(row["expected_shutdown_exit"] for row in inputs)
+    return dict(schema_version="proftpd-shutdown-exit-audit-v1",
+                policy_name=replay_policy.get("name"),
+                policy_verified=replay_policy.get("verified") is True,
+                verified_scope=replay_policy.get("verified_scope"),
+                n_inputs=len(inputs), n_expected_shutdown_exits=accepted,
+                n_other_inputs=len(inputs) - accepted, inputs=inputs)
 
 
 def load_coordinates(path):
@@ -254,6 +837,9 @@ def plan_corpus(folder, mode, coordinates, require_coordinates=False):
                    if path.is_file() and (path.name.startswith("id") or path.suffix == ".raw"))
     if not files:
         raise CoverageError("empty replay corpus")
+    empty_files = [path.name for path in files if path.stat().st_size == 0]
+    if empty_files:
+        raise CoverageError("empty replay input(s): " + ", ".join(empty_files[:10]))
     records, matched_queue_ids = [], set()
     corpus_names = {path.name for path in files}
     # Every corpus file must carry a coordinate; a ledger name WITHOUT a
@@ -278,7 +864,10 @@ def plan_corpus(folder, mode, coordinates, require_coordinates=False):
         records.append(record)
     if coordinates and any(r["coordinate_source"] != "queue-checkpoints.jsonl" for r in records):
         raise CoverageError("partially joined ledger; refusing mixed time coordinates")
-    records.sort(key=lambda r: (r["discovery_time_ms"], r.get("discovery_execution_id", 0), r["filename"]))
+    records.sort(key=lambda r: (r["discovery_time_ms"],
+                                r.get("monotonic_ms", r["discovery_time_ms"]),
+                                r.get("discovery_execution_id", 0),
+                                r.get("queue_id", 0), r["filename"]))
     previous = None
     for record in records:
         if previous and coordinates:
@@ -289,11 +878,20 @@ def plan_corpus(folder, mode, coordinates, require_coordinates=False):
     return records, unreplayable
 
 
+def validate_initial_seed_prefix(plan):
+    seed_indices = [index for index, record in enumerate(plan, 1)
+                    if record.get("kind") == "initial-queue-name"]
+    if seed_indices and seed_indices != list(range(1, len(seed_indices) + 1)):
+        raise CoverageError("initial seed inputs must form a replay-plan prefix")
+    return seed_indices
+
+
 class CoverageUnion:
     def __init__(self, baseline, manifest):
         if baseline.covered_branches or baseline.covered_lines:
             raise CoverageError("baseline is not reset to zero coverage")
         self.baseline, self.manifest = baseline, manifest
+        self.schema = manifest.get("schema_version", SCHEMA)
         self.covered, self.covered_lines = set(), set()
         # The gcovr reset report is not a seed baseline when the target has no
         # gcda yet.  Track the branch union of inputs explicitly identified as
@@ -314,16 +912,19 @@ class CoverageUnion:
             self.baseline = Snapshot(set(snapshot.branches), set(), set(snapshot.lines),
                                      set(), dict(snapshot.files), snapshot.format_version,
                                      dict(snapshot.resolution))
-            # 2026-11-07 audit fix: the ADOPTED universe must also become the
-            # manifest universe — otherwise manifest["branch_ids"] stays
-            # empty, audit_csv divides by zero, and the finalization identity
-            # check compares the adopted baseline against a stale manifest.
+            # The first replay materializes the universe for never-executed
+            # build trees. Bind the adopted source and branch universe into the
+            # pinned scope identity before recording this checkpoint.
+            self.manifest["sources"] = snapshot.files
+            self.manifest["source_resolution"] = snapshot.resolution
+            self.manifest["gcovr_format"] = snapshot.format_version
             self.manifest["branch_ids"] = sorted(
                 [list(b) if isinstance(b, (list, tuple)) else b
                  for b in snapshot.branches])
             self.manifest["line_ids"] = sorted(
                 [list(l) if isinstance(l, (list, tuple)) else l
                  for l in snapshot.lines])
+            seal_scope_manifest(self.manifest)
         for field in ("branches", "lines", "files", "format_version"):
             if getattr(snapshot, field) != getattr(self.baseline, field):
                 raise CoverageError("coverage source/branch scope changed: " + field)
@@ -341,7 +942,7 @@ class CoverageUnion:
         dropped = self.previous_snapshot - snapshot.covered_branches
         event = dict(coordinates)
         event["queue_schema_version"] = event.pop("schema_version", None)
-        event.update(schema_version=SCHEMA, idx=len(self.events) + 1,
+        event.update(schema_version=self.schema, idx=len(self.events) + 1,
                      snapshot_sha256=raw_sha256, scope_sha256=self.manifest["scope_sha256"],
                      snapshot_covered_branches=len(snapshot.covered_branches),
                      cumulative_covered_branches=len(self.covered),
@@ -440,11 +1041,11 @@ def collect_report(source_root, object_root, gcovr="gcovr", delete=False):
         os.unlink(report_path)
 
 
-# Some build systems (proftpd, pure-ftpd) record BARE source names in the
+# Some build systems (proftpd, pure-ftpd, live555) record BARE source names in the
 # gcno, which gcov can only resolve when run from the directory holding the
 # gcno.  For those targets collection runs once per gcno directory and the
 # entries are prefixed with the directory path so names stay unique.
-SUBDIR_COLLECTION_TARGETS = ("proftpd", "pure-ftpd")
+SUBDIR_COLLECTION_TARGETS = ("proftpd", "pure-ftpd", "live555")
 
 
 def gcno_directories(object_root):
@@ -492,10 +1093,10 @@ def profile_paths(target, cwd):
         # tree root resolves them.
         return cwd, cwd
     if target == "live555":
-        # cov_script runs from live-gcov/testProgs, the server's build dir;
-        # gcno there reference sibling trees relatively, resolved through
-        # the whole-tree search root.
-        return cwd, cwd
+        # The server links instrumented libraries from sibling directories.
+        # --root=testProgs filters those libraries out even when fingerprint
+        # search roots can resolve their sources. Collect the whole gcov tree.
+        return cwd.parent, cwd.parent
     raise CoverageError("unsupported target: " + target)
 
 
@@ -503,23 +1104,187 @@ def source_search_roots(target, cwd, source_root):
     """Extra fingerprint roots for trees whose instrumented sources span
     directories. exim compiles .c copies inside build-Linux-x86_64 but
     #includes headers (with their own inline branch data) from the original
-    src tree, which gcovr reports under the same relative names; live555's
-    testProgs gcno reference the sibling trees via relative paths."""
+    src tree, which gcovr reports under the same relative names. Live555 is
+    collected under its whole-tree root, including sibling libraries."""
     if target == "exim":
         original = Path(cwd).resolve() / "src" / "src"
         return [original] if original.is_dir() and original != Path(source_root) else []
-    if target == "live555":
-        whole = Path(source_root).resolve().parent
-        return [whole] if whole != Path(source_root) else []
     return []
 
 
+def structured_message_count(path):
+    """Count actual aflnet frames; reject truncated lengths before replay."""
+    count = 0
+    with Path(path).open("rb") as source:
+        while True:
+            length = source.read(4)
+            if not length:
+                return count
+            if len(length) != 4:
+                raise CoverageError("truncated replay frame length: " + str(path))
+            size = struct.unpack("<I", length)[0]
+            if len(source.read(size)) != size:
+                raise CoverageError("truncated replay frame: " + str(path))
+            count += 1
+
+
+def client_timeout_seconds(client_command, path, mode):
+    # aflnet-replay polls twice per message. SMTP's 100 ms response wait and
+    # long saved sessions can legitimately exceed the old fixed 5 seconds.
+    count = structured_message_count(path) if mode == 1 else 1
+    poll_index = 5 if mode == 1 else 4
+    poll_ms = int(client_command[poll_index]) if len(client_command) > poll_index else 1
+    requested = max(5.0, 2.0 * count * poll_ms / 1000.0 + 5.0)
+    # Explicit bounded diagnostic timeout, never scientific completeness.
+    return min(requested, 180.0)
+
+
+def loopfuzz_replayer():
+    """Select only the frame-ledger-capable replayer for strict replay."""
+    configured = os.environ.get(LOOPFUZZ_REPLAYER_ENV,
+                                "/home/ubuntu/loopfuzz/aflnet-replay")
+    path = Path(configured)
+    if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
+        raise CoverageError("LoopFuzz aflnet-replay is missing or not executable: " + configured)
+    try:
+        supports_frame_ledger = b"LOOPFUZZ_REPLAY_LEDGER" in path.read_bytes()
+    except OSError as error:
+        raise CoverageError("cannot inspect LoopFuzz replayer capabilities: " + str(error)) from error
+    if not supports_frame_ledger:
+        raise CoverageError("configured aflnet-replay lacks the LoopFuzz frame-ledger capability")
+    identity = (path.stat().st_mtime_ns, path.stat().st_size)
+    if _VERIFIED_LOOPFUZZ_REPLAYERS.get(str(path)) != identity:
+        try:
+            probe = subprocess.run([str(path)], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, timeout=5,
+                                   check=False)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            raise CoverageError("cannot validate LoopFuzz replayer ABI: " + str(error)) from error
+        usage = probe.stdout + probe.stderr
+        if ("local_port" not in usage or "follow-up_resp_timeout(ms)" not in usage):
+            raise CoverageError("configured aflnet-replay lacks the LoopFuzz local_port/poll/socket-timeout ABI")
+        _VERIFIED_LOOPFUZZ_REPLAYERS[str(path)] = identity
+    return str(path)
+
+
+def bound_port(port, protocol):
+    """Observe a bound socket without a probe that changes target state."""
+    for suffix in ("", "6"):
+        table = Path("/proc/net/" + protocol + suffix)
+        if not table.exists():
+            continue
+        for row in table.read_text().splitlines()[1:]:
+            fields = row.split()
+            if (int(fields[1].rsplit(":", 1)[1], 16) == port and
+                    (protocol == "udp" or fields[3] == "0A")):
+                return True
+    return False
+
+
+def wait_bound_port(process, port, protocol, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if bound_port(port, protocol):
+            return True
+        if process is not None and process.poll() is not None:
+            return False
+        time.sleep(0.01)
+    return False
+
+
+def run_supervised_session(target, client_command, server_command, record,
+                           mode, port, cwd, env, log):
+    """Supervise targets needing readiness, full client, and gcov shutdown.
+
+    The old UDP connect succeeded before Kamailio bound its socket, so replay
+    could finish without delivering a request. The old SMTP lifetime expired
+    while long clients were still sending. ProFTPD's three-second timeout
+    could kill its listener while a valid FTP transfer was still in progress.
+    Live555's gcov build installs SIGUSR1 -> exit(0), so it must receive that
+    signal to flush counters; the other targets retain their own shutdown.
+    """
+    # replay_commands retains historical timeout argv for other targets;
+    # these targets are supervised here so the server remains alive for the
+    # complete client and all process-group children receive shutdown.
+    command = server_command[6:]
+    timeout = client_timeout_seconds(client_command, record["path"], mode)
+    server = client = helper = None
+    ready = False
+    helper_ready = None
+    timed_out = False
+    shutdown_requested = False
+    try:
+        server = subprocess.Popen(command, cwd=cwd, env=env, stdout=log,
+                                  stderr=subprocess.STDOUT, start_new_session=True)
+        ready = wait_bound_port(server, port, "udp" if target == "kamailio" else "tcp")
+        if ready and target == "kamailio":
+            helper = subprocess.Popen(["./run_pjsip"], cwd=cwd, stdout=log,
+                                      stderr=subprocess.STDOUT, start_new_session=True)
+            # The wrapper backgrounds pjsua then exits. Observe its real UDP
+            # socket instead of treating the wrapper's exit as readiness.
+            helper_ready = wait_bound_port(None, 5068, "udp")
+        if ready and helper_ready is not False:
+            client = subprocess.Popen(client_command, cwd=cwd, env=env, stdout=log,
+                                      stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                client.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                stop_process(client)
+        client_code = client.returncode if client is not None else 125
+        shutdown_signal = (signal.SIGUSR1 if target in ("live555", "forked-daapd")
+                           else signal.SIGTERM)
+        if server.poll() is None and target == "proftpd":
+            # ProFTPD's -X single-session listener exits itself at session
+            # end and flushes gcov on that natural exit; the earlier harness
+            # TERM raced that teardown and the gcov build can die with SIGSEGV
+            # inside the signal handler instead. Give the natural exit a
+            # short window before any harness signal (2026-11-16 v3 policy).
+            for _ in range(50):
+                if server.poll() is not None:
+                    break
+                time.sleep(0.1)
+        if server.poll() is None:
+            shutdown_requested = True
+            os.killpg(server.pid, shutdown_signal)
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                stop_process(server)
+        server_code = server.returncode
+        flags = classify_replay_exit(server_code, client_code)
+        # An explicitly requested TERM is an expected harness shutdown, not
+        # a crash finding. SIGKILL/SEGV and positive failures remain errors.
+        if shutdown_requested and server_code == -signal.SIGTERM:
+            flags = classify_replay_exit(124, client_code)
+        return dict(server_exit_code=server_code, client_exit_code=client_code,
+                    server_ready=ready, helper_ready=helper_ready,
+                    client_timed_out=timed_out, client_timeout_seconds=timeout,
+                    harness_shutdown_requested=shutdown_requested,
+                    harness_shutdown_signal=signal.Signals(shutdown_signal).name,
+                    harness_policy=("live555-ready-client-sigusr1-exit0-v2"
+                                   if target == "live555" else
+                                   forked_daapd_replay_policy()["name"]
+                                   if target == "forked-daapd" else
+                                   "pure-ftpd-ready-client-graceful-exit-v1"
+                                   if target == "pure-ftpd" else
+                                   proftpd_replay_policy()["name"]
+                                   if target == "proftpd" else
+                                   "ready-client-graceful-exit-v1"),
+                    effective_server_command=command, **flags)
+    finally:
+        stop_process(client)
+        stop_process(server)
+        stop_process(helper)
+
+
 def replay_commands(target, path, port, mode, cwd, workdir):
-    replayer = "aflnet-replay" if mode == 1 else "afl-replay"
+    replayer = loopfuzz_replayer() if mode == 1 else "afl-replay"
     protocol = {"lightftp": "FTP", "bftpd": "FTP", "lighttpd1": "HTTP",
                 "forked-daapd": "HTTP", "kamailio": "SIP", "exim": "SMTP",
                 "proftpd": "FTP", "pure-ftpd": "FTP", "live555": "RTSP"}[target]
-    client = [replayer, str(path), protocol, str(port), "1"]
+    client = ([replayer, str(path), protocol, str(port), "0", "100", "10000"]
+              if mode == 1 else [replayer, str(path), protocol, str(port), "1"])
     timeout = ["timeout", "-k", "1s", "-s", "SIGUSR1", "3s"]
     configured = os.environ.get("COVERAGE_V4_TARGET_CONFIG")
     target_config = None
@@ -534,7 +1299,6 @@ def replay_commands(target, path, port, mode, cwd, workdir):
         server = timeout + ["./src/lighttpd", "-D", "-f", str(config),
                             "-m", str(cwd / "src/.libs")]
     elif target == "forked-daapd":
-        client = [replayer, str(path), "HTTP", str(port), "100", "10000"]
         server = ["timeout", "-k", "1s", "-s", "SIGUSR1", "10s",
                   "./forked-daapd-gcov/src/forked-daapd", "-d", "0", "-c",
                   str(target_config or "./forked-daapd.conf"), "-f"]
@@ -548,7 +1312,7 @@ def replay_commands(target, path, port, mode, cwd, workdir):
     elif target == "exim":
         # -d keeps the daemon in the foreground under the timeout wrapper;
         # per-connection children exit normally and flush their own gcda.
-        client = [replayer, str(path), "SMTP", str(port), "100"]
+        client = [replayer, str(path), "SMTP", str(port), "0", "100", "10000"]
         server = ["timeout", "-k", "1s", "-s", "SIGTERM", "3s",
                   "./src/build-Linux-x86_64/exim", "-bd", "-d", "-oX", str(port)]
     elif target == "proftpd":
@@ -596,10 +1360,12 @@ def run_reset(record, cwd, replay_log, allow_unverified):
         result = subprocess.run(command, cwd=cwd, env=env, stdout=log,
                                 stderr=subprocess.STDOUT, timeout=30, check=True)
     return dict(command_succeeded=True, command=command, exit_code=result.returncode,
+                log_file=Path(replay_log).name, log_sha256=digest_file(replay_log),
                 limit="exit zero authenticates command success; command must itself validate reset")
 
 
-def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_root):
+def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
+                   object_root, reset=None):
     client_command, server_command = replay_commands(target, record["path"], port, mode, cwd, workdir)
     env, remote = os.environ.copy(), None
     exit_trace = Path(str(replay_log) + ".exit-trace")
@@ -635,26 +1401,66 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
                 remote_data.unlink()
         env["GCOV_PREFIX"] = str(prefix)
     started, server, client, helper = time.monotonic_ns(), None, None, None
+    supervised = None
+    # Per-frame send ledger (GLM53 2.1): the replayer writes send facts, not
+    # banner counts; the artifact is archived next to the replay log.
+    ledger_path = Path(str(replay_log).rsplit(".", 1)[0] + "-frame-ledger.jsonl")
+    env["LOOPFUZZ_REPLAY_LEDGER"] = str(ledger_path)
+
+    def gcda_inventory():
+        return {str(p.relative_to(object_root)): (p.stat().st_size, p.stat().st_mtime_ns)
+                for p in sorted(object_root.rglob("*.gcda")) if p.is_file()}
+
+    gcda_inventory_before = gcda_inventory() if target == "proftpd" else {}
     with Path(replay_log).open("wb") as log:
         try:
-            if target == "forked-daapd":
+            if target in ("exim", "kamailio", "proftpd", "pure-ftpd", "live555", "forked-daapd"):
+                supervised = run_supervised_session(target, client_command, server_command,
+                    record, mode, port, cwd, env, log)
+                server_code, client_code = (supervised["server_exit_code"],
+                                             supervised["client_exit_code"])
+            else:
+                server_code, client_code = None, None
+            # forked-daapd now uses the supervised path above: the listener
+            # must be ready before replay, then SIGUSR1 lets the gcov build
+            # flush and exit normally. Keep the legacy launch only for any
+            # future unsupervised dispatch; otherwise this started a second
+            # server after the supervised run and polluted replay state.
+            if target == "forked-daapd" and supervised is None:
                 server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=log,
                                           stderr=subprocess.STDOUT, start_new_session=True)
                 time.sleep(1)
-            if target == "kamailio":
-                helper = subprocess.Popen(["./run_pjsip"], cwd=cwd, stdout=log,
+            if supervised is None:
+                client = subprocess.Popen(client_command, cwd=cwd, env=env, stdout=log,
                                           stderr=subprocess.STDOUT, start_new_session=True)
-            client = subprocess.Popen(client_command, cwd=cwd, stdout=log,
-                                      stderr=subprocess.STDOUT, start_new_session=True)
-            if server is None:
-                server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=log,
-                                          stderr=subprocess.STDOUT, start_new_session=True)
-            server_code = server.wait(timeout=15)
-            client_code = client.wait(timeout=5)
+                if server is None:
+                    server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=log,
+                                              stderr=subprocess.STDOUT, start_new_session=True)
+                server_code = server.wait(timeout=15)
+                try:
+                    client_code = client.wait(timeout=client_timeout_seconds(
+                        client_command, record["path"], mode))
+                except subprocess.TimeoutExpired:
+                    stop_process(client)
+                    client_code = client.returncode
+                    supervised = dict(client_timed_out=True)
         finally:
             stop_process(client)
             stop_process(server)
             stop_process(helper)
+    gcda_inventory_after = gcda_inventory() if target == "proftpd" else {}
+    frame_ledger_result = None
+    if ledger_path.is_file():
+        framed_bytes = None
+        try:
+            framed_bytes = Path(record["path"]).read_bytes()
+        except OSError:
+            framed_bytes = None
+        try:
+            frame_ledger_result = read_frame_ledger(ledger_path, framed_bytes)
+        except (OSError, CoverageError):
+            frame_ledger_result = None
+    proftpd_frame_ledger = {"path": ledger_path, "result": frame_ledger_result}
     imported = []
     if remote is not None:
         for source in sorted(remote.rglob("*.gcda")):
@@ -669,13 +1475,73 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log, object_
     else:
         session_coverage_missing = False
     flags = classify_replay_exit(server_code, client_code)
+    if supervised and "server_crashed" in supervised:
+        flags.update(supervised)
+    final_reply_code = None
+    if target == "pure-ftpd":
+        final_reply_code = pureftpd_final_reply_code(replay_log)
+        flags = apply_pureftpd_session_exit_policy(
+            flags, server_code, client_code,
+            supervised.get("server_ready") if supervised else None,
+            supervised.get("client_timed_out", False) if supervised else False,
+            supervised.get("harness_shutdown_requested", False) if supervised else False,
+            final_reply_code, imported,
+            bool(reset and reset.get("command_succeeded")))
+    if target == "proftpd":
+        try:
+            frames_expected = framed_input_frames(record["path"])
+        except (OSError, CoverageError):
+            frames_expected = None
+        packets_sent = transcript_packets_sent(replay_log)
+        ledger = frame_ledger_result
+        session_gcda_touched = sorted(gcda_inventory_after.keys() - gcda_inventory_before.keys()) + \
+            sorted(path for path in gcda_inventory_after.keys() & gcda_inventory_before.keys()
+                   if gcda_inventory_after[path] != gcda_inventory_before[path])
+        flags = apply_proftpd_shutdown_exit_policy(
+            flags, server_code, client_code, supervised or {},
+            bool(reset and reset.get("command_succeeded")),
+            frames_expected=frames_expected, packets_sent=packets_sent,
+            ledger_send_complete=(ledger or {}).get("send_complete") if ledger else None,
+            session_gcda_touched=session_gcda_touched)
     result = dict(server_exit_code=server_code, client_exit_code=client_code,
                 session_coverage_missing=session_coverage_missing,
                 server_crashed=flags["server_crashed"],
                 replay_anomaly=flags["replay_anomaly"],
                 anomaly_kind=flags["anomaly_kind"],
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
+                replay_log_file=Path(replay_log).name,
+                replay_log_sha256=digest_file(replay_log),
                 client_command=client_command, server_command=server_command)
+    if supervised:
+        result.update(supervised)
+    if target == "pure-ftpd":
+        result["final_ftp_reply_code"] = final_reply_code
+        result["reset_command_succeeded"] = bool(reset and reset.get("command_succeeded"))
+        for field in ("server_crashed", "replay_anomaly", "anomaly_kind",
+                      "server_anomalous_exit", "client_anomalous_exit",
+                      "client_aborted_on_crash", "pureftpd_session_exit_expected",
+                      "pureftpd_session_exit_evidence"):
+            result[field] = flags[field]
+    if target == "proftpd":
+        result["reset_command_succeeded"] = bool(reset and reset.get("command_succeeded"))
+        for field in ("server_crashed", "replay_anomaly", "anomaly_kind",
+                      "server_anomalous_exit", "client_anomalous_exit",
+                      "client_aborted_on_crash", "proftpd_shutdown_exit_expected",
+                      "proftpd_shutdown_exit_evidence"):
+            result[field] = flags[field]
+    if frame_ledger_result is not None:
+        result.update(frame_ledger_file=ledger_path.name,
+                      frame_ledger_sha256=digest_file(ledger_path),
+                      frames_total=frame_ledger_result["frames_total"],
+                      frames_unattempted=frame_ledger_result.get("frames_unattempted"),
+                      frames_attempted=frame_ledger_result["frames_attempted"],
+                      frames_sent_complete=frame_ledger_result["frames_sent_complete"],
+                      send_stop_reason=frame_ledger_result["stop_reason"],
+                      send_completeness="complete" if frame_ledger_result["send_complete"] else "incomplete")
+    else:
+        # Legacy replayer without the ledger: banner counts are loop-entry
+        # evidence only; send facts are unknown and never inferred (2.1).
+        result["send_completeness"] = "unknown"
     result["incomplete_reasons"] = replay_incompleteness(result)
     result["coverage_complete"] = not result["incomplete_reasons"]
     result["sigpipe_normal_exit_observed"] = (target == "bftpd" and exit_trace.is_file() and
@@ -691,12 +1557,9 @@ def classify_replay_exit(server_code, client_code):
     is kept and the exit code is recorded.  A client failing on the same
     crashed server (connection reset) is part of that finding.
 
-    A single input ending with an unexpected POSITIVE server exit (observed:
-    pure-ftpd session supervisors exit 252 after a normal "221 Logout") or a
-    lone client failure used to abort the whole campaign replay, leaving no
-    terminal.json at all.  It is now recorded as a per-input anomaly: the
-    flushed coverage still enters the union, the anomaly is counted in
-    terminal.json, and only an ALL-anomalous replay (a broken harness) fails.
+    Unexpected positive server exits and lone client failures are recorded
+    as per-input anomalies. The Pure-FTPd 421 policy is applied later, after
+    readiness, transcript, reset, and gcda evidence are available.
     """
     server_crashed = server_code is not None and server_code < 0
     client_aborted_on_crash = server_crashed and client_code != 0
@@ -718,20 +1581,67 @@ def classify_replay_exit(server_code, client_code):
                 anomaly_kind=kind)
 
 
+def resolve_replay_limit(args):
+    """Resolve the optional smoke cap and fail closed outside smoke mode."""
+    smoke = bool(getattr(args, "smoke", False))
+    max_replay_inputs = getattr(args, "max_replay_inputs", None)
+    if max_replay_inputs is None:
+        raw_limit = os.environ.get("COVERAGE_V4_MAX_REPLAY_INPUTS")
+        if raw_limit not in (None, ""):
+            try:
+                max_replay_inputs = int(raw_limit)
+            except ValueError as error:
+                raise CoverageError("COVERAGE_V4_MAX_REPLAY_INPUTS must be a positive integer") from error
+    if os.environ.get("COVERAGE_V4_SMOKE", "0") == "1":
+        smoke = True
+    if max_replay_inputs is not None:
+        if isinstance(max_replay_inputs, bool) or max_replay_inputs < 1:
+            raise CoverageError("max replay inputs must be a positive integer")
+        if not smoke:
+            raise CoverageError("max replay inputs is smoke-only; set --smoke or COVERAGE_V4_SMOKE=1")
+    return smoke, max_replay_inputs
+
+
 def run_replay(args):
     folder, output, cwd = args.folder.resolve(), args.output.resolve(), Path.cwd().resolve()
-    directory = Path(str(output) + ".v4")
+    sampled = bool(getattr(args, "sampled_checkpoints", False))
+    smoke, max_replay_inputs = resolve_replay_limit(args)
+    schema = SAMPLED_SCHEMA if sampled else SCHEMA
+    artifact_suffix = SAMPLED_ARTIFACT_SUFFIX if sampled else LEGACY_ARTIFACT_SUFFIX
+    directory = Path(str(output) + artifact_suffix)
     if output.exists() or directory.exists() or Path(str(output) + ".final").exists():
         raise CoverageError("refusing to overwrite coverage artifacts; select a new output path")
     if args.step < 1:
         raise CoverageError("step must be positive")
+    if sampled and args.target not in ACCUMULATING_GCDA_TARGETS:
+        raise CoverageError("sampled checkpoints require an accumulating-gcda target; "
+                            "use per-input collection for " + args.target)
     source_root, object_root = profile_paths(args.target, cwd)
     allow_incomplete = getattr(args, "allow_incomplete", False)
-    replay_policy = bftpd_exit_policy(cwd, allow_incomplete) if args.target == "bftpd" else None
+    replay_policy = (bftpd_exit_policy(cwd, allow_incomplete) if args.target == "bftpd" else
+                     proftpd_replay_policy() if args.target == "proftpd" else
+                     pureftpd_replay_policy(cwd, allow_incomplete) if args.target == "pure-ftpd" else
+                     forked_daapd_replay_policy() if args.target == "forked-daapd" else None)
     search_roots = source_search_roots(args.target, cwd, source_root)
     workdir = Path(os.environ.get("WORKDIR", str(cwd)))
     coordinates = load_coordinates(folder / "queue-checkpoints.jsonl")
     plan, unreplayable = plan_corpus(folder, args.mode, coordinates, args.require_coordinates)
+    planned_n_replayed = len(plan)
+    replay_truncated = max_replay_inputs is not None and max_replay_inputs < planned_n_replayed
+    if replay_truncated:
+        plan = plan[:max_replay_inputs]
+        if not plan:
+            raise CoverageError("max replay inputs removed the entire replay plan")
+    # A smoke cap is a diagnostic lower bound.  Keep the full planned count in
+    # terminal metadata so an archive cannot be mistaken for a complete corpus
+    # replay even when every executed input is individually valid.
+    seed_indices = validate_initial_seed_prefix(plan)
+    checkpoint_indices = {index for index in range(1, len(plan) + 1)
+                          if index % args.step == 0 or index == len(plan)}
+    # Preserve the exact seed-only endpoint used by downstream analyses even
+    # when the initial corpus is shorter than --step.
+    if sampled and seed_indices:
+        checkpoint_indices.add(seed_indices[-1])
     notes = instrument_identity(object_root)
     directory.mkdir(parents=True)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -764,25 +1674,41 @@ def run_replay(args):
             raise
         baseline = parse_snapshot(baseline_report, source_root, search_roots, allow_empty=True)
         zero_baseline_mode = "filesystem-verified-no-gcda"
-    manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version, replay_policy)
+    checkpoint_policy = (dict(kind="step-plus-terminal-and-seed-boundary",
+                              step=args.step, final_checkpoint_required=True,
+                              seed_boundary_required=True,
+                              every_input_has_replay_ledger=True)
+                         if sampled else None)
+    manifest = scope_manifest(baseline, notes, gcovr_version, gcov_version, replay_policy,
+                              schema=schema, checkpoint_policy=checkpoint_policy)
     manifest.update(source_root=str(source_root), object_root=str(object_root), target=args.target,
                     source_search_roots=[str(r) for r in search_roots],
                     zero_baseline_mode=zero_baseline_mode)
+    seal_scope_manifest(manifest)
     write_json(directory / "scope.json", manifest)
     write_json(directory / "baseline.json", baseline_report)
     union = CoverageUnion(baseline, manifest)
     unexpected_drop = False
     anomaly_kinds = {}
     incomplete_replays = []
-    with output.open("x", newline="") as csv_output, (directory / "checkpoints.jsonl").open("x") as events:
+    policy_replay_events = []
+    all_resets_verified = True
+    ledger_name = "replay-ledger.jsonl" if sampled else "checkpoints.jsonl"
+    ledger_context = ((directory / ledger_name).open("x") if sampled
+                      else contextlib.nullcontext(None))
+    with output.open("x", newline="") as csv_output, \
+            (directory / "checkpoints.jsonl").open("x") as events, \
+            ledger_context as ledger_output:
         writer = csv.DictWriter(csv_output, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for index, record in enumerate(plan, 1):
             if digest_file(record["path"]) != record["input_sha256"]:
                 raise CoverageError("corpus changed after planning: " + record["filename"])
             reset = run_reset(record, cwd, directory / ("reset-%06d.log" % index), args.allow_unverified_reset)
+            all_resets_verified &= bool(reset.get("command_succeeded"))
             replay = run_one_replay(args.target, record, args.port, args.mode, cwd, workdir,
-                                    directory / ("replay-%06d.log" % index), object_root)
+                                    directory / ("replay-%06d.log" % index), object_root,
+                                    reset=reset)
             incomplete = replay_incompleteness(replay)
             if incomplete:
                 incomplete_replays.append(dict(filename=record["filename"], reasons=incomplete))
@@ -790,52 +1716,106 @@ def run_replay(args):
                 anomaly_kinds[replay["anomaly_kind"]] = anomaly_kinds.get(replay["anomaly_kind"], 0) + 1
             if instrument_identity(object_root) != notes:
                 raise CoverageError("instrumented objects changed during replay")
-            report, stderr, _ = collect()
-            raw = canonical(report).encode()
-            snapshot_path = directory / ("snapshot-%06d.json.gz" % index)
-            with gzip.open(snapshot_path, "wb") as snapshot_output:
-                snapshot_output.write(raw)
-            # Initial queue entries are the only inputs eligible for the
-            # measured seed baseline.  Their identity comes from the append-
-            # only queue ledger, never from a zero gcovr counter report.
-            is_seed_input = record.get("kind") == "initial-queue-name"
-            event = union.add(parse_snapshot(report, source_root, search_roots), record, digest_bytes(raw),
-                              expected_counter_reset=args.target in ("bftpd", "pure-ftpd"),
-                              is_seed_input=is_seed_input)
-            event.update(replay=replay, reset=reset, gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
-            events.write(canonical(event) + "\n")
-            events.flush()
-            unexpected_drop |= event["unexpected_nonmonotonic_snapshot"]
-            # Every replay enters the union, including rows omitted by step.
-            if index % args.step == 0 or index == len(plan):
-                writer.writerow(union.csv_row(event))
-                csv_output.flush()
+            checkpoint = not sampled or index in checkpoint_indices
+            ledger_record = dict(
+                schema_version=SAMPLED_SCHEMA if sampled else SCHEMA,
+                idx=index, filename=record["filename"], input_sha256=record["input_sha256"],
+                input_hash_verified_before_replay=True, reset=reset, replay=replay,
+                instrumented_objects_unchanged=True, checkpoint=checkpoint)
+            policy_replay_events.append(dict(
+                idx=index, filename=record["filename"], replay=replay, reset=reset))
+            for field in ("campaign_id", "queue_id", "discovery_time_ms", "monotonic_ms",
+                          "discovery_execution_id", "coordinate_source", "kind"):
+                if field in record:
+                    ledger_record[field] = record[field]
+            if checkpoint:
+                report, stderr, _ = collect()
+                raw = canonical(report).encode()
+                snapshot_path = directory / ("snapshot-%06d.json.gz" % index)
+                with gzip.open(snapshot_path, "wb") as snapshot_output:
+                    snapshot_output.write(raw)
+                # Initial queue entries are the only inputs eligible for the
+                # measured seed baseline. The seed-boundary checkpoint captures
+                # their accumulated gcda before any mutated input is replayed.
+                is_seed_input = record.get("kind") == "initial-queue-name"
+                event = union.add(parse_snapshot(report, source_root, search_roots), record,
+                                  digest_bytes(raw),
+                                  expected_counter_reset=args.target in ("bftpd", "pure-ftpd"),
+                                  is_seed_input=is_seed_input)
+                # A zero-gcda baseline adopts its fixed source/branch universe
+                # from this first collected snapshot.
+                write_json(directory / "scope.json", manifest)
+                event.update(replay_input_idx=index, replay=replay, reset=reset,
+                             gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
+                events.write(canonical(event) + "\n")
+                events.flush()
+                ledger_record.update(coverage_event_idx=event["idx"],
+                                     snapshot_file=snapshot_path.name,
+                                     snapshot_sha256=event["snapshot_sha256"])
+                unexpected_drop |= event["unexpected_nonmonotonic_snapshot"]
+                if sampled or index % args.step == 0 or index == len(plan):
+                    writer.writerow(union.csv_row(event))
+                    csv_output.flush()
+            if ledger_output is not None:
+                ledger_output.write(canonical(ledger_record) + "\n")
+                ledger_output.flush()
+    pureftpd_audit_file = None
+    pureftpd_audit_sha256 = None
+    if args.target == "pure-ftpd":
+        pureftpd_audit_file = "pureftpd-exit-policy-audit.json"
+        pureftpd_audit_path = directory / pureftpd_audit_file
+        write_json(pureftpd_audit_path,
+                   pureftpd_policy_audit_report(replay_policy, policy_replay_events))
+        pureftpd_audit_sha256 = digest_file(pureftpd_audit_path)
+    proftpd_audit_file = None
+    proftpd_audit_sha256 = None
+    if args.target == "proftpd":
+        proftpd_audit_file = "proftpd-exit-policy-audit.json"
+        proftpd_audit_path = directory / proftpd_audit_file
+        write_json(proftpd_audit_path,
+                   proftpd_policy_audit_report(replay_policy, policy_replay_events))
+        proftpd_audit_sha256 = digest_file(proftpd_audit_path)
     counts = audit_csv(output, manifest, union.events)
     if counts["terminal_branches"] != len(union.covered):
         raise CoverageError("terminal aggregate disagrees with branch-ID union")
-    all_resets_verified = all(event["reset"]["command_succeeded"] for event in union.events)
-    measurement_complete = (not incomplete_replays and not unreplayable and all_resets_verified and
+    measurement_complete = (not replay_truncated and not incomplete_replays and not unreplayable and all_resets_verified and
                             (replay_policy is None or replay_policy["verified"]))
     # Preserve a replay-verifiable witness for every input.  The witness is
     # the queue identity plus the content and snapshot hashes; audit_artifacts
     # recomputes these joins instead of trusting the aggregate count.
-    input_witnesses = [dict(idx=e["idx"], filename=e["filename"],
-                            input_sha256=e["input_sha256"],
-                            snapshot_sha256=e["snapshot_sha256"])
-                      for e in union.events]
+    input_witnesses = ([dict(idx=e["idx"], filename=e["filename"],
+                             input_sha256=e["input_sha256"],
+                             snapshot_sha256=e["snapshot_sha256"])
+                       for e in union.events] if not sampled else
+                       [dict(idx=e["idx"], filename=e["filename"],
+                             input_sha256=e["input_sha256"], checkpoint=e["checkpoint"],
+                             snapshot_sha256=e.get("snapshot_sha256"))
+                        for e in (json.loads(line) for line in
+                                  (directory / ledger_name).read_text().splitlines())])
     write_json(directory / "terminal.json", dict(
-        schema_version=SCHEMA, scope_sha256=manifest["scope_sha256"],
+        schema_version=schema, scope_sha256=manifest["scope_sha256"],
         covered_branch_ids=sorted(union.covered), covered_line_ids=sorted(union.covered_lines),
         seed_covered_branch_ids=sorted(union.seed_covered),
         seed_covered_line_ids=sorted(union.seed_covered_lines),
-        seed_replay_indices=sorted(union.seed_events),
-        n_seed_replayed=len(union.seed_events),
+        seed_replay_indices=(seed_indices if sampled else sorted(union.seed_events)),
+        n_seed_replayed=(len(seed_indices) if sampled else len(union.seed_events)),
         executed_input_witnesses=input_witnesses,
         n_replayed=len(plan), fixed_execution_coordinates_valid=bool(coordinates),
+        planned_n_replayed=planned_n_replayed,
+        replay_input_limit=max_replay_inputs,
+        replay_truncated=replay_truncated,
+        smoke_mode=smoke,
+        coverage_capture_mode="sampled-step-plus-terminal" if sampled else "every-input",
+        sampled_checkpoint_input_indices=sorted(checkpoint_indices) if sampled else None,
+        n_coverage_checkpoints=len(union.events),
         n_unreplayable_ledger_entries=len(unreplayable),
         coverage_complete=measurement_complete,
         incomplete_replays=incomplete_replays,
         acceptance="complete" if measurement_complete else "incomplete",
+        pureftpd_exit_policy_audit_file=pureftpd_audit_file,
+        pureftpd_exit_policy_audit_sha256=pureftpd_audit_sha256,
+        proftpd_exit_policy_audit_file=proftpd_audit_file,
+        proftpd_exit_policy_audit_sha256=proftpd_audit_sha256,
         replay_anomalies=dict(total=sum(anomaly_kinds.values()), kinds=anomaly_kinds),
         all_reset_commands_succeeded=all_resets_verified,
         execution_coordinate_unit="fuzzer total_execs, not network requests",
@@ -843,7 +1823,8 @@ def run_replay(args):
         reset_command=reset_command, reset_stderr=reset_stderr,
         baseline_stderr=baseline_stderr, collection_command=collection_command,
         measurement="cumulative corpus replay branch union, not same-runtime bitmap coverage",
-        temporal_limit="queue save time does not establish first branch discovery time"))
+        temporal_limit="queue save time does not establish first branch discovery time",
+        incomplete_reasons=( ["smoke-replay-input-cap"] if replay_truncated else [] )))
     # No synthetic campaign-end row: terminal.json describes the last actual checkpoint.
     if unexpected_drop:
         raise CoverageError("raw snapshot decreased; union preserved, audit requires investigation")
@@ -855,8 +1836,20 @@ def run_replay(args):
 
 def audit_artifacts(output, source_root=None):
     output = Path(output)
-    directory = Path(str(output) + ".v4")
+    legacy_directory = Path(str(output) + LEGACY_ARTIFACT_SUFFIX)
+    sampled_directory = Path(str(output) + SAMPLED_ARTIFACT_SUFFIX)
+    if legacy_directory.exists() and sampled_directory.exists():
+        raise CoverageError("ambiguous coverage artifacts: both v4 and v5 directories exist")
+    directory = sampled_directory if sampled_directory.exists() else legacy_directory
     manifest = json.loads((directory / "scope.json").read_text())
+    schema = manifest.get("schema_version")
+    if schema not in (SCHEMA, SAMPLED_SCHEMA):
+        raise CoverageError("unsupported coverage artifact schema: " + str(schema))
+    if ((schema == SAMPLED_SCHEMA) != (directory == sampled_directory)):
+        raise CoverageError("coverage artifact directory and schema version disagree")
+    recorded_scope_hash = manifest.get("scope_sha256")
+    if recorded_scope_hash != scope_identity_hash(manifest):
+        raise CoverageError("scope manifest hash mismatch")
     root = source_root or manifest["source_root"]
     # An explicit --source-root relocates the whole tree as a single root;
     # otherwise the recorded multi-root resolution (e.g. exim's build copies
@@ -864,19 +1857,80 @@ def audit_artifacts(output, source_root=None):
     roots = [] if source_root else [Path(p) for p in manifest.get("source_search_roots", [])]
     baseline = parse_snapshot(json.loads((directory / "baseline.json").read_text()), root, roots,
                               allow_empty=bool(manifest.get("zero_baseline_mode")))
-    if (baseline.files != manifest["sources"] or
-            baseline.resolution != manifest.get("source_resolution", baseline.resolution) or
-            sorted(map(list, baseline.branches)) != manifest["branch_ids"] or
-            sorted(map(list, baseline.lines)) != manifest["line_ids"]):
+    empty_adopted_baseline = bool(manifest.get("zero_baseline_mode") and not baseline.branches)
+    if (not empty_adopted_baseline and
+            (baseline.files != manifest["sources"] or
+             baseline.resolution != manifest.get("source_resolution", baseline.resolution) or
+             sorted(map(list, baseline.branches)) != manifest["branch_ids"] or
+             sorted(map(list, baseline.lines)) != manifest["line_ids"])):
         raise CoverageError("baseline identities disagree with pinned scope")
     union = CoverageUnion(baseline, manifest)
     coordinate_fields = ("filename", "campaign_id", "queue_id", "discovery_time_ms", "monotonic_ms",
                          "discovery_execution_id", "coordinate_source")
     saved_events = []
+    sampled = schema == SAMPLED_SCHEMA
+    replay_ledger = []
+    replay_plan = []
+    expected_samples = set()
+    if sampled:
+        policy = manifest.get("checkpoint_policy", {})
+        if (policy.get("kind") != "step-plus-terminal-and-seed-boundary" or
+                policy.get("final_checkpoint_required") is not True or
+                policy.get("seed_boundary_required") is not True or
+                policy.get("every_input_has_replay_ledger") is not True):
+            raise CoverageError("sampled schema has an unsupported checkpoint policy")
+        step = nonnegative_integer(policy.get("step"), "checkpoint step")
+        if step < 1:
+            raise CoverageError("checkpoint step must be positive")
+        replay_plan = json.loads((directory / "replay-plan.json").read_text())
+        with (directory / "replay-ledger.jsonl").open() as source:
+            replay_ledger = [json.loads(line) for line in source if line.strip()]
+        if not replay_plan or len(replay_ledger) != len(replay_plan):
+            raise CoverageError("per-input replay ledger length disagrees with replay plan")
+        seed_indices = [i for i, record in enumerate(replay_plan, 1)
+                        if record.get("kind") == "initial-queue-name"]
+        if seed_indices and seed_indices != list(range(1, len(seed_indices) + 1)):
+            raise CoverageError("sampled replay plan has a non-prefix initial seed set")
+        expected_samples = {i for i in range(1, len(replay_plan) + 1)
+                            if i % step == 0 or i == len(replay_plan)}
+        if seed_indices:
+            expected_samples.add(seed_indices[-1])
+        for index, (planned, record) in enumerate(zip(replay_plan, replay_ledger), 1):
+            if (record.get("schema_version") != SAMPLED_SCHEMA or record.get("idx") != index or
+                    record.get("filename") != planned.get("filename") or
+                    record.get("input_sha256") != planned.get("input_sha256") or
+                    record.get("input_hash_verified_before_replay") is not True or
+                    record.get("instrumented_objects_unchanged") is not True or
+                    not isinstance(record.get("reset"), dict) or
+                    not isinstance(record.get("replay"), dict) or
+                    record.get("checkpoint") is not (index in expected_samples)):
+                raise CoverageError("invalid per-input replay ledger entry: " + str(index))
+            if index in expected_samples:
+                if (record.get("coverage_event_idx") is None or
+                        not record.get("snapshot_file") or
+                        not record.get("snapshot_sha256")):
+                    raise CoverageError("sampled input lacks snapshot evidence: " + str(index))
+            elif any(field in record for field in
+                     ("coverage_event_idx", "snapshot_file", "snapshot_sha256")):
+                raise CoverageError("unsampled input unexpectedly has snapshot evidence: " + str(index))
+        if [record["idx"] for record in replay_ledger if record["checkpoint"]] != sorted(expected_samples):
+            raise CoverageError("replay ledger checkpoint sequence is incomplete")
     with (directory / "checkpoints.jsonl").open() as source:
         for raw in source:
             saved = json.loads(raw)
             saved_events.append(saved)
+            if sampled:
+                replay_idx = nonnegative_integer(saved.get("replay_input_idx"), "replay_input_idx")
+                if not 1 <= replay_idx <= len(replay_ledger):
+                    raise CoverageError("checkpoint references an unknown replay input")
+                linked = replay_ledger[replay_idx - 1]
+                if (not linked.get("checkpoint") or
+                        linked.get("coverage_event_idx") != len(saved_events) or
+                        linked.get("snapshot_file") != saved.get("snapshot_file") or
+                        linked.get("snapshot_sha256") != saved.get("snapshot_sha256") or
+                        canonical(linked.get("replay")) != canonical(saved.get("replay")) or
+                        canonical(linked.get("reset")) != canonical(saved.get("reset"))):
+                    raise CoverageError("sampled checkpoint disagrees with replay ledger")
             snapshot_path = directory / saved["snapshot_file"]
             if snapshot_path.parent.resolve() != directory.resolve():
                 raise CoverageError("snapshot path escapes artifact directory")
@@ -893,22 +1947,133 @@ def audit_artifacts(output, source_root=None):
                           "dropped_snapshot_branch_ids", "is_seed_input"):
                 if canonical(saved[field]) != canonical(event[field]):
                     raise CoverageError("checkpoint aggregate disagrees with snapshot branch IDs: " + field)
+            if sampled and (saved.get("schema_version") != SAMPLED_SCHEMA or
+                            event.get("scope_sha256") != recorded_scope_hash):
+                raise CoverageError("sampled checkpoint has the wrong schema or scope")
+    if sampled and len(saved_events) != len(expected_samples):
+        raise CoverageError("sampled checkpoint count disagrees with step policy")
+    policy_events = replay_ledger if sampled else saved_events
+    # Empty baselines acquire their pinned universe at the first actual sample.
+    if (empty_adopted_baseline and
+            (baseline.files != manifest["sources"] or
+             baseline.resolution != manifest.get("source_resolution") or
+             sorted(map(list, baseline.branches)) != manifest["branch_ids"] or
+             sorted(map(list, baseline.lines)) != manifest["line_ids"])):
+        raise CoverageError("adopted baseline identities disagree with pinned scope")
+    if canonical(manifest) != canonical(json.loads((directory / "scope.json").read_text())):
+        raise CoverageError("reconstructed scope disagrees with saved scope")
     terminal = json.loads((directory / "terminal.json").read_text())
+    pureftpd_policy_audit_verified = False
+    if manifest.get("target") == "pure-ftpd":
+        policy = manifest.get("replay_policy", {})
+        if policy.get("name") == "pure-ftpd-gcov-die-421-exit-251-252-v2":
+            source = Path(root) / "src/ftpd.c"
+            binary = Path(manifest.get("object_root", "")) / "src/pure-ftpd"
+            if (policy.get("verified") is not True or
+                    policy.get("source_patch_markers_verified") is not True or
+                    policy.get("executable_present") is not True or
+                    policy.get("source_binary_build_association") != "not-verified" or
+                    not source.is_file() or not binary.is_file() or
+                    not pureftpd_source_patch_markers(source.read_bytes()) or
+                    digest_file(source) != policy.get("source_sha256") or
+                    digest_file(binary) != policy.get("binary_sha256")):
+                raise CoverageError("Pure-FTPd source or executable identity disagrees with replay policy")
+            if len(policy_events) != terminal.get("n_replayed"):
+                raise CoverageError("Pure-FTPd policy audit lacks a per-input checkpoint")
+            for index, event in enumerate(policy_events, 1):
+                errors = verify_pureftpd_replay_evidence(
+                    event.get("replay", {}), event.get("reset", {}), directory,
+                    index, manifest.get("gcno", {}))
+                if errors:
+                    raise CoverageError("Pure-FTPd replay evidence failed at input %d: %s" %
+                                        (index, ",".join(errors)))
+            audit_name = terminal.get("pureftpd_exit_policy_audit_file")
+            audit_path = directory / "pureftpd-exit-policy-audit.json"
+            expected_audit = pureftpd_policy_audit_report(policy, policy_events)
+            if (audit_name != audit_path.name or not audit_path.is_file() or
+                    terminal.get("pureftpd_exit_policy_audit_sha256") != digest_file(audit_path) or
+                    canonical(json.loads(audit_path.read_text())) != canonical(expected_audit)):
+                raise CoverageError("Pure-FTPd per-input policy audit disagrees with replay evidence")
+            pureftpd_policy_audit_verified = True
+        elif terminal.get("coverage_complete") is True:
+            raise CoverageError("legacy Pure-FTPd policy cannot certify a complete replay")
+    proftpd_policy_audit_verified = False
+    if manifest.get("target") == "proftpd":
+        policy = manifest.get("replay_policy", {})
+        policy_name = policy.get("name")
+        if policy_name in ("proftpd-ready-client-graceful-exit-v2",
+                           "proftpd-ready-client-graceful-exit-v3",
+                           "proftpd-ready-client-graceful-exit-v4"):
+            require_frames = policy_name in ("proftpd-ready-client-graceful-exit-v3",
+                                             "proftpd-ready-client-graceful-exit-v4")
+            if (policy.get("verified") is not True or
+                    policy.get("handled_shutdown_exit_signal") != -signal.SIGSEGV or
+                    policy.get("handled_harness_shutdown_signal") != "SIGTERM"):
+                raise CoverageError("ProFTPD replay policy identity disagrees with the shutdown audit")
+            if len(policy_events) != terminal.get("n_replayed"):
+                raise CoverageError("ProFTPD policy audit lacks a per-input checkpoint")
+            for index, event in enumerate(policy_events, 1):
+                errors = verify_proftpd_replay_evidence(
+                    event.get("replay", {}), event.get("reset", {}), directory, index,
+                    require_frames=require_frames)
+                if errors:
+                    raise CoverageError("ProFTPD replay evidence failed at input %d: %s" %
+                                        (index, ",".join(errors)))
+            audit_name = terminal.get("proftpd_exit_policy_audit_file")
+            audit_path = directory / "proftpd-exit-policy-audit.json"
+            expected_audit = proftpd_policy_audit_report(policy, policy_events)
+            if (audit_name != audit_path.name or not audit_path.is_file() or
+                    terminal.get("proftpd_exit_policy_audit_sha256") != digest_file(audit_path) or
+                    canonical(json.loads(audit_path.read_text())) != canonical(expected_audit)):
+                raise CoverageError("ProFTPD per-input policy audit disagrees with replay evidence")
+            proftpd_policy_audit_verified = True
+        elif terminal.get("coverage_complete") is True:
+            raise CoverageError("legacy ProFTPD policy cannot certify a complete replay")
     if "coverage_complete" in terminal:
         replay_policy = manifest.get("replay_policy")
-        recomputed_complete = (not any(replay_incompleteness(event.get("replay", {})) for event in saved_events)
+        evidence_events = replay_ledger if sampled else saved_events
+        replay_truncated = terminal.get("replay_truncated", False)
+        if not isinstance(replay_truncated, bool):
+            raise CoverageError("terminal replay_truncated must be boolean")
+        planned_n_replayed = terminal.get("planned_n_replayed", terminal.get("n_replayed"))
+        if (isinstance(planned_n_replayed, bool) or not isinstance(planned_n_replayed, int) or
+                planned_n_replayed < terminal.get("n_replayed", 0) or
+                replay_truncated != (planned_n_replayed > terminal.get("n_replayed", 0))):
+            raise CoverageError("terminal replay plan count disagrees with truncation metadata")
+        recomputed_complete = (not any(replay_incompleteness(event.get("replay", {})) for event in evidence_events)
                                and not terminal.get("n_unreplayable_ledger_entries", 0)
-                               and all(event.get("reset", {}).get("command_succeeded") for event in saved_events)
-                               and (replay_policy is None or replay_policy.get("verified")))
+                               and all(event.get("reset", {}).get("command_succeeded") for event in evidence_events)
+                               and not replay_truncated
+                               and (replay_policy is None or replay_policy.get("verified"))
+                               and (manifest.get("target") != "pure-ftpd" or
+                                    pureftpd_policy_audit_verified)
+                               and (manifest.get("target") != "proftpd" or
+                                    proftpd_policy_audit_verified))
         if terminal["coverage_complete"] is not bool(recomputed_complete):
             raise CoverageError("terminal completeness disagrees with replay/reset evidence")
+    expected_seed_indices = ([i for i, record in enumerate(replay_plan, 1)
+                              if record.get("kind") == "initial-queue-name"]
+                             if sampled else sorted(union.seed_events))
     if (terminal["covered_branch_ids"] != sorted(map(list, union.covered)) or
             terminal["covered_line_ids"] != sorted(map(list, union.covered_lines)) or
-            terminal["n_replayed"] != len(union.events) or
+            terminal["n_replayed"] != (len(replay_ledger) if sampled else len(union.events)) or
             terminal.get("seed_covered_branch_ids") != sorted(map(list, union.seed_covered)) or
             terminal.get("seed_covered_line_ids") != sorted(map(list, union.seed_covered_lines)) or
-            terminal.get("seed_replay_indices") != sorted(union.seed_events)):
+            terminal.get("seed_replay_indices") != expected_seed_indices or
+            terminal.get("n_seed_replayed") != len(expected_seed_indices)):
         raise CoverageError("terminal aggregate disagrees with cumulative branch-ID union")
+    if sampled:
+        expected_witnesses = [dict(idx=record["idx"], filename=record["filename"],
+                                   input_sha256=record["input_sha256"],
+                                   checkpoint=record["checkpoint"],
+                                   snapshot_sha256=record.get("snapshot_sha256"))
+                             for record in replay_ledger]
+        if (terminal.get("schema_version") != SAMPLED_SCHEMA or
+                terminal.get("coverage_capture_mode") != "sampled-step-plus-terminal" or
+                terminal.get("sampled_checkpoint_input_indices") != sorted(expected_samples) or
+                terminal.get("n_coverage_checkpoints") != len(saved_events) or
+                terminal.get("executed_input_witnesses") != expected_witnesses):
+            raise CoverageError("sampled terminal metadata disagrees with replay ledger")
     return audit_csv(output, manifest, union.events)
 
 
@@ -920,6 +2085,12 @@ def main(argv=None):
     replay.add_argument("--folder", required=True, type=Path)
     replay.add_argument("--port", required=True, type=int)
     replay.add_argument("--step", required=True, type=int)
+    replay.add_argument("--sampled-checkpoints", action="store_true",
+                        help="opt in to v5 gcda-accumulating checkpoint snapshots; every input is still replayed and audited")
+    replay.add_argument("--smoke", action="store_true",
+                        help="mark this as a diagnostic smoke run; required when replay input truncation is enabled")
+    replay.add_argument("--max-replay-inputs", type=int,
+                        help="smoke-only cap on corpus inputs to replay; capped runs are always incomplete")
     replay.add_argument("--output", required=True, type=Path)
     replay.add_argument("--mode", required=True, type=int, choices=(0, 1))
     replay.add_argument("--gcovr", default="gcovr")
@@ -932,7 +2103,9 @@ def main(argv=None):
     audit.add_argument("--source-root", type=Path)
     args = parser.parse_args(argv)
     existing_output = (args.command == "replay" and
-                       (args.output.exists() or Path(str(args.output) + ".v4").exists()))
+                       (args.output.exists() or
+                        Path(str(args.output) + LEGACY_ARTIFACT_SUFFIX).exists() or
+                        Path(str(args.output) + SAMPLED_ARTIFACT_SUFFIX).exists()))
     try:
         if args.command == "audit":
             print(json.dumps(audit_artifacts(args.output, args.source_root), sort_keys=True))
@@ -940,7 +2113,10 @@ def main(argv=None):
         return run_replay(args)
     except (CoverageError, OSError, json.JSONDecodeError, subprocess.SubprocessError) as error:
         if args.command == "replay" and not existing_output:
-            directory = Path(str(args.output.resolve()) + ".v4")
+            suffix = (SAMPLED_ARTIFACT_SUFFIX
+                      if getattr(args, "sampled_checkpoints", False)
+                      else LEGACY_ARTIFACT_SUFFIX)
+            directory = Path(str(args.output.resolve()) + suffix)
             if directory.is_dir():
                 write_json(directory / "incomplete.json", dict(coverage_complete=False,
                            failure=str(error), measurement="incomplete corpus replay; do not use as a complete endpoint"))

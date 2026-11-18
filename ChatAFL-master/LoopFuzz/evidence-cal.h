@@ -36,8 +36,11 @@
  * fields, episode completed/posterior_updated/energy fields, provisional
  * "censor" kind, run-config episode_energy_cap + code_reward_semantics.
  * v4 (2026-10-21): executable state/seed selection, persistent state identity,
- * observed transition evidence, actual-invocation budgets and gain lineage. */
-#define EC_SCHEMA_VERSION 4
+ * observed transition evidence, actual-invocation budgets and gain lineage.
+ * v5 (2026-11-14): explicit calibration revision, fixed-dose training-window
+ * observations and censored-tail exposure; episode reward remains separately
+ * logged and must not be used as the window-mode training outcome. */
+#define EC_SCHEMA_VERSION 5
 
 /* Candidate dispositions after the bounded trial (paper §四). */
 #define EC_REJECT       0
@@ -70,6 +73,39 @@ void     ec_posterior_init_default(ec_posterior_t *p);
 void     ec_posterior_update(ec_posterior_t *p, int reward);
 double   ec_posterior_mean(const ec_posterior_t *p);
 double   ec_posterior_var(const ec_posterior_t *p);
+
+/* Fixed-dose calibration observations (revision fixed-invocation-window-v1).
+ * State-selection episodes can contain 16 or 1000+ charged invocations.
+ * Treating each episode as one Bernoulli trial confounds productivity with
+ * exposure.  This accumulator emits one binary observation per exactly N
+ * eligible training invocations.  A partial tail is explicitly censored;
+ * it is never fabricated into a negative outcome.  Each window stays within
+ * one selected state and is closed before that state changes.
+ *
+ * The caller invokes begin_invocation BEFORE the next charged invocation,
+ * then note_gain AFTER its actual code-gain observation.  Deferring the
+ * full-window emission until the next invocation (or normal close) ensures
+ * a gain on invocation N belongs to the window that produced it.  LLM,
+ * validation and unrelated controller invocations must not enter here. */
+typedef struct {
+  uint32_t reference_invocations;
+  uint32_t invocations;
+  unsigned char has_code_gain;
+  uint64_t completed_windows;
+  uint64_t rewarded_windows;
+  uint64_t censored_invocations;
+} ec_reward_window_t;
+
+void ec_reward_window_init(ec_reward_window_t *w, uint32_t reference_invocations);
+/* Return 1 only when a completed previous window was emitted into reward. */
+int  ec_reward_window_begin_invocation(ec_reward_window_t *w, int *reward);
+void ec_reward_window_note_gain(ec_reward_window_t *w);
+/* A stopping/interrupted last invocation is conservatively censored. */
+int  ec_reward_window_close(ec_reward_window_t *w, int interrupted, int *reward);
+
+/* Integer scheduler weights must preserve every finite positive score;
+ * otherwise truncation silently defeats the epsilon exploration floor. */
+uint32_t ec_positive_score_weight(double score);
 
 /* Deterministic RNG stream (xoshiro256**), separate from AFL's RNG so
  * Thompson sampling never disturbs existing fuzzing trajectories. */

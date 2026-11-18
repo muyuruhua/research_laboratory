@@ -10,6 +10,10 @@
 #include <math.h>
 #include <sys/file.h>
 #include <sys/types.h>
+#include <sys/mman.h>
+#include <pthread.h>
+#include <errno.h>
+#include <time.h>
 
 #include "chat-llm.h"
 #include "knowledge-level.h"
@@ -55,9 +59,14 @@ static int is_garbage_response(const char *response, size_t len);
 
 /* --- curl global lifecycle (call once from main thread) --- */
 void chat_llm_apply_sampling_env(void); /* defined below */
+static void chat_llm_budget_init(void);
 void chat_llm_global_init(void)  {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+        fprintf(stderr, "[LLM] curl global initialization failed; requests disabled.\n");
+        return;
+    }
     chat_llm_apply_sampling_env();
+    chat_llm_budget_init();
 }
 void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
 
@@ -74,21 +83,62 @@ __thread unsigned long long llm_last_completion_tokens = 0;
  * failures, all call classes) with the served model echoed by the
  * service — the two audit fields the retrospective data could not
  * provide.  Caps: CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP are
- * enforced centrally here (-1 / unset = unlimited), so a recorded cap
- * is a real cap, not a declaration. */
+ * the call limit is shared by every descendant process and worker thread.
+ * CHATAFL_TOKEN_CAP is only a threshold on reported completed usage:
+ * concurrent in-flight responses can cross it and omitted usage is unknown. */
 __thread char llm_last_served_model[128] = {0};
 static char chat_llm_calls_path[4096] = {0};
 static char chat_llm_archive_dir[4096] = {0};  /* full req/resp sidecars */
-static unsigned long long llm_calls_seq = 0;
-static unsigned long long llm_cum_calls = 0;    /* every attempt sent */
-static unsigned long long llm_cum_tokens = 0;   /* billed prompt+completion */
+struct chat_llm_shared_budget {
+    pthread_mutex_t mutex;
+    unsigned long long calls_seq;
+    unsigned long long calls;  /* reservations, including interrupted attempts */
+    unsigned long long tokens; /* reported completed prompt+completion only */
+};
+static struct chat_llm_shared_budget *llm_budget;
+static int llm_budget_init_attempted;
 static long llm_cap_total_calls = -1;           /* CHATAFL_LLM_TOTAL_CALL_CAP */
 static long llm_cap_total_tokens = -1;          /* CHATAFL_TOKEN_CAP */
-#include <pthread.h>
 #include <sys/time.h>
-static pthread_mutex_t g_llm_calls_mutex = PTHREAD_MUTEX_INITIALIZER;
 static __thread char g_llm_last_req[65536];   /* last POST body (this thread) */
 static __thread char g_llm_last_resp[262144]; /* last raw response (this thread) */
+static __thread unsigned long long g_llm_reservation;
+static __thread int g_llm_usage_reported;
+
+/* This must run in the original process before any worker/thread is created.
+ * Robust process-shared locking recovers after a helper is killed while
+ * holding the lock; inheriting an ordinary pthread mutex can deadlock. */
+static void chat_llm_budget_init(void) {
+    if (llm_budget_init_attempted) return;
+    llm_budget_init_attempted = 1;
+    struct chat_llm_shared_budget *budget = mmap(NULL, sizeof(*budget),
+        PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (budget == MAP_FAILED) goto failed;
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr)) { munmap(budget, sizeof(*budget)); goto failed; }
+    int error = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    if (!error) error = pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST);
+    if (!error) error = pthread_mutex_init(&budget->mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+    if (error) { munmap(budget, sizeof(*budget)); goto failed; }
+    llm_budget = budget;
+    return;
+failed:
+    fprintf(stderr, "[LLM] shared campaign budget initialization failed; requests disabled.\n");
+}
+
+static int chat_llm_budget_lock(void) {
+    if (!llm_budget) return 0; /* fail closed, including a missing global_init */
+    int error = pthread_mutex_lock(&llm_budget->mutex);
+    if (error == EOWNERDEAD) {
+        /* Reservations are committed before dispatch and never refunded. A
+         * dead owner can only consume a reservation, never create free calls. */
+        if (!pthread_mutex_consistent(&llm_budget->mutex)) return 1;
+        pthread_mutex_unlock(&llm_budget->mutex);
+        return 0;
+    }
+    return error == 0;
+}
 
 void chat_llm_set_archive_dir(const char *d) {
     if (d && *d)
@@ -139,15 +189,15 @@ static unsigned char chat_llm_channel_disabled(void) {
 }
 
 unsigned long long chat_llm_cum_calls(void) {
-    pthread_mutex_lock(&g_llm_calls_mutex);
-    unsigned long long value = llm_cum_calls;
-    pthread_mutex_unlock(&g_llm_calls_mutex);
+    if (!chat_llm_budget_lock()) return 0;
+    unsigned long long value = llm_budget->calls;
+    pthread_mutex_unlock(&llm_budget->mutex);
     return value;
 }
 unsigned long long chat_llm_cum_tokens(void) {
-    pthread_mutex_lock(&g_llm_calls_mutex);
-    unsigned long long value = llm_cum_tokens;
-    pthread_mutex_unlock(&g_llm_calls_mutex);
+    if (!chat_llm_budget_lock()) return 0;
+    unsigned long long value = llm_budget->tokens;
+    pthread_mutex_unlock(&llm_budget->mutex);
     return value;
 }
 long chat_llm_cap_calls(void)   { return llm_cap_total_calls; }
@@ -157,6 +207,25 @@ static unsigned long long chat_llm_now_ms(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (unsigned long long)tv.tv_sec * 1000ULL + tv.tv_usec / 1000;
+}
+
+/* Written once before workers/forks, then read-only in all descendants. */
+static unsigned long long chat_llm_campaign_deadline_ms;
+void chat_llm_set_campaign_deadline(unsigned long long epoch_ms) {
+    chat_llm_campaign_deadline_ms = epoch_ms;
+}
+static unsigned long long chat_llm_remaining_ms(void) {
+    if (!chat_llm_campaign_deadline_ms) return ULLONG_MAX;
+    unsigned long long now = chat_llm_now_ms();
+    return now < chat_llm_campaign_deadline_ms ? chat_llm_campaign_deadline_ms - now : 0;
+}
+static void chat_llm_retry_pause(void) {
+    unsigned long long wake_ms = chat_llm_now_ms() + 2000ULL;
+    if (chat_llm_campaign_deadline_ms && wake_ms > chat_llm_campaign_deadline_ms)
+        wake_ms = chat_llm_campaign_deadline_ms;
+    struct timespec wake = {(time_t)(wake_ms / 1000ULL),
+                           (long)(wake_ms % 1000ULL) * 1000000L};
+    while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &wake, NULL) == EINTR) {}
 }
 
 /* v3.1 (P1-7): full request/response provenance.  Prompts and replies are
@@ -171,7 +240,9 @@ static void chat_llm_archive(const char *request_id, const char *req_json,
         FILE *f = fopen(p, "w");
         if (f) { fputs(req_json, f); fclose(f); }
     }
-    if (resp && *resp) {
+    /* A timeout before response bytes arrived has an empty raw response.
+     * Preserve it as such; usage_reported remains false in the ledger. */
+    if (resp) {
         char p[4352]; snprintf(p, sizeof(p), "%s/%s.resp", chat_llm_archive_dir, request_id);
         FILE *f = fopen(p, "w");
         if (f) { fputs(resp, f); fclose(f); }
@@ -183,23 +254,20 @@ static void chat_llm_log_call(const char *status, const char *model_req,
                               unsigned long long pt, unsigned long long ct,
                               const char *endpoint, int attempt, int retry) {
     if (!chat_llm_calls_path[0]) return;
-    pthread_mutex_lock(&g_llm_calls_mutex);
-    unsigned long long seq = llm_calls_seq + 1;
-    /* seq is retained for compatibility, but is not a cross-fork identity:
-     * forked children inherit its value. PID + process-local seq is stable
-     * for the campaign and keeps request/response sidecars one-to-one. */
+    if (!chat_llm_budget_lock()) return;
+    unsigned long long seq = ++llm_budget->calls_seq;
+    /* The global sequence is shared, while PID also identifies its owner. */
     char request_id[128];
     snprintf(request_id, sizeof(request_id), "%ld-%llu", (long)getpid(), seq);
     chat_llm_archive(request_id, g_llm_last_req, g_llm_last_resp);
     FILE *f = fopen(chat_llm_calls_path, "a");
     if (f) {
         flock(fileno(f), LOCK_EX);
-        seq = ++llm_calls_seq;
-        snprintf(request_id, sizeof(request_id), "%ld-%llu", (long)getpid(), seq);
         json_object *record = json_object_new_object();
         if (record) {
             json_object_object_add(record, "seq", json_object_new_int64(seq));
             json_object_object_add(record, "request_id", json_object_new_string(request_id));
+            json_object_object_add(record, "reservation_id", json_object_new_int64(g_llm_reservation));
             json_object_object_add(record, "pid", json_object_new_int64((int64_t)getpid()));
             json_object_object_add(record, "ppid", json_object_new_int64((int64_t)getppid()));
             json_object_object_add(record, "attempt", json_object_new_int(attempt));
@@ -207,14 +275,17 @@ static void chat_llm_log_call(const char *status, const char *model_req,
             json_object_object_add(record, "channel", json_object_new_string(chat_llm_channel));
             json_object_object_add(record, "time_ms", json_object_new_int64(chat_llm_now_ms()));
             json_object_object_add(record, "status", json_object_new_string(status ? status : "unknown"));
+            json_object_object_add(record, "outbound_attempted", json_object_new_boolean(
+                status && strcmp(status, "cap-refused") && strcmp(status, "deadline-before-dispatch")));
             json_object_object_add(record, "model_requested", json_object_new_string(model_req ? model_req : ""));
             json_object_object_add(record, "model_served", json_object_new_string(llm_last_served_model));
             json_object_object_add(record, "latency_ms", json_object_new_int64(latency_ms));
             json_object_object_add(record, "prompt_tokens", json_object_new_int64(pt));
             json_object_object_add(record, "completion_tokens", json_object_new_int64(ct));
+            json_object_object_add(record, "usage_reported", json_object_new_boolean(g_llm_usage_reported));
             json_object_object_add(record, "endpoint", json_object_new_string(endpoint ? endpoint : ""));
-            json_object_object_add(record, "cum_calls", json_object_new_int64(llm_cum_calls));
-            json_object_object_add(record, "cum_tokens", json_object_new_int64(llm_cum_tokens));
+            json_object_object_add(record, "cum_calls", json_object_new_int64(llm_budget->calls));
+            json_object_object_add(record, "cum_tokens", json_object_new_int64(llm_budget->tokens));
             json_object_object_add(record, "archived", json_object_new_boolean(chat_llm_archive_dir[0] != 0));
             fprintf(f, "%s\n", json_object_to_json_string_ext(record, JSON_C_TO_STRING_PLAIN));
             json_object_put(record);
@@ -223,7 +294,7 @@ static void chat_llm_log_call(const char *status, const char *model_req,
         flock(fileno(f), LOCK_UN);
         fclose(f);
     }
-    pthread_mutex_unlock(&g_llm_calls_mutex);
+    pthread_mutex_unlock(&llm_budget->mutex);
 }
 
 /* ── Auditable LLM configuration (paper §九: matched configs) ──────
@@ -307,13 +378,49 @@ static int chat_llm_retryable_transport(CURLcode result)
 }
 
 /* Reserve every attempt, including retries, under the enrichment-worker lock. */
-static int chat_llm_reserve_call(void)
+static int chat_llm_reserve_call(const char *request, const char *model,
+                                  const char *endpoint, int attempt)
 {
-    pthread_mutex_lock(&g_llm_calls_mutex);
-    int allowed = (llm_cap_total_calls < 0 || llm_cum_calls < (unsigned long long)llm_cap_total_calls) &&
-                  (llm_cap_total_tokens < 0 || llm_cum_tokens < (unsigned long long)llm_cap_total_tokens);
-    if (allowed) ++llm_cum_calls;
-    pthread_mutex_unlock(&g_llm_calls_mutex);
+    g_llm_reservation = 0;
+    if (!chat_llm_remaining_ms()) return -1;
+    if (!chat_llm_budget_lock()) return 0;
+    if (!chat_llm_remaining_ms()) {
+        pthread_mutex_unlock(&llm_budget->mutex);
+        return -1;
+    }
+    int allowed = (llm_cap_total_calls < 0 || llm_budget->calls < (unsigned long long)llm_cap_total_calls) &&
+                  (llm_cap_total_tokens < 0 || llm_budget->tokens < (unsigned long long)llm_cap_total_tokens);
+    if (allowed) {
+        g_llm_reservation = ++llm_budget->calls;
+        /* Persist a pre-dispatch row independently of the completion ledger.
+         * A SIGKILL during curl therefore leaves an auditable charged attempt.
+         * Failures to persist evidence consume the reservation and send nothing. */
+        if (chat_llm_calls_path[0]) {
+            char path[4352];
+            snprintf(path, sizeof(path), "%s.reservations.jsonl", chat_llm_calls_path);
+            FILE *f = fopen(path, "a");
+            json_object *row = json_object_new_object();
+            if (!f || !row) allowed = 0;
+            if (f && row) {
+                json_object_object_add(row, "reservation_id", json_object_new_int64(g_llm_reservation));
+                json_object_object_add(row, "pid", json_object_new_int64((int64_t)getpid()));
+                json_object_object_add(row, "time_ms", json_object_new_int64(chat_llm_now_ms()));
+                json_object_object_add(row, "attempt", json_object_new_int(attempt));
+                json_object_object_add(row, "channel", json_object_new_string(chat_llm_channel));
+                json_object_object_add(row, "model_requested", json_object_new_string(model));
+                json_object_object_add(row, "endpoint", json_object_new_string(endpoint));
+                json_object_object_add(row, "request", json_object_new_string(request));
+                json_object_object_add(row, "status", json_object_new_string("reserved-before-dispatch"));
+                flock(fileno(f), LOCK_EX);
+                if (fprintf(f, "%s\n", json_object_to_json_string_ext(row, JSON_C_TO_STRING_PLAIN)) < 0 ||
+                    fflush(f) || fsync(fileno(f))) allowed = 0;
+                flock(fileno(f), LOCK_UN);
+            }
+            if (row) json_object_put(row);
+            if (f) fclose(f);
+        }
+    }
+    pthread_mutex_unlock(&llm_budget->mutex);
     return allowed;
 }
 
@@ -326,6 +433,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     llm_last_served_model[0] = '\0';
     g_llm_last_req[0] = g_llm_last_resp[0] = '\0';
     const char *no_llm = getenv("CHATAFL_NO_LLM");
+    if (!chat_llm_remaining_ms()) return NULL;
     if (no_llm && *no_llm && strcmp(no_llm, "0") != 0) return NULL;
     if (chat_llm_channel_disabled()) return NULL;
     if (tries <= 0 || !isfinite(temperature)) return NULL;
@@ -389,9 +497,11 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     }
     char *answer = NULL;
     for (int attempt = 0; attempt < tries; ++attempt) {
+        if (!chat_llm_remaining_ms()) break;
         snprintf(g_llm_last_req, sizeof(g_llm_last_req), "%s", data);
         g_llm_last_resp[0] = '\0';
         llm_last_prompt_tokens = llm_last_completion_tokens = 0;
+        g_llm_usage_reported = 0;
         llm_last_served_model[0] = '\0';
         struct MemoryStruct chunk = {calloc(1, 1), 0};
         CURL *curl = curl_easy_init();
@@ -422,12 +532,26 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
-        if (!chat_llm_reserve_call()) {
+        int reservation = chat_llm_reserve_call(data, llm_model, url, attempt);
+        if (reservation <= 0) {
             curl_easy_cleanup(curl);
             free(chunk.memory);
-            chat_llm_log_call("cap-refused", llm_model, 0, 0, 0, url, attempt, 0);
+            if (!reservation)
+                chat_llm_log_call("cap-refused", llm_model, 0, 0, 0, url, attempt, 0);
             break;
         }
+        /* Recheck after the persistent reservation: fsync and lock contention
+         * consume campaign time too. Never let a zero curl timeout mean
+         * unlimited, and never dispatch after the deadline. */
+        unsigned long long remaining_ms = chat_llm_remaining_ms();
+        if (!remaining_ms) {
+            curl_easy_cleanup(curl);
+            free(chunk.memory);
+            chat_llm_log_call("deadline-before-dispatch", llm_model, 0, 0, 0, url, attempt, 0);
+            break;
+        }
+        if (remaining_ms < (unsigned long long)timeout_ms) timeout_ms = (long)remaining_ms;
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
         unsigned long long started = chat_llm_now_ms();
         CURLcode res = curl_easy_perform(curl);
         long latency = (long)(chat_llm_now_ms() - started);
@@ -448,18 +572,23 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             if (is_object && json_object_object_get_ex(response, "model", &value) &&
                 json_object_is_type(value, json_type_string))
                 snprintf(llm_last_served_model, sizeof(llm_last_served_model), "%s", json_object_get_string(value));
+            int has_prompt_usage = 0, has_completion_usage = 0;
             if (is_object && json_object_object_get_ex(response, "usage", &usage) &&
                 json_object_is_type(usage, json_type_object)) {
                 if (json_object_object_get_ex(usage, "prompt_tokens", &value) &&
                     json_object_is_type(value, json_type_int) && json_object_get_int64(value) >= 0)
-                    llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(value);
+                    llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(value), has_prompt_usage = 1;
                 if (json_object_object_get_ex(usage, "completion_tokens", &value) &&
                     json_object_is_type(value, json_type_int) && json_object_get_int64(value) >= 0)
-                    llm_last_completion_tokens = (unsigned long long)json_object_get_int64(value);
+                    llm_last_completion_tokens = (unsigned long long)json_object_get_int64(value), has_completion_usage = 1;
             }
-            pthread_mutex_lock(&g_llm_calls_mutex);
-            llm_cum_tokens += llm_last_prompt_tokens + llm_last_completion_tokens;
-            pthread_mutex_unlock(&g_llm_calls_mutex);
+            g_llm_usage_reported = has_prompt_usage && has_completion_usage;
+            if (chat_llm_budget_lock()) {
+                unsigned long long reported = llm_last_prompt_tokens + llm_last_completion_tokens;
+                if (ULLONG_MAX - llm_budget->tokens < reported) llm_budget->tokens = ULLONG_MAX;
+                else llm_budget->tokens += reported;
+                pthread_mutex_unlock(&llm_budget->mutex);
+            }
 
             json_object *api_error = NULL;
             int has_error = is_object && json_object_object_get_ex(response, "error", &api_error) && api_error;
@@ -493,14 +622,15 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             }
             if (response) json_object_put(response);
         }
+        int will_retry = retry && attempt + 1 < tries && chat_llm_remaining_ms() > 2000ULL;
         chat_llm_log_call(call_status, llm_model, latency,
                           llm_last_prompt_tokens, llm_last_completion_tokens, url,
-                          attempt, retry && attempt + 1 < tries);
+                          attempt, will_retry);
         /* Every path releases the handle and buffer before retrying or returning. */
         curl_easy_cleanup(curl);
         free(chunk.memory);
-        if (answer || !retry || attempt + 1 == tries) break;
-        sleep(2);
+        if (answer || !will_retry) break;
+        chat_llm_retry_pause();
     }
     curl_slist_free_all(headers);
     json_object_put(request);
@@ -581,9 +711,32 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
  * asprintf) because that is a correctness fix (G1), not an
  * algorithmic contribution.
  */
+static int chat_llm_target_is_forked_daapd(void);
+
 char *construct_prompt_stall_original(char *protocol_name, char *examples,
                                       char *history)
 {
+    /* Keep the no-state-prompt ablation on the original prompt structure,
+     * while still describing the target that is actually fuzzed.  In
+     * particular, forked-daapd is HTTP on the wire and its current target
+     * interface is the /api JSON API; the legacy DAAP paths below are not
+     * valid examples for this benchmark target. */
+    char *target_examples = NULL;
+    const char *format_examples = examples ? examples : "";
+    if (protocol_name && strcasecmp(protocol_name, "HTTP") == 0 &&
+        chat_llm_target_is_forked_daapd()) {
+        asprintf(&target_examples,
+                 "forked-daapd HTTP API examples (use concrete corpus-backed paths; "
+                 "do not use legacy DAAP /login or /databases routes):\n"
+                 "GET /api/player HTTP/1.1\\r\\nHost: 127.0.0.1:3689\\r\\n\\r\\n\n"
+                 "GET /api/library/artists HTTP/1.1\\r\\nHost: 127.0.0.1:3689\\r\\n\\r\\n\n"
+                 "POST /api/queue/items/add?uris=library:track:6 HTTP/1.1\\r\\n"
+                 "Host: 127.0.0.1:3689\\r\\nContent-Length: 0\\r\\n\\r\\n\n"
+                 "Additional corpus examples:\n%s",
+                 format_examples);
+        if (target_examples) format_examples = target_examples;
+    }
+
     char *template =
         "In the %s protocol, the communication history between the "
         "%s client and the %s server is as follows."
@@ -597,8 +750,9 @@ char *construct_prompt_stall_original(char *protocol_name, char *examples,
     char *prompt = NULL;
     asprintf(&prompt, template,
              protocol_name, protocol_name, protocol_name,
-             examples ? examples : "",
+             format_examples,
              history  ? history  : "");
+    free(target_examples);
 
     /* Build JSON messages array with json-c (safe escaping). */
     struct json_object *messages_array = json_object_new_array();
@@ -643,6 +797,22 @@ char *construct_prompt_stall_original(char *protocol_name, char *examples,
  * The constraint is injected between the strategy description and the
  * "Decision Guide" so it has high attention weight. */
 typedef struct { const char *name; const char *constraint; } ProtocolFormatConstraint;
+/* forked-daapd uses HTTP on the wire but exposes its own JSON API. Select
+ * application guidance by target identity while keeping protocol attribution HTTP. */
+static int chat_llm_target_is_forked_daapd(void) {
+    const char *target = getenv("CHATAFL_TARGET_NAME");
+    if (!target || !*target) return 0;
+    const char *base = strrchr(target, '/');
+    base = base ? base + 1 : target;
+    size_t n = strcspn(base, ":");
+    char normalized[128];
+    if (n == 0 || n >= sizeof(normalized)) return 0;
+    for (size_t i = 0; i < n; ++i)
+        normalized[i] = (char)tolower((unsigned char)base[i]);
+    normalized[n] = '\0';
+    return strcmp(normalized, "forked-daapd") == 0;
+}
+
 static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
     {"SIP",
      "**SIP FORMAT CONSTRAINT (MANDATORY):**\n"
@@ -804,6 +974,17 @@ static char *llm_handle_plateau_inner(const char *protocol_name,
         }
     }
 
+    const char *target_format_constraint = "";
+    if (strcasecmp(protocol_name, "HTTP") == 0 &&
+        chat_llm_target_is_forked_daapd()) {
+        target_format_constraint =
+            "**FORKED-DAAPD HTTP API CONSTRAINT (MANDATORY):**\n"
+            "The target speaks HTTP, but its application API is forked-daapd's modern /api subtree. Use complete HTTP/1.1 requests, Host: 127.0.0.1:3689, and a blank line.\n"
+            "Use corpus-backed paths: /api/config, /api/settings, /api/outputs, /api/spotify, /api/search, /api/library/files, /api/library/artists, /api/library/albums, /api/library/genres, /api/queue, /api/queue/items/add, /api/player, and /artwork/group/N.\n"
+            "Use GET for reads, POST for /api/queue/items/add, PUT for player/queue updates, and DELETE for queue-item removal. These requests do not require DAAP /login, /databases, session-id, or revision-number; do not generate those legacy paths.\n"
+            "Example: GET /api/player HTTP/1.1\\r\\nHost: 127.0.0.1:3689\\r\\n\\r\\n\n\n";
+    }
+
     /* Plateau bias paragraph: CVE patterns at level 3 (catalog builds
      * only), bug-class primitives at level 1+ (all builds).  Injected
      * next to the Fix-23 constraint so both land in the high-attention
@@ -864,6 +1045,7 @@ static char *llm_handle_plateau_inner(const char *protocol_name,
         "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
         "**Example Request Formats:**\n%s\n\n"
         "%s"  /* Fix-23: per-protocol format constraint injected here */
+        "%s"  /* Target-specific HTTP application API guidance */
         "%s"  /* Stage-3: CVE bug-pattern bias (CHATAFL_ATTACK_PROMPT) */
         "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
         "Strategy A - Send a new specific request:\n"
@@ -895,6 +1077,7 @@ static char *llm_handle_plateau_inner(const char *protocol_name,
         history ? history : "",
         examples ? examples : "",
         proto_constraint,    /* Fix-23: inject protocol-specific format constraint */
+        target_format_constraint,
         vuln_patterns,       /* Stage-3: inject CVE-pattern bias when gated on */
         mqtt_state_hint);
     free(state_section);
@@ -1031,6 +1214,15 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
             anchor_msg_type = PROTOCOL_EXAMPLE_TABLE[i].msg_type;
             break;
         }
+    }
+    if (protocol_name && strcasecmp(protocol_name, "HTTP") == 0 &&
+        chat_llm_target_is_forked_daapd()) {
+        anchor_example =
+            "For forked-daapd, HTTP is the wire protocol and requests address its JSON API:\n"
+            "GET /api/player HTTP/1.1\\r\\nHost: 127.0.0.1:3689\\r\\n\\r\\n\n"
+            "POST /api/queue/items/add?uris=library:track:6 HTTP/1.1\\r\\n"
+            "Host: 127.0.0.1:3689\\r\\nContent-Length: 0\\r\\n\\r\\n";
+        anchor_msg_type = "GET /api/player";
     }
     /* Fallback for unknown protocols: use a generic format hint */
     if (anchor_example == NULL) {
@@ -2409,6 +2601,13 @@ typedef struct {
     const char *format_hint;  /* protocol-specific format instructions for LLM */
 } EnrichHintEntry;
 
+static const EnrichHintEntry FORKED_DAAPD_HTTP_HINT = {
+    "HTTP",
+    "forked-daapd JSON API sequences grounded in the corpus: GET /api/config and /api/settings; browse /api/library/files, /api/library/artists, /api/library/albums, /api/library/genres; search with /api/search; inspect /api/queue and /api/player; POST /api/queue/items/add; PUT /api/player/play, /api/player/pause, volume, shuffle, repeat, consume, or /api/queue/clear; DELETE /api/queue/items/ID; GET /artwork/group/ID. Vary query parameters and order state-changing requests with follow-up GET requests.",
+    "malformed percent-encoding and query strings, missing or duplicated parameters, negative and overflowing IDs/limits/offsets, unsupported HTTP methods per resource, invalid queue item URIs, inconsistent Content-Length, and malformed JSON bodies where a body is accepted",
+    "Use the HTTP wire protocol: METHOD /api/... HTTP/1.1, Host: 127.0.0.1:3689, and a blank line (\\r\\n\\r\\n). Use concrete values and corpus-backed routes. This target does not need legacy DAAP /login, /databases, session-id, or revision-number requests. Example:\nGET /api/player HTTP/1.1\nHost: 127.0.0.1:3689\n\nPOST /api/queue/items/add?uris=library:track:6 HTTP/1.1\nHost: 127.0.0.1:3689\nContent-Length: 0\n\n"
+};
+
 static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
     /* Fix-12: Removed literal \\r\\n from line-based format hints.
      * Root cause of bftpd IPSM-edge regression (-37.3%):
@@ -2475,45 +2674,16 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
      "Each request includes: command URL RTSP/1.0, headers (CSeq, Transport, Session), "
      "and is terminated by a blank line (\\r\\n\\r\\n). "
      "Use CONCRETE values. Example CSeq: 1, Session: 12345678"},
-    /* Fix-23: HTTP entry extended to cover BOTH lighttpd (plain HTTP) AND
-     * forked-daapd (DAAP-over-HTTP), since both are launched with -P HTTP.
-     * The old HTTP entry only described plain HTTP GET/POST; the DAAP paths
-     * (/login, /databases, /server-info, /update, /ctrl-int) were never
-     * included in enrichment seeds, so forked-daapd stayed at shallow
-     * coverage despite Fix-22d adding a dead "DAAP" key that was never matched.
-     *
-     * Fix: HTTP sequences now include DAAP subpaths with concrete session-id
-     * and revision-number values so forked-daapd enriched seeds are accepted
-     * by the server (session-id must be a real integer returned by /login).
-     *
-     * The existing {"DAAP", ...} entry below is kept for documentation but
-     * will never be reached at runtime — protocol_name is always "HTTP".
-     */
+    /* Generic HTTP guidance. forked-daapd uses HTTP on the wire but its
+     * application-specific /api routes are selected by target identity. */
     {"HTTP",
-     /* General HTTP */
-     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive, "
-     /* DAAP-over-HTTP paths for forked-daapd */
-     "DAAP login (/login?pairing-guid=...), /server-info, /update?revision-number=N, "
-     "/databases?session-id=S, /databases/1/items?session-id=S, "
-     "/databases/1/containers?session-id=S, /databases/1/items/ID.mp3?session-id=S, "
-     "/ctrl-int/1/playstatus?session-id=S, /ctrl-int/1/pause?session-id=S, "
-     "/ctrl-int/1/nextitem?session-id=S, /logout?session-id=S, "
-     "/content-codes, /databases/1/browse/artists?session-id=S",
-     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9, "
-     "invalid DAAP session-id (0 or negative), mismatched revision-number, "
-     "missing Host header, malformed pairing-guid (wrong length), "
-     "requests with stale/too-large revision-number",
+     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive, common resource paths, query parameters, conditional requests, content negotiation",
+     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9, missing Host header, invalid content lengths, conflicting transfer encodings",
      "Each request includes: METHOD path HTTP/1.1, headers (Host, Content-Type, etc.), "
      "terminated by blank line (\\r\\n\\r\\n). Use CONCRETE values — NEVER placeholders. "
-     "For DAAP: session-id is a positive integer (e.g. 1831879645), revision-number starts at 1. "
-     "Example sequence (lighttpd):\n"
+     "Example sequence:\n"
      "GET /index.html HTTP/1.1\nHost: localhost:8080\n\n"
-     "POST /upload HTTP/1.1\nHost: localhost:8080\nContent-Length: 5\n\nhello\n"
-     "Example sequence (forked-daapd):\n"
-     "GET /login?pairing-guid=0x0000000000000001 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\nContent-Length: 0\n\n"
-     "GET /server-info HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
-     "GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
-     "GET /databases/1/items?session-id=1831879645&meta=dmap.itemname,daap.songartist HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n"},
+     "POST /upload HTTP/1.1\nHost: localhost:8080\nContent-Length: 5\n\nhello\n"},
     {"SIP",
      /* Fix-22c: kamailio — concrete SIP header values prevent <<VALUE>> placeholders */
      "REGISTER+INVITE+ACK+BYE stateful dialog, CANCEL mid-dialog, OPTIONS capability, "
@@ -2533,10 +2703,10 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
      "From: <sip:alice@127.0.0.1>;tag=1928301774\nTo: <sip:alice@127.0.0.1>\n"
      "Call-ID: a84b4c76e66710@127.0.0.1\nCSeq: 1 REGISTER\nMax-Forwards: 70\n"
      "Contact: <sip:alice@127.0.0.1:5060>\nExpires: 3600\nContent-Length: 0\n"},
-    /* NOTE (Fix-23): This {"DAAP",...} entry is NEVER reached at runtime.
-     * forked-daapd is launched with -P HTTP, so protocol_name == "HTTP" always.
-     * All DAAP-over-HTTP knowledge has been merged into the {"HTTP",...} entry above.
-     * Kept here only as documentation / for any future -P DAAP experiment. */
+    /* NOTE (Fix-23): This legacy {"DAAP",...} entry is not selected for the
+     * forked-daapd benchmark target, which is launched with -P HTTP. Its
+     * current application guidance lives in the target-specific HTTP profile
+     * above; retain this entry only for any explicit future -P DAAP target. */
     {"DAAP",
      /* Fix-22d: forked-daapd — concrete session-id and revision-number values */
      "login+server-info+update+databases+items+containers+playlists sequences, "
@@ -2584,6 +2754,9 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
             }
         }
     }
+    if (protocol_name && strcasecmp(protocol_name, "HTTP") == 0 &&
+        chat_llm_target_is_forked_daapd())
+        hint = &FORKED_DAAPD_HTTP_HINT;
     const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
     const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
     const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";

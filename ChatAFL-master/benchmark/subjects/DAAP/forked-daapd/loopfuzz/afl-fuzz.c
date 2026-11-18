@@ -6820,7 +6820,17 @@ static void perform_dry_run(char **argv)
 
     /* save the seed to file for replaying */
     u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
-    save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+    /* Preserve every imported seed message. messages_sent counts received
+     * responses and can be zero or short when the target closes early; it is
+     * not an input-length bound. */
+    u32 replay_message_count = 0;
+    for (kliter_t(lms) *it = kl_begin(kl_messages);
+         it != kl_end(kl_messages); it = kl_next(it))
+      replay_message_count++;
+    if (!replay_message_count ||
+        !save_kl_messages_to_file(kl_messages, fn_replay, 1,
+                                  replay_message_count))
+      FATAL("Unable to preserve non-empty replayable seed '%s'", fn);
     ck_free(fn_replay);
 
     /* AFLNet delete the kl_messages */

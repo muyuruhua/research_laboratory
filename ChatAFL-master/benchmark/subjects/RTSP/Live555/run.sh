@@ -34,7 +34,12 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}/testProgs
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/rtsp.dict -o $OUTDIR -N tcp://127.0.0.1/8554 $OPTIONS ./testOnDemandRTSPServer 8554
+  RESET_ARGS=()
+  if [ "$FUZZER" = "loopfuzz" ]; then
+    RESET_ARGS=(-c "bash /tmp/coverage-v4-src/fuzz_runtime/live555.sh")
+    [ -f /tmp/coverage-v4-src/fuzz_runtime/live555.sh ] || { echo "missing live reset script" >&2; exit 2; }
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/rtsp.dict -o $OUTDIR -N tcp://127.0.0.1/8554 $OPTIONS "${RESET_ARGS[@]}" ./testOnDemandRTSPServer 8554
 
   STATUS=$?
 

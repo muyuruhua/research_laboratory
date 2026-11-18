@@ -12,7 +12,7 @@ We give at most 400 for the examples and 1300 for the stall prompt
 Similarly 1700 is for the example request in the seed enrichment
 */
 
-#define OPENAI_TOKEN "sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+/* Credentials are supplied at runtime through the KEY environment variable. */
 
 #define MAX_PROMPT_LENGTH 2048
 #define EXAMPLES_PROMPT_LENGTH 400
@@ -81,8 +81,13 @@ KHASH_MAP_INIT_STR(strMap, int)
 KHASH_MAP_INIT_STR(field_table, int);
 KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_hash_func, kh_str_hash_equal);
 
-/* Must be called once before any chat_with_llm / enrich_sequence calls */
+/* Must be called once in the original process BEFORE threads or forks and
+ * before any chat_with_llm / enrich_sequence calls. Shared-budget setup
+ * failures disable outbound calls rather than falling back to local caps. */
 void chat_llm_global_init(void);
+/* Set once in the original process before workers/forks. Epoch milliseconds;
+ * zero disables the campaign deadline. Applies to every class and retry. */
+void chat_llm_set_campaign_deadline(unsigned long long epoch_ms);
 /* Must be called once after all LLM calls are done */
 void chat_llm_global_cleanup(void);
 
@@ -106,7 +111,11 @@ const char *llm_active_model(void);
  * classes, retries, failures) with requested + SERVED model, latency,
  * token usage and cumulative totals.  Caps are enforced centrally in
  * chat_with_llm(): CHATAFL_LLM_TOTAL_CALL_CAP / CHATAFL_TOKEN_CAP
- * (unset/-1 = unlimited). */
+ * (unset/-1 = unlimited). Call reservations are shared across all threads
+ * and fork descendants and are never refunded after interruption.
+ * CHATAFL_TOKEN_CAP is a threshold on reported completed usage, NOT a hard
+ * input+output token maximum: in-flight responses may cross it. Missing
+ * response usage is marked unknown (usage_reported=false), never free. */
 void                chat_llm_set_calls_log(const char *path);
 void                chat_llm_set_archive_dir(const char *d); /* full req/resp sidecars */
 extern __thread char llm_last_served_model[128];

@@ -4,3 +4,13 @@ ChatAFL-master/benchmark/results-*/
 **/__pycache__/
 **/*.pyc
 /ablation.zip
+
+# Local container scratch and generated experiment output.
+/ChatAFL-master/ablation/.rv_work/
+/ChatAFL-master/ablation/q123_repair_cross_target_20261114/
+/ChatAFL-master/ablation/q123_repair_smoke_20261114T*/
+/ChatAFL-master/ablation/q123_repair_smoke_20261114/*
+# Keep the post-run audit and reproducible checks required by the runners.
+!/ChatAFL-master/ablation/q123_repair_smoke_20261114/*.py
+!/ChatAFL-master/ablation/q123_repair_smoke_20261114/*.sh
+!/ChatAFL-master/ablation/q123_repair_smoke_20261114/*.md

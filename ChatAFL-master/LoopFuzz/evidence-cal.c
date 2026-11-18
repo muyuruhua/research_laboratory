@@ -36,6 +36,54 @@ double ec_posterior_var(const ec_posterior_t *p) {
   return (a * b) / (s * s * (s + 1.0));
 }
 
+/* ── Fixed-invocation reward windows ────────────────────────────── */
+
+void ec_reward_window_init(ec_reward_window_t *w, uint32_t reference_invocations) {
+  if (!w) return;
+  memset(w, 0, sizeof(*w));
+  /* A disabled window is represented by the caller's mode, never by an
+   * empty observation that could be mistaken for a negative outcome. */
+  w->reference_invocations = reference_invocations ? reference_invocations : 1;
+}
+
+static int ec_reward_window_emit(ec_reward_window_t *w, int *reward) {
+  if (!w || !w->reference_invocations ||
+      w->invocations != w->reference_invocations) return 0;
+  int r = !!w->has_code_gain;
+  if (reward) *reward = r;
+  w->completed_windows++;
+  if (r) w->rewarded_windows++;
+  w->invocations = 0;
+  w->has_code_gain = 0;
+  return 1;
+}
+
+int ec_reward_window_begin_invocation(ec_reward_window_t *w, int *reward) {
+  if (!w || !w->reference_invocations) return 0;
+  int emitted = ec_reward_window_emit(w, reward);
+  w->invocations++;
+  return emitted;
+}
+
+void ec_reward_window_note_gain(ec_reward_window_t *w) {
+  if (w && w->invocations) w->has_code_gain = 1;
+}
+
+int ec_reward_window_close(ec_reward_window_t *w, int interrupted, int *reward) {
+  if (!w) return 0;
+  if (!interrupted && ec_reward_window_emit(w, reward)) return 1;
+  w->censored_invocations += w->invocations;
+  w->invocations = 0;
+  w->has_code_gain = 0;
+  return 0;
+}
+
+uint32_t ec_positive_score_weight(double score) {
+  if (!isfinite(score) || score <= 0.0) return 0;
+  if (score >= (double)UINT32_MAX) return UINT32_MAX;
+  return score < 1.0 ? 1 : (uint32_t)score;
+}
+
 /* ── Deterministic RNG (xoshiro256**) ────────────────────────────── */
 
 static uint64_t ec_rng_s[4] = {0x9E3779B97F4A7C15ULL, 0xBF58476D1CE4E5B9ULL,

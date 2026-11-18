@@ -12,6 +12,8 @@ WORKDIR="/home/ubuntu/experiments"
 MANIFEST_FILE="${RESULTS_DIR}/.result_manifest.tsv"
 RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/archive_contract.sh"
 
 fix_result_permissions() {
   local path="$1"
@@ -20,27 +22,72 @@ fix_result_permissions() {
   chmod -R u+rwX "$path" 2>/dev/null || true
 }
 
-# Required files that must be present in a complete tarball.
+# Required top-level result files.  Coverage completeness also requires a
+# structurally valid v4/v5 terminal artifact (checked separately below).
 REQUIRED_FILES="fuzzer_stats cov_over_time.csv"
+
+coverage_terminal_acceptance() {
+  local tarball="$1"
+  python3 - "$tarball" <<'PY'
+import json
+import re
+import sys
+import tarfile
+
+path = sys.argv[1]
+try:
+    with tarfile.open(path, "r:gz") as archive:
+        members = [m for m in archive.getmembers() if m.isfile()]
+        terminals = [m for m in members if
+            m.name.endswith("/cov_over_time.csv.v4/terminal.json") or
+            m.name.endswith("/cov_over_time.csv.v5/terminal.json")]
+        if len(terminals) != 1:
+            raise ValueError("expected exactly one v4/v5 terminal.json")
+        terminal_member = terminals[0]
+        version = "v5" if "/cov_over_time.csv.v5/terminal.json" in terminal_member.name else "v4"
+        expected_schema = ("loopfuzz-coverage-v5-sampled-checkpoints" if version == "v5"
+                           else "loopfuzz-coverage-v4")
+        parent = terminal_member.name.rsplit("/", 1)[0]
+        scope_name = parent + "/scope.json"
+        scopes = [m for m in members if m.name == scope_name]
+        if len(scopes) != 1:
+            raise ValueError("terminal has no unique matching scope.json")
+        terminal = json.load(archive.extractfile(terminal_member))
+        scope = json.load(archive.extractfile(scopes[0]))
+        if not isinstance(terminal, dict) or not isinstance(scope, dict):
+            raise ValueError("terminal and scope must be JSON objects")
+        if terminal.get("schema_version") != expected_schema or scope.get("schema_version") != expected_schema:
+            raise ValueError("terminal/scope schema does not match its v4/v5 directory")
+        scope_hash = terminal.get("scope_sha256")
+        if (not isinstance(scope_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", scope_hash)
+                or scope.get("scope_sha256") != scope_hash):
+            raise ValueError("terminal scope hash does not match scope.json")
+        if (not isinstance(terminal.get("covered_branch_ids"), list)
+                or not isinstance(terminal.get("covered_line_ids"), list)):
+            raise ValueError("terminal is missing coverage identity lists")
+        n_replayed = terminal.get("n_replayed")
+        if isinstance(n_replayed, bool) or not isinstance(n_replayed, int) or n_replayed < 0:
+            raise ValueError("terminal has an invalid n_replayed value")
+        complete = terminal.get("coverage_complete")
+        acceptance = terminal.get("acceptance")
+        if not isinstance(complete, bool) or acceptance not in ("complete", "incomplete"):
+            raise ValueError("terminal is missing coverage acceptance status")
+        if (acceptance == "complete") != complete:
+            raise ValueError("terminal acceptance disagrees with coverage_complete")
+        print(acceptance)
+except Exception as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+PY
+}
 
 tarball_is_complete() {
   local tarball="$1"
-  [[ -s "$tarball" ]] || return 1
-  local listing
-  listing=$(tar tzf "$tarball" 2>/dev/null) || return 1
-  for req in $REQUIRED_FILES; do
-    # Exact member match: a substring test once accepted the sidecar
-    # directory name cov_over_time.csv.v4 as the file itself and masked
-    # failed coverage collection as a complete archive.
-    # SIGPIPE fix (2026-11-08): under `set -o pipefail`, `grep -q` exits at
-    # first match and printf dies on EPIPE (141), so the whole pipeline
-    # reports failure — complete archives were misclassified as incomplete
-    # whenever the required member sat late in a long listing. Here-string
-    # feeds grep without a pipe: pipefail-safe.
-    if ! grep -qE "(^|/)${req//./\\.}$" <<< "$listing"; then
-      return 1
-    fi
-  done
+  archive_tar_is_structurally_complete "$tarball" || return 1
+  # A CSV alone cannot establish that coverage replay produced a terminal
+  # record.  The terminal acceptance may be "incomplete" and still make the
+  # archive file-complete; scientific acceptance remains a separate audit.
+  coverage_terminal_acceptance "$tarball" >/dev/null 2>&1 || return 1
   return 0
 }
 
@@ -159,7 +206,7 @@ collect_from_container() {
   # aborts the whole loop subshell on the [[ -n ]] test (this was the
   # invisible crash behind every "silent" recovery failure).
   local remote_dir=""
-  for parent_cand in $(outdir_remote_candidates "$outdir"); do
+  for parent_cand in "" $(outdir_remote_candidates "$outdir"); do
     if docker cp "${container_id}:${WORKDIR}/${parent_cand:+$parent_cand/}${outdir}" "${extracted_root}/" >/dev/null 2>&1; then
       remote_dir="$outdir"
       break
@@ -249,7 +296,13 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   # overwrite it (this caused data loss when the driver's retry logic
   # clobbered manually salvaged TARs).
   if [[ -f "${destination}.salvaged" ]]; then
-    echo "[recover] ✓ salvaged (manual recovery marker present): ${archive_name}"
+    if [[ -s "$destination" ]] && tarball_is_complete "$destination"; then
+      acceptance=$(coverage_terminal_acceptance "$destination" 2>/dev/null || echo unknown)
+      echo "[recover] ✓ archive files complete (salvaged; coverage acceptance=${acceptance}): ${archive_name}"
+    else
+      echo "[recover] [WARN] salvaged archive is incomplete and preserved (manual marker prevents replacement): ${archive_name}" >&2
+      echo 1 > "$_status_file"
+    fi
     flock -u 200 2>/dev/null || true
     exec 200>&-
     rm -f "$_lock"
@@ -257,7 +310,8 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   fi
   if [[ -s "$destination" ]]; then
     if tarball_is_complete "$destination"; then
-      echo "[recover] ✓ complete: ${archive_name}"
+      acceptance=$(coverage_terminal_acceptance "$destination" 2>/dev/null || echo unknown)
+      echo "[recover] ✓ archive files complete (coverage acceptance=${acceptance}): ${archive_name}"
       flock -u 200 2>/dev/null || true
       exec 200>&-
       rm -f "$_lock"
@@ -271,7 +325,7 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
     # leaves the dir without its best-available archive (the old code renamed
     # the final away up front — combined with a failed fetch the dir ended up
     # with NO final at all).
-    echo "[recover] [WARN] ${archive_name} is incomplete (missing required files), fetching replacement..."
+    echo "[recover] [WARN] ${archive_name} is incomplete (required result or v4/v5 terminal artifacts missing/invalid), fetching replacement..."
   fi
 
   label="$container_id"
@@ -287,7 +341,7 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
       # Try to patch missing files directly from the container
       _dest_listing=$(tar tzf "$destination" 2>/dev/null) || _dest_listing=""
       for req in $REQUIRED_FILES; do
-        if [[ "$_dest_listing" != *"$req"* ]]; then
+        if ! grep -qE "(^|/)${req//./\\.}$" <<< "$_dest_listing"; then
           _src="${WORKDIR}/${outdir}/${req}"
           _tmp_file=$(mktemp)
           if docker cp "${container_id}:${_src}" "$_tmp_file" >/dev/null 2>&1 && [[ -s "$_tmp_file" ]]; then
@@ -313,12 +367,17 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
       done
       # Final check
       if tarball_is_complete "$destination"; then
-        echo "[recover] ✓ ${archive_name} now complete after patching"
+        acceptance=$(coverage_terminal_acceptance "$destination" 2>/dev/null || echo unknown)
+        echo "[recover] ✓ ${archive_name} archive files complete after patching (coverage acceptance=${acceptance})"
       else
-        echo "[recover] [WARN] ${archive_name} still incomplete – container may still be running" >&2
+        echo "[recover] [WARN] ${archive_name} still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched" >&2
+        echo 1 > "$_status_file"
       fi
+    else
+      acceptance=$(coverage_terminal_acceptance "$destination" 2>/dev/null || echo unknown)
+      echo "[recover] archive files complete after collection (coverage acceptance=${acceptance}): ${archive_name}"
     fi
-    if [[ "$DELETE_MODE" == "--delete" ]]; then
+    if [[ "$DELETE_MODE" == "--delete" ]] && tarball_is_complete "$destination"; then
       docker rm "$container_id" >/dev/null 2>&1 || true
     fi
   else
@@ -363,4 +422,8 @@ done
 (( swept > 0 )) && echo "[recover] swept ${swept} stale sidecar file(s) for complete archives"
 
 fix_result_permissions "$RESULTS_DIR"
+if ! python3 "${SCRIPT_DIR}/reconcile_result_status.py" "$RESULTS_DIR"; then
+  echo "[recover] failed to reconcile sample status with Docker state" >&2
+  overall_status=1
+fi
 exit "$overall_status"

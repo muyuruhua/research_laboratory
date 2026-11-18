@@ -92,7 +92,7 @@ TARGET_CLEAN_CMD[kamailio]="pkill kamailio || true"
 
 # ── DAAP server ──
 TARGET_IMAGE[forked-daapd]="forked-daapd"
-TARGET_PROTO[forked-daapd]="DAAP"
+TARGET_PROTO[forked-daapd]="HTTP"
 TARGET_PORT[forked-daapd]="3689"
 TARGET_SERVER_CMD[forked-daapd]="./forked-daapd -f -c /home/ubuntu/experiments/forked-daapd.conf"
 TARGET_WORKDIR[forked-daapd]="/home/ubuntu/experiments/forked-daapd"

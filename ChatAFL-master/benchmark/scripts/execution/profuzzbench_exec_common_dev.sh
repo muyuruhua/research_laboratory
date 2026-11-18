@@ -11,6 +11,15 @@ if [[ $# -lt 8 || ! "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# The image run scripts use `timeout -k 30s` by default.  Keep the production
+# grace period at 360 seconds (enough for an in-flight LLM request), while
+# allowing short integrity smoke runs to select a smaller, bounded value.
+ABLATION_KILL_GRACE_SEC="${ABLATION_KILL_GRACE_SEC:-360}"
+if [[ ! "$ABLATION_KILL_GRACE_SEC" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[ERROR] ABLATION_KILL_GRACE_SEC must be a positive integer number of seconds: ${ABLATION_KILL_GRACE_SEC}" >&2
+    exit 2
+fi
+
 # Container retention (2026-09-25): fuzz containers are STOPPED but KEPT
 # after result collection by default so truncated archives / wedged runs
 # can be autopsied (docker cp & docker logs work on stopped containers).
@@ -58,6 +67,60 @@ OPTIONS=$6    #all configured options for fuzzing
 TIMEOUT=$7    #time for fuzzing
 SKIPCOUNT=$8  #used for calculating coverage over time. e.g., SKIPCOUNT=5 means we run gcovr after every 5 test cases
 DELETE=$9
+
+# Keep the AFLNet parser tied to the target image.  forked-daapd is stored
+# under a DAAP directory, but it speaks HTTP and must use ``-P HTTP``.  A
+# stale caller that passed ``-P DAAP`` (or omitted -P) used to create a valid
+# looking container with protocol-misattributed results.  Reject it before
+# launching any container.
+expected_wire_protocol() {
+  case "$1" in
+    lightftp|bftpd|proftpd|pure-ftpd) echo FTP ;;
+    exim) echo SMTP ;;
+    live555) echo RTSP ;;
+    kamailio) echo SIP ;;
+    forked-daapd|lighttpd1) echo HTTP ;;
+    mosquitto|mosquitto-v2.0.18|mosquitto-v2.1.2) echo MQTT ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_wire_protocol_option() {
+  local expected actual="" token i
+  local -a option_tokens=()
+  expected="$(expected_wire_protocol "$DOCIMAGE")" || return 0
+  read -r -a option_tokens <<< "$OPTIONS"
+  for ((i = 0; i < ${#option_tokens[@]}; i++)); do
+    token="${option_tokens[$i]}"
+    if [[ "$token" == "-P" ]]; then
+      if (( i + 1 >= ${#option_tokens[@]} )); then
+        printf "[ERROR] %s: -P requires a protocol (expected %s)\n" "$DOCIMAGE" "$expected" >&2
+        exit 2
+      fi
+      actual="${option_tokens[$((i + 1))]}"
+      break
+    elif [[ "$token" == -P* && "$token" != "-P" ]]; then
+      actual="${token#-P}"
+      break
+    fi
+  done
+  if [[ -z "$actual" ]]; then
+    printf "[ERROR] %s: missing -P protocol (expected %s)\n" "$DOCIMAGE" "$expected" >&2
+    exit 2
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    printf "[ERROR] %s: protocol -P %s conflicts with wire protocol %s\n" \
+      "$DOCIMAGE" "$actual" "$expected" >&2
+    exit 2
+  fi
+}
+
+validate_wire_protocol_option
+FUZZER_MEMORY_CAP="${ABLATION_DOCKER_MEM_CAP:-6g}"
+if [[ ! "${FUZZER_MEMORY_CAP}" =~ ^[1-9][0-9]*g$ ]]; then
+    echo "[ERROR] ABLATION_DOCKER_MEM_CAP must be an integer GiB (for example 1g): ${FUZZER_MEMORY_CAP}" >&2
+    exit 2
+fi
 
 WORKDIR="/home/ubuntu/experiments"
 
@@ -976,6 +1039,11 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${COVERAGE_V4_RESET_COMMAND_JSON:-}" ]]   && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_RESET_COMMAND_JSON=${COVERAGE_V4_RESET_COMMAND_JSON}"
   [[ -n "${COVERAGE_V4_MODULE:-}" ]]               && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_MODULE=${COVERAGE_V4_MODULE}"
   [[ -n "${COVERAGE_V4_REQUIRE_COORDINATES:-}" ]]  && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_REQUIRE_COORDINATES=${COVERAGE_V4_REQUIRE_COORDINATES}"
+  [[ -n "${COVERAGE_V4_SAMPLED_CHECKPOINTS:-}" ]]  && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_SAMPLED_CHECKPOINTS=${COVERAGE_V4_SAMPLED_CHECKPOINTS}"
+  # Smoke-only replay cap.  The cov_script wrapper rejects a cap without
+  # COVERAGE_V4_SMOKE=1, and coverage_v4 records capped terminals incomplete.
+  [[ -n "${COVERAGE_V4_SMOKE:-}" ]]            && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_SMOKE=${COVERAGE_V4_SMOKE}"
+  [[ -n "${COVERAGE_V4_MAX_REPLAY_INPUTS:-}" ]] && TARGET_ENV_FLAGS+=" -e COVERAGE_V4_MAX_REPLAY_INPUTS=${COVERAGE_V4_MAX_REPLAY_INPUTS}"
 
   # Evidence-controller v2 (paper §五/§七): calibration arm switch and
   # two-tier admission parameters.  Absence = fuzzer defaults (arm D,
@@ -983,6 +1051,7 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_CALIBRATION:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_CALIBRATION=${CHATAFL_CALIBRATION}"
   [[ -n "${CHATAFL_CAL_GAMMA:-}" ]]            && ABLATION_FLAGS+=" -e CHATAFL_CAL_GAMMA=${CHATAFL_CAL_GAMMA}"
   [[ -n "${CHATAFL_CAL_EPSILON:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_CAL_EPSILON=${CHATAFL_CAL_EPSILON}"
+  [[ -n "${CHATAFL_CAL_REWARD_WINDOW:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_CAL_REWARD_WINDOW=${CHATAFL_CAL_REWARD_WINDOW}"
   [[ -n "${CHATAFL_PROVISIONAL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL_BUDGET=${CHATAFL_PROVISIONAL_BUDGET}"
   [[ -n "${CHATAFL_PROVISIONAL_TTL_MS:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL_TTL_MS=${CHATAFL_PROVISIONAL_TTL_MS}"
   [[ -n "${CHATAFL_CHURN_CAP:-}" ]]              && ABLATION_FLAGS+=" -e CHATAFL_CHURN_CAP=${CHATAFL_CHURN_CAP}"
@@ -991,6 +1060,8 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_STATE_RETAIN:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_STATE_RETAIN=${CHATAFL_STATE_RETAIN}"
   [[ -n "${CHATAFL_PROV_PREFIX_PROTECT:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_PROV_PREFIX_PROTECT=${CHATAFL_PROV_PREFIX_PROTECT}"
   [[ -n "${CHATAFL_CAMPAIGN_CALL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_CALL_BUDGET=${CHATAFL_CAMPAIGN_CALL_BUDGET}"
+  [[ -n "${CHATAFL_CAMPAIGN_STOP_MODE:-}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_STOP_MODE=${CHATAFL_CAMPAIGN_STOP_MODE}"
+  [[ -n "${CHATAFL_CAMPAIGN_DURATION_SEC:-}" ]]  && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_DURATION_SEC=${CHATAFL_CAMPAIGN_DURATION_SEC}"
   [[ -n "${CHATAFL_MUTATION_CALL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_MUTATION_CALL_BUDGET=${CHATAFL_MUTATION_CALL_BUDGET}"
   [[ -n "${CHATAFL_REQUEST_GATE:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_REQUEST_GATE=${CHATAFL_REQUEST_GATE}"
   [[ -n "${CHATAFL_REQUEST_GATE_WINDOW:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_REQUEST_GATE_WINDOW=${CHATAFL_REQUEST_GATE_WINDOW}"
@@ -1045,13 +1116,63 @@ for i in $(seq 1 $RUNS); do
       printf "\n${LOG_TAG}: [ERROR] MOCK_PORT must be an integer in [1, 65535]\n" >&2
       exit 2
     fi
+    # Prompt snippets can name transport or related protocols, so prompt-text
+    # inference is ambiguous. Derive the response bank from this target image.
+    # The image selected by run_dev.sh is the canonical target identity for
+    # the mock response profile. Accept an explicit target name only when it
+    # normalizes to that same image, so a stale shell variable cannot route an
+    # HTTP forked-daapd run to another HTTP target's response bank.
+    _mock_target="${DOCIMAGE}"
+    _mock_target="${_mock_target##*/}"
+    _mock_target="${_mock_target%%:*}"
+    _mock_target="${_mock_target,,}"
+    if [[ -n "${CHATAFL_TARGET_NAME:-}" ]]; then
+      _requested_mock_target="${CHATAFL_TARGET_NAME##*/}"
+      _requested_mock_target="${_requested_mock_target%%:*}"
+      _requested_mock_target="${_requested_mock_target,,}"
+      if [[ "${_requested_mock_target}" != "${_mock_target}" ]]; then
+        printf "\n${LOG_TAG}: [ERROR] CHATAFL_TARGET_NAME=%s conflicts with target image %s\n" \
+          "${CHATAFL_TARGET_NAME}" "${DOCIMAGE}" >&2
+        exit 2
+      fi
+    fi
+    case "$_mock_target" in
+      lightftp|bftpd|proftpd|pure-ftpd) _target_mock_protocol=FTP ;;
+      exim) _target_mock_protocol=SMTP ;;
+      live555) _target_mock_protocol=RTSP ;;
+      kamailio) _target_mock_protocol=SIP ;;
+      forked-daapd) _target_mock_protocol=HTTP ;;
+      lighttpd1) _target_mock_protocol=HTTP ;;
+      *)
+        printf "\n${LOG_TAG}: [ERROR] cannot map mock protocol for target image %s\n" "${DOCIMAGE}" >&2
+        exit 2
+        ;;
+    esac
+    if [[ -n "${MOCK_PROTOCOL:-}" ]]; then
+      case "${MOCK_PROTOCOL}" in FTP|SMTP|RTSP|SIP|DAAP|HTTP) ;; *)
+        printf "\n${LOG_TAG}: [ERROR] invalid MOCK_PROTOCOL=%s\n" "${MOCK_PROTOCOL}" >&2
+        exit 2
+        ;;
+      esac
+      if [[ "${MOCK_PROTOCOL}" != "${_target_mock_protocol}" ]]; then
+        printf "\n${LOG_TAG}: [ERROR] MOCK_PROTOCOL=%s conflicts with target %s (expected %s)\n" \
+          "${MOCK_PROTOCOL}" "${_mock_target}" "${_target_mock_protocol}" >&2
+        exit 2
+      fi
+    fi
+    _mock_protocol="${_target_mock_protocol}"
     # CHATAFL_NO_LLM must NOT be forced here: a nollm8 arm exports =1 and a
     # later duplicate -e flag would silently clobber it (reproduced
     # 2026-11-02: mock's hardcoded =0 left 195 live calls in nollm8).
-    MOCK_FLAGS=" -e CHATAFL_MOCK_LLM=1 -e CHATAFL_NO_LLM=${CHATAFL_NO_LLM:-0} -e MOCK_PORT=${MOCK_PORT} -e MOCK_LATENCY=${MOCK_LATENCY:-1} -e MOCK_ERROR_RATE=${MOCK_ERROR_RATE:-1.5} -e MOCK_SEED=${MOCK_SEED:-20261102} -e CHATAFL_LLM_BASE=http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
+    MOCK_FLAGS=" -e CHATAFL_MOCK_LLM=1 -e CHATAFL_NO_LLM=${CHATAFL_NO_LLM:-0} -e MOCK_PORT=${MOCK_PORT} -e MOCK_PROTOCOL=${_mock_protocol} -e MOCK_TARGET=${_mock_target} -e MOCK_LATENCY=${MOCK_LATENCY:-1} -e MOCK_ERROR_RATE=${MOCK_ERROR_RATE:-1.5} -e MOCK_SEED=${MOCK_SEED:-20261102} -e CHATAFL_LLM_BASE=http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
+    printf "\n${LOG_TAG}: [MOCK] protocol pinned to %s for target %s\n" "${_mock_protocol}" "${_mock_target}"
     [[ -n "${MOCK_MODEL:-}" ]] && MOCK_FLAGS+=" -e MOCK_MODEL=${MOCK_MODEL}"
     [[ -n "${CHATAFL_MOCK_MIX:-}" ]] && MOCK_FLAGS+=" -e CHATAFL_MOCK_MIX=${CHATAFL_MOCK_MIX}"
-    MOCK_MOUNT="-v ${MOCK_SOURCE}:/tmp/llm_mock_v5.py:ro"
+    if [[ ! -s "${SCRIPT_DIR}/finalize_mock_archive.py" || ! -f "${SCRIPT_DIR}/finalize_mock_archive.py" ]]; then
+      echo "[ERROR] execution snapshot is missing finalize_mock_archive.py" >&2
+      exit 2
+    fi
+    MOCK_MOUNT="-v ${MOCK_SOURCE}:/tmp/llm_mock_v5.py:ro --mount type=bind,src=${SCRIPT_DIR}/finalize_mock_archive.py,dst=/tmp/finalize_mock_archive.py,readonly"
     # Each Docker network namespace gets its own loopback listener and can
     # therefore use the same port without host publication or cross-arm traffic.
     MOCK_SETUP="python3 /tmp/llm_mock_v5.py > /tmp/loopfuzz_mock.log 2>&1 & MOCK_PID=\$!; \
@@ -1061,12 +1182,10 @@ for i in $(seq 1 $RUNS); do
         done; \
         if [ \$MOCK_READY -ne 1 ]; then echo '[MOCK] health check failed'; cat /tmp/loopfuzz_mock.log; exit 125; fi; \
         gcc -O1 -g -ffunction-sections -fdata-sections -Wno-unused-result -I /tmp/loopfuzz-src /tmp/loopfuzz-src/chat-llm.c /tmp/loopfuzz-src/llm_preflight.c -o /tmp/loopfuzz-llm-preflight -Wl,--gc-sections -lcurl -ljson-c -lpcre2-8 -lpthread -lm && /tmp/loopfuzz-llm-preflight || exit 125;"
-    MOCK_CAPTURE="python3 -c 'import urllib.request; data=urllib.request.urlopen(\"http://127.0.0.1:${MOCK_PORT}/__mock__/stats\", timeout=3).read(); open(\"/tmp/loopfuzz_mock_stats.json\", \"wb\").write(data)' || echo '[MOCK] stats collection failed'; \
-        MOCK_RUN_CONFIG=\$(find ${WORKDIR} -type f -path '*/${OUTDIR}/run-config.jsonl' -print -quit); \
-        if [ -n \$MOCK_RUN_CONFIG ] && [ -s /tmp/loopfuzz_mock_stats.json ]; then \
-          python3 -c 'import json,sys; p=sys.argv[1]; cfg=json.load(open(\"/tmp/loopfuzz_mock_stats.json\"))[\"effective_config\"]; rows=[json.loads(x) for x in open(p) if x.strip()]; [r.update(mock_gateway=cfg) for r in rows]; open(p,\"w\").write(\"\".join(json.dumps(r,sort_keys=True)+\"\\n\" for r in rows))' \$MOCK_RUN_CONFIG && \
-          MOCK_OUTPUT_DIR=\$(dirname \$MOCK_RUN_CONFIG); tar -czf '${WORKDIR}/${OUTDIR}.tar.gz' -C \$(dirname \$MOCK_OUTPUT_DIR) \$(basename \$MOCK_OUTPUT_DIR); \
-        fi; \
+    MOCK_CAPTURE="MOCK_FINALIZE_RC=0; \
+        python3 -c 'import urllib.request; data=urllib.request.urlopen(\"http://127.0.0.1:${MOCK_PORT}/__mock__/stats\", timeout=3).read(); open(\"/tmp/loopfuzz_mock_stats.json\", \"wb\").write(data)' && \
+        python3 /tmp/finalize_mock_archive.py '${WORKDIR}' '${OUTDIR}' /tmp/loopfuzz_mock_stats.json || MOCK_FINALIZE_RC=125; \
+        if [ \$R -eq 0 ] && [ \$MOCK_FINALIZE_RC -ne 0 ]; then R=\$MOCK_FINALIZE_RC; fi; \
         kill \$MOCK_PID 2>/dev/null || true; wait \$MOCK_PID 2>/dev/null || true;"
   fi
 
@@ -1126,16 +1245,18 @@ for i in $(seq 1 $RUNS); do
     # SIGTERM 时，若 afl-fuzz 正阻塞在一次在途 LLM 调用上（上限
     # CHATAFL_LLM_TIMEOUT_MS=300s），30s 宽限不够 → SIGKILL=137（曾被
     # 误标 oom_killed；20261031 批 2/18 即此机制：死亡时刻宿主内存 77%
-    # 可用、无内核 OOM 记录、exit 恰在 132min 到期点）。下方 sed 把容器
-    # 内 run 的宽限期提到 360s（≥ LLM 超时 + 余量）；run_summary.py 复核
-    # 137 时须配 --timeout-min 区分 timeout_kill 与真 oom。
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+    # 可用、无内核 OOM 记录、exit 恰在 132min 到期点）。下方 sed 默认把
+    # 容器内 run 的宽限期提到 360s（≥ LLM 超时 + 余量）；快速 smoke 可用
+    # ABLATION_KILL_GRACE_SEC 缩短；run_summary.py 复核 137 时须配
+    # --timeout-min 区分 timeout_kill 与真 oom。
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e LLM_MODEL="${LLM_MODEL:-codex-auto-review}" \
       -e CHATAFL_HYPOTHESIS=1 \
       -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
+      -e CHATAFL_LOOPFUZZ_SOURCE_SHA256=runner-computed \
       ${ABLATION_FLAGS} \
       ${MOCK_FLAGS} \
       ${TARGET_ENV_FLAGS} \
@@ -1151,12 +1272,20 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         ${MOCK_SETUP}\
         echo '[DEV] Copying and compiling updated code...' && \
-        if [ "\${SKIP_LOOPFUZZ_REBUILD:-0}" = "1" ]; then echo '[DEV] SKIP_LOOPFUZZ_REBUILD=1: using image-embedded binary'; elif [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; cd /home/ubuntu/loopfuzz; make -j\$(nproc); else cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null; cd /home/ubuntu/loopfuzz; make clean; make -j\$(nproc); fi && \
+        if [ "\${SKIP_LOOPFUZZ_REBUILD:-0}" = "1" ]; then \
+          echo '[DEV] SKIP_LOOPFUZZ_REBUILD=1: using image-embedded binary; source fingerprint is unavailable'; \
+          export CHATAFL_LOOPFUZZ_SOURCE_SHA256=unrecorded; \
+        else \
+          CHATAFL_LOOPFUZZ_SOURCE_SHA256=\$(find /tmp/loopfuzz-src -maxdepth 1 -type f \\( -name '*.c' -o -name '*.h' -o -name Makefile \\) -printf '%f\\n' | LC_ALL=C sort | while IFS= read -r f; do sha256sum "/tmp/loopfuzz-src/\$f"; done | sha256sum | awk '{print \$1}'); \
+          export CHATAFL_LOOPFUZZ_SOURCE_SHA256; \
+          if [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; else cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/; fi && \
+          cd /home/ubuntu/loopfuzz && make clean && make -j\$(nproc); \
+        fi && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
-        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; ${MOCK_CAPTURE} exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
@@ -1171,10 +1300,10 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-src/*.c /tmp/chatafl-src/*.h /home/ubuntu/chatafl/ && \
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
-        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
@@ -1188,10 +1317,10 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl1-src/*.c /tmp/chatafl-cl1-src/*.h /home/ubuntu/chatafl-cl1/ && \
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
-        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
@@ -1205,12 +1334,12 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
-        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   elif [[ "$FUZZER" == "stateafl" ]]; then
     # StateAFL：独立镜像（目标用其 afl-clang-fast 编译）+ 源码挂载重编译，无 LLM。
     # 启动命令格式与 loopfuzz 分支完全一致（cd ${WORKDIR} && run ...）。
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" \
       --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e INPUTS="${STATEAFL_INPUTS:-}" \
@@ -1226,7 +1355,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/stateafl && make clean && make -j\$(nproc) && \
         # stateafl 的 afl-fuzz 在战役结束时偶发 139 退出(已知不稳定,见 2fe412778),
         # 保留 139→0 掩码;其余 fuzzer 的 139 是真实段错误,必须让 POSTRUN 看到。
-        sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+        sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
     # Paired-experiment seed injection (2026-11-07): LOOPFUZZ_SEEDS_DIR mounts
@@ -1235,7 +1364,7 @@ for i in $(seq 1 $RUNS); do
     if [[ "$FUZZER" == "loopfuzz" && -n "${LOOPFUZZ_SEEDS_DIR:-}" ]]; then
       PAIR_SEED_FLAGS=" -v ${LOOPFUZZ_SEEDS_DIR}:/tmp/pair-seeds:ro -e INPUTS=/tmp/pair-seeds"
     fi
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT}${PAIR_SEED_FLAGS} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}sed -i 's/timeout -k 30s/timeout -k 360s/g' ${WORKDIR}/run && \
+    id=$(docker run --cpus=1 --memory="${FUZZER_MEMORY_CAP}" --memory-swap="${FUZZER_MEMORY_CAP}" --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT}${PAIR_SEED_FLAGS} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}sed -i 's/timeout -k 30s/timeout -k ${ABLATION_KILL_GRACE_SEC}s/g' ${WORKDIR}/run && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"

@@ -93,6 +93,30 @@ validate_target_list "$TARGET_LIST"
 FUZZER_LIST="$(normalize_fuzzer_list "$FUZZER_LIST")" || exit $?
 export FUZZER_LIST
 
+# Freeze the host-side execution layer before any potentially long setup or
+# campaign work.  Child dispatchers and their helpers resolve through PATH.
+EXEC_SNAPSHOT_DIR="$(mktemp -d "/tmp/loopfuzz-exec-snapshot-$$.XXXXXX")" || {
+    echo "[ERROR] 无法创建执行脚本快照目录" >&2
+    exit 1
+}
+cleanup_exec_snapshot() {
+    [[ -n "${EXEC_SNAPSHOT_DIR:-}" && -d "$EXEC_SNAPSHOT_DIR" ]] && rm -rf -- "$EXEC_SNAPSHOT_DIR"
+}
+trap cleanup_exec_snapshot EXIT
+
+mkdir -p "$EXEC_SNAPSHOT_DIR/execution" "$EXEC_SNAPSHOT_DIR/analysis" || {
+    echo "[ERROR] 无法初始化执行脚本快照目录: $EXEC_SNAPSHOT_DIR" >&2
+    exit 1
+}
+if ! cp -a "$PFBENCH"/scripts/execution/*.sh "$PFBENCH"/scripts/execution/*.py "$EXEC_SNAPSHOT_DIR/execution/" || \
+   ! cp -a "$PFBENCH/scripts/analysis/run_summary.py" "$EXEC_SNAPSHOT_DIR/analysis/run_summary.py"; then
+    echo "[ERROR] 执行脚本快照复制失败: $EXEC_SNAPSHOT_DIR" >&2
+    exit 1
+fi
+PATH="$EXEC_SNAPSHOT_DIR/execution:$EXEC_SNAPSHOT_DIR/analysis:$PATH"
+export PATH
+echo "[EXEC-SNAPSHOT] 固定执行脚本版本: $EXEC_SNAPSHOT_DIR"
+
 # ── LLM API Key 验证 ──────────────────────────────────────────────
 # CHATAFL_NO_LLM=1：短程验证专用。跳过交互确认，直接以无 LLM 模式运行
 # （启动期富集约省 30 分钟——70 分钟级预算下 live555/forked-daapd 等慢目标
@@ -225,6 +249,9 @@ PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   CHATAFL_MOCK_MIX="${CHATAFL_MOCK_MIX:-}" \
   CHATAFL_EPISODE_ENERGY="${CHATAFL_EPISODE_ENERGY:-}" \
   CHATAFL_LLM_TOTAL_CALL_CAP="${CHATAFL_LLM_TOTAL_CALL_CAP:-}" \
+  CHATAFL_CAMPAIGN_CALL_BUDGET="${CHATAFL_CAMPAIGN_CALL_BUDGET:-}" \
+  CHATAFL_CAMPAIGN_STOP_MODE="${CHATAFL_CAMPAIGN_STOP_MODE:-}" \
+  CHATAFL_CAMPAIGN_DURATION_SEC="${CHATAFL_CAMPAIGN_DURATION_SEC:-}" \
   CHATAFL_TOKEN_CAP="${CHATAFL_TOKEN_CAP:-}" \
   CHATAFL_TOP_P="${CHATAFL_TOP_P:-}" \
   CHATAFL_TOKEN_CAP="${CHATAFL_TOKEN_CAP:-}" \
@@ -242,4 +269,4 @@ PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   CHATAFL_PROVISIONAL_MAX_LIVE="${CHATAFL_PROVISIONAL_MAX_LIVE:-}" \
   CHATAFL_EVENT_LOG="${CHATAFL_EVENT_LOG:-}" \
   CHATAFL_GIT_COMMIT="$CHATAFL_GIT_COMMIT" \
-  scripts/execution/profuzzbench_exec_all_dev.sh ${TARGET_LIST} ${FUZZER_LIST}
+  "$EXEC_SNAPSHOT_DIR/execution/profuzzbench_exec_all_dev.sh" ${TARGET_LIST} ${FUZZER_LIST}

@@ -89,31 +89,96 @@ if [[ "$PRESET" == "custom" ]]; then
     exit 1
   fi
 fi
+
+# The requested minutes are the formal elapsed-time resource. This entry
+# point never starts a calibration pilot or predicts a total call count.
+ABLATION_STOP_MODE="${ABLATION_STOP_MODE:-wallclock}"
+case "$ABLATION_STOP_MODE" in
+  call-budget|wallclock) ;;
+  *) echo "[ERROR] ABLATION_STOP_MODE must be call-budget or wallclock" >&2; exit 2 ;;
+esac
+if [[ ! "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] || (( TIMEOUT > 10080 )); then
+  echo "[ERROR] TIMEOUT must be integer minutes in [1, 10080]" >&2
+  exit 2
+fi
+Q1_COMMON_CALL_BUDGET="${Q1_COMMON_CALL_BUDGET:-${ABLATION_CALL_BUDGET_OVERRIDE:-}}"
+if [[ -n "$Q1_COMMON_CALL_BUDGET" ]]; then
+  if [[ ! "$Q1_COMMON_CALL_BUDGET" =~ ^(0|[1-9][0-9]*)$ ]] ||
+     (( Q1_COMMON_CALL_BUDGET > 100000000 )) ||
+     [[ "$Q1_COMMON_CALL_BUDGET" == "0" && "$ABLATION_STOP_MODE" != "wallclock" ]]; then
+    echo "[ERROR] Q1_COMMON_CALL_BUDGET must be an integer in [1, 100000000], or 0 in wallclock mode" >&2
+    exit 2
+  fi
+  export Q1_COMMON_CALL_BUDGET
+  export ABLATION_CALL_BUDGET_OVERRIDE="$Q1_COMMON_CALL_BUDGET"
+elif [[ "$ABLATION_STOP_MODE" == "wallclock" ]]; then
+  # Explicit zero overrides arm defaults and is forwarded into the container.
+  export ABLATION_CALL_BUDGET_OVERRIDE=0
+fi
+if [[ -n "$CUSTOM_GROUPS" ]]; then
+  IFS=',' read -r -a _time_groups <<< "$CUSTOM_GROUPS"
+  for _time_group in "${_time_groups[@]}"; do
+    _time_group="${_time_group//[[:space:]]/}"
+    if [[ "$_time_group" =~ ^q1[a-d](1|8|512)$ ]] &&
+       [[ ! "${ABLATION_CALL_BUDGET_OVERRIDE:-}" =~ ^[1-9][0-9]*$ ]]; then
+      if [[ "$ABLATION_STOP_MODE" != "wallclock" ]]; then
+        echo "[ERROR] Q1 call-budget mode requires a positive shared call budget" >&2
+        exit 2
+      elif [[ "$_time_group" =~ ^q1b(1|8|512)$ ]]; then
+        echo "[ERROR] uncapped wallclock cannot implement Q1b parked-call treatment; q1b requires a finite common call budget. No run started." >&2
+        exit 2
+      fi
+    fi
+  done
+fi
+
 # 每组同时运行的消融组数（默认6）。多个目标脚本同时运行时会叠加
 # （2026-10-13 事故：89 个容器并发 → 实际内存冲破 62GB+swap，整机假死断电）。
 # 预检与每个批次前按"全机 fuzz 容器实际内存占用"（非 6G 上限）自动收敛本值。
 # 设1=串行（最安全最慢），设3=半并行
 ABLATION_PARALLEL="${ABLATION_PARALLEL:-6}"
-MEMORY_PER_FUZZER=${ABLATION_MEM_PER_FUZZER:-6}  # Docker --memory cap; override with ABLATION_MEM_PER_FUZZER for hosts with tight available memory (actual steady-state usage is ~1GB/container, the 6GB is just the cgroup ceiling)
+MEMORY_PER_FUZZER=${ABLATION_MEM_PER_FUZZER:-6}  # Reserved whole GiB per fuzzer container; must be >= the Docker cap below.
+ABLATION_DOCKER_MEM_CAP="${ABLATION_DOCKER_MEM_CAP:-${MEMORY_PER_FUZZER}g}"
+if [[ ! "${MEMORY_PER_FUZZER}" =~ ^[1-9][0-9]*$ || ! "${ABLATION_DOCKER_MEM_CAP}" =~ ^[1-9][0-9]*g$ ]]; then
+  echo "[ERROR] ABLATION_MEM_PER_FUZZER must be a positive integer GiB and ABLATION_DOCKER_MEM_CAP must be an integer GiB (for example 1g)" >&2
+  exit 2
+fi
+_DOCKER_MEM_CAP_GB="${ABLATION_DOCKER_MEM_CAP%g}"
+if (( _DOCKER_MEM_CAP_GB > MEMORY_PER_FUZZER )); then
+  echo "[ERROR] Docker memory cap ${ABLATION_DOCKER_MEM_CAP} exceeds reserved ${MEMORY_PER_FUZZER} GiB per container" >&2
+  exit 2
+fi
+export ABLATION_DOCKER_MEM_CAP
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESULTS_BASE_DIR="${BASE_DIR}/ablation"
-mkdir -p "${RESULTS_BASE_DIR}"
 RESULT_OWNER="${SUDO_USER:-$USER}"
-RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
-chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
-chmod u+rwx "${RESULTS_BASE_DIR}"
+if [[ "${ABLATION_DRY_RUN:-0}" != "1" ]]; then
+  mkdir -p "${RESULTS_BASE_DIR}"
+  RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+  chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
+  chmod u+rwx "${RESULTS_BASE_DIR}"
+fi
 export RESULTS_ROOT="../ablation"
 declare -a GROUP_SPECS=()   # "label|VAR1=val1,VAR2=val2,..."
 declare -a GROUP_PIDS=()
 declare -a GROUP_LABELS=()
 
 CHATAFL_MOCK_LLM="${CHATAFL_MOCK_LLM:-0}"
+# Fixed elapsed time and fixed target-call dose are distinct comparisons.
+# A positive optional cap retains the legacy finite-dose/censoring rules.
+# An automatic calibration driver supplies a unique phase identity. No
+# underscores: the archive auditors split the final underscore as the suffix.
+if [[ -n "${ABLATION_BATCH_ID:-}" && ! "$ABLATION_BATCH_ID" =~ ^[a-zA-Z0-9-]+$ ]]; then
+  echo "[ERROR] ABLATION_BATCH_ID must contain only letters, digits and hyphens" >&2
+  exit 2
+fi
 # Explicit, shared validation controls are applied AFTER arm isolation.
 # Keeping them outside CHATAFL_* prevents silent removal by the isolation
 # sweep. Defaults remain the published arm definitions.
-for _validation_var in ABLATION_THRESHOLD_OVERRIDE ABLATION_WARMUP_MAX_OVERRIDE ABLATION_EPISODE_ENERGY_OVERRIDE ABLATION_CALL_BUDGET_OVERRIDE; do
+for _validation_var in ABLATION_THRESHOLD_OVERRIDE ABLATION_WARMUP_MAX_OVERRIDE ABLATION_EPISODE_ENERGY_OVERRIDE ABLATION_CALL_BUDGET_OVERRIDE ABLATION_CAL_REWARD_WINDOW_OVERRIDE; do
   _validation_value="${!_validation_var}"
+  [[ "$_validation_var" == "ABLATION_CALL_BUDGET_OVERRIDE" && "$_validation_value" == "0" && "$ABLATION_STOP_MODE" == "wallclock" ]] && continue
   if [[ -n "$_validation_value" && ! "$_validation_value" =~ ^[1-9][0-9]*$ ]]; then
     echo "[ERROR] ${_validation_var} must be a positive integer" >&2
     exit 2
@@ -130,6 +195,10 @@ if [[ "$CHATAFL_MOCK_LLM" == "1" ]]; then
   CHATAFL_LLM_BASE="http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
   export CHATAFL_MOCK_LLM MOCK_PORT CHATAFL_NO_LLM CHATAFL_LLM_BASE
   echo "[MODE] container-local LoopFuzz Mock enabled (port ${MOCK_PORT}); host gateway preflight skipped"
+elif [[ "${ABLATION_DRY_RUN:-0}" == "1" ]]; then
+  # A dry run only prints the resolved arm configuration. It must remain
+  # usable without credentials and must never contact a real LLM endpoint.
+  echo "[MODE] offline dry-run enabled; credential and gateway checks skipped"
 elif [[ -z "$KEY" ]]; then
   echo "[ERROR] 请先 export KEY=\"sk-...\""
   exit 1
@@ -141,18 +210,25 @@ fi
 # 用户可通过 `ls -d ablation/results-*_<前缀>T*` 检索本批全部结果。
 _BATCH_TS="$(date +%Y%m%dT%H%M%S)"
 _BATCH_EPOCH="$(date +%s)"
+if [[ -z "${ABLATION_BATCH_ID:-}" ]]; then
+  _batch_prefix=calls
+  [[ "$ABLATION_STOP_MODE" == wallclock ]] && _batch_prefix=timed
+  ABLATION_BATCH_ID="${_batch_prefix}-${_BATCH_TS}-$$"
+fi
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  批次启动时间戳: ${_BATCH_TS}"
-echo "║  结果目录模式:   ablation/results-${TARGET}_ablation_<label>_<TS>T*/"
-echo "║  检索命令:       ls -d ablation/results-${TARGET}_ablation_*${_BATCH_TS:0:8}T*"
+echo "║  本批身份:       ${ABLATION_BATCH_ID}"
+echo "║  结果目录模式:   ablation/results-${TARGET}_ablation_<label>_${ABLATION_BATCH_ID}/"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
 # ── Pre-flight checks ────────────────────────────────────────────────
+AVAIL_MEM_KB=unknown
+if [[ "${ABLATION_DRY_RUN:-0}" != "1" ]]; then
 echo ""
 echo "[PREFLIGHT] System resource check:"
-echo "  Docker memory limit per fuzzer container: 6g (down from 8g, see profuzzbench_exec_common_dev.sh)"
+echo "  Docker memory limit per fuzzer container: ${ABLATION_DOCKER_MEM_CAP}"
 
 # 全局内存预算：fuzz 容器"实际占用"总和超过此值前自动限流（62GB 主机约 46GB）。
 # 关键区分：--memory 6g 只是防泄漏的硬上限，典型容器实际仅占 ~0.1-1.5GB。
@@ -202,6 +278,7 @@ if [[ -z "${SKIPCOUNT}" ]]; then
   echo "[WARN] SKIPCOUNT not set. Coverage-over-time granularity may be coarse."
   echo "       Recommended: export SKIPCOUNT=40"
 fi
+fi
 
 queue_group() {
   local label="$1"
@@ -218,15 +295,43 @@ run_queued_groups() {
   local batch_num=0
   local failed=0
 
+  if [[ -n "${ABLATION_CALL_BUDGET_OVERRIDE:-}" ]] &&
+     (( ABLATION_CALL_BUDGET_OVERRIDE > 100000000 )); then
+    echo "[ERROR] ABLATION_CALL_BUDGET_OVERRIDE exceeds the fuzzer's 100000000 limit" >&2
+    return 2
+  fi
+
+  for _budget_spec in "${GROUP_SPECS[@]}"; do
+    if [[ "${_budget_spec%%|*}" =~ ^q1[a-d](1|8|512)$ ]] &&
+       [[ ! "${ABLATION_CALL_BUDGET_OVERRIDE:-}" =~ ^[1-9][0-9]*$ ]]; then
+      if [[ "$ABLATION_STOP_MODE" != "wallclock" || "${_budget_spec%%|*}" =~ ^q1b(1|8|512)$ ]]; then
+        echo "[ERROR] Q1b parking and fixed-call Q1 comparisons require a finite shared target-call budget" >&2
+        return 2
+      fi
+    fi
+  done
+
   if [[ "${ABLATION_DRY_RUN:-0}" == "1" ]]; then
     for _dry_spec in "${GROUP_SPECS[@]}"; do
       printf '[ARM_SPEC] %s\n' "$_dry_spec"
     done
-    printf '[SHARED_OVERRIDES] threshold=%s warmup_max=%s episode_energy=%s call_budget=%s\n' \
+    printf '[SHARED_OVERRIDES] threshold=%s warmup_max=%s episode_energy=%s call_budget=%s cal_reward_window=%s\n' \
       "${ABLATION_THRESHOLD_OVERRIDE:-arm-default}" \
       "${ABLATION_WARMUP_MAX_OVERRIDE:-arm-default}" \
       "${ABLATION_EPISODE_ENERGY_OVERRIDE:-arm-default}" \
-      "${ABLATION_CALL_BUDGET_OVERRIDE:-off}"
+      "${ABLATION_CALL_BUDGET_OVERRIDE:-off}" \
+      "${ABLATION_CAL_REWARD_WINDOW_OVERRIDE:-arm-default}"
+    printf '[Q1_BUDGET] common_target_calls=%s (0=disabled; no pilot launched)\n' \
+      "${ABLATION_CALL_BUDGET_OVERRIDE:-0}"
+    local resource_basis=target-calls
+    if [[ "$ABLATION_STOP_MODE" == wallclock ]]; then
+      resource_basis=elapsed-time
+      [[ "${ABLATION_CALL_BUDGET_OVERRIDE:-0}" != "0" ]] && resource_basis=elapsed-time-with-call-cap
+    fi
+    printf '[RESOURCE_BASIS] basis=%s\n' "$resource_basis"
+    printf '[STOP_POLICY] mode=%s duration_sec=%s cap_hit=%s\n' \
+      "$ABLATION_STOP_MODE" "$((TIMEOUT * 60))" \
+      "$([[ "$ABLATION_STOP_MODE" == wallclock ]] && echo 'deadline;optional-cap-hit-censored' || echo planned-dose-stop)"
     exit 0
   fi
 
@@ -272,7 +377,7 @@ run_queued_groups() {
         # 会从父环境静漏进名义臂。改为模式清扫：unset 所有 CHATAFL_*，
         # 仅保留跨臂基础设施允许清单（网关/mock/超时/token，对全部臂公平）。
         # 臂专属变量在清扫之后由组规格重新 export，因此顺序保证语义。
-        local _iso_v _iso_allow=" CHATAFL_MOCK_LLM CHATAFL_LLM_BASE CHATAFL_NO_LLM CHATAFL_TOKEN_CAP CHATAFL_MAX_TOKENS CHATAFL_LLM_TIMEOUT_MS CHATAFL_LLM_CONNECT_TIMEOUT CHATAFL_ENRICH_TIMEOUT CHATAFL_LLM_MODEL "
+        local _iso_v _iso_allow=" CHATAFL_MOCK_LLM CHATAFL_LLM_BASE CHATAFL_NO_LLM CHATAFL_LLM_TOTAL_CALL_CAP CHATAFL_TOKEN_CAP CHATAFL_MAX_TOKENS CHATAFL_LLM_TIMEOUT_MS CHATAFL_LLM_CONNECT_TIMEOUT CHATAFL_ENRICH_TIMEOUT CHATAFL_LLM_MODEL CHATAFL_EVENT_LOG CHATAFL_EXECUTION_LOG "
         while IFS= read -r _iso_v; do
           [[ -z "$_iso_v" ]] && continue
           [[ "$_iso_allow" == *" $_iso_v "* ]] && continue
@@ -295,22 +400,28 @@ run_queued_groups() {
           export CHATAFL_SCHEDULER_WARMUP_MAX="$ABLATION_WARMUP_MAX_OVERRIDE"
         [[ -n "${ABLATION_EPISODE_ENERGY_OVERRIDE:-}" ]] && \
           export CHATAFL_EPISODE_ENERGY="$ABLATION_EPISODE_ENERGY_OVERRIDE"
+        [[ -n "${ABLATION_CAL_REWARD_WINDOW_OVERRIDE:-}" ]] && \
+          export CHATAFL_CAL_REWARD_WINDOW="$ABLATION_CAL_REWARD_WINDOW_OVERRIDE"
 
-        # Stage-2 T03: uniform fixed target-invocation budget across arms
-        # (the first-round primary endpoint runs under a common call cap).
+        # Zero disables only the global call cap. Per-candidate validation
+        # quotas remain bounded; elapsed-time results do not claim equal dose.
         [[ -n "${ABLATION_CALL_BUDGET_OVERRIDE:-}" ]] && \
           export CHATAFL_CAMPAIGN_CALL_BUDGET="$ABLATION_CALL_BUDGET_OVERRIDE"
+        export CHATAFL_CAMPAIGN_STOP_MODE="$ABLATION_STOP_MODE"
+        export CHATAFL_CAMPAIGN_DURATION_SEC="$((TIMEOUT * 60))"
 
         export CHATAFL_NO_HETERO_BROKERS=1
         export CHATAFL_FROM_ABLATION=1
         export CHATAFL_ADMISSION_LOG=1
-        export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
+        export TIMESTAMP="ablation_${label}_${ABLATION_BATCH_ID:-$(date +%Y%m%dT%H%M%S)}"
 
         echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_${TIMESTAMP}/"
         echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} MODE=${CHATAFL_ADMISSION_MODE:-default-gate} PROV=${CHATAFL_PROVISIONAL:-1} SHADOW=${CHATAFL_SHADOW:-1} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive} CAL=${CHATAFL_CALIBRATION:-0} GAMMA=${CHATAFL_CAL_GAMMA:-0.995} PROV_BUDGET=${CHATAFL_PROVISIONAL_BUDGET:-64}"
 
         cd "$BASE_DIR" || exit 1
-        ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
+        run_timeout="$TIMEOUT"
+        [[ "$ABLATION_STOP_MODE" == "wallclock" ]] && run_timeout=$((TIMEOUT + 6))
+        ./run_dev.sh "$RUNS" "$run_timeout" "$TARGET" loopfuzz
         rc=$?
         if [[ $rc -ne 0 ]]; then
           echo "[ABLATION:${label}] 失败 (run_dev.sh exit=${rc})"
@@ -365,6 +476,9 @@ launch_custom_groups() {
     local arm_thr=8
     [[ "$name" == *512 ]] && arm_thr=512
     case "$name" in
+      pvstop1|salvage1|nollm1|wrapgate1|native1|calibrated1|cal_ewma1|cal_run_rate1|q1a1|q1b1|q1c1|q1d1|ordmatch1) arm_thr=1 ;;
+    esac
+    case "$name" in
 
       wo_all)
         valid+=("$name")
@@ -404,7 +518,7 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "calibrated" "CHATAFL_CALIBRATION=1"
         ;;
-      calibrated8|calibrated512|cal_ewma8|cal_ewma512)
+      calibrated1|calibrated8|calibrated512|cal_ewma1|cal_ewma8|cal_ewma512)
         # Q3 生产对比臂（2026-11-02）：与 wrapgate8(D) 完全同底座（wrap/阈值8/
         # NO_ADAPTIVE/TTL 全同），唯一差异 = 校准估计器；默认 warmup（64 选择
         # 或五遍历）。注意：paper 老臂 calibrated/cal_ewma 不带本底座，与
@@ -572,7 +686,7 @@ launch_custom_groups() {
           "CHATAFL_NO_ADAPTIVE=1" \
           "CHATAFL_ABLATION_THRESHOLD=${thr}"
         ;;
-      salvage8|salvage16|salvage32|salvage64|salvage150|salvage200|salvage300|salvage512)
+      salvage1|salvage8|salvage16|salvage32|salvage64|salvage150|salvage200|salvage300|salvage512)
         # Q1 证据回收臂（处理组）：D + SALVAGE + PLAINTEXT_WRAP + 固定阈值 N。
         # 与 wrapgateN 的差异仅 SALVAGE 一个因子；与 wrapdirectN 的差异是
         # 整个准入策略。阈值入组变量（臂隔离会清父 shell 导出）。
@@ -688,7 +802,7 @@ launch_custom_groups() {
           "CHATAFL_ORDINARY_RATE=1.0" \
           "CHATAFL_ORDINARY_EDF=1"
         ;;
-      cal_run_rate8|cal_run_rate512)
+      cal_run_rate1|cal_run_rate8|cal_run_rate512)
         # Q3 missing arm (2026-11-04 codex gap): wrapgate8 base + run_rate
         valid+=("$name")
         queue_group "$name" \
@@ -720,7 +834,7 @@ launch_custom_groups() {
           "CHATAFL_CODE_RETAIN=1" \
           "CHATAFL_PROV_PREFIX_PROTECT=0"
         ;;
-      reqgate8|reqgate512|pvstop8|pvstop512)
+      reqgate8|reqgate512|pvstop1|pvstop8|pvstop512)
         # P2/P3 mechanism arms (2026-11-09): mock variants (8) and real-gateway
         # variants (512). reqgate = request-level gate (skip consults on
         # saturated window); pvstop = PV marginal early-stop (K=32 dual-signal).
@@ -729,6 +843,7 @@ launch_custom_groups() {
         case "$name" in
           reqgate8)   p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=500,CHATAFL_REQUEST_GATE_YIELD_FLOOR=3" ;;
           reqgate512) p_thr=512; p23="CHATAFL_REQUEST_GATE=1,CHATAFL_REQUEST_GATE_WINDOW=2000,CHATAFL_REQUEST_GATE_YIELD_FLOOR=1" ;;
+          pvstop1)    p_thr=1; p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32" ;;
           pvstop8)    p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32" ;;
           pvstop512)  p_thr=512; p23="CHATAFL_SALVAGE=1,CHATAFL_PV_EARLY_STOP=32" ;;
         esac
@@ -742,12 +857,16 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "${p23}"
         ;;
-      q1a8|q1b8|q1c8|q1d8)
+      q1a1|q1b1|q1c1|q1d1|q1a8|q1b8|q1c8|q1d8|q1a512|q1b512|q1c512|q1d512)
         # Stage-2 T03 Q1 strategies (2026-11-06): single-factor triplet on
         # the fate of the 64-call quota freed by gate rejects of executable
         # candidates. All three share the wrapgate8 generation base and the
-        # SAME campaign call budget (set via ABLATION_CALL_BUDGET_OVERRIDE
-        # so the A-vs-C comparison is fixed-call, not fixed-wallclock).
+        # SAME nominal campaign budget (ABLATION_CALL_BUDGET_OVERRIDE).
+        # In call-budget mode this is the dose endpoint; a positive cap in
+        # wallclock mode is an optional guard. Only an exactly conserved Q1b
+        # parked-quota stop is planned; every arm must still reach the time
+        # endpoint. Any other early cap hit censors the fixed-time result.
+        # B parks quota, so equal nominal budgets do NOT imply equal calls.
         #   q1a8 = A direct service (no gate decision; every p&r candidate
         #          gets the same bounded validation service)
         #   q1b8 = B gate + idle (freed quota parked; effective cap shrinks)
@@ -760,10 +879,11 @@ launch_custom_groups() {
         valid+=("$name")
         local q1var=""
         case "$name" in
-          q1a8) q1var="CHATAFL_Q1_DIRECT_SERVICE=1" ;;
-          q1b8) q1var="CHATAFL_Q1_NO_REFLOW=1" ;;
-          q1c8) q1var="CHATAFL_Q1_REFLOW=1" ;;
-          q1d8) q1var="CHATAFL_Q1_REFLOW=1,CHATAFL_CODE_RETAIN=1" ;;
+          q1a1|q1a8|q1a512) q1var="CHATAFL_Q1_DIRECT_SERVICE=1" ;;
+          q1b1|q1b8|q1b512) q1var="CHATAFL_Q1_NO_REFLOW=1" ;;
+          q1c1|q1c8|q1c512) q1var="CHATAFL_Q1_REFLOW=1" ;;
+          q1d1|q1d8|q1d512) q1var="CHATAFL_Q1_REFLOW=1,CHATAFL_CODE_RETAIN=1" ;;
+          *) echo "[ERROR] unknown q1 arm variant: $name" >&2; exit 2 ;;
         esac
         queue_group "$name" \
           "CHATAFL_ADMISSION_MODE=gate" \
@@ -771,7 +891,7 @@ launch_custom_groups() {
           "CHATAFL_SHADOW=1" \
           "CHATAFL_PLAINTEXT_WRAP=1" \
           "CHATAFL_NO_ADAPTIVE=1" \
-          "CHATAFL_ABLATION_THRESHOLD=8" \
+          "CHATAFL_ABLATION_THRESHOLD=${arm_thr}" \
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "${q1var}"
         ;;
@@ -792,7 +912,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_STATE_RETAIN=1"
         ;;
-      native8|native512)
+      native1|native8|native512)
         # CSV#4 fair native control (2026-11-05): native retention + the
         # wrapgate8 generation base (PLAINTEXT_WRAP/fixed threshold/
         # NO_ADAPTIVE) so the remaining difference vs wrapgate8 is the
@@ -861,7 +981,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_U_POLICY=${upol}"
         ;;
-      ordmatch8|ordmatch512)
+      ordmatch1|ordmatch8|ordmatch512)
         # CSV#7 同预算 ordinary 对照臂（2026-11-02）：与 salvage8 完全相同
         # 的准入决策流/预算台账/首次增益归因，但临时通道准入的候选改走
         # ordinary-match 队列（regular provisional 根优先；无 favored 加成；
@@ -926,7 +1046,7 @@ launch_custom_groups() {
           "CHATAFL_PROVISIONAL_TTL_MS=3600000" \
           "CHATAFL_SALVAGE_OPPORTUNITY=4.0"
         ;;
-      nollm8|nollm512|gramonly8|genrich8|plateauonly8)
+      nollm1|nollm8|nollm512|gramonly8|genrich8|plateauonly8)
         # CSV#20 LLM 组件控制臂（2026-11-02）：wrapgate8 基础上仅换 LLM 通道组合。
         # 通道在 chat_with_llm 入口短路（无请求/无token/无账目行），
         # llm-calls.jsonl 每行带 channel 字段，组件隔离按 run-config 可验。
@@ -942,7 +1062,7 @@ launch_custom_groups() {
         valid+=("$name")
         local chans=""
         case "$name" in
-          nollm8|nollm512) chans="CHATAFL_NO_LLM=1" ;;
+          nollm1|nollm8|nollm512) chans="CHATAFL_NO_LLM=1" ;;
           gramonly8)    chans="CHATAFL_NO_ENRICH=1,CHATAFL_NO_PLATEAU=1" ;;
           genrich8)     chans="CHATAFL_NO_PLATEAU=1" ;;
           plateauonly8) chans="CHATAFL_NO_GRAMMAR=1,CHATAFL_NO_ENRICH=1" ;;
@@ -1158,7 +1278,7 @@ echo "  [ABLATION] 消融实验（批次执行）"
 echo "  目标: ${TARGET}  每组重复: ${RUNS}  时长: ${TIMEOUT} min"
 echo "  预设: ${PRESET}  批次大小: ${ABLATION_PARALLEL} 组/批"
 echo "  说明: ${PRESET_DESC}"
-echo "  结果目录: benchmark/results-${TARGET}_ablation_<label>/"
+echo "  结果目录: ${RESULTS_BASE_DIR}/results-${TARGET}_ablation_<label>_${ABLATION_BATCH_ID}/"
 echo "========================================================"
 
 if [[ -n "$CUSTOM_GROUPS" ]]; then
@@ -1217,6 +1337,8 @@ echo ""
 # the same check inside each isolated fuzz container against its local server.
 if [[ "$CHATAFL_MOCK_LLM" == "1" ]]; then
   echo "[PREFLIGHT] Mock mode: each LoopFuzz container starts and probes its own local gateway before fuzzing."
+elif [[ "${ABLATION_DRY_RUN:-0}" == "1" ]]; then
+  echo "[PREFLIGHT] Offline dry-run: external gateway check skipped."
 elif ! "${BASE_DIR}/scripts/check_llm.sh"; then
   echo "[ERROR] LLM 预检失败；未启动本批消融实验。请核对当前 KEY、LLM_MODEL 和 CHATAFL_LLM_BASE。" >&2
   exit 1
@@ -1225,19 +1347,62 @@ fi
 # ── Execute queued groups in batches ──
 run_queued_groups
 failed=$?
+CURRENT_RESULT_DIRS=()
+for _current_spec in "${GROUP_SPECS[@]}"; do
+  CURRENT_RESULT_DIRS+=("$RESULTS_BASE_DIR/results-${TARGET}_ablation_${_current_spec%%|*}_${ABLATION_BATCH_ID}")
+done
+
+# Audit only this invocation's exact arm directories. Never substitute older
+# archives, a date glob or a successful launcher exit for complete evidence.
+# Legacy/mock batches retain their separate audit workflows.
+_timed_audit_default=0
+if [[ "$ABLATION_STOP_MODE" == "wallclock" && "$CHATAFL_MOCK_LLM" == "0" &&
+      "$RUNS" == "3" && -n "$CUSTOM_GROUPS" ]]; then
+  _timed_audit_default=1
+  case "$TARGET" in
+    lightftp|bftpd|proftpd|pure-ftpd|exim|live555|kamailio|forked-daapd|lighttpd1) ;;
+    *) _timed_audit_default=0 ;;
+  esac
+  for _audit_spec in "${GROUP_SPECS[@]}"; do
+    case "${_audit_spec%%|*}" in
+      pvstop512|salvage512|nollm512|wrapgate512|native512|calibrated512|cal_ewma512|cal_run_rate512|ordmatch512|q1a512|q1b512|q1c512|q1d512) ;;
+      *) _timed_audit_default=0 ;;
+    esac
+  done
+fi
+timed_audit_rc=0
+if [[ "${ABLATION_WALLCLOCK_AUDIT:-$_timed_audit_default}" == "1" ]]; then
+  _timed_result_dirs=()
+  _timed_arm_names=()
+  for _audit_spec in "${GROUP_SPECS[@]}"; do
+    _audit_arm="${_audit_spec%%|*}"
+    _timed_arm_names+=("$_audit_arm")
+    _timed_result_dirs+=("$RESULTS_BASE_DIR/results-${TARGET}_ablation_${_audit_arm}_${ABLATION_BATCH_ID}")
+  done
+  _timed_arms_csv=$(IFS=,; echo "${_timed_arm_names[*]}")
+  _timed_audit_log="$RESULTS_BASE_DIR/wallclock-audit-${TARGET}-${ABLATION_BATCH_ID}.log"
+  echo "[POSTRUN] elapsed-time evidence audit: $_timed_audit_log"
+  python3 "$BASE_DIR/ablation/q123_repair_smoke_20261114/audit_smoke.py" \
+    "${_timed_result_dirs[@]}" --target "$TARGET" --threshold 512 \
+    --timeout-min "$TIMEOUT" --gateway live --profile arm-default \
+    --arms "$_timed_arms_csv" >"$_timed_audit_log" 2>&1 || timed_audit_rc=$?
+  cat "$_timed_audit_log"
+fi
 
 echo ""
 echo "========================================================"
 echo "  [ABLATION] 预设 ${PRESET} 全部完成！"
 [[ $failed -gt 0 ]] && echo "  ⚠️  WARNING: ${failed} 组子进程返回非零退出码，请检查日志"
 echo "  结果目录："
-ls -d "$BASE_DIR/ablation/results-${TARGET}_ablation_"* 2>/dev/null | sort | xargs -r -I{} basename {}
+for RESULTS_DIR in "${CURRENT_RESULT_DIRS[@]}"; do
+  [[ -d "$RESULTS_DIR" ]] && basename "$RESULTS_DIR"
+done
 echo "========================================================"
 
 # ── Post-run diagnostics ──────────────────────────────────────────────
 echo ""
 echo "[POSTRUN] Scanning for anomalies in ablation results..."
-for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
+for RESULTS_DIR in "${CURRENT_RESULT_DIRS[@]}"; do
   [[ -d "$RESULTS_DIR" ]] || continue
   DIR_NAME=$(basename "$RESULTS_DIR")
   ISSUES=""
@@ -1320,12 +1485,12 @@ RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
 chmod u+rwx "${RESULTS_BASE_DIR}"
-for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
+for RESULTS_DIR in "${CURRENT_RESULT_DIRS[@]}"; do
   [[ -d "$RESULTS_DIR" ]] || continue
   chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$RESULTS_DIR"
   chmod -R u+rwX "$RESULTS_DIR"
 done
 
-if [[ $failed -ne 0 || $batch_audit_rc -ne 0 ]]; then
+if [[ $failed -ne 0 || $batch_audit_rc -ne 0 || $timed_audit_rc -ne 0 ]]; then
   exit 1
 fi

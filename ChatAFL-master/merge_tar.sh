@@ -31,8 +31,7 @@
 #   SMTP: exim
 #   RTSP: live555
 #   SIP:  kamailio
-#   DAAP: forked-daapd
-#   HTTP: lighttpd1
+#   HTTP: forked-daapd, lighttpd1
 #   MQTT: mosquitto
 
 set -e
@@ -40,7 +39,7 @@ set -e
 # ── Protocol map (for display only; merging is name-based) ──────────
 declare -A PROTO_MAP=(
     [lightftp]=FTP [bftpd]=FTP [proftpd]=FTP [pure-ftpd]=FTP
-    [exim]=SMTP [live555]=RTSP [kamailio]=SIP [forked-daapd]=DAAP
+    [exim]=SMTP [live555]=RTSP [kamailio]=SIP [forked-daapd]=HTTP
     [lighttpd1]=HTTP [mosquitto]=MQTT
 )
 

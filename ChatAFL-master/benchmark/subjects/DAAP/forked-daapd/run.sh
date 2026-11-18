@@ -6,6 +6,31 @@ OPTIONS=$3    #all configured options -- to make it flexible, we only fix some o
 TIMEOUT=$4    #time for fuzzing
 SKIPCOUNT=$5  #used for calculating cov over time. e.g., SKIPCOUNT=5 means we run gcovr after every 5 test cases
 
+# forked-daapd exposes DAAP endpoints over an HTTP/1.x server.  ``DAAP`` is
+# the benchmark directory/feature name, not an AFLNet parser name.  Enforce
+# the wire parser at the target boundary as well as in the host launcher so a
+# direct invocation cannot silently produce DAAP-misattributed archives.
+_wire_protocol=""
+read -r -a _option_tokens <<< "$OPTIONS"
+for ((_i = 0; _i < ${#_option_tokens[@]}; _i++)); do
+  case "${_option_tokens[$_i]}" in
+    -P)
+      if ((_i + 1 < ${#_option_tokens[@]})); then
+        _wire_protocol="${_option_tokens[$((_i + 1))]}"
+      fi
+      break
+      ;;
+    -P*)
+      _wire_protocol="${_option_tokens[$_i]#-P}"
+      break
+      ;;
+  esac
+done
+if [[ "$_wire_protocol" != "HTTP" ]]; then
+  echo "[ERROR] forked-daapd requires AFLNet wire protocol '-P HTTP' (got '${_wire_protocol:-missing}')" >&2
+  exit 2
+fi
+
 strstr() {
   [ "${1#*$2*}" = "$1" ] && return 1
   return 0
@@ -57,6 +82,11 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR
+  RESET_ARGS=()
+  if [ "$FUZZER" = "loopfuzz" ]; then
+    RESET_ARGS=(-c "bash /tmp/coverage-v4-src/fuzz_runtime/forked-daapd.sh")
+    [ -f /tmp/coverage-v4-src/fuzz_runtime/forked-daapd.sh ] || { echo "missing live reset script" >&2; exit 2; }
+  fi
 
   # StateAFL on forked-daapd still hits an upstream AFLNet-lineage list-
   # management bug (amplified by the generic length-prefix parser) that can
@@ -82,7 +112,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
     done
     STATUS=0
   else
-    timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+    timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS "${RESET_ARGS[@]}" ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
     STATUS=$?
   fi
 

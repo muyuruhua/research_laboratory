@@ -70,6 +70,88 @@ static void test_posterior_update(void) {
         m_early, m_late);
 }
 
+static void test_fixed_invocation_reward_windows(void) {
+  ec_reward_window_t w;
+  int reward = -1;
+  ec_reward_window_init(&w, 4);
+  /* A gain without an eligible invocation cannot enter training. */
+  ec_reward_window_note_gain(&w);
+  for (unsigned i = 0; i < 4; i++)
+    CHECK(!ec_reward_window_begin_invocation(&w, &reward),
+          "first window not emitted before its last invocation completes");
+  ec_reward_window_note_gain(&w); /* a gain precisely on invocation N */
+  CHECK(ec_reward_window_begin_invocation(&w, &reward) && reward == 1,
+        "boundary gain belongs to completed window");
+  CHECK(w.completed_windows == 1 && w.rewarded_windows == 1 &&
+        w.invocations == 1 && !w.has_code_gain,
+        "emission resets outcome before starting next window");
+  for (unsigned i = 0; i < 3; i++)
+    CHECK(!ec_reward_window_begin_invocation(&w, &reward), "second window dose");
+  CHECK(ec_reward_window_close(&w, 0, &reward) && reward == 0,
+        "complete unproductive window emits a real zero");
+  CHECK(w.completed_windows == 2 && w.rewarded_windows == 1,
+        "one positive and one negative fixed-dose observation");
+
+  /* A partial tail must not be treated as a negative.  A new selected
+   * state starts a fresh accumulator instead of borrowing this exposure. */
+  ec_reward_window_begin_invocation(&w, &reward);
+  ec_reward_window_note_gain(&w);
+  ec_reward_window_begin_invocation(&w, &reward);
+  CHECK(!ec_reward_window_close(&w, 0, &reward) &&
+        w.censored_invocations == 2 && w.completed_windows == 2,
+        "productive partial tail is censored, never extrapolated");
+  CHECK(!w.invocations && !w.has_code_gain, "close prevents state leakage");
+
+  /* The last invocation in an interrupted episode may not have returned
+   * its novelty observation, even when it is number N. */
+  for (unsigned i = 0; i < 4; i++) ec_reward_window_begin_invocation(&w, &reward);
+  CHECK(!ec_reward_window_close(&w, 1, &reward) &&
+        w.censored_invocations == 6 && w.completed_windows == 2,
+        "interrupted final window cannot fabricate completed evidence");
+
+  /* Fixed-dose updates are invariant to how a longer state-selection
+   * episode is split, provided the split lands on a complete window. */
+  ec_posterior_t long_episode, split_episode;
+  ec_posterior_init_default(&long_episode);
+  ec_posterior_init_default(&split_episode);
+  ec_reward_window_init(&w, 4);
+  for (unsigned i = 0; i < 12; i++) {
+    if (ec_reward_window_begin_invocation(&w, &reward))
+      ec_posterior_update(&long_episode, reward);
+    if (i == 3 || i == 8) ec_reward_window_note_gain(&w);
+  }
+  if (ec_reward_window_close(&w, 0, &reward))
+    ec_posterior_update(&long_episode, reward);
+  for (unsigned episode = 0; episode < 3; episode++) {
+    ec_reward_window_init(&w, 4);
+    for (unsigned i = 0; i < 4; i++) {
+      ec_reward_window_begin_invocation(&w, &reward);
+      if ((episode == 0 && i == 3) || (episode == 2 && i == 0))
+        ec_reward_window_note_gain(&w);
+    }
+    if (ec_reward_window_close(&w, 0, &reward))
+      ec_posterior_update(&split_episode, reward);
+  }
+  CHECK(approx(long_episode.alpha, split_episode.alpha, 1e-12) &&
+        approx(long_episode.beta, split_episode.beta, 1e-12),
+        "posterior depends on fixed-dose observations, not episode partition");
+  CHECK(!ec_reward_window_begin_invocation(NULL, &reward) &&
+        !ec_reward_window_close(NULL, 0, &reward), "null accumulator guard");
+  ec_reward_window_init(&w, 0);
+  CHECK(w.reference_invocations == 1, "zero dose cannot create empty rewards");
+}
+
+static void test_positive_score_weights(void) {
+  CHECK(ec_positive_score_weight(0.05) == 1,
+        "positive epsilon-floor score retains nonzero scheduling weight");
+  CHECK(ec_positive_score_weight(8.99) == 8, "ordinary score truncation");
+  CHECK(ec_positive_score_weight(0.0) == 0 &&
+        ec_positive_score_weight(-1.0) == 0, "nonpositive score excluded");
+  CHECK(ec_positive_score_weight(NAN) == 0 &&
+        ec_positive_score_weight(INFINITY) == 0, "invalid score excluded");
+  CHECK(ec_positive_score_weight(1e100) == UINT32_MAX, "weight overflow capped");
+}
+
 static void test_disposition(void) {
   ec_predicates_t pr;
 
@@ -202,6 +284,8 @@ static void test_shrinkage_estimator(void) {
 
 int main(void) {
   test_posterior_update();
+  test_fixed_invocation_reward_windows();
+  test_positive_score_weights();
   test_disposition();
   test_thompson_statistics();
   test_gamma_extremes();

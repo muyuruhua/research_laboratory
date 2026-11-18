@@ -30,7 +30,12 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}
-  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -x ${WORKDIR}/ftp.dict -N tcp://127.0.0.1/21 $OPTIONS -c ${WORKDIR}/clean src/pure-ftpd -A
+  CLEANUP="${WORKDIR}/clean"
+  if [ "$FUZZER" = "loopfuzz" ]; then
+    CLEANUP="bash /tmp/coverage-v4-src/fuzz_runtime/pure-ftpd.sh"
+    [ -f /tmp/coverage-v4-src/fuzz_runtime/pure-ftpd.sh ] || { echo "missing live reset script" >&2; exit 2; }
+  fi
+  timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -x ${WORKDIR}/ftp.dict -N tcp://127.0.0.1/21 $OPTIONS -c "$CLEANUP" src/pure-ftpd -A
 
   STATUS=$?
 

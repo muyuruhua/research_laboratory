@@ -18,6 +18,7 @@ static u8 gating_test_driver(char **argv, u32 timeout);
 #include <assert.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 /* Config metadata only: the selftest never links or calls an LLM client. */
 double llm_active_top_p(void) { return 1.0; }
@@ -26,6 +27,7 @@ long chat_llm_cap_calls(void) { return -1; }
 long chat_llm_cap_tokens(void) { return -1; }
 
 static u8 test_trace_value = 1;
+static u8 stop_during_calibration = 0;
 static const char test_reply[] = "220 ready\r\n";
 static u32 test_reply_end = (u32)(sizeof(test_reply) - 1);
 
@@ -45,11 +47,323 @@ static u8 gating_test_driver(char **argv, u32 timeout) {
    * clears the response buffer: these responses belong to the invocation
    * that just ran. */
   response_invocation_id = target_invocation_seq;
+  if (stop_during_calibration) stop_soon = 1;
   return FAULT_NONE;
 }
 
 static void make_dir(const char *path) {
   if (mkdir(path, 0700) && errno != EEXIST) abort();
+}
+
+static void write_test_file(const char *path, const void *data, size_t len) {
+  FILE *f = fopen(path, "wb");
+  assert(f);
+  assert(fwrite(data, 1, len, f) == len);
+  assert(fclose(f) == 0);
+}
+
+static void assert_replay_seed(const char *path, const u8 *first,
+                               u32 first_len, const u8 *second,
+                               u32 second_len) {
+  FILE *f = fopen(path, "rb");
+  assert(f);
+  u32 frame_len = 0;
+  u8 payload[128];
+  assert(fread(&frame_len, sizeof(frame_len), 1, f) == 1);
+  assert(frame_len == first_len);
+  assert(fread(payload, 1, frame_len, f) == frame_len);
+  assert(memcmp(payload, first, first_len) == 0);
+  assert(fread(&frame_len, sizeof(frame_len), 1, f) == 1);
+  assert(frame_len == second_len);
+  assert(fread(payload, 1, frame_len, f) == frame_len);
+  assert(memcmp(payload, second, second_len) == 0);
+  assert(fgetc(f) == EOF);
+  assert(fclose(f) == 0);
+}
+
+static void test_initial_seed_replay_survives_interrupted_dry_run(void) {
+  char root[] = "/tmp/loopfuzz-initial-replay-selftest-XXXXXX";
+  assert(mkdtemp(root));
+  u8 *input_dir = alloc_printf("%s/input", root);
+  u8 *output_dir = alloc_printf("%s/output", root);
+  u8 *queue_dir = alloc_printf("%s/queue", output_dir);
+  u8 *replay_dir = alloc_printf("%s/replayable-queue", output_dir);
+  u8 *input_a = alloc_printf("%s/seed-a", input_dir);
+  u8 *input_b = alloc_printf("%s/seed-b", input_dir);
+  make_dir((char *)input_dir); make_dir((char *)output_dir);
+  make_dir((char *)queue_dir); make_dir((char *)replay_dir);
+
+  static const u8 first_a[] = "USER a\r\n";
+  static const u8 second_a[] = "PASS b\r\n";
+  static const u8 first_b[] = "USER c\r\n";
+  static const u8 second_b[] = "PASS d\r\n";
+  static const u8 seed_a[] = "USER a\r\nPASS b\r\n";
+  static const u8 seed_b[] = "USER c\r\nPASS d\r\n";
+  write_test_file((char *)input_a, seed_a, sizeof(seed_a) - 1);
+  write_test_file((char *)input_b, seed_b, sizeof(seed_b) - 1);
+
+  struct queue_entry seeds[2];
+  memset(seeds, 0, sizeof(seeds));
+  seeds[0].fname = (u8 *)alloc_printf("%s", input_a);
+  seeds[0].len = sizeof(seed_a) - 1;
+  seeds[0].index = 0;
+  seeds[0].regions = ck_alloc(2 * sizeof(region_t));
+  seeds[0].region_count = 2;
+  seeds[0].regions[0].start_byte = 0;
+  seeds[0].regions[0].end_byte = sizeof(first_a) - 2;
+  seeds[0].regions[1].start_byte = sizeof(first_a) - 1;
+  seeds[0].regions[1].end_byte = seeds[0].len - 1;
+  seeds[0].next = &seeds[1];
+  seeds[1].fname = (u8 *)alloc_printf("%s", input_b);
+  seeds[1].len = sizeof(seed_b) - 1;
+  seeds[1].index = 1;
+  seeds[1].regions = ck_alloc(2 * sizeof(region_t));
+  seeds[1].region_count = 2;
+  seeds[1].regions[0].start_byte = 0;
+  seeds[1].regions[0].end_byte = sizeof(first_b) - 2;
+  seeds[1].regions[1].start_byte = sizeof(first_b) - 1;
+  seeds[1].regions[1].end_byte = seeds[1].len - 1;
+  queue = &seeds[0];
+  queue_top = &seeds[1];
+  out_dir = output_dir;
+  in_place_resume = 0;
+  pivot_inputs();
+
+  u8 *replay_a = alloc_printf("%s/%s", replay_dir,
+                              basename((char *)seeds[0].fname));
+  u8 *replay_b = alloc_printf("%s/%s", replay_dir,
+                              basename((char *)seeds[1].fname));
+  assert(seeds[0].is_initial_seed && seeds[1].is_initial_seed);
+  assert(access(replay_a, F_OK) == 0 && access(replay_b, F_OK) == 0);
+  struct stat source_before, queue_before;
+  assert(stat((char *)input_a, &source_before) == 0);
+  assert(stat((char *)seeds[0].fname, &queue_before) == 0);
+  assert(source_before.st_dev == queue_before.st_dev &&
+         source_before.st_ino == queue_before.st_ino);
+  assert_replay_seed(replay_a, first_a, sizeof(first_a) - 1,
+                     second_a, sizeof(second_a) - 1);
+  assert_replay_seed(replay_b, first_b, sizeof(first_b) - 1,
+                     second_b, sizeof(second_b) - 1);
+  struct stat source_after, queue_after;
+  assert(stat((char *)input_a, &source_after) == 0);
+  assert(stat((char *)seeds[0].fname, &queue_after) == 0);
+  assert(source_before.st_dev == source_after.st_dev &&
+         source_before.st_ino == source_after.st_ino &&
+         source_before.st_size == source_after.st_size &&
+         queue_after.st_dev == source_after.st_dev &&
+         queue_after.st_ino == source_after.st_ino);
+  FILE *source = fopen((char *)input_a, "rb");
+  u8 original[sizeof(seed_a)];
+  assert(source && fread(original, 1, sizeof(seed_a) - 1, source) == sizeof(seed_a) - 1);
+  assert(!memcmp(original, seed_a, sizeof(seed_a) - 1));
+  assert(fgetc(source) == EOF && fclose(source) == 0);
+
+  /* Empty seeds are excluded by read_testcases(); malformed/non-partitioning
+   * parser output must fail closed without publishing a replay witness. */
+  u8 *bad_input = alloc_printf("%s/bad-seed", input_dir);
+  u8 *empty_input = alloc_printf("%s/empty-seed", input_dir);
+  u8 *bad_replay = alloc_printf("%s/bad-seed", replay_dir);
+  u8 *empty_replay = alloc_printf("%s/empty-seed", replay_dir);
+  static const u8 malformed[] = "abcdef";
+  write_test_file((char *)bad_input, malformed, sizeof(malformed) - 1);
+  write_test_file((char *)empty_input, "", 0);
+  region_t bad_region = {.start_byte = 1, .end_byte = sizeof(malformed) - 2};
+  struct queue_entry bad_seed, empty_seed;
+  memset(&bad_seed, 0, sizeof(bad_seed));
+  bad_seed.fname = bad_input;
+  bad_seed.len = sizeof(malformed) - 1;
+  bad_seed.regions = &bad_region;
+  bad_seed.region_count = 1;
+  assert(!materialize_initial_seed_replay(&bad_seed));
+  assert(access(bad_replay, F_OK) != 0);
+  memset(&empty_seed, 0, sizeof(empty_seed));
+  empty_seed.fname = empty_input;
+  assert(!materialize_initial_seed_replay(&empty_seed));
+  assert(access(empty_replay, F_OK) != 0);
+
+  /* The first target execution aborts calibration. Both initial-seed
+   * checkpoints and replay witnesses must already be published at that point. */
+  u8 *checkpoints = alloc_printf("%s/queue-checkpoints.jsonl", output_dir);
+  stop_soon = 0;
+  stop_during_calibration = 1;
+  dumb_mode = 1;
+  no_forkserver = 1;
+  cleanup_script = NULL;
+  reset_completed_before_forkserver = 0;
+  fast_cal = 1;
+  state_aware_mode = 0;
+  campaign_call_budget = campaign_charged_invocations = 0;
+  mutation_call_budget = mutation_charged_calls = 0;
+  llm_candidate_lineage_pin = cur_fuzz_lineage_candidate_id = 0;
+  event_log_enabled = execution_log_enabled = 1;
+  u64 execs_before_interrupt = total_execs;
+  perform_dry_run(NULL);
+  stop_during_calibration = 0;
+  assert(stop_soon && total_execs == execs_before_interrupt + 1);
+  assert(access(replay_a, F_OK) == 0 && access(replay_b, F_OK) == 0);
+  assert_replay_seed(replay_a, first_a, sizeof(first_a) - 1,
+                     second_a, sizeof(second_a) - 1);
+  assert_replay_seed(replay_b, first_b, sizeof(first_b) - 1,
+                     second_b, sizeof(second_b) - 1);
+
+  FILE *f = fopen((char *)checkpoints, "r");
+  assert(f);
+  char line[1024];
+  u32 initial_checkpoints = 0;
+  while (fgets(line, sizeof(line), f))
+    if (strstr(line, "initial-queue-name")) initial_checkpoints++;
+  assert(fclose(f) == 0);
+  assert(initial_checkpoints == 2);
+
+  stop_soon = 0;
+  queue = queue_top = queue_cur = q_prev100 = NULL;
+  ck_free(seeds[0].fname); ck_free(seeds[1].fname);
+  ck_free(seeds[0].regions); ck_free(seeds[1].regions);
+  ck_free(checkpoints); ck_free(replay_a); ck_free(replay_b);
+  ck_free(bad_replay); ck_free(empty_replay);
+  ck_free(bad_input); ck_free(empty_input);
+  ck_free(input_a); ck_free(input_b); ck_free(replay_dir);
+  ck_free(queue_dir); ck_free(output_dir); ck_free(input_dir);
+}
+
+static void test_provisional_replay_is_published_before_discovery(void) {
+  char root[] = "/tmp/loopfuzz-provisional-pair-selftest-XXXXXX";
+  assert(mkdtemp(root));
+  char queue_dir[PATH_MAX], replay_dir[PATH_MAX], staging_dir[PATH_MAX];
+  char raw_path[PATH_MAX], replay_path[PATH_MAX], checkpoint_path[PATH_MAX];
+  snprintf(queue_dir, sizeof(queue_dir), "%s/queue", root);
+  snprintf(replay_dir, sizeof(replay_dir), "%s/replayable-queue", root);
+  snprintf(staging_dir, sizeof(staging_dir), "%s/.admission-staging", root);
+  snprintf(checkpoint_path, sizeof(checkpoint_path),
+           "%s/queue-checkpoints.jsonl", root);
+#ifndef SIMPLE_FILES
+  snprintf(raw_path, sizeof(raw_path), "%s/queue/id:%06u,prov", root, 0u);
+#else
+  snprintf(raw_path, sizeof(raw_path), "%s/queue/id_%06u_prov", root, 0u);
+#endif
+  snprintf(replay_path, sizeof(replay_path), "%s/replayable-queue/%s",
+           root, strrchr(raw_path, '/') + 1);
+  make_dir(queue_dir); make_dir(replay_dir);
+
+  static const u8 first[] = "USER a\r\n";
+  static const u8 second[] = "PASS b\r\n";
+  klist_t(lms) *messages = kl_init(lms);
+  message_t *m1 = ck_alloc(sizeof(*m1));
+  m1->msize = sizeof(first) - 1;
+  m1->mdata = (char *)ck_memdup((void *)first, m1->msize);
+  *kl_pushp(lms, messages) = m1;
+  message_t *m2 = ck_alloc(sizeof(*m2));
+  m2->msize = sizeof(second) - 1;
+  m2->mdata = (char *)ck_memdup((void *)second, m2->msize);
+  *kl_pushp(lms, messages) = m2;
+
+  u8 *old_out_dir = out_dir;
+  klist_t(lms) *old_messages = kl_messages;
+  struct queue_entry *old_queue = queue, *old_queue_top = queue_top;
+  struct queue_entry *old_queue_cur = queue_cur, *old_q_prev100 = q_prev100;
+  u32 old_queued_paths = queued_paths;
+  u32 old_candidate_id = llm_cur_candidate_id;
+  u64 old_invocation = target_invocation_seq;
+  u32 old_messages_sent = messages_sent;
+  u8 old_provisional = provisional_enabled;
+  u8 old_event_log = event_log_enabled;
+  u8 old_state_aware = state_aware_mode;
+  region_t *(*old_extract_requests)(unsigned char *, unsigned int,
+                                    unsigned int *) = extract_requests;
+
+  out_dir = (u8 *)root;
+  kl_messages = messages;
+  queue = queue_top = queue_cur = q_prev100 = NULL;
+  queued_paths = 0;
+  llm_cur_candidate_id = 42;
+  target_invocation_seq = 42;
+  messages_sent = 2;
+  provisional_enabled = 1;
+  event_log_enabled = 1;
+  state_aware_mode = 1;
+  extract_requests = &extract_requests_ftp;
+  admission_test_exit_after_replay_publish = 0;
+
+  pid_t child = fork();
+  assert(child >= 0);
+  if (child == 0) {
+    admission_test_exit_after_replay_publish = 1;
+    (void)admission_provisional_queue_candidate_n(1, 42, "selftest", 0, 2);
+    _exit(1);
+  }
+  int status = 0;
+  assert(waitpid(child, &status, 0) == child);
+  pid_t replay_only_child = child;
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
+  assert(access(replay_path, F_OK) == 0);
+  assert_replay_seed(replay_path, first, sizeof(first) - 1,
+                     second, sizeof(second) - 1);
+  assert(access(raw_path, F_OK) != 0);
+  assert(access(checkpoint_path, F_OK) != 0);
+
+  /* If the process stops after both final artifacts publish but before
+   * queue insertion, strict archive replay must reject the uncommitted pair. */
+  unlink(replay_path);
+  admission_test_exit_after_replay_publish = 0;
+  admission_test_exit_after_pair_publish = 0;
+  child = fork();
+  assert(child >= 0);
+  if (child == 0) {
+    admission_test_exit_after_pair_publish = 1;
+    (void)admission_provisional_queue_candidate_n(1, 42, "selftest", 0, 2);
+    _exit(1);
+  }
+  status = 0;
+  assert(waitpid(child, &status, 0) == child);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 78);
+  assert(access(raw_path, F_OK) == 0);
+  assert(access(replay_path, F_OK) == 0);
+  assert(access(checkpoint_path, F_OK) != 0);
+
+  /* A requested extent longer than the staged chain must fail before the
+   * queue file or discovery checkpoint is created. */
+  unlink(raw_path);
+  unlink(replay_path);
+  admission_test_exit_after_pair_publish = 0;
+  assert(!admission_provisional_queue_candidate_n(1, 42, "selftest", 0, 3));
+  assert(access(raw_path, F_OK) != 0);
+  assert(access(replay_path, F_OK) != 0);
+  assert(access(checkpoint_path, F_OK) != 0);
+
+  u8 *staged_raw = alloc_printf("%s/%s-%ld-42.raw", staging_dir,
+                                strrchr(raw_path, '/') + 1,
+                                (long)replay_only_child);
+  u8 *staged_raw_parent = alloc_printf("%s/%s-%ld-42.raw", staging_dir,
+                                       strrchr(raw_path, '/') + 1,
+                                       (long)getpid());
+  u8 *staged_replay = alloc_printf("%s/%s-%ld-42.replay", staging_dir,
+                                   strrchr(raw_path, '/') + 1, (long)getpid());
+  assert(access((char *)staged_raw, F_OK) == 0);
+  unlink((char *)staged_raw);
+  assert(access((char *)staged_raw_parent, F_OK) != 0);
+  assert(access((char *)staged_replay, F_OK) != 0);
+  ck_free(staged_replay);
+  ck_free(staged_raw_parent);
+  ck_free(staged_raw);
+  assert(rmdir(staging_dir) == 0);
+  assert(rmdir(replay_dir) == 0);
+  assert(rmdir(queue_dir) == 0);
+  assert(rmdir(root) == 0);
+  delete_kl_messages(messages);
+  out_dir = old_out_dir;
+  kl_messages = old_messages;
+  queue = old_queue; queue_top = old_queue_top;
+  queue_cur = old_queue_cur; q_prev100 = old_q_prev100;
+  queued_paths = old_queued_paths;
+  llm_cur_candidate_id = old_candidate_id;
+  target_invocation_seq = old_invocation;
+  messages_sent = old_messages_sent;
+  provisional_enabled = old_provisional;
+  event_log_enabled = old_event_log;
+  state_aware_mode = old_state_aware;
+  extract_requests = old_extract_requests;
+  admission_test_exit_after_replay_publish = 0;
+  admission_test_exit_after_pair_publish = 0;
 }
 
 static void test_candidate_ids_without_log(void) {
@@ -176,6 +490,77 @@ static void test_direct_empty_session_rejected(void) {
   delete_kl_messages(kl_messages);
   kl_messages = NULL;
   ablation_no_admission = 0;
+}
+
+static void test_replay_witness_extent_is_explicit(void) {
+  char dir[] = "/tmp/loopfuzz-replay-extent-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  char corpus_path[PATH_MAX], replay_path[PATH_MAX];
+  snprintf(corpus_path, sizeof(corpus_path), "%s/corpus", dir);
+  snprintf(replay_path, sizeof(replay_path), "%s/replay", dir);
+
+  klist_t(lms) *messages = kl_init(lms);
+  const char *parts[] = {"A", "BC", "D"};
+  const u32 sizes[] = {1, 2, 1};
+  for (u32 i = 0; i < 3; i++) {
+    message_t *m = ck_alloc(sizeof(*m));
+    m->msize = (int)sizes[i];
+    m->mdata = (char *)ck_memdup((void *)parts[i], sizes[i]);
+    *kl_pushp(lms, messages) = m;
+  }
+
+  u32 saved_count = 0;
+  assert(save_kl_message_pair(messages, (const u8 *)corpus_path,
+                              (const u8 *)replay_path, KL_SAVE_FULL_CHAIN,
+                              1, &saved_count) == 4);
+  assert(saved_count == 3);
+  FILE *f = fopen(corpus_path, "rb");
+  char raw[8] = {0};
+  assert(f && fread(raw, 1, sizeof(raw), f) == 4);
+  assert(!memcmp(raw, "ABCD", 4) && fgetc(f) == EOF);
+  fclose(f);
+  f = fopen(replay_path, "rb");
+  u32 frame_len = 0;
+  assert(f && fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 1);
+  assert(fread(raw, 1, 1, f) == 1 && raw[0] == 'A');
+  assert(fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 2);
+  assert(fread(raw, 1, 2, f) == 2 && !memcmp(raw, "BC", 2));
+  assert(fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 1);
+  assert(fread(raw, 1, 1, f) == 1 && raw[0] == 'D' && fgetc(f) == EOF);
+  fclose(f);
+
+  /* Prefix mode must save exactly the executed prefix and truncate any old
+   * full-chain tail in both outputs. */
+  saved_count = 0;
+  assert(save_kl_message_pair(messages, (const u8 *)corpus_path,
+                              (const u8 *)replay_path,
+                              KL_SAVE_EXECUTED_PREFIX, 2,
+                              &saved_count) == 3);
+  assert(saved_count == 2);
+  f = fopen(corpus_path, "rb");
+  memset(raw, 0, sizeof(raw));
+  assert(f && fread(raw, 1, sizeof(raw), f) == 3);
+  assert(!memcmp(raw, "ABC", 3) && fgetc(f) == EOF);
+  fclose(f);
+  f = fopen(replay_path, "rb");
+  assert(f && fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 1);
+  assert(fread(raw, 1, 1, f) == 1 && raw[0] == 'A');
+  assert(fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 2);
+  assert(fread(raw, 1, 2, f) == 2 && !memcmp(raw, "BC", 2));
+  assert(fgetc(f) == EOF);
+  fclose(f);
+
+  /* A zero executed prefix is not silently promoted to a full-chain replay. */
+  saved_count = 99;
+  assert(!save_kl_message_pair(messages, (const u8 *)corpus_path,
+                               (const u8 *)replay_path,
+                               KL_SAVE_EXECUTED_PREFIX, 0,
+                               &saved_count));
+  assert(saved_count == 0 && access(corpus_path, F_OK) != 0 &&
+         access(replay_path, F_OK) != 0);
+
+  delete_kl_messages(messages);
+  rmdir(dir);
 }
 
 static void test_response_capture_is_frozen(void) {
@@ -434,6 +819,13 @@ static void test_ordinary_match_close_keeps_files(void) {
   snprintf(region_dir, sizeof(region_dir), "%s/regions", dir);
   snprintf(replay_dir, sizeof(replay_dir), "%s/replayable-queue", dir);
   make_dir(queue_dir); make_dir(region_dir); make_dir(replay_dir);
+  u8 *old_out_dir = out_dir;
+  u8 old_no_reflow = q1_no_reflow, old_reflow = q1_reflow;
+  u8 old_event_log = event_log_enabled;
+  u64 old_idle = q1_idle_total, old_saved = q1_saved_total;
+  q1_no_reflow = 1; q1_reflow = 0;
+  q1_idle_total = q1_saved_total = 0;
+  event_log_enabled = 1;
   out_dir = (u8 *)dir;
   struct queue_entry root;
   memset(&root, 0, sizeof(root));
@@ -441,7 +833,7 @@ static void test_ordinary_match_close_keeps_files(void) {
   root.is_provisional = 1;
   root.prov_ordinary_match = 1;
   root.prov_candidate_id = 55;
-  root.prov_budget_left = 2;
+  root.prov_budget_left = 3;
   root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
   root.prov_trial_evidence_valid = 1;
   root.prov_deadline_ms = get_cur_time() + 60000;
@@ -454,7 +846,40 @@ static void test_ordinary_match_close_keeps_files(void) {
   u64 closed_before = ordinary_match_closed;
   assert(run_target(NULL, 1) == FAULT_NONE);
   assert(run_target(NULL, 1) == FAULT_NONE);
-  assert(root.prov_budget_left == 0 && root.prov_desc_execs == 2);
+  assert(root.prov_budget_left == 1 && root.prov_desc_execs == 2);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 3);
+  ordinary_match_close(&root, "selftest-partial-budget");
+  assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_budget_left == 0 && root.prov_budget_released == 1);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 3);
+  assert(q1_saved_total == 1 && q1_idle_total == 1);
+  u64 closed_after_first_release = ordinary_match_closed;
+  ordinary_match_close(&root, "selftest-repeat-close");
+  assert(ordinary_match_closed == closed_after_first_release);
+  assert(root.prov_budget_left == 0 && root.prov_budget_released == 1);
+  assert(q1_saved_total == 1 && q1_idle_total == 1);
+  char productivity_path[PATH_MAX], line[4096];
+  snprintf(productivity_path, sizeof(productivity_path),
+           "%s/productivity-events.jsonl", dir);
+  FILE *productivity = fopen(productivity_path, "r");
+  assert(productivity && fgets(line, sizeof(line), productivity));
+  struct json_object *event = json_tokener_parse(line), *value = NULL;
+  assert(event);
+  assert(json_object_object_get_ex(event, "outcome", &value) &&
+         !strcmp(json_object_get_string(value), "ordinary-close"));
+  assert(json_object_object_get_ex(event, "descendant_invocations", &value) &&
+         json_object_get_int(value) == 2);
+  assert(json_object_object_get_ex(event, "budget_total", &value) &&
+         json_object_get_int(value) == 3);
+  assert(json_object_object_get_ex(event, "budget_left", &value) &&
+         json_object_get_int(value) == 0);
+  assert(json_object_object_get_ex(event, "budget_released", &value) &&
+         json_object_get_int(value) == 1);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), productivity));
+  fclose(productivity);
   assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
   assert(root.prov_expired && !root.is_provisional);
   assert(root.prov_trial_slots == NULL && !root.prov_trial_evidence_valid);
@@ -464,6 +889,10 @@ static void test_ordinary_match_close_keeps_files(void) {
   ck_free(root.fname);
   queue = queue_top = NULL;
   llm_candidate_lineage_pin = 0;
+  q1_idle_total = old_idle; q1_saved_total = old_saved;
+  q1_no_reflow = old_no_reflow; q1_reflow = old_reflow;
+  event_log_enabled = old_event_log;
+  out_dir = old_out_dir;
 }
 
 /* The pre-annotation execution is logged as prov-annotate but is not a
@@ -491,6 +920,258 @@ static void test_probe_does_not_consume_descendant_budget(void) {
   execution_kind = old_kind;
   llm_candidate_lineage_pin = saved_pin;
   lineage_invocation_total = saved_lin; ord_invocation_total = saved_ord;
+}
+
+/* Salvage snapshots are independent controller probes. They remain part of
+ * the campaign invocation dose while staying out of ordinary/lineage yield
+ * denominators and every provisional-root quota, even when the current queue
+ * item carries an expired lineage. */
+static void test_salvage_probe_accounting(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 78;
+  root.is_provisional = 1;
+  root.prov_candidate_id = 77;
+  root.prov_budget_left = 5;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  queue = queue_top = &root;
+
+  const char *old_kind = execution_kind;
+  u64 saved_pin = llm_candidate_lineage_pin;
+  u64 saved_current = cur_fuzz_lineage_candidate_id;
+  u64 saved_target = target_invocation_seq, saved_execs = total_execs;
+  u64 saved_campaign_budget = campaign_call_budget;
+  u64 saved_campaign_charged = campaign_charged_invocations;
+  u64 saved_mutation_budget = mutation_call_budget;
+  u64 saved_mutation_charged = mutation_charged_calls;
+  u64 saved_controller = controller_probe_invocation_total;
+  u64 saved_lineage = lineage_invocation_total, saved_ordinary = ord_invocation_total;
+  u64 saved_prov_charged = prov_charged_total;
+  u64 saved_idle = q1_idle_total;
+  u8 saved_exhausted = campaign_budget_exhausted;
+  u8 saved_reset = reset_completed_before_forkserver;
+  u8 saved_log = event_log_enabled;
+
+  campaign_call_budget = 3;
+  campaign_charged_invocations = 0;
+  campaign_budget_exhausted = 0;
+  mutation_call_budget = 1;
+  mutation_charged_calls = 1; /* already at the mutation-only limit */
+  q1_idle_total = 0;
+  controller_probe_invocation_total = 0;
+  execution_kind = "salvage-probe";
+  event_log_enabled = 0;
+  llm_candidate_lineage_pin = 0;
+  cur_fuzz_lineage_candidate_id = 77;
+  reset_completed_before_forkserver = 1;
+
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(target_invocation_seq == saved_target + 1 && total_execs == saved_execs + 1);
+  assert(campaign_charged_invocations == 1);
+  assert(controller_probe_invocation_total == 1);
+  assert(lineage_invocation_total == saved_lineage);
+  assert(ord_invocation_total == saved_ordinary);
+  assert(prov_charged_total == saved_prov_charged);
+  assert(root.prov_budget_left == 5 && root.prov_desc_execs == 0);
+  assert(mutation_charged_calls == 1);
+
+  /* Even a stale/empty parent lineage cannot block an independent probe. */
+  root.prov_expired = 1;
+  root.prov_budget_left = 0;
+  root.prov_deadline_ms = 0;
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(target_invocation_seq == saved_target + 2);
+  assert(campaign_charged_invocations == 2 &&
+         controller_probe_invocation_total == 2);
+  assert(lineage_invocation_total == saved_lineage &&
+         ord_invocation_total == saved_ordinary);
+  assert(prov_charged_total == saved_prov_charged && mutation_charged_calls == 1);
+
+  /* An admitted probe is charged to the campaign cap; the next one is a
+   * clean refusal and changes neither invocation nor dose counters. */
+  assert(run_target(NULL, 1) == FAULT_NONE);
+  u64 at_cap_invocations = target_invocation_seq;
+  u64 at_cap_execs = total_execs;
+  assert(campaign_charged_invocations == 3);
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(campaign_budget_exhausted == 1);
+  assert(target_invocation_seq == at_cap_invocations && total_execs == at_cap_execs);
+  assert(campaign_charged_invocations == 3 && controller_probe_invocation_total == 3);
+
+  execution_kind = old_kind;
+  llm_candidate_lineage_pin = saved_pin;
+  cur_fuzz_lineage_candidate_id = saved_current;
+  target_invocation_seq = saved_target; total_execs = saved_execs;
+  campaign_call_budget = saved_campaign_budget;
+  campaign_charged_invocations = saved_campaign_charged;
+  mutation_call_budget = saved_mutation_budget;
+  mutation_charged_calls = saved_mutation_charged;
+  controller_probe_invocation_total = saved_controller;
+  lineage_invocation_total = saved_lineage; ord_invocation_total = saved_ordinary;
+  prov_charged_total = saved_prov_charged;
+  q1_idle_total = saved_idle;
+  campaign_budget_exhausted = saved_exhausted;
+  reset_completed_before_forkserver = saved_reset;
+  event_log_enabled = saved_log;
+  queue = queue_top = NULL;
+}
+
+/* Closing a productive root by conversion must account for its unused
+ * validation quota in the Q1 parked budget and preserve the per-root identity
+ * descendant calls + remaining + released = original allocation. */
+static void test_conversion_releases_unused_validation_quota(void) {
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 991;
+  root.is_provisional = 1;
+  root.prov_candidate_id = 991;
+  root.prov_desc_execs = 5;
+  root.prov_budget_left = 7;
+  root.prov_budget_released = 0;
+  queue = queue_top = &root;
+
+  u8 saved_no_reflow = q1_no_reflow, saved_reflow = q1_reflow;
+  u64 saved_idle = q1_idle_total, saved_total = q1_saved_total;
+  u64 saved_pool = q1_reflow_pool;
+  u8 *saved_out_dir = out_dir;
+  u8 saved_log = event_log_enabled;
+  char dir[] = "/tmp/loopfuzz-quota-release-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  out_dir = (u8 *)dir;
+  q1_no_reflow = 1;
+  q1_reflow = 0;
+  q1_idle_total = 0;
+  q1_saved_total = 0;
+  q1_reflow_pool = 0;
+  event_log_enabled = 1;
+
+  provisional_note_gain(991, 992, NULL, 0, 0, PROV_EVIDENCE_MUTATION_SAVE);
+  assert(root.prov_converted && !root.is_provisional);
+  assert(root.prov_desc_execs == 5 && root.prov_budget_left == 0 &&
+         root.prov_budget_released == 7);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 12);
+  assert(q1_saved_total == 7 && q1_idle_total == 7);
+
+  char flow_path[PATH_MAX];
+  snprintf(flow_path, sizeof(flow_path), "%s/q1-budget-flow.jsonl", dir);
+  FILE *flow = fopen(flow_path, "r");
+  assert(flow);
+  char line[4096];
+  assert(fgets(line, sizeof(line), flow));
+  struct json_object *event = json_tokener_parse(line), *value = NULL;
+  assert(event);
+  assert(json_object_object_get_ex(event, "kind", &value) &&
+         !strcmp(json_object_get_string(value), "validation-converted-unused"));
+  assert(json_object_object_get_ex(event, "destination", &value) &&
+         !strcmp(json_object_get_string(value), "idle"));
+  assert(json_object_object_get_ex(event, "candidate_id", &value) &&
+         json_object_get_int64(value) == 991);
+  assert(json_object_object_get_ex(event, "amount", &value) &&
+         json_object_get_int64(value) == 7);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), flow));
+  fclose(flow);
+
+  char productivity_path[PATH_MAX];
+  snprintf(productivity_path, sizeof(productivity_path),
+           "%s/productivity-events.jsonl", dir);
+  FILE *productivity = fopen(productivity_path, "r");
+  assert(productivity && fgets(line, sizeof(line), productivity));
+  event = json_tokener_parse(line); assert(event);
+  assert(json_object_object_get_ex(event, "outcome", &value) &&
+         !strcmp(json_object_get_string(value), "convert"));
+  assert(json_object_object_get_ex(event, "descendant_invocations", &value) &&
+         json_object_get_int(value) == 5);
+  assert(json_object_object_get_ex(event, "budget_total", &value) &&
+         json_object_get_int(value) == 12);
+  assert(json_object_object_get_ex(event, "budget_left", &value) &&
+         json_object_get_int(value) == 0);
+  assert(json_object_object_get_ex(event, "budget_released", &value) &&
+         json_object_get_int(value) == 7);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), productivity));
+  fclose(productivity);
+
+  /* A repeated lifecycle call cannot settle the same allocation twice. */
+  provisional_release_unused_quota(&root, "selftest-repeat");
+  assert(root.prov_budget_released == 7 && q1_saved_total == 7 &&
+         q1_idle_total == 7);
+
+  q1_no_reflow = saved_no_reflow; q1_reflow = saved_reflow;
+  q1_idle_total = saved_idle; q1_saved_total = saved_total;
+  q1_reflow_pool = saved_pool;
+  event_log_enabled = saved_log;
+  out_dir = saved_out_dir;
+  queue = queue_top = NULL;
+}
+
+/* NO_REFLOW returns unused validation quota to the idle ledger. It reduces
+ * the effective campaign cap and must preserve per-root budget conservation. */
+static void test_closed_validation_quota_no_reflow(void) {
+  struct queue_entry root = {0};
+  u8 old_log = event_log_enabled, old_reflow = q1_reflow, old_idle_mode = q1_no_reflow;
+  u8 *old_out = out_dir;
+  u64 old_pool = q1_reflow_pool, old_idle = q1_idle_total, old_saved = q1_saved_total;
+  u64 old_campaign_budget = campaign_call_budget;
+  u64 old_provisional_live = provisional_live;
+  u64 old_expired_total = provisional_expired_total;
+  char dir[] = "/tmp/loopfuzz-no-reflow-quota-selftest-XXXXXX";
+  assert(mkdtemp(dir));
+  out_dir = (u8 *)dir;
+  event_log_enabled = 1;
+  q1_reflow = 0; q1_no_reflow = 1;
+  q1_reflow_pool = 0; q1_idle_total = q1_saved_total = 0;
+  campaign_call_budget = 100;
+  root.index = 992; root.is_provisional = 1; root.prov_candidate_id = 992;
+  root.prov_desc_execs = 4; root.prov_budget_left = 6;
+  queue = queue_top = &root; provisional_live = 1;
+
+  provisional_expire(&root, "no-reflow-unused-quota");
+  assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_desc_execs == 4 && root.prov_budget_left == 0 &&
+         root.prov_budget_released == 6);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 10);
+  assert(q1_saved_total == 6 && q1_idle_total == 6 && q1_reflow_pool == 0);
+  assert(campaign_effective_call_cap() == 94);
+  provisional_expire(&root, "repeat-no-reflow-close");
+  assert(q1_saved_total == 6 && q1_idle_total == 6 && root.prov_budget_released == 6);
+
+  char line[4096], path[PATH_MAX];
+  snprintf(path, sizeof(path), "%s/productivity-events.jsonl", dir);
+  FILE *f = fopen(path, "r"); assert(f && fgets(line, sizeof(line), f));
+  struct json_object *event = json_tokener_parse(line), *value = NULL;
+  assert(event);
+  assert(json_object_object_get_ex(event, "budget_total", &value) &&
+         json_object_get_int(value) == 10);
+  assert(json_object_object_get_ex(event, "budget_left", &value) &&
+         json_object_get_int(value) == 0);
+  assert(json_object_object_get_ex(event, "budget_released", &value) &&
+         json_object_get_int(value) == 6);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), f)); fclose(f);
+
+  snprintf(path, sizeof(path), "%s/q1-budget-flow.jsonl", dir);
+  f = fopen(path, "r"); assert(f && fgets(line, sizeof(line), f));
+  event = json_tokener_parse(line); assert(event);
+  assert(json_object_object_get_ex(event, "kind", &value) &&
+         !strcmp(json_object_get_string(value), "validation-closed-unused"));
+  assert(json_object_object_get_ex(event, "destination", &value) &&
+         !strcmp(json_object_get_string(value), "idle"));
+  assert(json_object_object_get_ex(event, "amount", &value) &&
+         json_object_get_int(value) == 6);
+  assert(json_object_object_get_ex(event, "flow_id", &value) &&
+         json_object_get_int64(value) == 0);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), f)); fclose(f);
+
+  q1_reflow = old_reflow; q1_no_reflow = old_idle_mode;
+  q1_reflow_pool = old_pool; q1_idle_total = old_idle; q1_saved_total = old_saved;
+  campaign_call_budget = old_campaign_budget;
+  provisional_live = old_provisional_live; provisional_expired_total = old_expired_total;
+  event_log_enabled = old_log; out_dir = old_out;
+  queue = queue_top = NULL;
 }
 
 /* Ordinary-match roots defer to regular provisional roots, then receive a
@@ -825,19 +1506,67 @@ static void test_conversion_classification(void) {
 }
 
 static void test_censor_frees_trial_evidence(void) {
+  char dir[] = "/tmp/loopfuzz-censor-quota-selftest-XXXXXX";
+  assert(mkdtemp(dir));
   struct queue_entry root;
   memset(&root, 0, sizeof(root));
   root.is_provisional = 1;
   root.prov_candidate_id = 88;
+  root.prov_budget_left = 64;
   root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
   root.prov_trial_evidence_valid = 1;
   queue = queue_top = &root;
-  u8 old_log = event_log_enabled;
-  event_log_enabled = 0;
+  u8 old_log = event_log_enabled, old_no_reflow = q1_no_reflow;
+  u8 old_reflow = q1_reflow;
+  u8 *old_out = out_dir;
+  u64 saved_q1_total = q1_saved_total, saved_idle = q1_idle_total;
+  u64 saved_pool = q1_reflow_pool, saved_budget = campaign_call_budget;
+  u64 saved_live = provisional_live, saved_censored = provisional_censored;
+  q1_no_reflow = 1; q1_reflow = 0;
+  q1_saved_total = q1_idle_total = q1_reflow_pool = 0;
+  campaign_call_budget = 100;
+  provisional_live = 1;
+  out_dir = (u8 *)dir;
+  event_log_enabled = 1;
+  u64 cap_before = campaign_effective_call_cap();
   provisional_censor_all_at_shutdown();
   assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_budget_left == 64 && root.prov_budget_released == 0);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 64);
+  assert(q1_saved_total == 0 && q1_idle_total == 0); /* censor is not saved credit */
+  assert(q1_reflow_pool == 0 && campaign_effective_call_cap() == cap_before);
+  assert(provisional_censored == saved_censored + 1 && provisional_live == 0);
   assert(root.prov_trial_slots == NULL && !root.prov_trial_evidence_valid);
+
+  char path[PATH_MAX], line[4096];
+  snprintf(path, sizeof(path), "%s/productivity-events.jsonl", dir);
+  FILE *f = fopen(path, "r"); assert(f && fgets(line, sizeof(line), f));
+  struct json_object *event = json_tokener_parse(line), *value = NULL;
+  assert(event);
+  assert(json_object_object_get_ex(event, "outcome", &value) &&
+         !strcmp(json_object_get_string(value), "censor"));
+  assert(json_object_object_get_ex(event, "reason", &value) &&
+         !strcmp(json_object_get_string(value), "campaign-end"));
+  assert(json_object_object_get_ex(event, "censored", &value) &&
+         json_object_get_boolean(value));
+  assert(json_object_object_get_ex(event, "budget_total", &value) &&
+         json_object_get_int(value) == 64);
+  assert(json_object_object_get_ex(event, "budget_left", &value) &&
+         json_object_get_int(value) == 64);
+  assert(json_object_object_get_ex(event, "budget_released", &value) &&
+         json_object_get_int(value) == 0);
+  json_object_put(event);
+  assert(!fgets(line, sizeof(line), f)); fclose(f);
+  snprintf(path, sizeof(path), "%s/q1-budget-flow.jsonl", dir);
+  assert(access(path, F_OK) != 0); /* censor leaves the quota unsettled */
+
   event_log_enabled = old_log;
+  q1_no_reflow = old_no_reflow; q1_reflow = old_reflow;
+  q1_saved_total = saved_q1_total; q1_idle_total = saved_idle;
+  q1_reflow_pool = saved_pool; campaign_call_budget = saved_budget;
+  provisional_live = saved_live; provisional_censored = saved_censored;
+  out_dir = old_out;
   queue = queue_top = NULL;
 }
 
@@ -882,8 +1611,12 @@ static void test_request_gate(void) {
   u64 saved_seq = request_gate_window_seq, saved_g = request_gate_window_gains;
   u64 saved_skips = request_gate_skips, saved_cg = code_gain_events;
   u64 saved_inv = target_invocation_seq;
+  u64 saved_states = request_gate_window_states, saved_ipsm = ipsm_new_edge_events;
+  u8 saved_parked = request_gate_parked;
   u8 old_log = event_log_enabled; event_log_enabled = 0;
   request_gate_enabled = 1;
+  request_gate_parked = 0;
+  request_gate_window_states = ipsm_new_edge_events;
 
   target_invocation_seq = 1000; request_gate_window_seq = 0;
   request_gate_window_gains = code_gain_events;
@@ -893,14 +1626,26 @@ static void test_request_gate(void) {
   assert(request_gate_saturated() == 1);
   assert(request_gate_skips == saved_skips + 1);
 
+  target_invocation_seq = 2501;
+  assert(request_gate_saturated() == 1); /* next threshold=1 round stays parked */
+  target_invocation_seq = 4500;
+  assert(request_gate_saturated() == 0); /* bounded periodic consult */
+  target_invocation_seq = 4501;
+  assert(request_gate_saturated() == 1); /* periodic consult opens only one slot */
+  ipsm_new_edge_events++;
+  assert(request_gate_saturated() == 0); /* real state progress reopens immediately */
+  assert(!request_gate_parked);
+
   target_invocation_seq = 5000; code_gain_events += 3;  /* productive */
   assert(request_gate_saturated() == 0);
-  assert(request_gate_skips == saved_skips + 1);
+  assert(request_gate_skips == saved_skips + 3);
 
   request_gate_enabled = saved_en;
   request_gate_window_seq = saved_seq; request_gate_window_gains = saved_g;
   request_gate_skips = saved_skips; code_gain_events = saved_cg;
   target_invocation_seq = saved_inv; event_log_enabled = old_log;
+  request_gate_window_states = saved_states; ipsm_new_edge_events = saved_ipsm;
+  request_gate_parked = saved_parked;
 }
 
 /* P3 early stop: K consecutive zero-novelty charged descendants close the
@@ -919,6 +1664,11 @@ static void test_pv_early_stop(void) {
   pv_early_stop_track(0); pv_early_stop_track(0);
   pv_early_stop_track(1);                  /* novelty resets */
   assert(root.prov_zero_novelty_streak == 0 && root.prov_expired == 0);
+  pv_early_stop_track(0);
+  root.prov_last_invocation_state_gain = 1;
+  pv_early_stop_track(0);                  /* actual code-silent response novelty resets */
+  assert(root.prov_zero_novelty_streak == 0 && !root.prov_expired);
+  root.prov_last_invocation_state_gain = 0;
   pv_early_stop_track(0); pv_early_stop_track(0);
   pv_early_stop_track(0);
   assert(root.prov_expired == 0);           /* 3 < K */
@@ -1000,6 +1750,107 @@ static void test_campaign_budget_cap(void) {
   queue = queue_top = NULL;
 }
 
+/* Pure elapsed-time campaigns use the requested deadline rather than a
+ * hidden target-call limit; unsupported quota parking fails explicitly. */
+static void test_elapsed_time_campaign_without_call_cap(void) {
+  u64 old_budget = campaign_call_budget, old_charged = campaign_charged_invocations;
+  u64 old_mutation_budget = mutation_call_budget, old_duration = campaign_duration_sec;
+  u64 old_start = run_start_time_ms, old_ord = ord_invocation_total;
+  u8 old_wallclock = campaign_wallclock_mode, old_expired = campaign_wallclock_expired;
+  u8 old_stop = stop_soon, old_exhausted = campaign_budget_exhausted;
+  u8 old_no_reflow = q1_no_reflow, old_reflow = q1_reflow;
+  u8 old_direct = q1_direct_service;
+  const char *old_kind = execution_kind;
+
+  campaign_wallclock_mode = 1;
+  campaign_duration_sec = 86400;
+  campaign_call_budget = mutation_call_budget = campaign_charged_invocations = 0;
+  run_start_time_ms = get_cur_time();
+  campaign_wallclock_expired = campaign_budget_exhausted = stop_soon = 0;
+  q1_no_reflow = q1_reflow = q1_direct_service = 0;
+  execution_kind = "mutation";
+
+  assert(campaign_policy_error() == NULL);
+  assert(!strcmp(campaign_resource_basis(), "elapsed-time"));
+  assert(!campaign_deadline_reached());
+  /* An uncapped time campaign must not silently inherit the old 5000-call
+   * cutoff. This exercises the production admission point, not a formula. */
+  for (u32 i = 0; i < 5001; i++) assert(execution_admit(NULL, 0));
+  assert(campaign_charged_invocations == 5001);
+  assert(!campaign_budget_exhausted && !campaign_wallclock_expired && !stop_soon);
+
+  q1_reflow = 1;
+  assert(campaign_policy_error() == NULL);
+  q1_reflow = 0; q1_direct_service = 1;
+  assert(campaign_policy_error() == NULL);
+  q1_direct_service = 0; q1_no_reflow = 1;
+  assert(campaign_policy_error() != NULL); /* no fictitious time parking */
+  campaign_call_budget = 6000;
+  assert(campaign_policy_error() == NULL);
+  assert(!strcmp(campaign_resource_basis(), "elapsed-time-with-call-cap"));
+  campaign_wallclock_mode = 0;
+  assert(!strcmp(campaign_resource_basis(), "target-calls"));
+  campaign_call_budget = 0;
+  assert(campaign_policy_error() != NULL); /* old Q1 still needs a cap */
+  q1_no_reflow = 0;
+  campaign_wallclock_mode = 1;
+  campaign_duration_sec = 0;
+  assert(campaign_policy_error() != NULL);
+  campaign_duration_sec = 1;
+  mutation_call_budget = 1;
+  assert(campaign_policy_error() != NULL);
+  mutation_call_budget = 0;
+
+  /* Simulate elapsed time; no real wait or gateway request is needed. */
+  run_start_time_ms = get_cur_time() - 2000;
+  u64 charged_before = campaign_charged_invocations, execs_before = total_execs;
+  assert(campaign_deadline_reached());
+  assert(campaign_wallclock_expired && stop_soon == 2);
+  assert(!campaign_budget_exhausted);
+  assert(!execution_admit(NULL, 0));
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(campaign_charged_invocations == charged_before && total_execs == execs_before);
+
+  campaign_call_budget = old_budget; campaign_charged_invocations = old_charged;
+  mutation_call_budget = old_mutation_budget; campaign_duration_sec = old_duration;
+  run_start_time_ms = old_start; ord_invocation_total = old_ord;
+  campaign_wallclock_mode = old_wallclock; campaign_wallclock_expired = old_expired;
+  stop_soon = old_stop; campaign_budget_exhausted = old_exhausted;
+  q1_no_reflow = old_no_reflow; q1_reflow = old_reflow; q1_direct_service = old_direct;
+  execution_kind = old_kind;
+}
+
+/* A late NO_REFLOW release may only park remaining campaign headroom. It
+ * must never reduce the effective cap beneath target invocations already
+ * charged, and the rejected excess must remain visible in the ledger. */
+static void test_no_reflow_release_respects_charged_headroom(void) {
+  u8 old_no_reflow = q1_no_reflow, old_reflow = q1_reflow;
+  u64 old_budget = campaign_call_budget;
+  u64 old_charged = campaign_charged_invocations;
+  u64 old_idle = q1_idle_total, old_saved = q1_saved_total;
+  u64 old_uncredited = q1_idle_uncredited_total;
+
+  q1_no_reflow = 1; q1_reflow = 0;
+  campaign_call_budget = 100;
+  campaign_charged_invocations = 80;
+  q1_idle_total = 0;
+  q1_saved_total = 0;
+  q1_idle_uncredited_total = 0;
+
+  u64 credited = q1_release_validation_quota(995, 64, "selftest-late-release");
+  assert(credited == 20);
+  assert(q1_idle_total == 20 && q1_idle_uncredited_total == 44);
+  assert(campaign_effective_call_cap() == 80);
+  assert(campaign_charged_invocations <= campaign_effective_call_cap());
+  assert(campaign_charged_invocations + q1_idle_total == campaign_call_budget);
+
+  q1_no_reflow = old_no_reflow; q1_reflow = old_reflow;
+  campaign_call_budget = old_budget;
+  campaign_charged_invocations = old_charged;
+  q1_idle_total = old_idle; q1_saved_total = old_saved;
+  q1_idle_uncredited_total = old_uncredited;
+}
+
 /* REFLOW: ordinary mutations consume pool quota first; lineage calls do
  * not. */
 static void test_q1_reflow_consumption(void) {
@@ -1031,6 +1882,206 @@ static void test_q1_reflow_consumption(void) {
   q1_reflow_head = saved_head; q1_reflow_tail = saved_tail;
   q1_reflow_next_id = saved_next_id;
   execution_kind = old_kind;
+}
+
+static void test_closed_validation_quota_and_productivity(void) {
+  struct queue_entry root = {0};
+  u8 old_log = event_log_enabled, old_reflow = q1_reflow, old_idle = q1_no_reflow;
+  u8 *old_out = out_dir;
+  u64 old_pool = q1_reflow_pool, old_saved = q1_saved_total;
+  u64 old_reflow_consumed = q1_reflow_consumed;
+  u64 old_reflow_next_id = q1_reflow_next_id;
+  q1_reflow_node_t *old_head = q1_reflow_head, *old_tail = q1_reflow_tail;
+  char dir[] = "/tmp/loopfuzz-productivity-selftest-XXXXXX";
+  assert(mkdtemp(dir)); out_dir = (u8 *)dir; event_log_enabled = 1;
+  q1_reflow = 1; q1_no_reflow = 0; q1_reflow_pool = 0;
+  q1_reflow_head = q1_reflow_tail = NULL;
+  root.is_provisional = 1; root.prov_candidate_id = 991;
+  root.prov_desc_execs = 32; root.prov_budget_left = 32;
+  root.prov_baseline_saved_session = 1;
+  root.prov_trial_evidence_valid = 1;
+  root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+  queue = queue_top = &root;
+  provisional_expire(&root, "early-stop-no-novelty");
+  assert(q1_reflow_pool == 32 && q1_saved_total == old_saved + 32);
+  assert(root.prov_budget_left == 0 && root.prov_budget_released == 32);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released == 64);
+  assert(q1_reflow_head && q1_reflow_head->reservation.source_candidate_id == 991);
+  provisional_expire(&root, "repeat-close");
+  assert(q1_reflow_pool == 32 && q1_saved_total == old_saved + 32);
+  char path[PATH_MAX], line[8192];
+  snprintf(path, sizeof(path), "%s/productivity-events.jsonl", dir);
+  FILE *f = fopen(path, "r"); assert(f && fgets(line, sizeof(line), f));
+  assert(!fgets(line + strlen(line), sizeof(line) - strlen(line), f)); fclose(f);
+  struct json_object *j = json_tokener_parse(line), *v;
+  assert(j && json_object_object_get_ex(j, "baseline_valid", &v) && json_object_get_boolean(v));
+  assert(json_object_object_get_ex(j, "descendant_invocations", &v) && json_object_get_int(v) == 32);
+  assert(json_object_object_get_ex(j, "budget_total", &v) && json_object_get_int(v) == 64);
+  assert(json_object_object_get_ex(j, "budget_left", &v) && json_object_get_int(v) == 0);
+  assert(json_object_object_get_ex(j, "budget_released", &v) && json_object_get_int(v) == 32);
+  assert(json_object_object_get_ex(j, "censored", &v) && !json_object_get_boolean(v));
+  json_object_put(j);
+  snprintf(path, sizeof(path), "%s/q1-budget-flow.jsonl", dir);
+  f = fopen(path, "r"); assert(f && fgets(line, sizeof(line), f));
+  assert(!fgets(line + strlen(line), sizeof(line) - strlen(line), f)); fclose(f);
+  j = json_tokener_parse(line); assert(j);
+  assert(json_object_object_get_ex(j, "kind", &v) &&
+         !strcmp(json_object_get_string(v), "validation-closed-unused"));
+  assert(json_object_object_get_ex(j, "destination", &v) &&
+         !strcmp(json_object_get_string(v), "ordinary-pool"));
+  assert(json_object_object_get_ex(j, "candidate_id", &v) &&
+         json_object_get_int64(v) == 991);
+  assert(json_object_object_get_ex(j, "amount", &v) &&
+         json_object_get_int64(v) == 32);
+  json_object_put(j);
+  while (q1_reflow_head) {
+    q1_reflow_node_t *next = q1_reflow_head->next; ck_free(q1_reflow_head); q1_reflow_head = next;
+  }
+  q1_reflow_head = old_head; q1_reflow_tail = old_tail;
+  q1_reflow_pool = old_pool; q1_saved_total = old_saved;
+  q1_reflow_consumed = old_reflow_consumed;
+  q1_reflow_next_id = old_reflow_next_id;
+  q1_reflow = old_reflow; q1_no_reflow = old_idle;
+  out_dir = old_out; event_log_enabled = old_log; queue = queue_top = NULL;
+}
+
+static void test_salvage_probe_owns_baseline(void) {
+  char *args[] = {"selftest", NULL};
+  char **old_args = g_admission_argv;
+  u8 old_log = event_log_enabled; event_log_enabled = 0;
+  u8 map_before[MAP_SIZE]; memcpy(map_before, virgin_bits, MAP_SIZE);
+  u64 old_cid = llm_cur_candidate_id, calls = target_invocation_seq;
+  g_admission_argv = args; llm_cur_candidate_id = 993;
+  salvage_snap_count = 2;
+  for (u32 i = 0; i < 2; i++) {
+    salvage_snap_size[i] = 6;
+    salvage_snap_data[i] = ck_alloc(6);
+    memcpy(salvage_snap_data[i], "NOOP\r\n", 6);
+  }
+  (void)salvage_probe_snapshot(); /* test transport replies to one message */
+  assert(target_invocation_seq == calls + 1);
+  assert(salvage_probe_evidence_valid && salvage_probe_candidate_id == 993);
+  assert(salvage_probe_invocation_id == target_invocation_seq);
+  assert(!memcmp(map_before, virgin_bits, MAP_SIZE)); /* no shared-map commit */
+  /* Empty novelty is still a valid baseline. A later native new slot is
+   * beyond that saved session rather than an unclassified conversion. */
+  struct queue_entry root = {0};
+  root.is_provisional = 1; root.prov_candidate_id = 993;
+  root.prov_budget_left = 63; root.prov_desc_execs = 1;
+  root.prov_baseline_saved_session = 1;
+  root.prov_trial_evidence_valid = 1;
+  root.prov_trial_candidate_id = 993;
+  root.prov_trial_invocation_id = salvage_probe_invocation_id;
+  root.prov_trial_slots = ck_alloc(HNB_SLOT_SET_BYTES);
+  queue = queue_top = &root;
+  u8 later_slots[HNB_SLOT_SET_BYTES] = {0}; test_set_map_slot(later_slots, 101);
+  provisional_note_gain(993, 44, later_slots, 993,
+                        salvage_probe_invocation_id + 1, PROV_EVIDENCE_MUTATION_SAVE);
+  assert(root.prov_conv_class == 2 && root.prov_conv_beyond_trial_slot_count == 1);
+  queue = queue_top = NULL;
+  salvage_free_snapshot();
+  g_admission_argv = old_args; llm_cur_candidate_id = old_cid; event_log_enabled = old_log;
+}
+
+static void test_ftp_salvage_preserves_candidate_prefix(void) {
+  char *old_protocol = protocol_name;
+  klist_t(lms) *old_messages = kl_messages;
+  u32 old_first = candidate_message_first;
+  u32 old_count = candidate_message_count;
+  u32 old_clean_count = salvage_clean_count;
+  u32 old_clean_idx[2] = {salvage_clean_window_idx[0],
+                          salvage_clean_window_idx[1]};
+  u8 old_override = full_session_m2_override;
+  u8 old_prefix_protect = prov_prefix_protect;
+  const char *input[] = {"USER ubuntu\r\n", "PASS ubuntu\r\n",
+                         "TYPE I\r\n", "STAT\r\n", "PASV\r\n"};
+  const u32 input_size[] = {13, 13, 8, 6, 6};
+
+  salvage_free_snapshot();
+  kl_messages = kl_init(lms);
+  for (u32 i = 0; i < 5; i++) {
+    message_t *m = ck_alloc(sizeof(*m));
+    m->msize = input_size[i];
+    m->mdata = (char *)ck_memdup(input[i], input_size[i]);
+    *kl_pushp(lms, kl_messages) = m;
+  }
+  protocol_name = "FTP";
+  candidate_message_first = 2;
+  candidate_message_count = 3;
+  salvage_clean_count = 2;
+  salvage_clean_window_idx[0] = 0;
+  salvage_clean_window_idx[1] = 2;
+
+  salvage_take_snapshot();
+  assert(salvage_snap_count == 4);
+  assert(salvage_snap_prefix_count == 2);
+  assert(salvage_snap_candidate_count == 2);
+  assert(salvage_snap_size[0] == input_size[0] &&
+         !memcmp(salvage_snap_data[0], input[0], input_size[0]));
+  assert(salvage_snap_size[1] == input_size[1] &&
+         !memcmp(salvage_snap_data[1], input[1], input_size[1]));
+  assert(salvage_snap_size[2] == input_size[2] &&
+         !memcmp(salvage_snap_data[2], input[2], input_size[2]));
+  assert(salvage_snap_size[3] == input_size[4] &&
+         !memcmp(salvage_snap_data[3], input[4], input_size[4]));
+
+  struct queue_entry root;
+  region_t regions[4];
+  memset(&root, 0, sizeof(root));
+  memset(regions, 0, sizeof(regions));
+  root.is_provisional = 1;
+  root.regions = regions;
+  root.region_count = 4;
+  salvage_set_candidate_window(&root);
+  assert(root.prov_cand_first == 2 && root.prov_cand_count == 2);
+  u32 start = 0, count = 0;
+  full_session_m2_override = 1;
+  prov_prefix_protect = 1;
+  assert(entry_m2_range(&root, 0, &start, &count));
+  assert(start == 2 && count == 2);
+  salvage_snap_data[start][0] ^= 1; /* a candidate mutation cannot touch M1 */
+  assert(!memcmp(salvage_snap_data[0], input[0], input_size[0]));
+  assert(!memcmp(salvage_snap_data[1], input[1], input_size[1]));
+
+  salvage_free_snapshot();
+  delete_kl_messages(kl_messages);
+  kl_messages = old_messages;
+  protocol_name = old_protocol;
+  candidate_message_first = old_first;
+  candidate_message_count = old_count;
+  salvage_clean_count = old_clean_count;
+  salvage_clean_window_idx[0] = old_clean_idx[0];
+  salvage_clean_window_idx[1] = old_clean_idx[1];
+  full_session_m2_override = old_override;
+  prov_prefix_protect = old_prefix_protect;
+}
+
+static void test_response_progress_without_native_save(void) {
+  struct queue_entry root = {0}, other = {0};
+  u32 old_k = pv_early_stop_k; u8 old_dual = pv_early_stop_dual;
+  unsigned int *(*old_extract)(unsigned char *, unsigned int, unsigned int *) = extract_response_codes;
+  char *old_response = response_buf; int old_size = response_buf_size;
+  u64 old_response_id = response_invocation_id;
+  pv_early_stop_k = 4; pv_early_stop_dual = 1;
+  extract_response_codes = extract_response_codes_ftp;
+  char first[] = "220 ready\r\n331 password required\r\n";
+  response_buf = first; response_buf_size = sizeof(first) - 1;
+  response_invocation_id = target_invocation_seq;
+  u64 old_ipsm = ipsm_new_edge_events;
+  assert(provisional_observe_response(&root));
+  assert(!provisional_observe_response(&root)); /* same replies are no progress */
+  assert(provisional_observe_response(&other)); /* separate root, no cross-root signal */
+  char next[] = "220 ready\r\n230 logged in\r\n";
+  response_buf = next; response_buf_size = sizeof(next) - 1;
+  assert(provisional_observe_response(&root)); /* native coverage may remain silent */
+  assert(ipsm_new_edge_events == old_ipsm); /* observation never writes scheduler IPSM */
+  response_invocation_id--; assert(!provisional_observe_response(&root)); /* stale response rejected */
+  provisional_free_trial_evidence(&root); provisional_free_trial_evidence(&other);
+  assert(!root.prov_response_states && !root.prov_response_transitions);
+  pv_early_stop_k = old_k; pv_early_stop_dual = old_dual;
+  extract_response_codes = old_extract; response_buf = old_response; response_buf_size = old_size;
+  response_invocation_id = old_response_id;
 }
 
 /* Strategy A route: every executed p&r candidate — rejected OR durable —
@@ -1270,7 +2321,7 @@ static void test_code_durable_policy_and_witness_transaction(void) {
   f = fopen(replay_path, "rb"); u32 frame_len = 0;
   assert(f && fread(&frame_len, sizeof(frame_len), 1, f) == 1 && frame_len == 6);
   assert(fread(raw, 1, 6, f) == 6 && !memcmp(raw, candidate, 6)); fclose(f);
-  char event_path[PATH_MAX], line[4096];
+  char event_path[PATH_MAX], line[16384];
   snprintf(event_path, sizeof(event_path), "%s/code-durable-events.jsonl", dir);
   f = fopen(event_path, "r"); assert(f && fgets(line, sizeof(line), f)); fclose(f);
   struct json_object *j = json_tokener_parse(line), *value;
@@ -1354,6 +2405,8 @@ static void test_code_durable_policy_and_witness_transaction(void) {
   assert(j && json_object_object_get_ex(j, "code_durable", &value) && json_object_get_boolean(value));
   assert(json_object_object_get_ex(j, "code_durable_admitted", &value));
   assert((u64)json_object_get_int64(value) == code_durable_admitted);
+  assert(json_object_object_get_ex(j, "campaign_resource_basis", &value));
+  assert(!strcmp(json_object_get_string(value), campaign_resource_basis()));
   json_object_put(j);
   destroy_queue(); queue = queue_top = queue_cur = q_prev100 = NULL;
   delete_kl_messages(kl_messages); kl_messages = NULL;
@@ -1369,6 +2422,7 @@ int main(void) {
   test_expiry_pending_and_top_rated();
   test_calibration_gain_and_span();
   test_direct_empty_session_rejected();
+  test_replay_witness_extent_is_explicit();
   test_response_capture_is_frozen();
   test_decision_logs_trial_mode_snapshot();
   test_leave_one_out_counts_observed();
@@ -1376,6 +2430,8 @@ int main(void) {
   test_u_policy_semantics();
   test_ordinary_match_close_keeps_files();
   test_probe_does_not_consume_descendant_budget();
+  test_salvage_probe_accounting();
+  test_conversion_releases_unused_validation_quota();
   test_select_service_ordinary_fallback();
   test_ordinary_edf_expiry_keeps_files();
   test_pipelined_span_binding();
@@ -1384,14 +2440,23 @@ int main(void) {
   test_channel_accounting();
   test_conversion_classification();
   test_campaign_budget_cap();
+  test_elapsed_time_campaign_without_call_cap();
+  test_no_reflow_release_respects_charged_headroom();
   test_witness_tomb_expiry_move();
   test_request_gate();
   test_pv_early_stop();
   test_q1_reflow_consumption();
+  test_closed_validation_quota_and_productivity();
+  test_closed_validation_quota_no_reflow();
+  test_ftp_salvage_preserves_candidate_prefix();
+  test_salvage_probe_owns_baseline();
+  test_response_progress_without_native_save();
   test_q1_direct_service_route();
   test_censor_frees_trial_evidence();
   test_opportunity_gate();
   test_code_durable_policy_and_witness_transaction();
+  test_initial_seed_replay_survives_interrupted_dry_run();
+  test_provisional_replay_is_published_before_discovery();
   puts("gating contract selftest: PASS");
   return 0;
 }

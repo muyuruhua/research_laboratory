@@ -96,7 +96,7 @@ TARGET_IS_UDP[lighttpd1]="0"
 TARGET_HEALTH_CHECK[lighttpd1]="nc -z 127.0.0.1 8080"
 
 # ── forked-daapd ──
-TARGET_IMAGE[forked-daapd]="forked-daapd"; TARGET_PROTO[forked-daapd]="DAAP"; TARGET_PORT[forked-daapd]="3689"
+TARGET_IMAGE[forked-daapd]="forked-daapd"; TARGET_PROTO[forked-daapd]="HTTP"; TARGET_PORT[forked-daapd]="3689"
 TARGET_WORKDIR[forked-daapd]="/home/ubuntu/experiments"
 TARGET_SERVER_CMD[forked-daapd]="sudo service dbus start 2>/dev/null; sudo service avahi-daemon start 2>/dev/null; HOME=/home/ubuntu ./forked-daapd/src/forked-daapd -d 0 -c /home/ubuntu/experiments/forked-daapd.conf -f"
 TARGET_PRE_START[forked-daapd]=""
@@ -181,7 +181,7 @@ def recv_all(sock, timeout=2.0):
     return b''.join(chunks)
 
 def replay_tcp(req_data):
-    """TCP replay: HTTP/DAAP sends complete request blocks; others send line-by-line."""
+    """TCP replay: HTTP-family targets send complete request blocks; others send line-by-line."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(5)
     try:
@@ -193,7 +193,7 @@ def replay_tcp(req_data):
     try: banner = sock.recv(65536); log(f'Banner: {banner[:200]}')
     except: banner = b''
     all_resp = [banner]
-    if PROTO in ('HTTP', 'DAAP'):
+    if PROTO == 'HTTP':
         # Split by double-CRLF into complete HTTP request blocks
         blocks = req_data.split(b'\r\n\r\n')
         valid = [b.strip() for b in blocks if b.strip()]
