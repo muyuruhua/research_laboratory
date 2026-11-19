@@ -14,7 +14,7 @@ For each run it extracts:
   - final nodes / edges from plot_data
 
 Usage:
-  python3 run_summary.py <results-dir> [--output summary.csv]
+  python3 run_summary.py <results-dir> [--output summary.csv] [--valid-only]
 """
 
 from __future__ import annotations
@@ -301,7 +301,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a per-run CSV summary from a results directory.")
     parser.add_argument("results_dir", help="Directory containing out-*.tar.gz files or extracted out-* folders")
     parser.add_argument("--output", "-o", help="Write CSV to this path instead of stdout")
-    parser.add_argument("--include-invalid", action="store_true", help="Include stalled/invalid runs in the generated CSV")
+    validity = parser.add_mutually_exclusive_group()
+    validity.add_argument(
+        "--valid-only", "--completed-only", dest="valid_only", action="store_true",
+        help="Keep only runs classified as completed (default: include all runs)",
+    )
+    # Keep existing automation working; all runs are now included by default.
+    validity.add_argument("--include-invalid", dest="valid_only", action="store_false",
+                          help=argparse.SUPPRESS)
+    parser.set_defaults(valid_only=False)
     parser.add_argument("--timeout-min", type=int, default=None,
                         help="Expected campaign timeout in minutes. Used to distinguish "
                              "real OOM (exit 137 early) from timeout shutdown race "
@@ -319,7 +327,7 @@ def main() -> int:
     for source in iter_sources(results_dir):
         metrics = read_metrics(source, status_map, timeout_min)
         if metrics is not None:
-            if not args.include_invalid and metrics.status in INVALID_STATUSES:
+            if args.valid_only and metrics.status != "completed":
                 continue
             rows.append(metrics)
 

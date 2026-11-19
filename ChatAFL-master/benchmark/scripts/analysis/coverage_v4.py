@@ -5,11 +5,13 @@ import argparse
 import contextlib
 import csv
 import dataclasses
+import errno
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import struct
@@ -27,11 +29,23 @@ LEGACY_ARTIFACT_SUFFIX = ".v4"
 # their per-input snapshots remain necessary for the established union audit.
 ACCUMULATING_GCDA_TARGETS = (
     "lightftp", "lighttpd1", "forked-daapd", "kamailio", "exim", "proftpd", "live555")
-REPLAY_HARNESS_VERSION = "20261116b-frame-ledger-strict-proptpd-v4-pureftpd-sm-v1"
+TARGET_PROTOCOLS = {"lightftp": "FTP", "bftpd": "FTP", "proftpd": "FTP",
+                    "pure-ftpd": "FTP", "exim": "SMTP", "live555": "RTSP",
+                    "kamailio": "SIP", "forked-daapd": "HTTP", "lighttpd1": "HTTP"}
+FRAME_AUDIT_HARNESS_VERSIONS = (
+    "20261119-cross-target-frame-audit-bftpd-protocol-end-v2",
+    "20261119-cross-target-frame-audit-bftpd-protocol-end-v3",
+    "20261119-cross-target-frame-audit-bftpd-protocol-end-v4",
+)
+REPLAY_HARNESS_VERSION = FRAME_AUDIT_HARNESS_VERSIONS[-1]
 LOOPFUZZ_REPLAYER_ENV = "COVERAGE_V4_LOOPFUZZ_REPLAYER"
 _VERIFIED_LOOPFUZZ_REPLAYERS = {}
 BFTPD_EXIT_MARKER = "COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2"
 BFTPD_CHROOT_MARKER = "COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1"
+BFTPD_DATA_CHANNEL_MARKER = "COVERAGE_REPLAY_DATA_CHANNEL_CONTROL_FD_V1"
+BFTPD_DATA_CHANNEL_OWNERSHIP_MARKER = "COVERAGE_REPLAY_DATA_CHANNEL_DUP_FD_OWNERSHIP_V1"
+BFTPD_PASSIVE_FD_OWNERSHIP_MARKER = "COVERAGE_REPLAY_PASSIVE_TO_ACTIVE_FD_OWNERSHIP_V1"
+BFTPD_DATA_SOCKET_LIFECYCLE_MARKER = "COVERAGE_REPLAY_DATA_SOCKET_LIFECYCLE_V1"
 CSV_FIELDS = ("Time", "l_per", "l_abs", "b_per", "b_abs", "idx",
               "discovery_execution_id", "discovery_monotonic_ms", "campaign_id",
               "coordinate_source", "scope_sha256", "snapshot_sha256")
@@ -226,16 +240,35 @@ def bftpd_exit_policy(cwd, allow_incomplete=False):
     __gcov_dump call or change to the fuzz target is involved.
     """
     source, login, binary = Path(cwd) / "main.c", Path(cwd) / "login.c", Path(cwd) / "bftpd"
+    commands = Path(cwd) / "commands.c"
     marker = BFTPD_EXIT_MARKER.encode()
-    verified = (source.is_file() and login.is_file() and binary.is_file() and
+    verified = (source.is_file() and login.is_file() and commands.is_file() and binary.is_file() and
                 marker in source.read_bytes() and marker in binary.read_bytes() and
                 BFTPD_CHROOT_MARKER.encode() in login.read_bytes() and
-                BFTPD_CHROOT_MARKER.encode() in binary.read_bytes())
+                BFTPD_CHROOT_MARKER.encode() in binary.read_bytes() and
+                BFTPD_DATA_CHANNEL_MARKER.encode() in commands.read_bytes() and
+                BFTPD_DATA_CHANNEL_MARKER.encode() in binary.read_bytes() and
+                BFTPD_DATA_CHANNEL_OWNERSHIP_MARKER.encode() in commands.read_bytes() and
+                BFTPD_DATA_CHANNEL_OWNERSHIP_MARKER.encode() in binary.read_bytes() and
+                BFTPD_PASSIVE_FD_OWNERSHIP_MARKER.encode() in commands.read_bytes() and
+                BFTPD_PASSIVE_FD_OWNERSHIP_MARKER.encode() in binary.read_bytes() and
+                BFTPD_DATA_SOCKET_LIFECYCLE_MARKER.encode() in commands.read_bytes() and
+                BFTPD_DATA_SOCKET_LIFECYCLE_MARKER.encode() in binary.read_bytes())
     if not verified and not allow_incomplete:
-        raise CoverageError("bftpd coverage build lacks verified SIGPIPE normal-exit/chroot policy; "
+        raise CoverageError("bftpd coverage build lacks verified SIGPIPE normal-exit/data-channel/chroot policy; "
                             "run install_bftpd_coverage_exit.py in the gcov tree")
     return dict(name=BFTPD_EXIT_MARKER if verified else "legacy-unverified-exit",
                 chroot_policy=BFTPD_CHROOT_MARKER if verified else "legacy-unverified-chroot",
+                data_channel_policy=(BFTPD_DATA_CHANNEL_MARKER if verified
+                                     else "legacy-unverified-data-channel"),
+                data_channel_fd_ownership=(BFTPD_DATA_CHANNEL_OWNERSHIP_MARKER if verified
+                                           else "legacy-unverified-fd-ownership"),
+                passive_fd_ownership=(BFTPD_PASSIVE_FD_OWNERSHIP_MARKER if verified
+                                      else "legacy-unverified-passive-fd-ownership"),
+                data_socket_lifecycle=(BFTPD_DATA_SOCKET_LIFECYCLE_MARKER if verified
+                                       else "legacy-unverified-data-socket-lifecycle"),
+                session_policy="bftpd-client-lifetime-protocol-end-v3",
+                completeness="all-frames-sent-or-audited-bftpd-quit-221-control-close-or-reset",
                 verified=verified, binary_sha256=digest_file(binary) if binary.is_file() else None,
                 scope="coverage replay build only; fuzz target unchanged")
 
@@ -324,7 +357,9 @@ def replay_incompleteness(replay):
         reasons.append("helper-not-ready")
     if (("send_completeness" in replay or
             replay.get("harness_policy") == "proftpd-ready-client-graceful-exit-v4") and
-            replay.get("send_completeness") != "complete"):
+            replay.get("send_completeness") != "complete" and
+            replay.get("bftpd_protocol_end_expected") is not True and
+            replay.get("protocol_end_expected") is not True):
         reasons.append("frame-ledger-incomplete")
     return reasons
 
@@ -397,6 +432,97 @@ def pureftpd_final_reply_code(replay_log):
     return transcript_codes[-1] if transcript_codes else None
 
 
+def bftpd_final_reply_code(replay_log, allow_terminal_fallback=True):
+    """Read BFTPD's final FTP reply from the complete detailed transcript.
+
+    The BFTPD replay client's compact response-code summary can omit replies
+    seen during a server-initiated control close. Use its detailed transcript
+    as the source of truth, while requiring the normal, uniquely delimited
+    replay output and a CRLF-delimited final FTP reply. Only a terminal 221
+    may use the fallback for an earlier malformed multiline response.
+    """
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return None
+
+    # Header lines are emitted by the C client with LF, while FTP reply
+    # records in the detailed transcript use CRLF. Preserve those bytes:
+    # read_text()/splitlines() normalizes CRLF and can turn malformed bare-LF
+    # replies into apparently valid FTP records.
+    summary_matches = list(re.finditer(
+        rb"(?m)^Responses from server:([^\r\n]*)\r?$", raw))
+    details_matches = list(re.finditer(
+        rb"(?m)^Responses in details:\r?$", raw))
+    if len(summary_matches) != 1 or len(details_matches) != 1:
+        return None
+    summary_match, details_match = summary_matches[0], details_matches[0]
+    if details_match.start() <= summary_match.start():
+        return None
+
+    try:
+        summary = summary_match.group(1).decode("ascii").strip().strip("-")
+    except UnicodeDecodeError:
+        return None
+    summary_codes = summary.split("-")
+    if summary_codes and summary_codes[0] == "0":
+        summary_codes = summary_codes[1:]
+    if (not summary_codes or
+            any(len(code) != 3 or not code.isdigit() for code in summary_codes)):
+        return None
+
+    details_start = details_match.end()
+    if raw[details_start:details_start + 2] == b"\r\n":
+        details_start += 2
+    elif raw[details_start:details_start + 1] == b"\n":
+        details_start += 1
+    else:
+        return None
+
+    # The output delimiter is a standalone dashed line after the transcript.
+    separators = list(re.finditer(rb"(?m)^--------------------------------\r?$", raw[details_start:]))
+    if len(separators) != 1:
+        return None
+    separator_start = details_start + separators[0].start()
+    details = raw[details_start:separator_start]
+    # The replay client writes one blank LF before its separator. Remove only
+    # that framing byte. Bodies such as STAT directory listings may contain
+    # bare LF internally, but the terminal reply itself must occupy a CRLF
+    # framed line and ftp_reply_codes will only recognize CRLF boundaries.
+    if details.endswith(b"\r\n\n"):
+        details = details[:-1]
+    if not details.endswith(b"\r\n"):
+        return None
+    detail_lines = details.split(b"\r\n")
+    if detail_lines and detail_lines[-1] == b"":
+        detail_lines.pop()
+    terminal_match = (re.fullmatch(rb"([0-9]{3})(?:[ -].*)?", detail_lines[-1])
+                      if detail_lines else None)
+    if not terminal_match:
+        return None
+    terminal_code = int(terminal_match.group(1))
+    reply_codes = ftp_reply_codes(details.decode("utf-8", errors="replace"))
+    # A malformed or truncated earlier multiline reply can leave the generic
+    # RFC 959 parser inside a body, where it correctly suppresses later
+    # code-looking lines. Only a final 221 can be independently accepted as
+    # BFTPD's protocol-close evidence; other final codes must be recognized by
+    # the generic parser so malformed bodies cannot hide a contradictory reply.
+    if not reply_codes or reply_codes[-1] != terminal_code:
+        if terminal_code != 221 or not allow_terminal_fallback:
+            return None
+        reply_codes.append(terminal_code)
+
+    # BFTPD's compact summary can omit detail replies (and its terminal 221),
+    # but any codes it does report must preserve the detailed transcript's
+    # order. This accepts real omissions while rejecting a post-221 summary
+    # reply or any other contradictory ordering.
+    detail_iter = iter(reply_codes)
+    for summary_code in map(int, summary_codes):
+        if not any(code == summary_code for code in detail_iter):
+            return None
+    return terminal_code
+
+
 def apply_pureftpd_session_exit_policy(flags, server_code, client_code,
                                        server_ready, client_timed_out,
                                        shutdown_requested, final_reply_code,
@@ -456,6 +582,93 @@ def transcript_packets_sent(replay_log):
         return None
 
 
+def ftp_frame_ends_with_quit(payload):
+    """Whether an FTP byte stream ends in a QUIT line as BFTPD's fgets sees it.
+
+    BFTPD reads control commands with ``fgets`` (LF-delimited), then removes
+    the final CRLF pair. Fuzzed frames can therefore contain earlier bare-LF
+    lines while still ending with a real ``QUIT\r\n`` command. Only the final
+    LF-delimited line is relevant, and no bytes may follow that command.
+    """
+    upper = payload.upper()
+    suffix = b"QUIT\r\n"
+    if not upper.endswith(suffix):
+        return False
+    prefix = upper[:-len(suffix)]
+    return not prefix or prefix.endswith(b"\n")
+
+
+def bftpd_stream_has_quit(payload):
+    """Mirror BFTPD 6.1's fgets(MAXCMD=255), strlen-2 and parsecmd prefix match."""
+    offset = 0
+    while offset < len(payload):
+        chunk = payload[offset:offset + 254]
+        newline = chunk.find(b"\n")
+        if newline >= 0:
+            chunk = chunk[:newline + 1]
+        offset += len(chunk)
+        # strlen stops at NUL, even when fgets consumed bytes beyond it.
+        command = chunk.split(b"\0", 1)[0]
+        command = command[:-2] if len(command) >= 2 else b""
+        command = bytes(byte for byte in command if byte >= 32)
+        if command[:4].upper() == b"QUIT":
+            return True
+    return False
+
+
+def http_close_request(payload):
+    """Recognize one complete HTTP/1.x request that asks to close the socket."""
+    if not payload.endswith(b"\r\n\r\n") or payload.count(b"\r\n\r\n") != 1:
+        return False
+    lines = payload[:-4].split(b"\r\n")
+    if not re.fullmatch(rb"[A-Z]+ [^\r\n ]+ HTTP/1\.[01]", lines[0]):
+        return False
+    headers = [line.split(b":", 1) for line in lines[1:]]
+    if any(len(parts) != 2 for parts in headers):
+        return False
+    closes = [value.strip().lower() for name, value in headers
+              if name.strip().lower() == b"connection"]
+    lengths = [value.strip() for name, value in headers
+               if name.strip().lower() == b"content-length"]
+    return closes == [b"close"] and (not lengths or lengths == [b"0"])
+
+
+def http_close_response_complete(replay_log):
+    """Require a single, length-checked HTTP response and Connection: close."""
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return False
+    marker = b"Responses in details:\n"
+    if raw.count(marker) != 1 or raw.count(b"Responses from server:") != 1:
+        return False
+    details = raw.split(marker, 1)[1]
+    if b"\r\n\r\n" not in details:
+        return False
+    head, rest = details.split(b"\r\n\r\n", 1)
+    lines = head.split(b"\r\n")
+    match = re.fullmatch(rb"HTTP/1\.[01] ([1-5][0-9]{2}) [^\r\n]*", lines[0])
+    if not match:
+        return False
+    summary = re.search(rb"(?m)^Responses from server:0-([0-9]{3})-\r?$", raw)
+    if not summary or summary.group(1) != match.group(1):
+        return False
+    headers = [line.split(b":", 1) for line in lines[1:]]
+    if any(len(parts) != 2 for parts in headers):
+        return False
+    closes = [value.strip().lower() for name, value in headers
+              if name.strip().lower() == b"connection"]
+    lengths = [value.strip() for name, value in headers
+               if name.strip().lower() == b"content-length"]
+    if (closes != [b"close"] or len(lengths) != 1 or
+            not lengths[0].isdigit() or len(lengths[0]) > 18):
+        return False
+    size = int(lengths[0])
+    if size > len(rest):
+        return False
+    return rest[size:].startswith(b"\n--------------------------------")
+
+
 def read_frame_ledger(path, framed_bytes=None):
     """Validate a loopfuzz-replay-frame-ledger-v1 JSONL and count true sends.
 
@@ -483,14 +696,15 @@ def read_frame_ledger(path, framed_bytes=None):
             raise CoverageError(f"frame ledger sequence breaks at frame {index}")
         if not isinstance(row.get("len"), int) or row["len"] < 0:
             raise CoverageError(f"frame ledger frame {index} has an invalid length")
+    expected_payloads = None
     if framed_bytes is not None:
-        expected, offset = [], 0
+        expected_payloads, offset = [], 0
         data = framed_bytes
         while offset + 4 <= len(data):
             (length,) = struct.unpack_from("<I", data, offset)
             if length > len(data) - offset - 4:
                 raise CoverageError("framed input is corrupt while validating ledger")
-            expected.append(length)
+            expected_payloads.append(data[offset + 4:offset + 4 + length])
             offset += 4 + length
         if offset != len(data):
             raise CoverageError("framed input has trailing bytes outside any frame")
@@ -498,9 +712,10 @@ def read_frame_ledger(path, framed_bytes=None):
         # server can close mid-input and the client stops reading); a prefix
         # is valid evidence of partial delivery, never completeness.
         led_lens = [row["len"] for row in frames]
-        if led_lens != expected[:len(led_lens)] or len(led_lens) > len(expected):
+        expected_lens = [len(payload) for payload in expected_payloads]
+        if led_lens != expected_lens[:len(led_lens)] or len(led_lens) > len(expected_lens):
             raise CoverageError("frame ledger lengths disagree with the framed input")
-        input_frame_count = len(expected)
+        input_frame_count = len(expected_payloads)
     else:
         input_frame_count = None
     if ends[0].get("frames_total") != len(frames):
@@ -539,11 +754,412 @@ def read_frame_ledger(path, framed_bytes=None):
     # Unattempted = every input frame the ledger never attempted, whether the
     # ledger ended early (prefix) or recorded an explicit not-attempted row.
     frames_unattempted = (input_frame_count - attempted) if input_frame_count is not None else None
+    prefix_sent = bool(frames and all(
+        r.get("read_complete") is True and r.get("pre_recv_ok") is True and
+        r.get("send_attempt") is True and r.get("sent_bytes") == r["len"] and
+        r.get("send_errno") == 0 for r in frames[:attempted]) and
+        all(r.get("send_attempt") is not True for r in frames[attempted:]))
+    # Frame boundaries are local to the replay client; TCP presents their
+    # payloads as one byte stream. Check the concatenated sent prefix so a
+    # trailing frame "QUIT\r\n" cannot turn a preceding partial command
+    # such as "NOOP" into a false terminal-QUIT match.
+    last_attempted_frame_is_quit = bool(
+        prefix_sent and expected_payloads is not None and attempted > 0 and
+        attempted <= len(expected_payloads) and
+        ftp_frame_ends_with_quit(b"".join(expected_payloads[:attempted])))
+    sent_prefix_has_bftpd_quit = bool(
+        prefix_sent and expected_payloads is not None and attempted > 0 and
+        attempted <= len(expected_payloads) and
+        bftpd_stream_has_quit(b"".join(expected_payloads[:attempted])))
+    last_attempted_frame_is_http_close = bool(
+        prefix_sent and expected_payloads is not None and attempted > 0 and
+        attempted <= len(expected_payloads) and
+        http_close_request(expected_payloads[attempted - 1]))
+    prior_post_recv_ok = bool(attempted > 0 and all(
+        row.get("post_recv_ok") is True for row in frames[:attempted - 1]))
+    last_attempted_post_recv = frames[attempted - 1] if attempted else {}
     return dict(frames_total=len(frames), frames_unattempted=frames_unattempted,
                 frames_attempted=attempted,
                 frames_sent_complete=sent_complete,
+                prefix_sent_complete=prefix_sent and attempted > 0,
+                last_attempted_frame_is_quit=last_attempted_frame_is_quit,
+                last_attempted_frame_is_http_close=last_attempted_frame_is_http_close,
+                sent_prefix_has_bftpd_quit=sent_prefix_has_bftpd_quit,
+                peer_closed=ends[0].get("peer_closed") is True,
+                prior_post_recv_ok=prior_post_recv_ok,
+                last_attempted_post_recv_ok=last_attempted_post_recv.get("post_recv_ok"),
+                last_attempted_post_recv_errno=last_attempted_post_recv.get("post_recv_errno"),
                 stop_reason=ends[0].get("stop_reason"),
                 send_complete=send_complete)
+
+
+def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_version=1):
+    """A fully evidenced 221 after BFTPD executes QUIT can close replay early.
+
+    V1 requires an exact trailing QUIT frame. V2 follows BFTPD's command
+    parser over the sent TCP prefix. V3 additionally recognizes a final
+    ECONNRESET when BFTPD sends 221 and closes with unread fuzzed bytes.
+    Unexplained resets, timeouts and non-221 replies remain incomplete.
+    """
+    return bool(replay.get("server_exit_code") == 0 and
+                replay.get("client_exit_code") == 2 and
+                replay.get("server_ready") is True and
+                replay.get("client_timed_out") is False and
+                not replay.get("harness_shutdown_requested") and
+                reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
+                replay.get("imported_gcda") and
+                not replay.get("session_coverage_missing") and final_reply == 221 and
+                ledger and ledger.get("prefix_sent_complete") and
+                isinstance(ledger.get("frames_unattempted"), int) and
+                ledger.get("frames_attempted", 0) > 0 and
+                ledger.get("sent_prefix_has_bftpd_quit" if policy_version >= 2
+                           else "last_attempted_frame_is_quit") is True and
+                ledger.get("frames_unattempted") > 0 and
+                ((ledger.get("peer_closed") and ledger.get("stop_reason") in
+                  ("peer-closed-before-input-end", "peer-closed-before-frame")) or
+                 (policy_version >= 3 and not ledger.get("peer_closed") and
+                  ledger.get("stop_reason") == "client-recv-post-send-failed" and
+                  ledger.get("prior_post_recv_ok") is True and
+                  ledger.get("last_attempted_post_recv_ok") is False and
+                  ledger.get("last_attempted_post_recv_errno") == errno.ECONNRESET)))
+
+
+def verify_bftpd_replay_evidence(replay, reset, directory, index, input_path,
+                                 expected_input_sha256, input_filename,
+                                 legacy_classification=False,
+                                 legacy_reply_classification=False,
+                                 policy_version=1):
+    """Re-derive BFTPD classification from hashes, input bytes, and raw logs."""
+    directory = Path(directory)
+    input_path = Path(input_path)
+    try:
+        input_bytes = input_path.read_bytes()
+    except OSError as error:
+        raise CoverageError("BFTPD replay input is unavailable: " + str(input_path)) from error
+    actual_input_sha256 = digest_bytes(input_bytes)
+    if (not isinstance(expected_input_sha256, str) or
+            actual_input_sha256 != expected_input_sha256):
+        raise CoverageError("BFTPD replay input hash mismatch: " + str(input_path))
+    for value, stem, file_key, hash_key in (
+            (replay, "replay-%06d.log" % index, "replay_log_file", "replay_log_sha256"),
+            (reset, "reset-%06d.log" % index, "log_file", "log_sha256"),
+            (replay, "replay-%06d-frame-ledger.jsonl" % index,
+             "frame_ledger_file", "frame_ledger_sha256")):
+        path = directory / stem
+        if (value.get(file_key) != stem or not path.is_file() or
+                value.get(hash_key) != digest_file(path)):
+            raise CoverageError("BFTPD replay evidence mismatch: " + stem)
+    ledger_path = directory / replay["frame_ledger_file"]
+    ledger = read_frame_ledger(ledger_path, input_bytes)
+    with ledger_path.open() as source:
+        first_row = json.loads(next(source))
+    if (first_row.get("input_file") != input_filename or
+            first_row.get("input_size") != len(input_bytes) or
+            first_row.get("protocol") != "FTP"):
+        raise CoverageError("BFTPD frame ledger input identity mismatch")
+    final_reply = bftpd_final_reply_code(directory / replay["replay_log_file"])
+    protocol_end = bftpd_protocol_end_expected(
+        replay, ledger, final_reply, reset, policy_version=policy_version)
+    flags = classify_replay_exit(replay.get("server_exit_code"), replay.get("client_exit_code"))
+    if replay.get("harness_shutdown_requested") and replay.get("server_exit_code") == -signal.SIGTERM:
+        flags = classify_replay_exit(124, replay.get("client_exit_code"))
+    if protocol_end:
+        flags.update(replay_anomaly=False, anomaly_kind="")
+    expected = dict(replay, **flags)
+    expected.update(final_ftp_reply_code=final_reply,
+                    bftpd_protocol_end_expected=protocol_end,
+                    frames_total=ledger["frames_total"],
+                    frames_unattempted=ledger["frames_unattempted"],
+                    frames_attempted=ledger["frames_attempted"],
+                    frames_sent_complete=ledger["frames_sent_complete"],
+                    last_attempted_frame_is_quit=ledger["last_attempted_frame_is_quit"],
+                    send_stop_reason=ledger["stop_reason"],
+                    send_completeness="complete" if ledger["send_complete"] else "incomplete")
+    if policy_version >= 2:
+        expected["sent_prefix_has_bftpd_quit"] = ledger["sent_prefix_has_bftpd_quit"]
+    if policy_version >= 3:
+        expected["last_attempted_post_recv_errno"] = ledger["last_attempted_post_recv_errno"]
+    expected["incomplete_reasons"] = replay_incompleteness(expected)
+    expected["coverage_complete"] = not expected["incomplete_reasons"]
+    physical_fields = ("server_crashed", "client_aborted_on_crash", "server_anomalous_exit",
+                       "client_anomalous_exit", "frames_total",
+                       "frames_unattempted", "frames_attempted", "frames_sent_complete",
+                       "send_stop_reason", "send_completeness")
+    classification_fields = ("final_ftp_reply_code", "replay_anomaly", "anomaly_kind",
+                             "bftpd_protocol_end_expected", "last_attempted_frame_is_quit", "incomplete_reasons",
+                             "coverage_complete")
+    if policy_version >= 2:
+        classification_fields += ("sent_prefix_has_bftpd_quit",)
+        if legacy_classification or legacy_reply_classification:
+            raise CoverageError("BFTPD v2+ archive cannot use legacy classification")
+    if policy_version >= 3:
+        physical_fields += ("last_attempted_post_recv_errno",)
+    if legacy_classification:
+        # Validate the archived classification against its actual predecessor
+        # rules before applying the stricter last-sent-frame and terminal-221
+        # parsing rules. This permits only the known version transition and
+        # still rejects arbitrary edits to present legacy fields.
+        legacy_reply = bftpd_final_reply_code(
+            directory / replay["replay_log_file"], allow_terminal_fallback=False)
+        legacy_ledger = dict(ledger, last_attempted_frame_is_quit=True)
+        legacy_protocol_end = bftpd_protocol_end_expected(
+            replay, legacy_ledger, legacy_reply, reset)
+        legacy_flags = classify_replay_exit(
+            replay.get("server_exit_code"), replay.get("client_exit_code"))
+        if (replay.get("harness_shutdown_requested") and
+                replay.get("server_exit_code") == -signal.SIGTERM):
+            legacy_flags = classify_replay_exit(124, replay.get("client_exit_code"))
+        if legacy_protocol_end:
+            legacy_flags.update(replay_anomaly=False, anomaly_kind="")
+        legacy_expected = dict(replay, **legacy_flags)
+        legacy_expected.update(final_ftp_reply_code=legacy_reply,
+                              bftpd_protocol_end_expected=legacy_protocol_end)
+        legacy_expected["incomplete_reasons"] = replay_incompleteness(legacy_expected)
+        legacy_expected["coverage_complete"] = not legacy_expected["incomplete_reasons"]
+        legacy_fields = ("final_ftp_reply_code", "replay_anomaly", "anomaly_kind",
+                         "bftpd_protocol_end_expected", "incomplete_reasons",
+                         "coverage_complete")
+        if legacy_reply_classification:
+            # A known archive writer stored only terminal 221s in this field.
+            # The run-wide compatibility gate below verifies that exact
+            # transform against every hash-checked replay log; downstream
+            # classification still uses the reply parsed from the transcript.
+            legacy_fields = tuple(field for field in legacy_fields
+                                  if field != "final_ftp_reply_code")
+        for field in legacy_fields:
+            if field not in replay or replay.get(field) != legacy_expected[field]:
+                raise CoverageError("BFTPD legacy classification mismatch: " + field)
+    checked_classification_fields = classification_fields
+    if legacy_reply_classification:
+        checked_classification_fields = tuple(
+            field for field in classification_fields
+            if field != "final_ftp_reply_code")
+    for field in physical_fields + (() if legacy_classification else checked_classification_fields):
+        if field not in replay or replay.get(field) != expected[field]:
+            raise CoverageError("BFTPD replay classification mismatch: " + field)
+    expected["legacy_classification_recomputed"] = bool(legacy_classification)
+    expected["classification_fields_changed"] = [
+        field for field in classification_fields
+        if field in replay and replay.get(field) != expected[field]]
+    return expected
+
+
+def bftpd_legacy_221_only_reply_classification(events, directory):
+    """Recognize the archived BFTPD rule that cached only terminal 221s.
+
+    This compatibility is run-wide and exact: every cached value must equal
+    221 when the current transcript parser finds 221, and null for every
+    other parsed or unparseable reply. At least one non-221 parsed reply must
+    demonstrate the old transform, preventing current archives from entering
+    the compatibility path accidentally.
+    """
+    directory = Path(directory)
+    saw_non_221_transition = False
+    if not events:
+        return False
+    for index, event in enumerate(events, 1):
+        replay = event.get("replay", {})
+        stem = "replay-%06d.log" % index
+        path = directory / stem
+        if (replay.get("replay_log_file") != stem or not path.is_file() or
+                replay.get("replay_log_sha256") != digest_file(path)):
+            return False
+        parsed_reply = bftpd_final_reply_code(path)
+        archived_reply = replay.get("final_ftp_reply_code")
+        old_reply = 221 if parsed_reply == 221 else None
+        if archived_reply != old_reply:
+            return False
+        if parsed_reply is not None and parsed_reply != 221:
+            saw_non_221_transition = True
+    return saw_non_221_transition
+
+
+def verify_bftpd_replay_events(events, replay_plan, directory, replay_input_root=None,
+                               policy_version=1):
+    """Audit BFTPD evidence, reclassifying uniform pre-frame-quit archives."""
+    if len(replay_plan) != len(events):
+        raise CoverageError(
+            "BFTPD protocol audit requires replay-plan.json matching replay evidence")
+    missing_quit_field = [
+        "last_attempted_frame_is_quit" not in event.get("replay", {})
+        for event in events]
+    if any(missing_quit_field) and not all(missing_quit_field):
+        raise CoverageError("BFTPD replay classification mixes legacy and current frame evidence")
+    legacy_classification = bool(missing_quit_field and all(missing_quit_field))
+    legacy_reply_classification = (bftpd_legacy_221_only_reply_classification(
+        events, directory) if policy_version == 1 else False)
+    if policy_version >= 2 and legacy_classification:
+        raise CoverageError("BFTPD v2+ archive lacks frame classification")
+    root = Path(replay_input_root) if replay_input_root is not None else None
+    verified_events = []
+    reclassified_inputs = 0
+    for index, (event, planned) in enumerate(zip(events, replay_plan), 1):
+        planned_path = planned.get("path")
+        filename = planned.get("filename")
+        input_hash = planned.get("input_sha256")
+        if not isinstance(planned_path, str) or not planned_path:
+            raise CoverageError("BFTPD replay plan lacks an input path at index %d" % index)
+        if (not isinstance(filename, str) or not filename or
+                Path(planned_path).name != filename):
+            raise CoverageError("BFTPD replay plan input filename mismatch at index %d" % index)
+        if (event.get("filename") != filename or event.get("input_sha256") != input_hash or
+                ("path" in event and event.get("path") != planned_path)):
+            raise CoverageError("BFTPD replay event disagrees with replay plan at index %d" % index)
+        input_path = Path(planned_path)
+        if not input_path.is_file():
+            if root is None:
+                raise CoverageError("BFTPD archived input path is unavailable; pass --replay-input-root")
+            input_path = root / filename
+            try:
+                input_path.resolve().relative_to(root.resolve())
+            except ValueError as error:
+                raise CoverageError("BFTPD replay input escapes replay input root") from error
+        replay = event.get("replay", {})
+        command = replay.get("client_command")
+        if (not isinstance(command, list) or len(command) < 2 or
+                command[1] != planned_path):
+            raise CoverageError("BFTPD replay client command disagrees with replay plan at index %d" % index)
+        derived = verify_bftpd_replay_evidence(
+            replay, event.get("reset", {}), directory, index, input_path,
+            input_hash, filename, legacy_classification=legacy_classification,
+            legacy_reply_classification=legacy_reply_classification,
+            policy_version=policy_version)
+        reclassified_inputs += any(
+            field != "last_attempted_frame_is_quit"
+            for field in derived["classification_fields_changed"])
+        verified_event = dict(event)
+        verified_event["replay"] = derived
+        verified_events.append(verified_event)
+    return dict(events=verified_events, legacy_reclassification=legacy_classification,
+                legacy_reply_classification=legacy_reply_classification,
+                n_inputs=len(events), n_reclassified_inputs=reclassified_inputs,
+                n_incomplete_inputs=sum(bool(e["replay"]["incomplete_reasons"])
+                                        for e in verified_events),
+                n_complete_inputs=sum(not e["replay"]["incomplete_reasons"]
+                                      for e in verified_events))
+    for index, event in enumerate(events, 1):
+        planned_path = replay_plan[index - 1].get("path")
+        if not isinstance(planned_path, str) or not planned_path:
+            raise CoverageError("BFTPD replay plan lacks an input path at index %d" % index)
+        verify_bftpd_replay_evidence(event.get("replay", {}), event.get("reset", {}),
+                                     directory, index, planned_path)
+
+
+def protocol_end_expected(target, replay, reset, ledger, replay_log):
+    """Accept only a proven target-initiated, protocol-requested control close."""
+    if target not in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+        return False
+    if not (replay.get("server_exit_code") == 0 and
+            replay.get("client_exit_code") == 2 and
+            replay.get("server_ready") is True and
+            replay.get("client_timed_out") is False and
+            replay.get("helper_ready") is not False and
+            reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
+            not replay.get("session_coverage_missing") and
+            ledger and ledger.get("prefix_sent_complete") and
+            isinstance(ledger.get("frames_unattempted"), int) and
+            ledger["frames_unattempted"] > 0 and
+            ledger.get("peer_closed") and ledger.get("stop_reason") in
+            ("peer-closed-before-input-end", "peer-closed-before-frame")):
+        return False
+    if target == "pure-ftpd":
+        return bool(replay.get("imported_gcda") and
+                    ledger.get("last_attempted_frame_is_quit") and
+                    pureftpd_final_reply_code(replay_log) == 221)
+    if not replay.get("session_gcda_touched"):
+        return False
+    if target == "lightftp":
+        return bool(ledger.get("last_attempted_frame_is_quit") and
+                    pureftpd_final_reply_code(replay_log) == 221)
+    return bool(ledger.get("last_attempted_frame_is_http_close") and
+                http_close_response_complete(replay_log))
+
+
+def verify_target_frame_replay(event, planned, directory, index, target,
+                               replay_input_root=None, gcno=None,
+                               protocol_end_required=False):
+    """Recompute a non-BFTPD input's send evidence from its archived bytes."""
+    replay, reset = event.get("replay", {}), event.get("reset", {})
+    filename, planned_path = planned.get("filename"), planned.get("path")
+    if (not isinstance(filename, str) or not isinstance(planned_path, str) or
+            Path(planned_path).name != filename or event.get("filename") != filename or
+            event.get("input_sha256") != planned.get("input_sha256") or
+            ("path" in event and event.get("path") != planned_path)):
+        raise CoverageError("replay plan/input identity mismatch at input %d" % index)
+    input_path = Path(planned_path)
+    if not input_path.is_file():
+        if replay_input_root is None:
+            raise CoverageError("replay input unavailable; pass --replay-input-root")
+        root = Path(replay_input_root).resolve()
+        input_path = (root / filename).resolve()
+        try:
+            input_path.relative_to(root)
+        except ValueError as error:
+            raise CoverageError("replay input escapes replay input root") from error
+    if not input_path.is_file() or digest_file(input_path) != planned.get("input_sha256"):
+        raise CoverageError("replay input hash mismatch at input %d" % index)
+    command = replay.get("client_command")
+    if (not isinstance(command, list) or len(command) != 7 or
+            command[1:3] != [planned_path, TARGET_PROTOCOLS[target]] or
+            not isinstance(command[3], str) or not command[3].isdigit() or
+            command[4:] != ["0", "100", "10000"]):
+        raise CoverageError("replay client ABI mismatch at input %d" % index)
+    directory = Path(directory)
+    for record, stem, name_key, hash_key in (
+            (replay, "replay-%06d.log" % index, "replay_log_file", "replay_log_sha256"),
+            (replay, "replay-%06d-frame-ledger.jsonl" % index,
+             "frame_ledger_file", "frame_ledger_sha256"),
+            (reset, "reset-%06d.log" % index, "log_file", "log_sha256")):
+        path = directory / stem
+        if (record.get(name_key) != stem or not path.is_file() or
+                record.get(hash_key) != digest_file(path)):
+            raise CoverageError("replay evidence mismatch: " + stem)
+    ledger_path = directory / replay["frame_ledger_file"]
+    ledger = read_frame_ledger(ledger_path, input_path.read_bytes())
+    with ledger_path.open() as source:
+        begin = json.loads(next(source))
+    if (begin.get("input_file") != filename or
+            begin.get("input_size") != input_path.stat().st_size or
+            begin.get("protocol") != TARGET_PROTOCOLS[target]):
+        raise CoverageError("frame ledger input identity mismatch at input %d" % index)
+    expected = dict(frames_total=ledger["frames_total"],
+                    frames_unattempted=ledger["frames_unattempted"],
+                    frames_attempted=ledger["frames_attempted"],
+                    frames_sent_complete=ledger["frames_sent_complete"],
+                    send_stop_reason=ledger["stop_reason"],
+                    send_completeness="complete" if ledger["send_complete"] else "incomplete")
+    for field, value in expected.items():
+        if replay.get(field) != value:
+            raise CoverageError("frame ledger classification mismatch at input %d: %s" %
+                                (index, field))
+    if protocol_end_required and target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+        ended = protocol_end_expected(target, replay, reset, ledger,
+                                      directory / replay["replay_log_file"])
+        if (replay.get("protocol_end_expected") is not ended or
+                replay.get("last_attempted_frame_is_http_close") is not
+                ledger["last_attempted_frame_is_http_close"]):
+            raise CoverageError("protocol end evidence mismatch at input %d" % index)
+        if ended:
+            flags = classify_replay_exit(replay.get("server_exit_code"),
+                                         replay.get("client_exit_code"))
+            if (replay.get("server_crashed") is not flags["server_crashed"] or
+                    replay.get("client_anomalous_exit") is not flags["client_anomalous_exit"] or
+                    replay.get("replay_anomaly") is not False or
+                    replay.get("anomaly_kind") != ""):
+                raise CoverageError("protocol end classification mismatch at input %d" % index)
+    if gcno is not None and target in ACCUMULATING_GCDA_TARGETS:
+        touched = replay.get("session_gcda_touched")
+        allowed = {str(Path(name).with_suffix(".gcda")) for name in gcno}
+        if (not isinstance(touched, list) or
+                any(not isinstance(name, str) for name in touched) or
+                len(touched) != len(set(touched)) or
+                not set(touched).issubset(allowed) or
+                replay.get("session_coverage_missing") is not (not bool(touched))):
+            raise CoverageError("session gcda freshness evidence mismatch at input %d" % index)
+    if replay.get("incomplete_reasons") != replay_incompleteness(replay):
+        raise CoverageError("replay incomplete reasons mismatch at input %d" % index)
+    if replay.get("coverage_complete") is not (not replay["incomplete_reasons"]):
+        raise CoverageError("replay completeness mismatch at input %d" % index)
 
 
 def apply_proftpd_shutdown_exit_policy(flags, server_code, client_code, supervised,
@@ -641,6 +1257,12 @@ def verify_pureftpd_replay_evidence(replay, reset, artifact_dir, index,
         flags, server_code, client_code, replay.get("server_ready"),
         replay.get("client_timed_out"), replay.get("harness_shutdown_requested"),
         parsed_reply, imported, reset_succeeded)
+    if "send_completeness" in replay:
+        expected["send_completeness"] = replay["send_completeness"]
+    if "protocol_end_expected" in replay:
+        expected["protocol_end_expected"] = replay["protocol_end_expected"]
+        if replay["protocol_end_expected"] is True:
+            expected.update(replay_anomaly=False, anomaly_kind="")
     for field in ("server_crashed", "server_anomalous_exit", "client_anomalous_exit",
                   "client_aborted_on_crash", "replay_anomaly", "anomaly_kind",
                   "pureftpd_session_exit_expected", "pureftpd_session_exit_evidence"):
@@ -1200,13 +1822,18 @@ def run_supervised_session(target, client_command, server_command, record,
     could finish without delivering a request. The old SMTP lifetime expired
     while long clients were still sending. ProFTPD's three-second timeout
     could kill its listener while a valid FTP transfer was still in progress.
-    Live555's gcov build installs SIGUSR1 -> exit(0), so it must receive that
-    signal to flush counters; the other targets retain their own shutdown.
+    LightFTP, Live555 and forked-daapd coverage builds use SIGUSR1 for a normal
+    exit; Lighttpd1 flushes on its graceful SIGTERM path. Send either signal
+    only after the client has completed.
     """
     # replay_commands retains historical timeout argv for other targets;
     # these targets are supervised here so the server remains alive for the
     # complete client and all process-group children receive shutdown.
-    command = server_command[6:]
+    # BFTPD has a four-token timeout wrapper (``timeout -k 1s 3s``), while
+    # the other supervised targets use the six-token form that also names a
+    # signal (``timeout -k 1s -s SIGNAL 3s``).  Strip exactly the wrapper so
+    # the supervised process starts at ``./bftpd``.
+    command = server_command[4:] if target == "bftpd" else server_command[6:]
     timeout = client_timeout_seconds(client_command, record["path"], mode)
     server = client = helper = None
     ready = False
@@ -1232,9 +1859,9 @@ def run_supervised_session(target, client_command, server_command, record,
                 timed_out = True
                 stop_process(client)
         client_code = client.returncode if client is not None else 125
-        shutdown_signal = (signal.SIGUSR1 if target in ("live555", "forked-daapd")
+        shutdown_signal = (signal.SIGUSR1 if target in ("lightftp", "live555", "forked-daapd")
                            else signal.SIGTERM)
-        if server.poll() is None and target == "proftpd":
+        if server.poll() is None and target in ("proftpd", "bftpd"):
             # ProFTPD's -X single-session listener exits itself at session
             # end and flushes gcov on that natural exit; the earlier harness
             # TERM raced that teardown and the gcov build can die with SIGSEGV
@@ -1270,6 +1897,8 @@ def run_supervised_session(target, client_command, server_command, record,
                                    if target == "pure-ftpd" else
                                    proftpd_replay_policy()["name"]
                                    if target == "proftpd" else
+                                   "bftpd-client-lifetime-protocol-end-v3"
+                                   if target == "bftpd" else
                                    "ready-client-graceful-exit-v1"),
                     effective_server_command=command, **flags)
     finally:
@@ -1280,9 +1909,7 @@ def run_supervised_session(target, client_command, server_command, record,
 
 def replay_commands(target, path, port, mode, cwd, workdir):
     replayer = loopfuzz_replayer() if mode == 1 else "afl-replay"
-    protocol = {"lightftp": "FTP", "bftpd": "FTP", "lighttpd1": "HTTP",
-                "forked-daapd": "HTTP", "kamailio": "SIP", "exim": "SMTP",
-                "proftpd": "FTP", "pure-ftpd": "FTP", "live555": "RTSP"}[target]
+    protocol = TARGET_PROTOCOLS[target]
     client = ([replayer, str(path), protocol, str(port), "0", "100", "10000"]
               if mode == 1 else [replayer, str(path), protocol, str(port), "1"])
     timeout = ["timeout", "-k", "1s", "-s", "SIGUSR1", "3s"]
@@ -1411,10 +2038,10 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
         return {str(p.relative_to(object_root)): (p.stat().st_size, p.stat().st_mtime_ns)
                 for p in sorted(object_root.rglob("*.gcda")) if p.is_file()}
 
-    gcda_inventory_before = gcda_inventory() if target == "proftpd" else {}
+    gcda_inventory_before = gcda_inventory() if target in ACCUMULATING_GCDA_TARGETS else {}
     with Path(replay_log).open("wb") as log:
         try:
-            if target in ("exim", "kamailio", "proftpd", "pure-ftpd", "live555", "forked-daapd"):
+            if target in TARGET_PROTOCOLS:
                 supervised = run_supervised_session(target, client_command, server_command,
                     record, mode, port, cwd, env, log)
                 server_code, client_code = (supervised["server_exit_code"],
@@ -1448,7 +2075,10 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
             stop_process(client)
             stop_process(server)
             stop_process(helper)
-    gcda_inventory_after = gcda_inventory() if target == "proftpd" else {}
+    gcda_inventory_after = gcda_inventory() if target in ACCUMULATING_GCDA_TARGETS else {}
+    session_gcda_touched = sorted(
+        path for path, state in gcda_inventory_after.items()
+        if gcda_inventory_before.get(path) != state)
     frame_ledger_result = None
     if ledger_path.is_file():
         framed_bytes = None
@@ -1473,7 +2103,7 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
         # observation. Retain any union evidence but fail strict acceptance.
         session_coverage_missing = not imported
     else:
-        session_coverage_missing = False
+        session_coverage_missing = target in ACCUMULATING_GCDA_TARGETS and not session_gcda_touched
     flags = classify_replay_exit(server_code, client_code)
     if supervised and "server_crashed" in supervised:
         flags.update(supervised)
@@ -1494,9 +2124,6 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
             frames_expected = None
         packets_sent = transcript_packets_sent(replay_log)
         ledger = frame_ledger_result
-        session_gcda_touched = sorted(gcda_inventory_after.keys() - gcda_inventory_before.keys()) + \
-            sorted(path for path in gcda_inventory_after.keys() & gcda_inventory_before.keys()
-                   if gcda_inventory_after[path] != gcda_inventory_before[path])
         flags = apply_proftpd_shutdown_exit_policy(
             flags, server_code, client_code, supervised or {},
             bool(reset and reset.get("command_succeeded")),
@@ -1514,6 +2141,8 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
                 client_command=client_command, server_command=server_command)
     if supervised:
         result.update(supervised)
+    if target in ACCUMULATING_GCDA_TARGETS:
+        result["session_gcda_touched"] = session_gcda_touched
     if target == "pure-ftpd":
         result["final_ftp_reply_code"] = final_reply_code
         result["reset_command_succeeded"] = bool(reset and reset.get("command_succeeded"))
@@ -1536,12 +2165,32 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
                       frames_unattempted=frame_ledger_result.get("frames_unattempted"),
                       frames_attempted=frame_ledger_result["frames_attempted"],
                       frames_sent_complete=frame_ledger_result["frames_sent_complete"],
+                      last_attempted_frame_is_quit=frame_ledger_result["last_attempted_frame_is_quit"],
                       send_stop_reason=frame_ledger_result["stop_reason"],
                       send_completeness="complete" if frame_ledger_result["send_complete"] else "incomplete")
+        if target == "bftpd":
+            result["sent_prefix_has_bftpd_quit"] = frame_ledger_result["sent_prefix_has_bftpd_quit"]
+            result["last_attempted_post_recv_errno"] = frame_ledger_result[
+                "last_attempted_post_recv_errno"]
+        if target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+            result["last_attempted_frame_is_http_close"] = frame_ledger_result[
+                "last_attempted_frame_is_http_close"]
     else:
         # Legacy replayer without the ledger: banner counts are loop-entry
         # evidence only; send facts are unknown and never inferred (2.1).
         result["send_completeness"] = "unknown"
+    if target == "bftpd":
+        result["final_ftp_reply_code"] = bftpd_final_reply_code(replay_log)
+        result["bftpd_protocol_end_expected"] = bftpd_protocol_end_expected(
+            result, frame_ledger_result, result["final_ftp_reply_code"], reset or {},
+            policy_version=3)
+        if result["bftpd_protocol_end_expected"]:
+            result.update(replay_anomaly=False, anomaly_kind="")
+    if target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+        result["protocol_end_expected"] = protocol_end_expected(
+            target, result, reset or {}, frame_ledger_result, replay_log)
+        if result["protocol_end_expected"]:
+            result.update(replay_anomaly=False, anomaly_kind="")
     result["incomplete_reasons"] = replay_incompleteness(result)
     result["coverage_complete"] = not result["incomplete_reasons"]
     result["sigpipe_normal_exit_observed"] = (target == "bftpd" and exit_trace.is_file() and
@@ -1834,7 +2483,7 @@ def run_replay(args):
     return 0
 
 
-def audit_artifacts(output, source_root=None):
+def audit_artifacts(output, source_root=None, replay_input_root=None):
     output = Path(output)
     legacy_directory = Path(str(output) + LEGACY_ARTIFACT_SUFFIX)
     sampled_directory = Path(str(output) + SAMPLED_ARTIFACT_SUFFIX)
@@ -1870,7 +2519,14 @@ def audit_artifacts(output, source_root=None):
     saved_events = []
     sampled = schema == SAMPLED_SCHEMA
     replay_ledger = []
-    replay_plan = []
+    # The plan is useful for independent evidence audits even in the legacy
+    # every-input schema (BFTPD replays need the original framed input to
+    # validate the ledger).  Older artifacts may omit it, so keep the empty
+    # fallback and let target-specific audits report a precise error.
+    replay_plan_path = directory / "replay-plan.json"
+    replay_plan = json.loads(replay_plan_path.read_text()) if replay_plan_path.is_file() else []
+    if not isinstance(replay_plan, list):
+        raise CoverageError("replay plan must be a JSON list")
     expected_samples = set()
     if sampled:
         policy = manifest.get("checkpoint_policy", {})
@@ -1882,7 +2538,6 @@ def audit_artifacts(output, source_root=None):
         step = nonnegative_integer(policy.get("step"), "checkpoint step")
         if step < 1:
             raise CoverageError("checkpoint step must be positive")
-        replay_plan = json.loads((directory / "replay-plan.json").read_text())
         with (directory / "replay-ledger.jsonl").open() as source:
             replay_ledger = [json.loads(line) for line in source if line.strip()]
         if not replay_plan or len(replay_ledger) != len(replay_plan):
@@ -1998,6 +2653,7 @@ def audit_artifacts(output, source_root=None):
         elif terminal.get("coverage_complete") is True:
             raise CoverageError("legacy Pure-FTPd policy cannot certify a complete replay")
     proftpd_policy_audit_verified = False
+    bftpd_policy_audit = None
     if manifest.get("target") == "proftpd":
         policy = manifest.get("replay_policy", {})
         policy_name = policy.get("name")
@@ -2032,6 +2688,26 @@ def audit_artifacts(output, source_root=None):
     if "coverage_complete" in terminal:
         replay_policy = manifest.get("replay_policy")
         evidence_events = replay_ledger if sampled else saved_events
+        session_policy = (replay_policy or {}).get("session_policy")
+        if (manifest.get("target") == "bftpd" and session_policy in
+                ("bftpd-client-lifetime-protocol-end-v1",
+                 "bftpd-client-lifetime-protocol-end-v2",
+                 "bftpd-client-lifetime-protocol-end-v3")):
+            bftpd_policy_audit = verify_bftpd_replay_events(
+                evidence_events, replay_plan, directory, replay_input_root,
+                policy_version=int(session_policy.rsplit("-v", 1)[1]))
+        if (manifest.get("replay_harness_version") in FRAME_AUDIT_HARNESS_VERSIONS and
+                manifest.get("target") in TARGET_PROTOCOLS and
+                manifest.get("target") != "bftpd"):
+            if len(replay_plan) != len(evidence_events):
+                raise CoverageError("target frame audit lacks a complete replay plan")
+            for index, (event, planned) in enumerate(zip(evidence_events, replay_plan), 1):
+                verify_target_frame_replay(event, planned, directory, index,
+                                           manifest["target"], replay_input_root,
+                                           manifest.get("gcno") if manifest.get("replay_harness_version") ==
+                                           REPLAY_HARNESS_VERSION else None,
+                                           manifest.get("replay_harness_version") ==
+                                           REPLAY_HARNESS_VERSION)
         replay_truncated = terminal.get("replay_truncated", False)
         if not isinstance(replay_truncated, bool):
             raise CoverageError("terminal replay_truncated must be boolean")
@@ -2040,9 +2716,20 @@ def audit_artifacts(output, source_root=None):
                 planned_n_replayed < terminal.get("n_replayed", 0) or
                 replay_truncated != (planned_n_replayed > terminal.get("n_replayed", 0))):
             raise CoverageError("terminal replay plan count disagrees with truncation metadata")
-        recomputed_complete = (not any(replay_incompleteness(event.get("replay", {})) for event in evidence_events)
+        recomputed_events = (bftpd_policy_audit["events"]
+                             if bftpd_policy_audit is not None else evidence_events)
+        if manifest.get("replay_harness_version") in FRAME_AUDIT_HARNESS_VERSIONS:
+            expected_incomplete = [dict(filename=event["filename"],
+                                        reasons=event["replay"]["incomplete_reasons"])
+                                   for event in recomputed_events
+                                   if event["replay"]["incomplete_reasons"]]
+            if terminal.get("incomplete_replays") != expected_incomplete:
+                raise CoverageError("terminal incomplete replay list disagrees with input evidence")
+        recomputed_complete = (not any(replay_incompleteness(event.get("replay", {}))
+                                       for event in recomputed_events)
                                and not terminal.get("n_unreplayable_ledger_entries", 0)
-                               and all(event.get("reset", {}).get("command_succeeded") for event in evidence_events)
+                               and all(event.get("reset", {}).get("command_succeeded")
+                                       for event in recomputed_events)
                                and not replay_truncated
                                and (replay_policy is None or replay_policy.get("verified"))
                                and (manifest.get("target") != "pure-ftpd" or
@@ -2074,7 +2761,19 @@ def audit_artifacts(output, source_root=None):
                 terminal.get("n_coverage_checkpoints") != len(saved_events) or
                 terminal.get("executed_input_witnesses") != expected_witnesses):
             raise CoverageError("sampled terminal metadata disagrees with replay ledger")
-    return audit_csv(output, manifest, union.events)
+    audit_result = audit_csv(output, manifest, union.events)
+    if bftpd_policy_audit is not None:
+        reason_counts = {}
+        for event in bftpd_policy_audit["events"]:
+            for reason in event["replay"]["incomplete_reasons"]:
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        audit_result["bftpd_replay_audit"] = {
+            key: bftpd_policy_audit[key]
+            for key in ("legacy_reclassification", "legacy_reply_classification",
+                        "n_inputs", "n_reclassified_inputs",
+                        "n_incomplete_inputs", "n_complete_inputs")}
+        audit_result["bftpd_replay_audit"]["incomplete_reason_counts"] = reason_counts
+    return audit_result
 
 
 def main(argv=None):
@@ -2101,6 +2800,8 @@ def main(argv=None):
     audit = sub.add_parser("audit")
     audit.add_argument("output", type=Path)
     audit.add_argument("--source-root", type=Path)
+    audit.add_argument("--replay-input-root", type=Path,
+                       help="corpus directory for archived plans whose recorded absolute input paths are unavailable")
     args = parser.parse_args(argv)
     existing_output = (args.command == "replay" and
                        (args.output.exists() or
@@ -2108,7 +2809,8 @@ def main(argv=None):
                         Path(str(args.output) + SAMPLED_ARTIFACT_SUFFIX).exists()))
     try:
         if args.command == "audit":
-            print(json.dumps(audit_artifacts(args.output, args.source_root), sort_keys=True))
+            print(json.dumps(audit_artifacts(args.output, args.source_root,
+                                             args.replay_input_root), sort_keys=True))
             return 0
         return run_replay(args)
     except (CoverageError, OSError, json.JSONDecodeError, subprocess.SubprocessError) as error:

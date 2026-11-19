@@ -17,7 +17,19 @@ THRESHOLDS = (8, 16, 32, 64, 150, 200, 300, 512)
 PAPER_ARMS = (
     "pvstop512", "salvage512", "nollm512", "wrapgate512", "native512",
     "calibrated512", "cal_ewma512", "cal_run_rate512",
+    "q1a512", "q1b512", "q1c512", "q1d512",
 )
+
+
+def q1_policy_for_environment(environment):
+    """The runtime q1_policy string the fuzzer writes for a launch setting."""
+    if environment.get("CHATAFL_Q1_DIRECT_SERVICE"):
+        return "direct-service"
+    if environment.get("CHATAFL_Q1_NO_REFLOW"):
+        return "no-reflow"
+    if environment.get("CHATAFL_Q1_REFLOW"):
+        return "reflow"
+    return "none"
 
 
 def launcher_environments(arms=PAPER_ARMS):
@@ -158,7 +170,7 @@ class MonitorArmTests(unittest.TestCase):
             with self.subTest(family=family):
                 self.assertEqual(self.wrapped(family, stats="", arm=""), f"{family}8")
 
-    def test_eight_paper_arms_use_actual_launcher_environments_at_startup(self):
+    def test_paper_arms_use_actual_launcher_environments_at_startup(self):
         for arm, environment in launcher_environments().items():
             for missing in ("", "-"):
                 with self.subTest(arm=arm, missing=missing):
@@ -166,7 +178,7 @@ class MonitorArmTests(unittest.TestCase):
                         missing, missing, missing, flags_for_environment(environment),
                         env=extension_env(**environment)), arm)
 
-    def test_eight_paper_arms_use_current_fuzzer_stats_field_names(self):
+    def test_paper_arms_use_current_fuzzer_stats_field_names(self):
         for arm, environment in launcher_environments().items():
             with self.subTest(arm=arm):
                 calibration = int(environment.get("CHATAFL_CALIBRATION") == "1")
@@ -180,6 +192,8 @@ class MonitorArmTests(unittest.TestCase):
                     f"no_llm_mode: {int(environment.get('CHATAFL_NO_LLM') == '1')}\n"
                     # This is a count of stops, not an enabled/disabled flag.
                     "pv_early_stops: 0\n"
+                    # The fuzzer writes this in every run-config ("none" default).
+                    f"q1_policy: {q1_policy_for_environment(environment)}\n"
                 )
                 self.assertEqual(self.resolve(
                     identity, str(calibration), "0.9950", flags_for_environment(environment),
@@ -245,6 +259,41 @@ class MonitorArmTests(unittest.TestCase):
                     "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
                     "plateau_threshold: 512\nplaintext_wrap_enabled: 1\nsalvage_enabled: 0\n"
                     f"{runtime_name}: 0\n", extension_env(**environment)), "wrapgate512")
+
+    def test_q1_runtime_policy_resolves_without_launch_environment(self):
+        base = dict(launcher_environments()["wrapgate512"])
+        for policy, expected in (("direct-service", "q1a512"),
+                                 ("no-reflow", "q1b512"),
+                                 ("reflow", "q1c512")):
+            with self.subTest(policy=policy):
+                stats = ("plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+                         "salvage_enabled: 0\n"
+                         f"q1_policy: {policy}\n")
+                self.assertEqual(self.resolve(
+                    "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(base),
+                    stats, extension_env(**base)), expected)
+
+    def test_q1_reflow_split_by_runtime_code_retain(self):
+        # q1d shares retain=1 with code_retainN; only q1_policy=reflow separates
+        # them, and the runtime retain flag outranks the launch environment.
+        base = dict(launcher_environments()["wrapgate512"], CHATAFL_CODE_RETAIN="1")
+        flags = flags_for_environment(base)
+        env = extension_env(**base)
+        for retain, expected in (("1", "q1d512"), ("0", "q1c512")):
+            with self.subTest(code_retain=retain):
+                stats = ("plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+                         "salvage_enabled: 0\n"
+                         f"code_retain: {retain}\nq1_policy: reflow\n")
+                self.assertEqual(self.resolve(
+                    "loopfuzz-gated-fixed", "0", "0.9950", flags, stats, env), expected)
+
+    def test_q1_runtime_none_beats_stale_launch_keys(self):
+        environment = launcher_environments()["q1c512"]
+        stats = ("plateau_threshold: 512\nplaintext_wrap_enabled: 1\n"
+                 "salvage_enabled: 0\nq1_policy: none\n")
+        self.assertEqual(self.resolve(
+            "loopfuzz-gated-fixed", "0", "0.9950", flags_for_environment(environment),
+            stats, extension_env(**environment)), "wrapgate512")
 
     def test_runtime_adaptive_threshold_does_not_claim_fixed_arm(self):
         environment = launcher_environments()["wrapgate512"]

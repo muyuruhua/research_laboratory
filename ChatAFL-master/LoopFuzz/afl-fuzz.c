@@ -355,6 +355,18 @@ struct queue_entry
   u64 prov_admit_ms;       /* admission timestamp */
   u32 prov_desc_execs;     /* descendant executions consumed so far */
   u32 prov_desc_code_gain; /* descendant code-gain events observed */
+  /* Early-stop accounting is kept on the root so the validation budget can
+   * be audited without inferring observations from queue saves.  A charged
+   * invocation is either checked here or explicitly skipped (probe/refusal).
+   */
+  u32 prov_early_stop_checks;
+  u32 prov_early_stop_skipped;
+  u32 prov_early_stop_calibration;
+  u32 prov_early_stop_retry;
+  u32 prov_early_stop_code_resets;
+  u32 prov_early_stop_state_resets;
+  u32 prov_early_stop_max_streak;
+  u8  prov_early_stop_pending;
   u32 prov_first_gain_queue;
   u64 prov_first_gain_execution, prov_first_gain_invocation, prov_first_gain_ms;
   u8  prov_code_retain;    /* v3.4: admitted via the P0-3 retention channel */
@@ -1183,14 +1195,15 @@ static u64 controller_probe_invocation_total = 0;
 /* P3 PV marginal early-stop (2026-11-09): the fixed 64-call subtree budget
  * spends nearly all of it at zero marginal yield once the campaign is on
  * the coverage plateau (measured t95 3.6-9.2h in 21h+ campaigns). A root
- * whose charged descendants produce K consecutive executions with NO
- * novelty of any kind (not even hit-count changes) is closed early; the
- * unspent budget stays unspent (or flows to ordinary under
- * CHATAFL_Q1_REFLOW). Any novelty event resets the streak. */
+ * whose charged descendants produce K consecutive executions with no new
+ * edge (hnb != 2) and no response-state progress is closed early. Hit-count
+ * bucket changes (hnb == 1) are logged as saves elsewhere but do not count
+ * as stable code progress here. The unspent budget stays unspent (or flows
+ * to ordinary under CHATAFL_Q1_REFLOW). */
 static u32 pv_early_stop_k = 0;         /* CHATAFL_PV_EARLY_STOP (0 = off, set by arm) */
-/* P3 dual-signal: a root is only "dead" when BOTH code novelty (hnb==0)
- * AND state novelty (no new IPSM transitions) are silent for K consecutive
- * charged descendants. State exploration alone resets the streak —
+/* P3 dual-signal: a root is only "dead" when BOTH new-edge code progress
+ * (hnb==2) AND state novelty (no new response transitions) are silent for K
+ * consecutive charged descendants. State exploration alone resets the streak —
  * measured on salvage8: late conversions (exec 42-59) had 41-58 zero-code
  * calls but were still traversing new states. */
 static u8 pv_early_stop_dual = 1;       /* CHATAFL_PV_EARLY_STOP_DUAL=0 disables */
@@ -4164,6 +4177,8 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "request_gate", json_object_new_boolean(request_gate_enabled));
   admission_json_add_u64(j, "pv_early_stop_k", pv_early_stop_k);
   json_object_object_add(j, "pv_early_stop_dual", json_object_new_boolean(pv_early_stop_dual));
+  json_object_object_add(j, "pv_code_progress_signal", json_object_new_string(
+      "new-edge-only-hnb2; excludes-hitcount-bucket-changes"));
   json_object_object_add(j, "pv_state_progress_signal", json_object_new_string(
       "same-invocation-response-states-and-transitions; per-root; excludes-probe-dose"));
   admission_json_add_u64(j, "request_gate_window", request_gate_window);
@@ -5600,6 +5615,39 @@ static void scheduler_log_selection(struct queue_entry *q) {
   }
   ec_append_jsonl("scheduler-selections.jsonl", j);
   json_object_put(j);
+}
+
+/* Resolve campaign-level stop conditions before either scheduler can count
+ * a refused target call as a no-progress round. A finite call cap in
+ * wallclock mode is a censoring boundary: once reached, the run must stay
+ * alive (without invoking the target) until its elapsed-time deadline. */
+enum campaign_loop_action {
+  CAMPAIGN_LOOP_CONTINUE = 0,
+  CAMPAIGN_LOOP_HOLD,
+  CAMPAIGN_LOOP_STOP
+};
+
+static enum campaign_loop_action campaign_loop_preflight(u8 log_scheduler) {
+  /* Deadline wins over the call-cap hold, including when both become true
+   * during the same scheduler iteration. */
+  if (campaign_deadline_reached()) return CAMPAIGN_LOOP_STOP;
+  if (!campaign_budget_exhausted) return CAMPAIGN_LOOP_CONTINUE;
+
+  if (!campaign_budget_stop_reported) {
+    campaign_budget_stop_reported = 1;
+    scheduler_selection_reason = campaign_wallclock_mode ?
+        "wallclock-budget-exhausted-hold" : "campaign-call-budget-exhausted";
+    if (log_scheduler) scheduler_log_selection(NULL);
+    WARNF("Campaign call budget exhausted: %llu charged, cap %llu%s",
+          campaign_charged_invocations, campaign_effective_call_cap(),
+          campaign_wallclock_mode ? "; holding until wallclock deadline" : "");
+  }
+
+  if (!campaign_wallclock_mode) {
+    stop_soon = 2;
+    return CAMPAIGN_LOOP_STOP;
+  }
+  return CAMPAIGN_LOOP_HOLD;
 }
 
 /* Use the same M2 contract before selection and immediately before mutation. */
@@ -11350,6 +11398,20 @@ static u8 execution_ready(struct queue_entry *root) {
   if (stop_soon) return 0;
   if (root && !root->prov_converted) {
     if (root->prov_expired) return 0;
+    if (root->prov_early_stop_pending) {
+      /* A nested calibration or hang retry can still be unwinding after the
+       * threshold execution. Refuse further nested work; close the root on
+       * the next ordinary execution boundary, then fall back to the
+       * lifecycle sweep if this fuzz cycle has no such boundary. */
+      if (execution_kind && (!strcmp(execution_kind, "calibration") ||
+                             !strcmp(execution_kind, "hang-retry")))
+        return 0;
+      provisional_expire(root, "early-stop-no-novelty");
+      return 0;
+    }
+    /* Apply a streak reached by the preceding completed invocation at the
+     * next execution boundary. This keeps calibration and retry callers
+     * from having their queue entry removed while they are still using it. */
     if (!root->prov_budget_left) {
       provisional_budget_exhausted_stop = 1;
       if (root->prov_ordinary_match) ordinary_match_close(root, "budget-exhausted");
@@ -11378,6 +11440,29 @@ static u8 execution_ready(struct queue_entry *root) {
  * candidate's validation budget or descendant dose. */
 static u8 execution_is_validation_probe(void) {
   return execution_kind && !strcmp(execution_kind, "prov-annotate");
+}
+
+static void pv_early_stop_track(struct queue_entry *root, u8 hnb,
+                                const char *kind);
+
+/* A charged descendant that cannot produce a trustworthy coverage
+ * observation (for example a timeout or crash) still has to be accounted for
+ * in the per-root early-stop ledger.  Keeping this at the same run_target()
+ * boundary as pv_early_stop_track() makes the conservation check
+ *
+ *   descendant_invocations == early_stop_checks + early_stop_skipped
+ *
+ * auditable for every closed root. */
+static void pv_early_stop_skip(struct queue_entry *root, const char *kind) {
+  if (!root || !root->is_provisional || root->prov_expired ||
+      root->prov_converted || !pv_early_stop_k)
+    return;
+  root->prov_early_stop_skipped++;
+  /* A fault has no stable novelty observation. Do not join zero-novelty
+   * observations on either side of it into one supposedly consecutive run. */
+  root->prov_zero_novelty_streak = 0;
+  if (kind && !strcmp(kind, "calibration")) root->prov_early_stop_calibration++;
+  if (kind && !strcmp(kind, "hang-retry")) root->prov_early_stop_retry++;
 }
 
 /* Salvage's saved-session probe is controller work: it remains charged to
@@ -11653,6 +11738,22 @@ static u8 run_target(char **argv, u32 timeout) {
     u8 response_gain = provisional_observe_response(root);
     if (!execution_is_validation_probe())
       root->prov_last_invocation_state_gain = response_gain;
+  }
+  if (root && root->is_provisional && !execution_is_validation_probe()) {
+    /* Observe code novelty on a private copy before save_if_interesting()
+     * consumes virgin_bits. This covers calibration, timeout retries, and
+     * faults that return before the normal queue-save path. */
+    if (fault == FAULT_NONE) {
+      static u8 *pv_virgin_scratch;
+      if (!pv_virgin_scratch) pv_virgin_scratch = ck_alloc(MAP_SIZE);
+      memcpy(pv_virgin_scratch, virgin_bits, MAP_SIZE);
+      u8 hnb = has_new_bits(pv_virgin_scratch);
+      pv_early_stop_track(root, hnb, execution_kind);
+    } else {
+      /* Faulting executions consume validation budget but do not provide a
+       * stable code/state observation for the no-novelty streak. */
+      pv_early_stop_skip(root, execution_kind);
+    }
   }
   last_execution_kind = execution_kind;
   execution_log_event("invocation_end", attempt_id, invocation_id,
@@ -12954,20 +13055,33 @@ static void write_crash_readme(void)
 
 /* P3 streak tracker: called with the descendant execution's hnb BEFORE any
  * early return; trial-mode calls never reach here. */
-static void pv_early_stop_track(u8 hnb) {
-  struct queue_entry *r = cur_fuzz_provisional_root;
+static void pv_early_stop_track(struct queue_entry *r, u8 hnb,
+                                const char *kind) {
   if (!pv_early_stop_k || !r || !r->is_provisional || r->prov_expired ||
       r->prov_converted)
     return;
-  if (hnb) { r->prov_zero_novelty_streak = 0; return; }
-  if (pv_early_stop_dual && r->prov_last_invocation_state_gain) {
+  r->prov_early_stop_checks++;
+  if (kind && !strcmp(kind, "calibration")) r->prov_early_stop_calibration++;
+  if (kind && !strcmp(kind, "hang-retry")) r->prov_early_stop_retry++;
+  if (hnb == 2) {
+    r->prov_early_stop_code_resets++;
     r->prov_zero_novelty_streak = 0;
     return;
   }
-  if (++r->prov_zero_novelty_streak < pv_early_stop_k) return;
-  pv_early_stops++;
-  r->prov_zero_novelty_streak = 0;
-  provisional_expire(r, "early-stop-no-novelty");
+  if (pv_early_stop_dual && r->prov_last_invocation_state_gain) {
+    r->prov_early_stop_state_resets++;
+    r->prov_zero_novelty_streak = 0;
+    return;
+  }
+  r->prov_zero_novelty_streak++;
+  if (r->prov_zero_novelty_streak > r->prov_early_stop_max_streak)
+    r->prov_early_stop_max_streak = r->prov_zero_novelty_streak;
+  /* Expiry is performed by execution_ready() at the next safe boundary. */
+  if (r->prov_zero_novelty_streak < pv_early_stop_k) return;
+  if (!r->prov_early_stop_pending) {
+    r->prov_early_stop_pending = 1;
+    pv_early_stops++;
+  }
 }
 
 /* Check if the result of an execve() during routine fuzzing is interesting,
@@ -13030,7 +13144,6 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       hnb = has_new_bits(virgin_bits);
       lineage_evidence_valid = hnb_capture_end() > 0;
       if (hnb != 2) lineage_evidence_valid = 0;
-      pv_early_stop_track(hnb);
       if (!hnb) {
         if (crash_mode)
           total_crashes++;
@@ -13039,7 +13152,6 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       }
     } else {
       hnb = has_new_bits(virgin_bits);
-      pv_early_stop_track(hnb);
       if (!hnb)
       {
         if (crash_mode)
@@ -15855,6 +15967,13 @@ static void provisional_log_productivity(struct queue_entry *q,
   json_object_object_add(j, "outcome", json_object_new_string(outcome));
   json_object_object_add(j, "reason", json_object_new_string(reason ? reason : ""));
   admission_json_add_u64(j, "descendant_invocations", q->prov_desc_execs);
+  admission_json_add_u64(j, "early_stop_checks", q->prov_early_stop_checks);
+  admission_json_add_u64(j, "early_stop_skipped", q->prov_early_stop_skipped);
+  admission_json_add_u64(j, "early_stop_calibration", q->prov_early_stop_calibration);
+  admission_json_add_u64(j, "early_stop_retry", q->prov_early_stop_retry);
+  admission_json_add_u64(j, "early_stop_code_resets", q->prov_early_stop_code_resets);
+  admission_json_add_u64(j, "early_stop_state_resets", q->prov_early_stop_state_resets);
+  admission_json_add_u64(j, "early_stop_max_streak", q->prov_early_stop_max_streak);
   admission_json_add_u64(j, "budget_total", q->prov_desc_execs +
                           q->prov_budget_left + q->prov_budget_released +
                           q->prov_budget_uncredited);
@@ -16972,6 +17091,12 @@ static void provisional_account_after_fuzz(struct queue_entry *q,
   if (q && !q->prov_candidate_id)
     q = provisional_root_for_candidate(q->llm_origin_candidate_id);
   if (!q || !q->is_provisional || q->prov_converted) return;
+
+  if (q->prov_early_stop_pending) {
+    q->prov_early_stop_pending = 0;
+    provisional_expire(q, "early-stop-no-novelty");
+    return;
+  }
 
   if (q->prov_budget_left == 0) {
     if (q->prov_ordinary_match) ordinary_match_close(q, "budget-exhausted");
@@ -24764,8 +24889,16 @@ retry_state_aware:
 
     while (1)
     {
+      enum campaign_loop_action campaign_action = campaign_loop_preflight(1);
+      if (campaign_action == CAMPAIGN_LOOP_STOP) break;
+      if (campaign_action == CAMPAIGN_LOOP_HOLD) {
+        /* A capped wallclock run is intentionally idle after the common
+         * dose is consumed. Keep this before watchdog and seed selection so
+         * refused calls cannot become scheduler churn. */
+        usleep(100000);
+        continue;
+      }
       u8 skipped_fuzz;
-      if (campaign_deadline_reached()) break;
       u64 episode_code_gains_before = code_gain_events;
 
       /* v3.3 (TTL fix): sweep BEFORE selection as well.  The only other
@@ -24900,30 +25033,6 @@ retry_state_aware:
           }
         }
       }
-      if (campaign_budget_exhausted && !campaign_budget_stop_reported) {
-        campaign_budget_stop_reported = 1;
-        scheduler_selection_reason = campaign_wallclock_mode ?
-            "wallclock-budget-exhausted-hold" : "campaign-call-budget-exhausted";
-        scheduler_log_selection(NULL);
-        WARNF("Campaign call budget exhausted: %llu charged, cap %llu%s",
-              campaign_charged_invocations, campaign_effective_call_cap(),
-              campaign_wallclock_mode ? "; holding until wallclock deadline" : "");
-        if (!campaign_wallclock_mode) {
-          stop_soon = 2;
-          break;
-        }
-        /* Fixed-time mode keeps the process alive after the common target
-         * dose is consumed. No further target invocation is admitted; the
-         * remaining wallclock is recorded as budget-censored idle time. */
-        if (run_start_time_ms && get_cur_time() - run_start_time_ms >=
-            campaign_duration_sec * 1000ULL) {
-          campaign_wallclock_expired = 1;
-          stop_soon = 2;
-          break;
-        }
-        usleep(100000);
-        continue;
-      }
       if (stop_soon || !selected_seed) break;
       if (!full_session_m2_override && target_state_id == 0 &&
           !entry_can_fuzz_state(selected_seed, target_state_id)) {
@@ -25014,9 +25123,13 @@ retry_state_aware:
   {
     while (1)
     {
-
+      enum campaign_loop_action campaign_action = campaign_loop_preflight(0);
+      if (campaign_action == CAMPAIGN_LOOP_STOP) break;
+      if (campaign_action == CAMPAIGN_LOOP_HOLD) {
+        usleep(100000);
+        continue;
+      }
       u8 skipped_fuzz;
-      if (campaign_deadline_reached()) break;
 
       cull_queue();
 

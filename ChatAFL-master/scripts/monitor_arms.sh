@@ -18,6 +18,7 @@ MONITOR_ABLATION_ENV_KEYS=(
     CHATAFL_TRIGGER_POLICY CHATAFL_SCHEDULER_WARMUP_MAX
     CHATAFL_CODE_RETAIN
     CHATAFL_PV_EARLY_STOP CHATAFL_REQUEST_GATE CHATAFL_STATE_RETAIN
+    CHATAFL_Q1_DIRECT_SERVICE CHATAFL_Q1_NO_REFLOW CHATAFL_Q1_REFLOW
     CHATAFL_CALIBRATION CHATAFL_STATE_SELECT
     CHATAFL_ADMISSION_MODE CHATAFL_PROVISIONAL CHATAFL_SHADOW
     CHATAFL_ORDINARY_EDF
@@ -145,6 +146,39 @@ monitor_resolve_new_arms() {
         soft)     echo "softu${threshold}";   return 0 ;;
         protocol) echo "protou${threshold}";  return 0 ;;
     esac
+
+    # Q1 strategy arms (2026-11-06): the fate of the validation quota freed by
+    # gate rejects.  Runtime q1_policy (run-config projection: direct-service /
+    # no-reflow / reflow / none) outranks the launch env, and "none" is a real
+    # runtime identity, not a missing field.  MUST run before the generic
+    # code_retain check below (q1d = reflow + retain shares retain=1 with
+    # code_retainN) and before the wrapped fallback (q1a/b/c share the
+    # wrapgate base and would collapse into wrapgateN).
+    local q1_kind=""
+    v=$(monitor_ablation_stat "$stats" q1_policy)
+    if [[ -n "$v" ]]; then
+        case "$v" in
+            direct-service) q1_kind=a ;;
+            no-reflow)      q1_kind=b ;;
+            reflow)         q1_kind=c ;;
+        esac
+    elif monitor_ablation_env "$env" CHATAFL_Q1_DIRECT_SERVICE >/dev/null; then
+        q1_kind=a
+    elif monitor_ablation_env "$env" CHATAFL_Q1_NO_REFLOW >/dev/null; then
+        q1_kind=b
+    elif monitor_ablation_env "$env" CHATAFL_Q1_REFLOW >/dev/null; then
+        q1_kind=c
+    fi
+    if [[ "$q1_kind" == "c" ]]; then
+        val=$(monitor_ablation_value "$stats" "$env" code_retain CHATAFL_CODE_RETAIN)
+        monitor_ablation_enabled "$val" && q1_kind=d
+    fi
+    # Same strategy-ablation guard as the calibration estimator block below:
+    # a q1 base with an explicit wo_* switch is not the canonical paper arm
+    # (no_adaptive/threshold are part of the q1 base and never disqualify).
+    [[ -n "$q1_kind" && "${values[0]:-0}" == "0" && "${values[1]:-0}" == "0" \
+       && "${values[2]:-0}" == "0" && "${values[4]:-0}" == "0" ]] && \
+        { echo "q1${q1_kind}${threshold}"; return 0; }
 
     # CSV#8 fourth U-policy arm: U-fail-but-code-bearing retention channel.
     val=$(monitor_ablation_value "$stats" "$env" code_retain CHATAFL_CODE_RETAIN)

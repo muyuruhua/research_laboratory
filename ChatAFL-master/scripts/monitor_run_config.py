@@ -36,6 +36,7 @@ FIELDS = {
     "provisional_enabled": "provisional_enabled",
     "shadow_enabled": "shadow_enabled",
     "code_retain": "code_retain",
+    "q1_policy": "q1_policy",
     "ordinary_budget": "ordinary_budget",
     "u_policy": "u_policy_name",
     "scheduler_warmup_max_selections": "scheduler_warmup_max_selections",

@@ -27,6 +27,7 @@
 #                        | wo_* 消融组 — fuzzer_stats 的 arm 字段为运行时真值,
 #                        run-config.jsonl / 启动环境仅作字段缺失时回退 (与 run_ablation.sh 组名等价)
 #                        | salvageN / wrapgateN / wrapdirectN (Q1 固定阈值族)
+#                        | q1aN/q1bN/q1cN/q1dN (Q1 策略臂: 直接服务/停放/回流/证据复合)
 #                        | lopN/louN/lorN/logcN/logsN (P0-9 谓词 leave-one-out)
 #                        | shadowrandN (P0-21 无偏随机影子抽样)
 #   8. 宿主机磁盘:       根分区 used/total/avail + 使用率, 超 DISK_WARN_PCT

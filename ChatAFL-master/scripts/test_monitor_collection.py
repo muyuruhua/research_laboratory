@@ -157,7 +157,7 @@ mech_section fixture-container "$row"
         self.assertIn("MECH", rows, "mechanism panel omitted an existing run")
         self.assertEqual(rows["MECH"][:2], [target, arm])
 
-    def test_all_eight_arms_across_nine_targets_with_live_stats(self):
+    def test_all_paper_arms_across_nine_targets_with_live_stats(self):
         for target in TARGET_DIRECTORIES:
             for arm in arms.PAPER_ARMS:
                 with self.subTest(target=target, arm=arm):
@@ -165,7 +165,7 @@ mech_section fixture-container "$row"
                     self.assert_identity(rows, target, arm)
                     self.assertEqual(rows["MAIN"][7], "100")
 
-    def test_all_eight_arms_across_nine_targets_during_config_only_startup(self):
+    def test_all_paper_arms_across_nine_targets_during_config_only_startup(self):
         for target in TARGET_DIRECTORIES:
             for arm in arms.PAPER_ARMS:
                 with self.subTest(target=target, arm=arm):
@@ -175,7 +175,7 @@ mech_section fixture-container "$row"
                         self.assertEqual(rows["MAIN"][field], "-", f"counter {field} invented at startup")
                     self.assertEqual(rows["MAIN"][25], "missing")
 
-    def test_all_eight_arms_across_nine_targets_before_first_stats_or_config(self):
+    def test_all_paper_arms_across_nine_targets_before_first_stats_or_config(self):
         for target in TARGET_DIRECTORIES:
             for arm in arms.PAPER_ARMS:
                 with self.subTest(target=target, arm=arm):
@@ -228,7 +228,7 @@ mech_section fixture-container "$row"
         rows = self.collect("exim", "cal_ewma512", "config", config_text=text)
         self.assert_identity(rows, "exim", "cal_run_rate512")
 
-    def test_dynamic_hypothesis_fallback_preserves_all_eight_arms_across_nine_targets(self):
+    def test_dynamic_hypothesis_fallback_preserves_all_paper_arms_across_nine_targets(self):
         # Grammar fallback can turn hypothesis_mode off after the start record.
         # This runtime transition is not a requested hypothesis ablation.
         for target in TARGET_DIRECTORIES:

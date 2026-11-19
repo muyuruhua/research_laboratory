@@ -27,6 +27,7 @@ long chat_llm_cap_calls(void) { return -1; }
 long chat_llm_cap_tokens(void) { return -1; }
 
 static u8 test_trace_value = 1;
+static u8 test_driver_fault = FAULT_NONE;
 static u8 stop_during_calibration = 0;
 static const char test_reply[] = "220 ready\r\n";
 static u32 test_reply_end = (u32)(sizeof(test_reply) - 1);
@@ -48,7 +49,7 @@ static u8 gating_test_driver(char **argv, u32 timeout) {
    * that just ran. */
   response_invocation_id = target_invocation_seq;
   if (stop_during_calibration) stop_soon = 1;
-  return FAULT_NONE;
+  return test_driver_fault;
 }
 
 static void make_dir(const char *path) {
@@ -1648,8 +1649,9 @@ static void test_request_gate(void) {
   request_gate_parked = saved_parked;
 }
 
-/* P3 early stop: K consecutive zero-novelty charged descendants close the
- * root; any novelty resets the streak; disabled knob is a no-op. */
+/* P3 early stop: K consecutive charged descendants without a new edge or
+ * response-state progress close the root. Hit-count-only novelty (hnb=1)
+ * does not reset the streak; disabled knob is a no-op. */
 static void test_pv_early_stop(void) {
   struct queue_entry root;
   memset(&root, 0, sizeof(root));
@@ -1661,18 +1663,25 @@ static void test_pv_early_stop(void) {
   pv_early_stop_k = 4;
 
   cur_fuzz_provisional_root = &root;
-  pv_early_stop_track(0); pv_early_stop_track(0);
-  pv_early_stop_track(1);                  /* novelty resets */
+  pv_early_stop_track(&root, 0, "mutation"); pv_early_stop_track(&root, 0, "mutation");
+  pv_early_stop_track(&root, 1, "mutation");                  /* hit-count only */
+  assert(root.prov_zero_novelty_streak == 3 &&
+         root.prov_early_stop_code_resets == 0);
+  pv_early_stop_track(&root, 2, "mutation");                  /* new edge resets */
   assert(root.prov_zero_novelty_streak == 0 && root.prov_expired == 0);
-  pv_early_stop_track(0);
+  assert(root.prov_early_stop_code_resets == 1);
+  pv_early_stop_track(&root, 0, "mutation");
   root.prov_last_invocation_state_gain = 1;
-  pv_early_stop_track(0);                  /* actual code-silent response novelty resets */
+  pv_early_stop_track(&root, 0, "mutation");                  /* actual code-silent response novelty resets */
   assert(root.prov_zero_novelty_streak == 0 && !root.prov_expired);
   root.prov_last_invocation_state_gain = 0;
-  pv_early_stop_track(0); pv_early_stop_track(0);
-  pv_early_stop_track(0);
+  pv_early_stop_track(&root, 0, "mutation"); pv_early_stop_track(&root, 0, "mutation");
+  pv_early_stop_track(&root, 0, "mutation");
   assert(root.prov_expired == 0);           /* 3 < K */
-  pv_early_stop_track(0);                   /* 4 == K -> early stop */
+  pv_early_stop_track(&root, 0, "mutation");                   /* 4 == K -> pending */
+  assert(root.prov_expired == 0 && root.prov_early_stop_pending == 1);
+  execution_kind = "mutation";
+  assert(execution_ready(&root) == 0);       /* safe boundary expires root */
   assert(root.prov_expired == 1);
   assert(pv_early_stops == saved_stops + 1);
 
@@ -1684,12 +1693,354 @@ static void test_pv_early_stop(void) {
   root2.prov_deadline_ms = get_cur_time() + 60000;
   queue = &root2; queue_top = &root2;
   cur_fuzz_provisional_root = &root2;
-  for (int i = 0; i < 10; i++) pv_early_stop_track(0);
+  for (int i = 0; i < 10; i++) pv_early_stop_track(&root2, 0, "mutation");
   assert(root2.prov_expired == 0);
+
+  /* A charged fault has no stable coverage observation, but it must still
+   * close its early-stop ledger slot explicitly. */
+  pv_early_stop_k = 4;
+  struct queue_entry root3;
+  memset(&root3, 0, sizeof(root3));
+  root3.is_provisional = 1; root3.prov_candidate_id = 57;
+  root3.prov_budget_left = 64;
+  root3.prov_deadline_ms = get_cur_time() + 60000;
+  root3.prov_zero_novelty_streak = 3; /* a fault breaks consecutive observations */
+  queue = queue_top = &root3;
+  llm_candidate_lineage_pin = 57;
+  execution_kind = "hang-retry";
+  reset_completed_before_forkserver = 1;
+  test_driver_fault = FAULT_TMOUT;
+  assert(run_target(NULL, 1) == FAULT_TMOUT);
+  assert(root3.prov_desc_execs == 1 && root3.prov_early_stop_checks == 0 &&
+         root3.prov_early_stop_skipped == 1 && root3.prov_early_stop_retry == 1 &&
+         root3.prov_zero_novelty_streak == 0);
+  assert(root3.prov_desc_execs == root3.prov_early_stop_checks +
+         root3.prov_early_stop_skipped);
+  test_driver_fault = FAULT_NONE;
+  llm_candidate_lineage_pin = 0;
+  reset_completed_before_forkserver = 0;
 
   pv_early_stop_k = saved_k; pv_early_stops = saved_stops;
   cur_fuzz_provisional_root = NULL;
   queue = queue_top = NULL;
+}
+
+/* Exercise early stopping through the real run_target() observation boundary.
+ * A code-silent root sees one new FTP response state followed by K repeated
+ * responses. The Kth no-novelty observation marks it pending; the next
+ * ordinary execution boundary must refuse work and close the root. */
+static void test_pv_early_stop_run_target_integration(void) {
+  char dir[] = "/tmp/loopfuzz-pv-stop-integration-XXXXXX";
+  assert(mkdtemp(dir));
+  u8 *old_out_dir = out_dir;
+  u8 old_event_log = event_log_enabled;
+  u8 old_execution_log = execution_log_enabled;
+  u8 old_fault = test_driver_fault;
+  u8 old_trace_value = test_trace_value;
+  u8 old_reset = reset_completed_before_forkserver;
+  char *old_response_buf = response_buf;
+  int old_response_size = response_buf_size;
+  u32 *old_response_bytes = response_bytes;
+  u64 old_response_id = response_invocation_id;
+  u64 old_invocation_seq = target_invocation_seq;
+  u64 old_attempt_seq = execution_attempt_seq;
+  u64 old_execs = total_execs;
+  u64 old_campaign_charged = campaign_charged_invocations;
+  u64 old_lineage_invocations = lineage_invocation_total;
+  u64 old_prov_charged = prov_charged_total;
+  u64 old_pv_early_stops = pv_early_stops;
+  u64 old_expired_total = provisional_expired_total;
+  u32 old_live = provisional_live;
+  u32 old_k = pv_early_stop_k;
+  u8 old_dual = pv_early_stop_dual;
+  u32 old_candidate_pin = llm_candidate_lineage_pin;
+  struct queue_entry *old_queue = queue, *old_queue_top = queue_top;
+  const char *old_kind = execution_kind;
+  char *old_protocol = protocol_name;
+  unsigned int *(*old_extract)(unsigned char *, unsigned int, unsigned int *) =
+      extract_response_codes;
+  u8 old_reflow = q1_reflow, old_no_reflow = q1_no_reflow;
+  u8 *saved_trace = ck_alloc(MAP_SIZE);
+  memcpy(saved_trace, trace_bits, MAP_SIZE);
+
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = 512;
+  root.is_provisional = 1;
+  root.prov_candidate_id = 5512;
+  root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  queue = queue_top = &root;
+  provisional_live = 1;
+  llm_candidate_lineage_pin = root.prov_candidate_id;
+  execution_kind = "mutation";
+  protocol_name = "FTP";
+  extract_response_codes = extract_response_codes_ftp;
+  pv_early_stop_k = 4;
+  pv_early_stop_dual = 1;
+  q1_reflow = q1_no_reflow = 0;
+  test_driver_fault = FAULT_NONE;
+  test_trace_value = 0; /* no code coverage novelty in any invocation */
+  reset_completed_before_forkserver = 1;
+  out_dir = (u8 *)dir;
+  event_log_enabled = 1;
+  execution_log_enabled = 0; /* avoid keeping a static ledger stream open */
+
+  for (u32 i = 0; i < 5; i++)
+    assert(run_target(NULL, 1) == FAULT_NONE);
+  assert(root.prov_early_stop_checks == 5);
+  assert(root.prov_early_stop_state_resets == 1);
+  assert(root.prov_zero_novelty_streak == 4);
+  assert(root.prov_early_stop_pending && !root.prov_expired);
+  assert(root.prov_desc_execs == 5 && root.prov_budget_left == 59);
+  assert(pv_early_stops == old_pv_early_stops + 1);
+
+  /* The boundary call is refused before the driver executes, but performs
+   * lifecycle closure and records the reason and conserved budget. */
+  assert(run_target(NULL, 1) == FAULT_RESOURCE_LIMIT);
+  assert(total_execs == old_execs + 5);
+  assert(root.prov_expired && !root.is_provisional);
+  assert(root.prov_early_stop_checks == 5 && root.prov_early_stop_skipped == 0);
+  assert(root.prov_desc_execs == 5 && root.prov_budget_left == 0);
+  assert(root.prov_desc_execs + root.prov_budget_left +
+         root.prov_budget_released + root.prov_budget_uncredited == 64);
+  assert(provisional_expired_total == old_expired_total + 1);
+
+  char path[PATH_MAX], line[8192];
+  snprintf(path, sizeof(path), "%s/productivity-events.jsonl", dir);
+  FILE *f = fopen(path, "r");
+  assert(f && fgets(line, sizeof(line), f));
+  assert(!fgets(line + strlen(line), sizeof(line) - strlen(line), f));
+  assert(fclose(f) == 0);
+  struct json_object *j = json_tokener_parse(line), *v = NULL;
+  assert(j && json_object_object_get_ex(j, "reason", &v));
+  assert(!strcmp(json_object_get_string(v), "early-stop-no-novelty"));
+  assert(json_object_object_get_ex(j, "descendant_invocations", &v) &&
+         json_object_get_int(v) == 5);
+  assert(json_object_object_get_ex(j, "early_stop_checks", &v) &&
+         json_object_get_int(v) == 5);
+  assert(json_object_object_get_ex(j, "budget_total", &v) &&
+         json_object_get_int(v) == 64);
+  json_object_put(j);
+
+  provisional_free_trial_evidence(&root);
+  char provisional_path[PATH_MAX];
+  snprintf(provisional_path, sizeof(provisional_path),
+           "%s/provisional-events.jsonl", dir);
+  assert(unlink(path) == 0 && unlink(provisional_path) == 0);
+  assert(rmdir(dir) == 0);
+  queue = old_queue;
+  queue_top = old_queue_top;
+  provisional_live = old_live;
+  provisional_expired_total = old_expired_total;
+  out_dir = old_out_dir;
+  event_log_enabled = old_event_log;
+  execution_log_enabled = old_execution_log;
+  test_driver_fault = old_fault;
+  test_trace_value = old_trace_value;
+  reset_completed_before_forkserver = old_reset;
+  response_buf = old_response_buf;
+  response_buf_size = old_response_size;
+  response_bytes = old_response_bytes;
+  response_invocation_id = old_response_id;
+  target_invocation_seq = old_invocation_seq;
+  execution_attempt_seq = old_attempt_seq;
+  total_execs = old_execs;
+  campaign_charged_invocations = old_campaign_charged;
+  lineage_invocation_total = old_lineage_invocations;
+  prov_charged_total = old_prov_charged;
+  pv_early_stops = old_pv_early_stops;
+  pv_early_stop_k = old_k;
+  pv_early_stop_dual = old_dual;
+  llm_candidate_lineage_pin = old_candidate_pin;
+  execution_kind = old_kind;
+  protocol_name = old_protocol;
+  extract_response_codes = old_extract;
+  q1_reflow = old_reflow;
+  q1_no_reflow = old_no_reflow;
+  memcpy(trace_bits, saved_trace, MAP_SIZE);
+  ck_free(saved_trace);
+}
+
+/* Exercise the nested path used when an admitted validation descendant is
+ * calibrated.  K repeated response observations must stop calibration at
+ * the next nested execution boundary, before it spends the rest of its
+ * calibration cycle budget. */
+static void test_pv_early_stop_calibration_integration(void) {
+  u8 old_event_log = event_log_enabled;
+  u8 old_execution_log = execution_log_enabled;
+  u8 old_fault = test_driver_fault;
+  u8 old_trace_value = test_trace_value;
+  u8 old_reset = reset_completed_before_forkserver;
+  u8 old_fast_cal = fast_cal;
+  u8 old_no_forkserver = no_forkserver;
+  u8 old_virgin = virgin_bits[11];
+  u8 old_stop_soon = stop_soon;
+  u8 old_cal_episode_active = cal_episode_active;
+  u8 old_q1_reflow = q1_reflow, old_q1_no_reflow = q1_no_reflow;
+  u8 old_cal_last_trainable = cal_last_invocation_trainable;
+  u8 *old_trace = ck_alloc(MAP_SIZE);
+  memcpy(old_trace, trace_bits, MAP_SIZE);
+  char *old_response_buf = response_buf;
+  int old_response_size = response_buf_size;
+  u32 *old_response_bytes = response_bytes;
+  u32 old_messages_sent = messages_sent;
+  u32 old_greeting_bytes = response_greeting_bytes;
+  u8 old_single_connection = response_single_connection;
+  u64 old_response_id = response_invocation_id;
+  u64 old_invocation_seq = target_invocation_seq;
+  u64 old_attempt_seq = execution_attempt_seq;
+  u64 old_execs = total_execs;
+  u64 old_campaign_charged = campaign_charged_invocations;
+  u64 old_lineage_invocations = lineage_invocation_total;
+  u64 old_prov_charged = prov_charged_total;
+  u64 old_pv_early_stops = pv_early_stops;
+  u64 old_expired_total = provisional_expired_total;
+  u64 old_total_cal_us = total_cal_us, old_total_cal_cycles = total_cal_cycles;
+  u64 old_bitmap_size = total_bitmap_size, old_bitmap_entries = total_bitmap_entries;
+  u64 old_idle_total = q1_idle_total;
+  u64 old_cal_total_invocations = cal_episode_total_invocations;
+  u32 old_live = provisional_live;
+  u32 old_k = pv_early_stop_k;
+  u32 old_candidate_pin = llm_candidate_lineage_pin;
+  u32 old_lineage_candidate = cur_fuzz_lineage_candidate_id;
+  u32 old_candidate_index = queued_paths;
+  u32 old_provisional_budget = provisional_budget_default;
+  u32 old_mutation_budget = mutation_charged_calls;
+  u8 old_dual = pv_early_stop_dual;
+  u8 old_score_changed = score_changed;
+  u64 old_q1_active_flow_id = q1_active_flow_id;
+  u64 old_q1_active_flow_remaining = q1_active_flow_remaining;
+  u32 old_q1_active_flow_source = q1_active_flow_source;
+  struct queue_entry *old_queue = queue, *old_queue_top = queue_top;
+  struct queue_entry *old_cur_root = cur_fuzz_provisional_root;
+  struct queue_entry *old_top_rated = top_rated[11];
+  const char *old_kind = execution_kind;
+  char *old_protocol = protocol_name;
+  unsigned int *(*old_extract)(unsigned char *, unsigned int, unsigned int *) =
+      extract_response_codes;
+
+  struct queue_entry root;
+  memset(&root, 0, sizeof(root));
+  root.index = old_candidate_index + 512;
+  root.is_provisional = 1;
+  root.prov_candidate_id = 5513;
+  root.prov_budget_left = 64;
+  root.prov_deadline_ms = get_cur_time() + 60000;
+  root.llm_origin_candidate_id = root.prov_candidate_id;
+
+  /* Keep the stable native trace nonempty so calibration passes its
+   * instrumentation check, while marking its only edge already consumed so
+   * code coverage cannot convert the provisional root. */
+  memset(trace_bits, 0, MAP_SIZE);
+  trace_bits[11] = 1;
+  /* A fresh queue entry also keeps the interrupted calibration from
+   * publishing full-calibration stats or bitmap scores. */
+  root.exec_cksum = 0;
+  virgin_bits[11] = 0;
+  struct queue_entry top_guard;
+  memset(&top_guard, 0, sizeof(top_guard));
+  top_guard.unique_state_count = UINT32_MAX;
+  top_rated[11] = &top_guard; /* Keep calibration's bitmap scoring isolated. */
+
+  queue = queue_top = &root;
+  provisional_live = old_live + 1;
+  cur_fuzz_provisional_root = &root;
+  llm_candidate_lineage_pin = root.prov_candidate_id;
+  cur_fuzz_lineage_candidate_id = root.prov_candidate_id;
+  execution_kind = "mutation";
+  protocol_name = "FTP";
+  extract_response_codes = extract_response_codes_ftp;
+  pv_early_stop_k = 4;
+  pv_early_stop_dual = 1;
+  fast_cal = 0;
+  no_forkserver = 1; /* The real driver is replaced by the selftest stub. */
+  cal_episode_active = 0;
+  q1_reflow = q1_no_reflow = 0;
+  test_driver_fault = FAULT_NONE;
+  test_trace_value = 1;
+  stop_soon = 0;
+  reset_completed_before_forkserver = 1;
+  event_log_enabled = 0;
+  execution_log_enabled = 0;
+
+  u8 fault = calibrate_case(NULL, &root, NULL, 0, 1);
+  assert(fault == FAULT_RESOURCE_LIMIT);
+  assert(total_execs == old_execs + 5); /* The sixth calibration was refused. */
+  assert(campaign_charged_invocations == old_campaign_charged + 5);
+  assert(root.prov_desc_execs == 5 && root.prov_budget_left == 59);
+  assert(root.prov_early_stop_checks == 5);
+  assert(root.prov_early_stop_calibration == 5);
+  assert(root.prov_early_stop_skipped == 0);
+  assert(root.prov_early_stop_state_resets == 1);
+  assert(root.prov_zero_novelty_streak == 4);
+  assert(root.prov_early_stop_pending && !root.prov_expired);
+  assert(pv_early_stops == old_pv_early_stops + 1);
+
+  /* The normal post-fuzz lifecycle hook closes a root left pending by the
+   * nested calibration refusal and releases its remaining budget. */
+  provisional_account_after_fuzz(&root, 0);
+  assert(root.prov_expired && !root.is_provisional);
+  assert(provisional_expired_total == old_expired_total + 1);
+  assert(root.prov_budget_left == 0);
+  assert(root.prov_desc_execs + root.prov_budget_released +
+         root.prov_budget_uncredited == 64);
+
+  provisional_free_trial_evidence(&root);
+  queue = old_queue;
+  queue_top = old_queue_top;
+  cur_fuzz_provisional_root = old_cur_root;
+  provisional_live = old_live;
+  provisional_expired_total = old_expired_total;
+  event_log_enabled = old_event_log;
+  execution_log_enabled = old_execution_log;
+  test_driver_fault = old_fault;
+  test_trace_value = old_trace_value;
+  reset_completed_before_forkserver = old_reset;
+  stop_soon = old_stop_soon;
+  fast_cal = old_fast_cal;
+  no_forkserver = old_no_forkserver;
+  cal_episode_active = old_cal_episode_active;
+  cal_episode_total_invocations = old_cal_total_invocations;
+  q1_reflow = old_q1_reflow;
+  q1_no_reflow = old_q1_no_reflow;
+  cal_last_invocation_trainable = old_cal_last_trainable;
+  response_buf = old_response_buf;
+  response_buf_size = old_response_size;
+  response_bytes = old_response_bytes;
+  messages_sent = old_messages_sent;
+  response_greeting_bytes = old_greeting_bytes;
+  response_single_connection = old_single_connection;
+  response_invocation_id = old_response_id;
+  target_invocation_seq = old_invocation_seq;
+  execution_attempt_seq = old_attempt_seq;
+  total_execs = old_execs;
+  campaign_charged_invocations = old_campaign_charged;
+  lineage_invocation_total = old_lineage_invocations;
+  prov_charged_total = old_prov_charged;
+  pv_early_stops = old_pv_early_stops;
+  total_cal_us = old_total_cal_us;
+  total_cal_cycles = old_total_cal_cycles;
+  total_bitmap_size = old_bitmap_size;
+  total_bitmap_entries = old_bitmap_entries;
+  q1_idle_total = old_idle_total;
+  provisional_budget_default = old_provisional_budget;
+  mutation_charged_calls = old_mutation_budget;
+  pv_early_stop_k = old_k;
+  pv_early_stop_dual = old_dual;
+  llm_candidate_lineage_pin = old_candidate_pin;
+  cur_fuzz_lineage_candidate_id = old_lineage_candidate;
+  execution_kind = old_kind;
+  protocol_name = old_protocol;
+  extract_response_codes = old_extract;
+  score_changed = old_score_changed;
+  top_rated[11] = old_top_rated;
+  q1_active_flow_id = old_q1_active_flow_id;
+  q1_active_flow_remaining = old_q1_active_flow_remaining;
+  q1_active_flow_source = old_q1_active_flow_source;
+  virgin_bits[11] = old_virgin;
+  memcpy(trace_bits, old_trace, MAP_SIZE);
+  ck_free(old_trace);
 }
 
 /* Stage-2 T03: fixed campaign call budget — admitted invocations count
@@ -1818,6 +2169,68 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
   stop_soon = old_stop; campaign_budget_exhausted = old_exhausted;
   q1_no_reflow = old_no_reflow; q1_reflow = old_reflow; q1_direct_service = old_direct;
   execution_kind = old_kind;
+}
+
+/* A capped wallclock campaign must keep waiting after the one-time hold
+ * report has been emitted.  Before this regression guard, the next loop
+ * treated cap refusals as no-execution churn and exited with scheduler
+ * integrity failure instead of reaching the requested deadline. */
+static void test_wallclock_budget_hold_precedes_scheduler_watchdog(void) {
+  u64 old_budget = campaign_call_budget, old_charged = campaign_charged_invocations;
+  u64 old_duration = campaign_duration_sec, old_start = run_start_time_ms;
+  u64 old_idle = q1_idle_total;
+  u32 old_no_exec = no_exec_rounds, old_churn = churn_round_cap;
+  u8 old_wallclock = campaign_wallclock_mode;
+  u8 old_expired = campaign_wallclock_expired, old_exhausted = campaign_budget_exhausted;
+  u8 old_reported = campaign_budget_stop_reported, old_stop = stop_soon;
+  u8 old_integrity = scheduler_integrity_failed, old_log = event_log_enabled;
+
+  campaign_call_budget = 5;
+  campaign_charged_invocations = 5;
+  q1_idle_total = 0;
+  campaign_budget_exhausted = 1;
+  campaign_budget_stop_reported = 1; /* the first hold was already logged */
+  campaign_wallclock_mode = 1;
+  campaign_duration_sec = 60;
+  run_start_time_ms = get_cur_time();
+  campaign_wallclock_expired = 0;
+  stop_soon = 0;
+  scheduler_integrity_failed = 0;
+  no_exec_rounds = 2 * churn_round_cap;
+  event_log_enabled = 0;
+
+  assert(campaign_loop_preflight(1) == CAMPAIGN_LOOP_HOLD);
+  assert(!scheduler_integrity_failed && !stop_soon);
+  assert(campaign_loop_preflight(1) == CAMPAIGN_LOOP_HOLD);
+  assert(campaign_budget_stop_reported == 1);
+
+  /* Once the same run reaches its deadline, the hold resolves cleanly. */
+  run_start_time_ms = get_cur_time() - 2000;
+  campaign_duration_sec = 1;
+  assert(campaign_loop_preflight(1) == CAMPAIGN_LOOP_STOP);
+  assert(campaign_wallclock_expired && stop_soon == 2);
+
+  /* Call-budget campaigns still stop as soon as the cap is reached. */
+  campaign_wallclock_mode = 0;
+  campaign_wallclock_expired = 0;
+  stop_soon = 0;
+  assert(campaign_loop_preflight(0) == CAMPAIGN_LOOP_STOP);
+  assert(stop_soon == 2 && !campaign_wallclock_expired);
+
+  campaign_call_budget = old_budget;
+  campaign_charged_invocations = old_charged;
+  campaign_duration_sec = old_duration;
+  run_start_time_ms = old_start;
+  q1_idle_total = old_idle;
+  no_exec_rounds = old_no_exec;
+  churn_round_cap = old_churn;
+  campaign_wallclock_mode = old_wallclock;
+  campaign_wallclock_expired = old_expired;
+  campaign_budget_exhausted = old_exhausted;
+  campaign_budget_stop_reported = old_reported;
+  stop_soon = old_stop;
+  scheduler_integrity_failed = old_integrity;
+  event_log_enabled = old_log;
 }
 
 /* A late NO_REFLOW release may only park remaining campaign headroom. It
@@ -2441,10 +2854,13 @@ int main(void) {
   test_conversion_classification();
   test_campaign_budget_cap();
   test_elapsed_time_campaign_without_call_cap();
+  test_wallclock_budget_hold_precedes_scheduler_watchdog();
   test_no_reflow_release_respects_charged_headroom();
   test_witness_tomb_expiry_move();
   test_request_gate();
   test_pv_early_stop();
+  test_pv_early_stop_run_target_integration();
+  test_pv_early_stop_calibration_integration();
   test_q1_reflow_consumption();
   test_closed_validation_quota_and_productivity();
   test_closed_validation_quota_no_reflow();

@@ -84,7 +84,9 @@ Upon completion of execution, the script will process the archives by construcin
 
 ### 1.5. Cleaning Up
 
-When the evaluation of the artifact is completed, running the `clean.sh` script will ensure that the only leftover files are in this directory:
+After every run has finished, its results have been collected, and coverage has been audited, `clean.sh` removes stopped subject containers and images. It refuses cleanup while any subject container is running:
+
+Do not run a global `docker stop` followed by `docker rm` or `docker container prune` during an experiment. Those Docker commands bypass this guard and destroy in-container results before collection.
 
 ```bash
 ./clean.sh

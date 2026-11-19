@@ -6,6 +6,33 @@ nine subject `cov_script.sh` entry points
 keep the existing five positional arguments. They require the shared module and
 complete discovery coordinates by default. Other subject scripts are unchanged.
 
+## Replay completeness after a timed campaign
+
+The 15-minute fuzzing deadline only ends input generation. Coverage acceptance
+requires a separate replay of every saved input and an independent audit of
+its frame ledger, reset, exit status, and gcov evidence. The shared replayer
+checks all nine targets; it never infers a full send from client exit zero.
+
+LightFTP and Lighttpd1 now wait for a bound listener, finish the client, then
+stop the server. LightFTP's gcov build flushes on `SIGUSR1`, while Lighttpd1
+uses graceful `SIGTERM`. For LightFTP, Lighttpd1, forked-daapd, Kamailio, Exim,
+ProFTPD and Live555, every replay must produce a new or updated `.gcda` file;
+a clean exit with no fresh coverage is incomplete. BFTPD and Pure-FTPd import
+per-session `.gcda` from their chroot mirrors instead.
+
+A protocol-requested control close may leave later framed input unreachable.
+The v4 policy accepts this only for observed LightFTP/Pure-FTPd `QUIT` + final
+`221`, or forked-daapd/Lighttpd1 HTTP `Connection: close` requests with a
+matching, complete close response. It additionally requires a fully sent
+prefix, peer-close stop in the frame ledger, normal server exit, successful
+reset, and fresh session coverage. Other early closes, truncated responses,
+timeouts and missing frames remain `coverage_incomplete`. ProFTPD, Exim,
+Live555 and Kamailio have no protocol-end exemption under this policy.
+BFTPD has its own versioned `QUIT`/`221` policy. Its v3 rule also accepts a
+last-frame `ECONNRESET` after a complete send when earlier receives succeeded,
+the server exited normally, and per-session gcda was imported. A reset with
+only a `250`/`257` final reply remains incomplete.
+
 ## Installation
 
 Install or mount this one module inside each new experiment container and set:

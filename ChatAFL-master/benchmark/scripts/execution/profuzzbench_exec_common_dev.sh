@@ -127,6 +127,7 @@ WORKDIR="/home/ubuntu/experiments"
 RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/archive_contract.sh"
 RECOVERY_HELPER="${SCRIPT_DIR}/recover_result_archives.sh"
 WATCHDOG_HELPER="${SCRIPT_DIR}/fuzz_stall_watchdog.sh"
 RESULT_MANIFEST="${SAVETO}/.result_manifest.tsv"
@@ -203,13 +204,15 @@ read_sample_status_value() {
 }
 
 archive_is_complete() {
-  local archive="$1" listing req
-  [[ -s "$archive" ]] || return 1
+  local archive="$1" listing
+  archive_tar_is_structurally_complete "$archive" && return 0
+  # Older baseline images may still emit only the legacy CSV. LoopFuzz must
+  # always supply a terminal; partially written v4/v5 output is never legacy.
+  [[ "$FUZZER" != "loopfuzz" && -s "$archive" ]] || return 1
   listing="$(tar tzf "$archive" 2>/dev/null)" || return 1
-  for req in fuzzer_stats cov_over_time.csv; do
-    printf '%s\n' "$listing" | grep -qE "(^|/)${req//./\\.}$" || return 1
-  done
-  return 0
+  [[ "$listing" != *cov_over_time.csv.v4/* && "$listing" != *cov_over_time.csv.v5/* ]] || return 1
+  archive_listing_has_member "$listing" fuzzer_stats || return 1
+  archive_listing_has_member "$listing" cov_over_time.csv
 }
 
 mark_completed_samples() {
@@ -243,6 +246,9 @@ mark_completed_samples() {
 
 finalize_sample_status() {
   local idx archive_name container_id exit_code oom_killed archive_path
+  local acceptance files_complete final_status final_reason
+  local -a coverage_args=()
+  [[ "$FUZZER" != "loopfuzz" ]] && coverage_args+=(--allow-legacy)
 
   for idx in "${!cids[@]}"; do
     archive_name="${archive_names[$idx]}"
@@ -251,31 +257,37 @@ finalize_sample_status() {
     exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
     oom_killed="$(docker inspect --format '{{.State.OOMKilled}}' "$container_id" 2>/dev/null || true)"
 
-    if [[ "$exit_code" == "0" ]] && archive_is_complete "$archive_path"; then
-      write_sample_status "$archive_name" \
-        "container_id=${container_id}" \
-        "status=completed" \
-        "reason=completed" \
-        "finished_at=$(date -Iseconds)" \
-        "oom_killed=${oom_killed}" \
-        "exit_code=0"
-    elif [[ "$exit_code" == "0" ]]; then
-      write_sample_status "$archive_name" \
-        "container_id=${container_id}" \
-        "status=failed" \
-        "reason=archive_incomplete" \
-        "finished_at=$(date -Iseconds)" \
-        "oom_killed=${oom_killed}" \
-        "exit_code=0"
-    else
-      write_sample_status "$archive_name" \
-        "container_id=${container_id}" \
-        "status=failed" \
-        "reason=exit_code_${exit_code:-unknown}" \
-        "finished_at=$(date -Iseconds)" \
-        "oom_killed=${oom_killed}" \
-        "exit_code=${exit_code}"
+    files_complete=false
+    acceptance=unknown
+    if archive_is_complete "$archive_path"; then
+      files_complete=true
+      acceptance="$(python3 "${SCRIPT_DIR}/reconcile_result_status.py" \
+        --archive-acceptance "$archive_path" "${coverage_args[@]}" 2>/dev/null)" || acceptance=invalid
     fi
+    final_status=failed
+    if [[ "$exit_code" != "0" ]]; then
+      final_reason="exit_code_${exit_code:-unknown}"
+    elif [[ "$oom_killed" == "true" ]]; then
+      final_reason=oom_killed
+    elif [[ "$files_complete" != "true" ]]; then
+      final_reason=archive_incomplete
+    elif [[ "$acceptance" == "incomplete" ]]; then
+      final_reason=coverage_incomplete
+    elif [[ "$acceptance" != "complete" && !( "$FUZZER" != "loopfuzz" && "$acceptance" == "not_applicable" ) ]]; then
+      final_reason=coverage_evidence_invalid
+    else
+      final_status=completed
+      final_reason=completed
+    fi
+    write_sample_status "$archive_name" \
+      "container_id=${container_id}" \
+      "status=${final_status}" \
+      "reason=${final_reason}" \
+      "finished_at=$(date -Iseconds)" \
+      "oom_killed=${oom_killed}" \
+      "exit_code=${exit_code}" \
+      "archive_files_complete=${files_complete}" \
+      "coverage_acceptance=${acceptance}"
   done
 }
 
