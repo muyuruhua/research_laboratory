@@ -101,6 +101,7 @@ cleanup() {
 }
 
 declare -a CHILD_PIDS=()
+declare -a STATUS_FILES=()
 i=0
 for cmd in "${COMMANDS[@]}"; do
   i=$((i+1))
@@ -120,11 +121,14 @@ for cmd in "${COMMANDS[@]}"; do
     printf '%s\t%s\n' "$rc" "$((end-start))" > "$status"
   ) &
   CHILD_PIDS+=($!)
+  STATUS_FILES+=("$status")
 
   # 顺序模式：等当前任务真正结束（.status 落盘）后再启动下一条
   if [[ "$MODE" == "sequential" ]]; then
     while [[ ! -s "$status" ]]; do
-      wait "${CHILD_PIDS[-1]}" 2>/dev/null || true
+      wait "${CHILD_PIDS[-1]}" 2>/dev/null
+      # wait 返回后进程已不存在 = 异常死亡未写 status，跳出防死循环
+      kill -0 "${CHILD_PIDS[-1]}" 2>/dev/null || break
       sleep 0.2
     done
   fi
@@ -134,7 +138,24 @@ trap cleanup TERM
 
 echo ""
 echo "等待全部任务结束..."
-for pid in "${CHILD_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+# wait 会被信号（Ctrl+C）打断而提前返回，不能只等一遍：
+# 以每个任务的 .status 落盘为准，没落盘就继续 wait 该任务，
+# 确保汇总时所有任务都已真正结束（2026-11-19 修复：此前一次
+# Ctrl+C 会让主脚本在任务未完成时就进入汇总）。
+for idx in "${!CHILD_PIDS[@]}"; do
+  pid="${CHILD_PIDS[$idx]}"
+  sf="${STATUS_FILES[$idx]}"
+  while [[ ! -s "$sf" ]]; do
+    wait "$pid" 2>/dev/null
+    wrc=$?
+    # 进程已不存在 = 异常死亡未写 status（如被 kill -9），跳出防死循环。
+    # 不能用 wait 返回码判断存活：set -m 作业表对已回收进程会一直
+    # 返回记忆的退出码；127 仅作为 PID 复用兜底。
+    kill -0 "$pid" 2>/dev/null || break
+    [[ $wrc -eq 127 ]] && break
+    sleep 0.2
+  done
+done
 
 # ── 汇总 ──────────────────────────────────────────────────
 echo ""
@@ -148,10 +169,16 @@ for cmd in "${COMMANDS[@]}"; do
   name="$(derive_name "$cmd")"
   prefix=$(printf '%02d' "$i")
   status="$LOG_DIR/${prefix}_${name}.status"
-  rc=$(cut -f1 "$status" 2>/dev/null || echo "?")
-  secs=$(cut -f2 "$status" 2>/dev/null || echo "?")
-  if [[ "$rc" == "0" ]]; then mark="OK  "; else mark="FAIL"; ALL_OK=0; fi
-  printf ' [%s] %-22s 退出码=%-3s 耗时=%sm%ss\n' "$mark" "$name" "$rc" "$((secs/60))" "$((secs%60))"
+  rc=$(cut -f1 "$status" 2>/dev/null)
+  secs=$(cut -f2 "$status" 2>/dev/null)
+  # status 缺失/异常时不得把 "?" 送进算术展开（会语法错误打死脚本）
+  if [[ "$rc" =~ ^[0-9]+$ ]]; then
+    if [[ "$secs" =~ ^[0-9]+$ ]]; then dur="$((secs/60))m$((secs%60))s"; else dur="未知"; secs=0; fi
+    if [[ "$rc" == "0" ]]; then mark="OK  "; else mark="FAIL"; ALL_OK=0; fi
+  else
+    rc="?" ; dur="未知"; mark="未知"; ALL_OK=0
+  fi
+  printf ' [%s] %-22s 退出码=%-3s 耗时=%s\n' "$mark" "$name" "$rc" "$dur"
   echo "        日志: $LOG_DIR/${prefix}_${name}.log"
 done
 echo "══════════════════════════════════════════════════════════"

@@ -1,0 +1,51 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261119T145350
+║  本批身份:       timed-20261119T145350-3760096
+║  结果目录模式:   ablation/results-lightftpd_ablation_<label>_timed-20261119T145350-3760096/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~44 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 1 run = 6 容器
+  SKIPCOUNT=100
+  Docker images required: lightftpd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: nollm512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: lightftpd  每组重复: 1  时长: 5 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: nollm512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-lightftpd_ablation_<label>_timed-20261119T145350-3760096/
+========================================================
+
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 1 容器/组 = 1 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~9 GB (可用: ~44 GB)
+  ✓ 内存充足，安全余量 ~35 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 nollm512 (PID=3760410)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:nollm512] 启动 → ablation/results-lightftpd_ablation_nollm512_timed-20261119T145350-3760096/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[ERROR] Unknown target: lightftpd
+[ERROR] Known targets: lightftp,bftpd,proftpd,pure-ftpd,exim,live555,kamailio,forked-daapd,lighttpd1,mosquitto,mosquitto-v2.0.18,mosquitto-v2.1.2,all
+[ABLATION:nollm512] 失败 (run_dev.sh exit=2)
+[ABLATION] nollm512 失败 (exit=2)
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+[POSTRUN] Diagnostics complete.

@@ -1,0 +1,71 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261119T150640
+║  本批身份:       timed-20261119T150640-3857219
+║  结果目录模式:   ablation/results-live555_ablation_<label>_timed-20261119T150640-3857219/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~44 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 1 run = 6 容器
+  SKIPCOUNT=100
+  Docker images required: live555 (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: calibrated512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: live555  每组重复: 1  时长: 15 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: calibrated512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-live555_ablation_<label>_timed-20261119T150640-3857219/
+========================================================
+
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 1 容器/组 = 1 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~9 GB (可用: ~44 GB)
+  ✓ 内存充足，安全余量 ~35 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 calibrated512 (PID=3858814)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:calibrated512] 启动 → ablation/results-live555_ablation_calibrated512_timed-20261119T150640-3857219/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=1 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-3858823.CsSptS
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_calibrated512_timed-20261119T150640-3857219
+║  预期结果路径:   benchmark/results-live555_ablation_calibrated512_timed-20261119T150640-3857219
+║  查找命令:       ls -d benchmark/results-live555_ablation_calibrated512_timed-20261119T150640-3857219
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 1
+# TIMEOUT: 1260 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: live555
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON live555 (Volume Mode) *****
+
+
+LOOPFUZZ(live555): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/RTSP/Live555
+[RUN_IDENTITY] arm=out-live555-loopfuzz run=1 campaign=lf-22fce3563bc981a77fc5a70bc5bf68b3 rng=0x7773bcada490ff5b
+
+LOOPFUZZ(live555): Fuzzing in progress ...
+LOOPFUZZ(live555): Waiting for the following containers to stop: 613cc3cac608
+LOOPFUZZ(live555): You can check logs by: docker logs -f 613cc3cac608
+LOOPFUZZ(live555): You can stop all containers by: docker stop 613cc3cac608

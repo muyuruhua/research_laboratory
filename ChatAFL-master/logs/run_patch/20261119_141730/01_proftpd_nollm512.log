@@ -69,3 +69,55 @@ LOOPFUZZ(proftpd): Fuzzing in progress ...
 LOOPFUZZ(proftpd): Waiting for the following containers to stop: 6fc2d7798adb
 LOOPFUZZ(proftpd): You can check logs by: docker logs -f 6fc2d7798adb
 LOOPFUZZ(proftpd): You can stop all containers by: docker stop 6fc2d7798adb
+
+LOOPFUZZ(proftpd): Collecting results and save them to ../ablation/results-proftpd_ablation_nollm512_timed-20261119T141730-3306374[recover] collecting out-proftpd-loopfuzz_1.tar.gz from 6fc2d7798adb
+[recover] collected out-proftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-proftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(proftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978  (docker logs proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978 ; docker cp proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978:<path> .)
+LOOPFUZZ(proftpd): [KEEP] remove them with:  docker rm -f 6fc2d7798adb7104b66d8c53bf916a73a46a03403f81cc775023cb1612212f29
+LOOPFUZZ(proftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(proftpd): I am done!
+
+LOOPFUZZ(proftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978  (docker logs proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978 ; docker cp proftpd-loopfuzz-run1-1119-141732-ablation_nollm512_timed-20261119T141730--3306747-5978:<path> .)
+LOOPFUZZ(proftpd): [KEEP] remove them with:  docker rm -f 6fc2d7798adb7104b66d8c53bf916a73a46a03403f81cc775023cb1612212f29
+LOOPFUZZ(proftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(proftpd): Generating run_summary.csv (1 tarballs, timeout=21 min)...
+LOOPFUZZ(proftpd): ✓ run_summary.csv written to /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-proftpd_ablation_nollm512_timed-20261119T141730-3306374/run_summary.csv
+[recover] ✓ archive files complete (coverage acceptance=complete): out-proftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:nollm512] 完成
+[ABLATION] nollm512 成功结束
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-proftpd_ablation_nollm512_timed-20261119T141730-3306374
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-proftpd_ablation_nollm512_timed-20261119T141730-3306374: clean
+[POSTRUN] Diagnostics complete.
