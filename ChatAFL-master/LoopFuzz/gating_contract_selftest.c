@@ -2107,7 +2107,11 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
   u64 old_budget = campaign_call_budget, old_charged = campaign_charged_invocations;
   u64 old_mutation_budget = mutation_call_budget, old_duration = campaign_duration_sec;
   u64 old_start = run_start_time_ms, old_ord = ord_invocation_total;
+  u64 old_active_start = campaign_active_start_time_ms;
+  u64 old_startup_deadline = campaign_startup_deadline_ms;
+  u64 old_startup_timeout = campaign_startup_timeout_sec;
   u8 old_wallclock = campaign_wallclock_mode, old_expired = campaign_wallclock_expired;
+  u8 old_startup_expired = campaign_startup_expired;
   u8 old_stop = stop_soon, old_exhausted = campaign_budget_exhausted;
   u8 old_no_reflow = q1_no_reflow, old_reflow = q1_reflow;
   u8 old_direct = q1_direct_service;
@@ -2115,8 +2119,13 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
 
   campaign_wallclock_mode = 1;
   campaign_duration_sec = 86400;
+  campaign_startup_timeout_sec = 360;
   campaign_call_budget = mutation_call_budget = campaign_charged_invocations = 0;
   run_start_time_ms = get_cur_time();
+  campaign_active_start_time_ms = 0;
+  campaign_startup_deadline_ms = run_start_time_ms +
+      campaign_startup_timeout_sec * 1000ULL;
+  campaign_startup_expired = 0;
   campaign_wallclock_expired = campaign_budget_exhausted = stop_soon = 0;
   q1_no_reflow = q1_reflow = q1_direct_service = 0;
   execution_kind = "mutation";
@@ -2152,8 +2161,28 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
   assert(campaign_policy_error() != NULL);
   mutation_call_budget = 0;
 
-  /* Simulate elapsed time; no real wait or gateway request is needed. */
+  /* Startup may exceed the requested active-fuzz budget without expiring it. */
   run_start_time_ms = get_cur_time() - 2000;
+  campaign_active_start_time_ms = 0;
+  assert(!campaign_deadline_reached());
+
+  /* Startup has its own terminal deadline and must not mark fuzz time expired. */
+  campaign_startup_deadline_ms = get_cur_time() - 1;
+  campaign_startup_timeout_sec = 1;
+  assert(campaign_deadline_reached());
+  assert(campaign_startup_expired && !campaign_wallclock_expired && stop_soon == 2);
+
+  /* Once active fuzzing starts, the stale startup deadline is irrelevant. */
+  campaign_startup_expired = campaign_wallclock_expired = stop_soon = 0;
+  campaign_startup_deadline_ms = get_cur_time() - 1;
+  campaign_active_start_time_ms = get_cur_time();
+  campaign_duration_sec = 86400;
+  assert(!campaign_deadline_reached());
+
+  /* Simulate elapsed active time; no real wait or gateway request is needed. */
+  campaign_startup_deadline_ms = 0;
+  campaign_active_start_time_ms = get_cur_time() - 2000;
+  campaign_duration_sec = 1;
   u64 charged_before = campaign_charged_invocations, execs_before = total_execs;
   assert(campaign_deadline_reached());
   assert(campaign_wallclock_expired && stop_soon == 2);
@@ -2164,8 +2193,12 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
 
   campaign_call_budget = old_budget; campaign_charged_invocations = old_charged;
   mutation_call_budget = old_mutation_budget; campaign_duration_sec = old_duration;
-  run_start_time_ms = old_start; ord_invocation_total = old_ord;
+  run_start_time_ms = old_start; campaign_active_start_time_ms = old_active_start;
+  campaign_startup_deadline_ms = old_startup_deadline;
+  campaign_startup_timeout_sec = old_startup_timeout;
+  ord_invocation_total = old_ord;
   campaign_wallclock_mode = old_wallclock; campaign_wallclock_expired = old_expired;
+  campaign_startup_expired = old_startup_expired;
   stop_soon = old_stop; campaign_budget_exhausted = old_exhausted;
   q1_no_reflow = old_no_reflow; q1_reflow = old_reflow; q1_direct_service = old_direct;
   execution_kind = old_kind;
@@ -2178,6 +2211,7 @@ static void test_elapsed_time_campaign_without_call_cap(void) {
 static void test_wallclock_budget_hold_precedes_scheduler_watchdog(void) {
   u64 old_budget = campaign_call_budget, old_charged = campaign_charged_invocations;
   u64 old_duration = campaign_duration_sec, old_start = run_start_time_ms;
+  u64 old_active_start = campaign_active_start_time_ms;
   u64 old_idle = q1_idle_total;
   u32 old_no_exec = no_exec_rounds, old_churn = churn_round_cap;
   u8 old_wallclock = campaign_wallclock_mode;
@@ -2193,6 +2227,7 @@ static void test_wallclock_budget_hold_precedes_scheduler_watchdog(void) {
   campaign_wallclock_mode = 1;
   campaign_duration_sec = 60;
   run_start_time_ms = get_cur_time();
+  campaign_active_start_time_ms = get_cur_time();
   campaign_wallclock_expired = 0;
   stop_soon = 0;
   scheduler_integrity_failed = 0;
@@ -2205,7 +2240,7 @@ static void test_wallclock_budget_hold_precedes_scheduler_watchdog(void) {
   assert(campaign_budget_stop_reported == 1);
 
   /* Once the same run reaches its deadline, the hold resolves cleanly. */
-  run_start_time_ms = get_cur_time() - 2000;
+  campaign_active_start_time_ms = get_cur_time() - 2000;
   campaign_duration_sec = 1;
   assert(campaign_loop_preflight(1) == CAMPAIGN_LOOP_STOP);
   assert(campaign_wallclock_expired && stop_soon == 2);
@@ -2221,6 +2256,7 @@ static void test_wallclock_budget_hold_precedes_scheduler_watchdog(void) {
   campaign_charged_invocations = old_charged;
   campaign_duration_sec = old_duration;
   run_start_time_ms = old_start;
+  campaign_active_start_time_ms = old_active_start;
   q1_idle_total = old_idle;
   no_exec_rounds = old_no_exec;
   churn_round_cap = old_churn;

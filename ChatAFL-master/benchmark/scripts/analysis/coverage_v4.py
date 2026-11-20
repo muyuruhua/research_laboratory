@@ -36,10 +36,29 @@ FRAME_AUDIT_HARNESS_VERSIONS = (
     "20261119-cross-target-frame-audit-bftpd-protocol-end-v2",
     "20261119-cross-target-frame-audit-bftpd-protocol-end-v3",
     "20261119-cross-target-frame-audit-bftpd-protocol-end-v4",
+    "20261119-verified-peer-close-and-final-send-v5",
+    "20261119-verified-terminal-quit-and-lightftp-boundary-v6",
+    "20261119-verified-terminal-quit-and-lightftp-stream-boundary-v7",
+    "20261119-smtp-quit-and-verified-target-boundaries-v8",
+    "20261119-ftp-quit-proftpd-bftpd-audit-v9",
+    "20261120-final-221-multiline-aware-replay-v10",
+    "20261120-verified-overlong-policy-close-v11",
+    "20261120-http-announced-close-smtp-final-reply-v12",
 )
 REPLAY_HARNESS_VERSION = FRAME_AUDIT_HARNESS_VERSIONS[-1]
 LOOPFUZZ_REPLAYER_ENV = "COVERAGE_V4_LOOPFUZZ_REPLAYER"
 _VERIFIED_LOOPFUZZ_REPLAYERS = {}
+
+
+def replay_policy_version(harness_version):
+    """Map the archived replay-harness revision to its protocol policy."""
+    try:
+        harness_index = FRAME_AUDIT_HARNESS_VERSIONS.index(harness_version)
+    except ValueError as error:
+        raise CoverageError("unknown replay harness version: " + str(harness_version)) from error
+    return max(4, harness_index + 2)
+
+
 BFTPD_EXIT_MARKER = "COVERAGE_REPLAY_SIGPIPE_NORMAL_EXIT_V2"
 BFTPD_CHROOT_MARKER = "COVERAGE_REPLAY_CHROOT_GCOV_PREFIX_V1"
 BFTPD_DATA_CHANNEL_MARKER = "COVERAGE_REPLAY_DATA_CHANNEL_CONTROL_FD_V1"
@@ -267,25 +286,36 @@ def bftpd_exit_policy(cwd, allow_incomplete=False):
                                       else "legacy-unverified-passive-fd-ownership"),
                 data_socket_lifecycle=(BFTPD_DATA_SOCKET_LIFECYCLE_MARKER if verified
                                        else "legacy-unverified-data-socket-lifecycle"),
-                session_policy="bftpd-client-lifetime-protocol-end-v3",
+                session_policy="bftpd-client-lifetime-protocol-end-v4",
                 completeness="all-frames-sent-or-audited-bftpd-quit-221-control-close-or-reset",
                 verified=verified, binary_sha256=digest_file(binary) if binary.is_file() else None,
                 scope="coverage replay build only; fuzz target unchanged")
 
 
-def proftpd_replay_policy():
+def proftpd_replay_policy(overlong_close=None):
     """Pin the supervised listener lifecycle used for ProFTPD corpus replay."""
-    return dict(name="proftpd-ready-client-graceful-exit-v4", verified=True,
-                readiness="bound-tcp-listener",
-                shutdown="natural-exit-first;harness-sigterm-after-client-completion",
-                handled_shutdown_exit_signal=-signal.SIGSEGV,
-                handled_harness_shutdown_signal="SIGTERM",
-                acceptance_requires=["harness-requested-sigterm-shutdown",
-                                     "server-ready", "client-exit-0",
-                                     "no-client-timeout", "successful-reset",
-                                     "ledger-verified-full-send",
-                                     "session-gcda-touched"],
-                scope="coverage replay harness only; fuzz target unchanged")
+    policy = dict(name="proftpd-ready-client-graceful-exit-v5", verified=True,
+                  readiness="bound-tcp-listener",
+                  shutdown="natural-exit-first;harness-sigterm-after-client-completion",
+                  handled_shutdown_exit_signal=-signal.SIGSEGV,
+                  handled_harness_shutdown_signal="SIGTERM",
+                  acceptance_requires=["harness-requested-sigterm-shutdown-or-audited-quit-221",
+                                       "server-ready", "client-exit-0",
+                                       "no-client-timeout", "successful-reset",
+                                       "ledger-verified-full-send",
+                                       "session-gcda-touched"],
+                  scope="coverage replay harness only; fuzz target unchanged")
+    if overlong_close is not None:
+        # v6 adds the mid-input E2BIG policy close: the server's own overlong
+        # command defense ends the session with unread pipelined bytes, the
+        # kernel converts the close into RST, and every frame after the
+        # overlong one is unreachable by construction. Enabled only with a
+        # source-derived boundary plus a live behavioral probe.
+        policy["name"] = "proftpd-ready-client-graceful-exit-v6"
+        policy["overlong_close"] = overlong_close
+        policy["acceptance_requires"] = policy["acceptance_requires"] + [
+            "verified-overlong-source-policy", "verified-overlong-behavior-probe"]
+    return policy
 
 
 def pureftpd_source_patch_markers(source_bytes):
@@ -356,7 +386,8 @@ def replay_incompleteness(replay):
     if replay.get("helper_ready") is False:
         reasons.append("helper-not-ready")
     if (("send_completeness" in replay or
-            replay.get("harness_policy") == "proftpd-ready-client-graceful-exit-v4") and
+            replay.get("harness_policy") in ("proftpd-ready-client-graceful-exit-v4",
+                                              "proftpd-ready-client-graceful-exit-v5")) and
             replay.get("send_completeness") != "complete" and
             replay.get("bftpd_protocol_end_expected") is not True and
             replay.get("protocol_end_expected") is not True):
@@ -430,6 +461,75 @@ def pureftpd_final_reply_code(replay_log):
     if [str(code) for code in transcript_codes] != summary_parts:
         return None
     return transcript_codes[-1] if transcript_codes else None
+
+
+def lightftp_final_reply_code(replay_log):
+    """Read LightFTP's final reply, including its known thread-exit log race.
+
+    LightFTP can append its thread-exit diagnostic to the replay client's
+    response summary line. In that case the detailed CRLF transcript remains
+    authoritative, while the uncorrupted summary codes must still match an
+    exact prefix of that transcript. No other summary suffix is accepted.
+    """
+    parsed = pureftpd_final_reply_code(replay_log)
+    if parsed is not None:
+        return parsed
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return None
+
+    summary_matches = list(re.finditer(
+        rb"(?m)^Responses from server:([^\r\n]*)\r?$", raw))
+    details_matches = list(re.finditer(
+        rb"(?m)^Responses in details:\r?$", raw))
+    if len(summary_matches) != 1 or len(details_matches) != 1:
+        return None
+    summary_match, details_match = summary_matches[0], details_matches[0]
+    if details_match.start() <= summary_match.start():
+        return None
+
+    suffix = re.fullmatch(
+        rb"0-(?P<codes>[0-9]{3}(?:-[0-9]{3})*)-"
+        rb"[0-9]{2}-[0-9]{2}-[0-9]{4} "
+        rb"[0-9]{2}:[0-9]{2}:[0-9]{2} S-id=[0-9]+ : "
+        rb"<- Thread exit\. Thread counter g_threads=0",
+        summary_match.group(1))
+    if not suffix:
+        return None
+    summary_codes = [int(code) for code in suffix.group("codes").split(b"-")]
+
+    details_start = details_match.end()
+    if raw[details_start:details_start + 2] == b"\r\n":
+        details_start += 2
+    elif raw[details_start:details_start + 1] == b"\n":
+        details_start += 1
+    else:
+        return None
+    separators = list(re.finditer(
+        rb"(?m)^--------------------------------\r?$", raw[details_start:]))
+    if len(separators) != 1:
+        return None
+    details = raw[details_start:details_start + separators[0].start()]
+    if details.endswith(b"\r\n\n"):
+        details = details[:-1]
+    if not details.endswith(b"\r\n"):
+        return None
+
+    detail_lines = details.split(b"\r\n")
+    if detail_lines and detail_lines[-1] == b"":
+        detail_lines.pop()
+    terminal = (re.fullmatch(rb"([0-9]{3}) (?:[^\r\n]*)", detail_lines[-1])
+                if detail_lines else None)
+    if not terminal:
+        return None
+    terminal_code = int(terminal.group(1))
+    transcript_codes = ftp_reply_codes(details.decode("utf-8", errors="replace"))
+    if (terminal_code not in (221, 421) or not transcript_codes or
+            transcript_codes[-1] != terminal_code or
+            transcript_codes[:len(summary_codes)] != summary_codes):
+        return None
+    return terminal_code
 
 
 def bftpd_final_reply_code(replay_log, allow_terminal_fallback=True):
@@ -633,6 +733,47 @@ def http_close_request(payload):
     return closes == [b"close"] and (not lengths or lengths == [b"0"])
 
 
+def http_response_announced_close_complete(replay_log):
+    """The server itself announced the connection close in the FINAL response.
+
+    RFC 7230 semantics: a response carrying ``Connection: close`` states that
+    the server will close after this response. lighttpd emits exactly that
+    (after 200/404/501 alike; observed 2026-11-20 on 110 mid-input closes:
+    every transcript ended with one complete length-checked response whose
+    Connection header is close, followed by the FIN the ledger records).
+    The final response must be complete — status line, well-formed headers,
+    exactly one Connection: close, one Content-Length that matches the
+    remaining body bytes exactly — so a truncated or non-final response
+    never qualifies. """
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return False
+    marker = b"Responses in details:\n"
+    if raw.count(marker) != 1 or raw.count(b"Responses from server:") != 1:
+        return False
+    details = raw.split(marker, 1)[1].split(b"\n--------------------------------", 1)[0]
+    starts = list(re.finditer(rb"HTTP/1\.[01] [1-5][0-9]{2} [^\r\n]*\r\n", details))
+    if not starts:
+        return False
+    last = starts[-1]
+    remainder = details[last.end():]
+    if b"\r\n\r\n" not in remainder:
+        return False
+    head, body = remainder.split(b"\r\n\r\n", 1)
+    headers = [line.split(b":", 1) for line in head.split(b"\r\n") if line]
+    if any(len(parts) != 2 for parts in headers):
+        return False
+    closes = [value.strip().lower() for name, value in headers
+              if name.strip().lower() == b"connection"]
+    lengths = [value.strip() for name, value in headers
+               if name.strip().lower() == b"content-length"]
+    if (closes != [b"close"] or len(lengths) != 1 or
+            not lengths[0].isdigit() or len(lengths[0]) > 18):
+        return False
+    return len(body) == int(lengths[0])
+
+
 def http_close_response_complete(replay_log):
     """Require a single, length-checked HTTP response and Connection: close."""
     try:
@@ -667,6 +808,130 @@ def http_close_response_complete(replay_log):
     if size > len(rest):
         return False
     return rest[size:].startswith(b"\n--------------------------------")
+
+
+def http_head_request_frame(payload):
+    """Recognize HEAD by its unambiguous method token, even for a bad URI."""
+    if payload.count(b"\r\n\r\n") != 1 or not payload.endswith(b"\r\n\r\n"):
+        return False
+    return payload.startswith(b"HEAD ") and b" HTTP/1." in payload[5:]
+
+
+def http_final_close_response_complete(replay_log, sent_frames=None):
+    """Parse complete responses, including bodyless HEAD replies, through close."""
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return False
+    marker = b"Responses in details:\n"
+    footer = b"\n--------------------------------"
+    if raw.count(marker) != 1 or raw.count(b"Responses from server:") != 1:
+        return False
+    summary = re.search(
+        rb"(?m)^Responses from server:0(?P<states>(?:-[0-9]{3})+)-\r?$", raw)
+    if not summary:
+        return False
+    summary_statuses = [int(code) for code in
+                        re.findall(rb"-([0-9]{3})", summary.group("states"))]
+    details = raw.split(marker, 1)[1]
+    if footer not in details:
+        return False
+    details = details.rsplit(footer, 1)[0]
+    offset, final_close, count, used_head = 0, False, 0, False
+    detail_statuses = []
+    while offset < len(details):
+        header_end = details.find(b"\r\n\r\n", offset)
+        if header_end < 0:
+            return False
+        lines = details[offset:header_end].split(b"\r\n")
+        status = re.fullmatch(rb"HTTP/1\.[0-9] ([1-5][0-9]{2}) [^\r\n]*", lines[0])
+        if not status:
+            return False
+        detail_statuses.append(int(status.group(1)))
+        headers = [line.split(b":", 1) for line in lines[1:]]
+        if any(len(parts) != 2 for parts in headers):
+            return False
+        closes = [value.strip().lower() for name, value in headers
+                  if name.strip().lower() == b"connection"]
+        lengths = [value.strip() for name, value in headers
+                   if name.strip().lower() == b"content-length"]
+        if any(name.strip().lower() == b"transfer-encoding" for name, _ in headers):
+            return False
+        if lengths and (len(lengths) != 1 or not lengths[0].isdigit() or
+                        len(lengths[0]) > 18):
+            return False
+        head_reply = (sent_frames is not None and count < len(sent_frames) and
+                      http_head_request_frame(sent_frames[count]))
+        if head_reply:
+            size = 0
+            used_head = True
+        elif lengths:
+            size = int(lengths[0])
+        elif int(status.group(1)) in (204, 304):
+            size = 0
+        else:
+            return False
+        offset = header_end + 4 + size
+        if offset > len(details):
+            return False
+        if (int(status.group(1)) in (204, 304) and
+                details[offset:offset + 7] == b"\r\nHTTP/"):
+            offset += 2
+        final_close = closes == [b"close"]
+        count += 1
+    return (count > 0 and detail_statuses == summary_statuses and final_close and
+            (not used_head or count == len(sent_frames)))
+
+
+def smtp_final_close_reply(replay_log, trailing_noise_ok=False):
+    """Read an explicit SMTP close or Exim's error-limit close reply.
+
+    With trailing_noise_ok (v12) the LAST SMTP reply line decides, because
+    the transcript tail can carry post-session server teardown noise on the
+    shared log stream (observed 2026-11-20: exim daemon termination lines
+    flush after the client exits and the 221 is no longer the final byte);
+    any reply after a 221/421 still invalidates it. """
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return None
+    marker = b"Responses in details:\n"
+    footer = b"\n--------------------------------"
+    if raw.count(marker) != 1 or footer not in raw.split(marker, 1)[1]:
+        return None
+    details = raw.split(marker, 1)[1].rsplit(footer, 1)[0]
+    if not trailing_noise_ok:
+        match = re.search(
+            rb"(?:^|\r\n)(221|421) [^\r\n]*\r\n$|"
+            rb"(?:^|\r\n)(500|501|503) Too many "
+            rb"(?:syntax or protocol errors|unrecognized commands)\r\n$",
+            details)
+        return int(match.group(1) or match.group(2)) if match else None
+    replies = list(re.finditer(rb"(?:^|\r\n)(\d{3})[ -][^\r\n]*\r\n", details))
+    if replies:
+        last = replies[-1]
+        code = int(last.group(1))
+        if code in (221, 421):
+            return code
+        if code in (500, 501, 503):
+            tail = details[last.start():last.end()].strip(b"\r\n")
+            if re.fullmatch(rb"(?:500|501|503) Too many "
+                            rb"(?:syntax or protocol errors|unrecognized commands)",
+                            tail):
+                return code
+    # The details print can itself be truncated (observed 2026-11-20: an
+    # exim transcript cut mid-reply while its state sequence — computed
+    # from the complete buffer — still ended in 221). The single-line
+    # sequence is written atomically, so its final code is the reliable
+    # close witness; only a complete CRLF-terminated reply contributes.
+    # Post-section daemon noise can share the same line tail ("...-221-53713
+    # normal exit"), so the code run must not be anchored to end-of-line.
+    sequence = re.search(rb"(?m)^Responses from server:0((?:-[0-9]{3})+)-", raw)
+    if sequence:
+        codes = sequence.group(1).rsplit(b"-", 1)[-1]
+        if codes in (b"221", b"421"):
+            return int(codes)
+    return None
 
 
 def read_frame_ledger(path, framed_bytes=None):
@@ -710,7 +975,7 @@ def read_frame_ledger(path, framed_bytes=None):
             raise CoverageError("framed input has trailing bytes outside any frame")
         # The ledger may record a strict PREFIX of the input's frames (the
         # server can close mid-input and the client stops reading); a prefix
-        # is valid evidence of partial delivery, never completeness.
+        # needs separately verified protocol-close evidence for acceptance.
         led_lens = [row["len"] for row in frames]
         expected_lens = [len(payload) for payload in expected_payloads]
         if led_lens != expected_lens[:len(led_lens)] or len(led_lens) > len(expected_lens):
@@ -723,13 +988,13 @@ def read_frame_ledger(path, framed_bytes=None):
     # Per-frame state consistency (GLM53 verification 2.2 counterexamples): a
     # full send requires read_complete, a successful pre-recv, an attempted
     # send that wrote exactly the frame length with zero errno, and a
-    # successful post-recv. Contradictory rows (e.g. sent_bytes==len with
+    # successful post-recv or a reset after the final input frame. Contradictory rows (e.g. sent_bytes==len with
     # nonzero errno, or a send claimed after a failed pre-recv) can never
     # count as complete delivery.
     consistent = True
     sent_complete = 0
     attempted = 0
-    for row in frames:
+    for index, row in enumerate(frames, 1):
         sent_bytes, length = row.get("sent_bytes"), row.get("len")
         if not isinstance(sent_bytes, int) or not isinstance(length, int):
             raise CoverageError("frame ledger has non-integer byte counts")
@@ -743,13 +1008,25 @@ def read_frame_ledger(path, framed_bytes=None):
                 consistent = False
             if row.get("send_errno") not in (0, None):
                 consistent = False
-            if sent_bytes == length and row.get("post_recv_ok") is True:
+            final_reset = (input_frame_count == len(frames) and index == len(frames) and
+                           ends[0].get("stop_reason") == "peer-reset-after-input-end" and
+                           row.get("post_recv_ok") is False and
+                           row.get("post_recv_errno") == errno.ECONNRESET)
+            if sent_bytes == length and (row.get("post_recv_ok") is True or final_reset):
                 sent_complete += 1
         elif sent_bytes not in (-2, None):
             consistent = False
+    final_reset_end = ends[0].get("stop_reason") == "peer-reset-after-input-end"
+    if final_reset_end and not (
+            input_frame_count == len(frames) and frames and
+            frames[-1].get("post_recv_ok") is False and
+            frames[-1].get("post_recv_errno") == errno.ECONNRESET and
+            ends[0].get("peer_closed") is False):
+        consistent = False
     send_complete = bool(consistent and len(frames) > 0 and
                          sent_complete == len(frames) and attempted == len(frames) and
-                         ends[0].get("stop_reason") == "eof" and
+                         ends[0].get("stop_reason") in
+                         ("eof", "peer-reset-after-input-end") and
                          (input_frame_count is None or len(frames) == input_frame_count))
     # Unattempted = every input frame the ledger never attempted, whether the
     # ledger ended early (prefix) or recorded an explicit not-attempted row.
@@ -778,6 +1055,28 @@ def read_frame_ledger(path, framed_bytes=None):
     prior_post_recv_ok = bool(attempted > 0 and all(
         row.get("post_recv_ok") is True for row in frames[:attempted - 1]))
     last_attempted_post_recv = frames[attempted - 1] if attempted else {}
+    # v12: structured close facts recorded by the replayer at the socket
+    # layer. These are authoritative; transcript parsing is a fallback for
+    # ledgers produced before this schema existed.
+    def close_int(row, key):
+        value = row.get(key) if isinstance(row, dict) else None
+        return value if isinstance(value, int) else None
+    last_reply_code = close_int(ends[0], "last_reply_code")
+    response_bytes = close_int(ends[0], "response_bytes")
+    last_reply_terminated = ends[0].get("last_reply_terminated") \
+        if isinstance(ends[0], dict) else None
+    close_initiator = ends[0].get("close_initiator") \
+        if isinstance(ends[0], dict) else None
+    close_kind = ends[0].get("close_kind") if isinstance(ends[0], dict) else None
+    # The pre-send stop variant fails inside the NEXT (never-sent) frame's
+    # pre-recv; expose its errno so acceptance can demand a real ECONNRESET
+    # there instead of trusting the stop_reason label alone.
+    next_unattempted_pre_recv_errno = None
+    if 0 < attempted < len(frames):
+        candidate = frames[attempted]
+        if candidate.get("send_attempt") is not True and candidate.get("pre_recv_ok") is False:
+            value = candidate.get("pre_recv_errno")
+            next_unattempted_pre_recv_errno = value if isinstance(value, int) else None
     return dict(frames_total=len(frames), frames_unattempted=frames_unattempted,
                 frames_attempted=attempted,
                 frames_sent_complete=sent_complete,
@@ -789,8 +1088,619 @@ def read_frame_ledger(path, framed_bytes=None):
                 prior_post_recv_ok=prior_post_recv_ok,
                 last_attempted_post_recv_ok=last_attempted_post_recv.get("post_recv_ok"),
                 last_attempted_post_recv_errno=last_attempted_post_recv.get("post_recv_errno"),
+                next_unattempted_pre_recv_errno=next_unattempted_pre_recv_errno,
+                last_reply_code=last_reply_code,
+                response_bytes=response_bytes,
+                last_reply_terminated=last_reply_terminated,
+                close_initiator=close_initiator,
+                close_kind=close_kind,
+                sent_payloads=(expected_payloads[:attempted]
+                               if expected_payloads is not None else None),
                 stop_reason=ends[0].get("stop_reason"),
                 send_complete=send_complete)
+
+
+def lightftp_replay_policy(source_root, object_root, allow_incomplete=False,
+                           overlong_probe=None, build_record=None):
+    """Describe LightFTP's bounded-command path; a reproducible-build record
+    plus a live probe bind it to the measured executable.
+
+    Source markers and hashes alone cannot tie an image's fftp binary to the
+    source tree beside it, so the recorded v4 policy never authorized the
+    protocol-close exception. v5 adds two independent bindings: the
+    reproducible rebuild (same command, instruction-identical binary; see
+    lightftp_build_record) and the behavioral probe (the harness drives the
+    actual server with a minimum+1 byte CRLF-free command and requires the
+    exact reset ledger shape the acceptance predicate demands). Only with
+    both is the exception enabled; otherwise the policy stays the
+    historical disabled v4 record.
+    """
+    source = Path(source_root) / "ftpserv.c"
+    header = Path(source_root) / "ftpserv.h"
+    binary = Path(object_root) / "fftp"
+    source_bytes = source.read_bytes() if source.is_file() else b""
+    header_bytes = header.read_bytes() if header.is_file() else b""
+    required_source = (
+        b"int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)",
+        b"--buffer_size;", b"while (buffer_size > 0)",
+        b"if ( p >= 2 )", b"(buffer[p-2] == '\\r') && (buffer[p-1] == '\\n')",
+        b"if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) )", b"close(ctx.ControlSocket);",
+    )
+    header_verified = b"#include <limits.h>" in header_bytes
+    buffer_verified = re.search(rb"rcvbuf\s*\[\s*PATH_MAX\s*\]",
+                                source_bytes) is not None
+    source_verified = (bool(source_bytes) and header_verified and buffer_verified and
+                       all(marker in source_bytes for marker in required_source))
+    binary_present = binary.is_file() and os.access(binary, os.X_OK)
+    path_max = None
+    try:
+        macros = subprocess.run(
+            ["cc", "-dM", "-E", "-x", "c", "-"], input=b"#include <limits.h>\n",
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10)
+        macro = re.search(rb"(?m)^#define PATH_MAX ([0-9]+)$", macros.stdout)
+        if macros.returncode == 0 and macro:
+            path_max = int(macro.group(1))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    command_buffer_size = path_max
+    probe_verified = bool(isinstance(overlong_probe, dict) and
+                          overlong_probe.get("verified") is True and
+                          isinstance(overlong_probe.get("minimum_bytes"), int) and
+                          overlong_probe.get("minimum_bytes") ==
+                          (command_buffer_size - 1 if command_buffer_size else None))
+    build_verified = bool(isinstance(build_record, dict) and
+                          build_record.get("verified") is True and
+                          build_record.get("binary_sha256") ==
+                          (digest_file(binary) if binary_present else None))
+    verified = bool(source_verified and binary_present and
+                    command_buffer_size is not None and probe_verified and build_verified)
+    if verified:
+        return dict(name="lightftp-gcov-path-max-stream-close-v5", verified=True,
+                    exception_enabled=True,
+                    verified_scope="source markers, PATH_MAX, a reproducible rebuild "
+                                   "record, and a live reset-shape probe against the "
+                                   "measured executable",
+                    source_structure_verified=True,
+                    source_sha256=digest_file(source) if source.is_file() else None,
+                    header_sha256=digest_file(header) if header.is_file() else None,
+                    binary_sha256=digest_file(binary) if binary_present else None,
+                    source_binary_build_association="reproducible-rebuild-and-behavioral-probe",
+                    overlong_probe=overlong_probe,
+                    build_record=build_record,
+                    path_max=path_max,
+                    command_buffer_size=command_buffer_size,
+                    max_bytes_without_crlf=command_buffer_size - 1)
+    # The checked-in Docker build pins source and compiler flags, but its
+    # existing image contains no build record linking this executable to these
+    # source bytes. Hashing both files independently does not establish that
+    # relationship, so it cannot authorize a protocol-close exception.
+    return dict(name="lightftp-gcov-path-max-stream-close-v4", verified=False,
+                exception_enabled=False,
+                verified_scope="source markers and PATH_MAX recorded; executable association unverified",
+                source_structure_verified=source_verified,
+                source_sha256=digest_file(source) if source.is_file() else None,
+                header_sha256=digest_file(header) if header.is_file() else None,
+                binary_sha256=digest_file(binary) if binary_present else None,
+                source_binary_build_association="not-established",
+                path_max=path_max,
+                command_buffer_size=command_buffer_size,
+                max_bytes_without_crlf=command_buffer_size - 1
+                if command_buffer_size is not None else None)
+
+
+def proftpd_overlong_source_policy(source_root, object_root, conf_path=None):
+    """Derive ProFTPD's no-newline command give-up boundary from its source
+    and the EFFECTIVE configuration of the run being certified.
+
+    src/main.c defaults CommandBufferSize to PR_DEFAULT_CMD_BUFSZ
+    (PR_TUNABLE_PATH_MAX + 7); pr_netio_telnet_gets2 fills one window of
+    that size minus the NUL slot and returns E2BIG without a newline; and
+    pr_cmd_read sleeps 250ms per strike, giving up once the counter passes
+    its limit. The boundary is (limit+1) full windows:
+    (limit+1) * (effective_CommandBufferSize - 1). The fuzzing run.sh
+    injects ``CommandBufferSize 65535`` into basic.conf (boundary 262136),
+    so a corpus from that environment must never be judged against the
+    default-derived boundary (16408 with PATH_MAX 4096). Empirically
+    confirmed 2026-11-20 against the pinned image: default-config boundary
+    16408 bytes; under the 65535 conf the previously failing 18-27KB
+    inputs replay to completion without any policy close.
+    """
+    main_c = Path(source_root) / "src" / "main.c"
+    netio_c = Path(source_root) / "src" / "netio.c"
+    binary = Path(object_root) / "proftpd" if object_root else None
+    main_bytes = main_c.read_bytes() if main_c.is_file() else b""
+    netio_bytes = netio_c.read_bytes() if netio_c.is_file() else b""
+    default_bufsz = re.search(
+        rb"(?m)^#\s*define\s+PR_DEFAULT_CMD_BUFSZ\s*\(PR_TUNABLE_PATH_MAX\s*\+\s*([0-9]+)\)",
+        main_bytes)
+    retry_limit = re.search(rb"too_large_count\s*>\s*([0-9]+)", main_bytes)
+    sleep_ms = re.search(rb"pr_timer_usleep\(\s*([0-9]+)\s*\*\s*1000\s*\)", main_bytes)
+    path_max = None
+    try:
+        macros = subprocess.run(
+            ["cc", "-dM", "-E", "-x", "c", "-"], input=b"#include <limits.h>\n",
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10)
+        macro = re.search(rb"(?m)^#define PATH_MAX ([0-9]+)$", macros.stdout)
+        if macros.returncode == 0 and macro:
+            path_max = int(macro.group(1))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    conf_override = None
+    conf_bytes = b""
+    if conf_path is not None and Path(conf_path).is_file():
+        conf_bytes = Path(conf_path).read_bytes()
+        directive = re.search(rb"(?im)^[ \t]*CommandBufferSize[ \t]+([0-9]+)", conf_bytes)
+        if directive:
+            conf_override = int(directive.group(1))
+    structure_verified = bool(
+        default_bufsz and retry_limit and sleep_ms and
+        all(marker in netio_bytes for marker in (b"errno = E2BIG", b"saw_newline")) and
+        all(marker in main_bytes for marker in
+            (b"too_large_count", b"E2BIG", b"pr_cmd_read")))
+    default_buffer = (path_max + int(default_bufsz.group(1))
+                      if path_max is not None and default_bufsz else None)
+    effective_buffer, buffer_source = (
+        (conf_override, "conf-directive") if conf_override is not None
+        else (default_buffer, "source-default"))
+    retries = (int(retry_limit.group(1)) + 1
+               if retry_limit else None)
+    give_up_bytes = ((retries * (effective_buffer - 1))
+                     if retries is not None and effective_buffer else None)
+    binary_present = bool(binary and binary.is_file() and os.access(binary, os.X_OK))
+    verified = bool(structure_verified and
+                    binary_present and give_up_bytes is not None and give_up_bytes > 0)
+    return dict(name="proftpd-e2big-retry-session-close-v1",
+                verified=verified,
+                exception_enabled=False,
+                verified_scope="source-derived E2BIG retry boundary from the effective "
+                               "CommandBufferSize; behavioral probe required before the "
+                               "exception can be enabled",
+                source_structure_verified=structure_verified,
+                command_buffer_size_default=default_buffer,
+                command_buffer_size_effective=effective_buffer,
+                command_buffer_size_source=buffer_source,
+                conf_sha256=digest_file(conf_path) if conf_path and Path(conf_path).is_file() else None,
+                main_c_sha256=digest_file(main_c) if main_c.is_file() else None,
+                netio_c_sha256=digest_file(netio_c) if netio_c.is_file() else None,
+                binary_sha256=digest_file(binary) if binary_present else None,
+                path_max=path_max,
+                e2big_retry_limit=retries - 1 if retries is not None else None,
+                retry_sleep_ms=int(sleep_ms.group(1)) if sleep_ms else None,
+                give_up_bytes=give_up_bytes,
+                probe_min_close_delay_ms=(retries * int(sleep_ms.group(1))
+                                          if retries is not None and sleep_ms else None))
+
+
+def probe_ftp_overlong_close(target, port, cwd, workdir, directory, source_policy,
+                             allow_incomplete=False):
+    """Behaviorally verify the measured binary policy-closes overlong commands
+    with a TCP reset, before any corpus input can be accepted under the
+    overlong-close exception.
+
+    The probe drives the actual server executable through the same supervised
+    launch the corpus replay uses, with a synthetic framed input whose first
+    frame is minimum+1 terminator-free bytes followed by NOOP frames (they
+    keep the client connected past the server's close). Verification demands
+    the identical ledger shape the acceptance predicate later requires, plus
+    the target's expected close delay (ProFTPD sleeps 250ms per E2BIG
+    strike; the client cannot observe the reset early). """
+    minimum = source_policy.get("give_up_bytes") if target == "proftpd" \
+        else source_policy.get("max_bytes_without_crlf")
+    if not isinstance(minimum, int) or minimum <= 0:
+        raise CoverageError("%s overlong policy lacks a derived minimum" % target)
+    terminator = b"\n" if target == "proftpd" else b"\r\n"
+    probe_dir = Path(directory) / "overlong-close-probe"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    frames = [b"A" * (minimum + 1)] + [b"NOOP\r\n"] * 12
+    input_path = probe_dir / "probe-input"
+    input_path.write_bytes(b"".join(struct.pack("<I", len(frame)) + frame
+                                    for frame in frames))
+    ledger_path = probe_dir / "probe-frame-ledger.jsonl"
+    log_path = probe_dir / "probe.log"
+    env = os.environ.copy()
+    env["LOOPFUZZ_REPLAY_LEDGER"] = str(ledger_path)
+    client_command, server_command = replay_commands(target, input_path, port, 1,
+                                                     cwd, workdir)
+    started = time.monotonic()
+    with log_path.open("wb") as log:
+        supervised = run_supervised_session(target, client_command, server_command,
+                                            {"path": str(input_path)}, 1, port,
+                                            cwd, env, log)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    ledger = None
+    try:
+        ledger = read_frame_ledger(ledger_path, input_path.read_bytes())
+    except (OSError, CoverageError):
+        ledger = None
+    payloads = ledger.get("sent_payloads") if ledger else None
+    post_send_reset = bool(
+        ledger and ledger.get("stop_reason") == "client-recv-post-send-failed" and
+        ledger.get("last_attempted_post_recv_errno") == errno.ECONNRESET)
+    # The policy reset can land between frames (observed 2026-11-20: the
+    # v11c probe run); the evidence then lives in the never-sent frame's
+    # pre-recv instead. Both variants are the same server policy close.
+    pre_send_reset = bool(
+        ledger and ledger.get("stop_reason") == "client-recv-pre-send-failed" and
+        ledger.get("last_attempted_post_recv_ok") is True and
+        ledger.get("next_unattempted_pre_recv_errno") == errno.ECONNRESET)
+    probe = dict(
+        name="overlong-policy-close-behavior-probe-v1",
+        minimum_bytes=minimum,
+        probe_input_sha256=digest_file(input_path),
+        probe_ledger_file=ledger_path.name,
+        probe_ledger_sha256=digest_file(ledger_path) if ledger_path.is_file() else None,
+        probe_log_file=log_path.name,
+        probe_log_sha256=digest_file(log_path),
+        client_exit_code=supervised.get("client_exit_code"),
+        server_exit_code=supervised.get("server_exit_code"),
+        server_ready=supervised.get("server_ready"),
+        client_timed_out=supervised.get("client_timed_out"),
+        harness_shutdown_requested=supervised.get("harness_shutdown_requested"),
+        elapsed_ms=elapsed_ms,
+        minimum_close_delay_ms=source_policy.get("probe_min_close_delay_ms"),
+        stop_reason=ledger.get("stop_reason") if ledger else None,
+        last_attempted_post_recv_errno=(ledger.get("last_attempted_post_recv_errno")
+                                        if ledger else None),
+        next_unattempted_pre_recv_errno=(ledger.get("next_unattempted_pre_recv_errno")
+                                         if ledger else None),
+        trigger_frame=overlong_close_trigger_frame(payloads, minimum, terminator,
+                                                   telnet_iac=(target == "proftpd"))
+        if payloads else None)
+    probe["verified"] = bool(
+        ledger is not None and
+        supervised.get("client_exit_code") == 2 and
+        supervised.get("server_exit_code") == 0 and
+        supervised.get("server_ready") is True and
+        supervised.get("client_timed_out") is False and
+        ledger.get("prefix_sent_complete") and
+        ledger.get("prior_post_recv_ok") is True and
+        (post_send_reset or pre_send_reset) and
+        isinstance(ledger.get("frames_unattempted"), int) and
+        ledger["frames_unattempted"] > 0 and
+        probe["trigger_frame"] == 1 and
+        (target != "proftpd" or
+         (supervised.get("harness_shutdown_requested") is not True and
+          elapsed_ms >= (source_policy.get("probe_min_close_delay_ms") or 0))))
+    if not probe["verified"] and not allow_incomplete:
+        raise CoverageError(
+            "%s overlong-close behavior probe failed: client=%s server=%s ready=%s "
+            "stop=%s errno=%s next_pre_errno=%s trigger=%s elapsed_ms=%s" %
+            (target, supervised.get("client_exit_code"), supervised.get("server_exit_code"),
+             supervised.get("server_ready"), probe.get("stop_reason"),
+             probe.get("last_attempted_post_recv_errno"),
+             probe.get("next_unattempted_pre_recv_errno"), probe.get("trigger_frame"),
+             elapsed_ms))
+    return probe
+
+
+LIGHTFTP_GCOV_FLAGS = ("CFLAGS=-fprofile-arcs -ftest-coverage",
+                       "CPPFLAGS=-fprofile-arcs -ftest-coverage",
+                       "CXXFLAGS=-fprofile-arcs -ftest-coverage",
+                       "LDFLAGS=-fprofile-arcs -ftest-coverage")
+
+
+def _file_diff_byte_count(left, right):
+    count = 0
+    with open(left, "rb") as a, open(right, "rb") as b:
+        while True:
+            ca, cb = a.read(65536), b.read(65536)
+            if ca != cb:
+                if len(ca) != len(cb):
+                    return None
+                count += sum(1 for x, y in zip(ca, cb) if x != y)
+            if not ca:
+                return count
+
+
+def lightftp_build_record(source_root, object_root, artifact_dir):
+    """Bind the image's fftp executable to the source tree and the recorded
+    compile parameters by an in-place reproducible rebuild.
+
+    The Dockerfile builds the gcov tree with
+    ``make CFLAGS=-fprofile-arcs -ftest-coverage ... clean all``. Rebuilding
+    with the same command reproduces every object byte-for-byte except
+    GCC's 4-byte random gcov stamp per object, and a linked binary whose
+    disassembly (objdump -d) is instruction-identical to the image binary;
+    the only differing bytes sit in the GNU build-id / aggregated stamp
+    metadata. The originals are restored and hash-verified afterwards, and
+    any surprise (dirty git tree, restore mismatch, non-stamp object
+    differences) fails closed. Together with the live behavioral probe
+    this ties the bounded-command policy to the exact executable the
+    formal replay drives, not merely to source markers and PATH_MAX.
+    """
+    source_root, object_root = Path(source_root), Path(object_root)
+    record = dict(name="lightftp-reproducible-rebuild-record-v1",
+                  compile_command=["make"] + list(LIGHTFTP_GCOV_FLAGS) + ["clean", "all"],
+                  rebuild_log_file="lightftp-rebuild.log")
+    binary = object_root / "fftp"
+    if not binary.is_file():
+        record.update(verified=False, reason="missing fftp executable")
+        return record
+    git_head = subprocess.run(["git", "-C", str(source_root), "rev-parse", "HEAD"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                              timeout=30)
+    # The Dockerfile checks out commit 139af7c and applies gcov.patch, so the
+    # tree is legitimately dirty versus HEAD. Prove that exact state instead
+    # of a naive cleanliness check: the patch must reverse-apply cleanly
+    # (git apply --check -R) and no tracked file outside the patch may be
+    # modified. Untracked files are build artifacts.
+    gcov_patch = None
+    for candidate in ([source_root.parent / "gcov.patch"] +
+                      [ancestor / "gcov.patch" for ancestor in source_root.parents] +
+                      [Path(os.environ.get("WORKDIR", "")) / "gcov.patch"]):
+        if candidate.is_file():
+            gcov_patch = candidate
+            break
+    if gcov_patch is None:
+        gcov_patch = source_root.parent / "gcov.patch"
+    patch_reverse = subprocess.run(
+        ["git", "-C", str(source_root), "apply", "--check", "--reverse", str(gcov_patch)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30)
+    tracked = subprocess.run(
+        ["git", "-C", str(source_root), "status", "--porcelain", "--untracked-files=no"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30)
+    patch_bytes = gcov_patch.read_bytes() if gcov_patch.is_file() else b""
+    patch_touched = {name.decode() for name in re.findall(
+        rb"(?m)^diff --git a/(\S+) b/\S+", patch_bytes)}
+    modified = {line[3:].decode(errors="replace").strip()
+                for line in tracked.stdout.splitlines() if line.startswith(b" M ")}
+    record.update(git_head=git_head.stdout.decode(errors="replace").strip() or None,
+                  gcov_patch_sha256=digest_file(gcov_patch) if gcov_patch.is_file() else None,
+                  gcov_patch_reverse_appliable=patch_reverse.returncode == 0,
+                  tracked_modifications_sorted=sorted(modified),
+                  tracked_modifications_confined_to_patch=modified <= patch_touched)
+    if not (git_head.returncode == 0 and record["gcov_patch_reverse_appliable"] and
+            record["tracked_modifications_confined_to_patch"]):
+        record.update(verified=False,
+                      reason="source tree is not checkout+gcov.patch state")
+        return record
+    inventory = {"fftp": digest_file(binary)}
+    products = sorted(object_root.glob("*.o")) + sorted(object_root.glob("*.gcno"))
+    inventory.update({p.name: digest_file(p) for p in products})
+    backup = Path(tempfile.mkdtemp(prefix="lightftp-rebuild-backup-"))
+    try:
+        for product in [binary] + products:
+            shutil.copy2(product, backup / product.name)
+        log_path = Path(artifact_dir) / record["rebuild_log_file"]
+        with log_path.open("wb") as log:
+            make = subprocess.run(["make"] + list(LIGHTFTP_GCOV_FLAGS) + ["clean", "all"],
+                                  cwd=object_root, stdout=log, stderr=subprocess.STDOUT,
+                                  check=False, timeout=600)
+        record.update(make_exit_code=make.returncode)
+        if make.returncode != 0 or not binary.is_file():
+            record.update(verified=False, reason="rebuild make failed")
+            return record
+        record.update(binary_sha256=inventory["fftp"],
+                      rebuilt_binary_sha256=digest_file(binary),
+                      rebuild_log_sha256=digest_file(log_path))
+        disassembly = subprocess.run(
+            ["bash", "-c",
+             'objdump -d "%s" | grep -v "file format" > "$1.new"; '
+             'objdump -d "%s" | grep -v "file format" > "$1.orig"; '
+             'cmp -s "$1.new" "$1.orig"' % (binary, backup / "fftp"),
+             "sh", str(backup / "disasm")],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=120)
+        record.update(disassembly_identical=disassembly.returncode == 0)
+        stamp_only, identical, unexpected = 0, 0, []
+        for product in products:
+            difference = _file_diff_byte_count(product, backup / product.name)
+            if difference == 0:
+                identical += 1
+            elif difference == 4:
+                stamp_only += 1
+            else:
+                unexpected.append(product.name)
+        record.update(objects_total=len(products), objects_byte_identical=identical,
+                      objects_stamp_only_difference=stamp_only,
+                      objects_unexpected_difference=unexpected)
+        record["verified"] = bool(
+            record["disassembly_identical"] and not unexpected)
+        return record
+    finally:
+        for name in inventory:
+            restored = backup / name
+            if restored.is_file():
+                shutil.copy2(restored, object_root / name)
+        shutil.rmtree(backup, ignore_errors=True)
+        for name, expected in inventory.items():
+            if digest_file(object_root / name) != expected:
+                raise CoverageError(
+                    "lightftp rebuild restore mismatch for %s; refusing to continue" % name)
+
+
+def overlong_close_trigger_frame(payloads, minimum, terminator, telnet_iac=False):
+    """Index (1-based) of the first sent frame that provably exhausts the
+    target's bounded-command retry path, or None.
+
+    The control stream is newline-delimited, so frame j can only start a fresh
+    command when the concatenated prefix of frames 1..j-1 ends with CRLF
+    (frame 1 always follows the banner). ProFTPD reads commands through a
+    telnet filter whose IAC escapes consume raw bytes without emitting
+    processed ones: a raw no-newline window of ``minimum + 3 * ff_count``
+    bytes still guarantees ``minimum`` processed bytes without a newline,
+    because each 0xFF consumes at most the two bytes after it.
+    """
+    prefix = b""
+    for index, payload in enumerate(payloads):
+        if (isinstance(payload, bytes) and len(payload) >= minimum and
+                (index == 0 or prefix.endswith(b"\r\n"))):
+            escape_slack = 3 * payload.count(b"\xff") if telnet_iac else 0
+            window = payload[:minimum + escape_slack]
+            if (terminator not in window and
+                    len(window) >= minimum + escape_slack):
+                return index + 1
+        prefix += payload if isinstance(payload, bytes) else b""
+    return None
+
+
+def ftp_overlong_close_gates(replay, reset, ledger):
+    """Process-level evidence that the server itself policy-closed mid-input.
+
+    Both stop variants must carry a real ECONNRESET from the ledger rows: the
+    post-send variant in the last attempted frame's post-recv, the pre-send
+    variant in the next unattempted frame's pre-recv. """
+    ledger = ledger or {}
+    stop_reason = ledger.get("stop_reason")
+    post_send_reset = (stop_reason == "client-recv-post-send-failed" and
+                       ledger.get("last_attempted_post_recv_errno") == errno.ECONNRESET)
+    pre_send_reset = (stop_reason == "client-recv-pre-send-failed" and
+                      ledger.get("next_unattempted_pre_recv_errno") == errno.ECONNRESET)
+    return bool(replay.get("server_exit_code") == 0 and
+                replay.get("client_exit_code") == 2 and
+                replay.get("server_ready") is True and
+                replay.get("client_timed_out") is False and
+                not replay.get("session_coverage_missing") and
+                bool(replay.get("session_gcda_touched")) and
+                reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
+                ledger.get("prefix_sent_complete") and
+                isinstance(ledger.get("frames_unattempted"), int) and
+                ledger["frames_unattempted"] > 0 and
+                ledger.get("prior_post_recv_ok") is True and
+                (post_send_reset or pre_send_reset))
+
+
+def proftpd_overlong_close_expected(replay, reset, ledger, replay_policy):
+    """ProFTPD's pr_cmd_read abandons a session after its E2BIG retry budget.
+
+    pr_netio_telnet_gets2 returns E2BIG when a full CommandBufferSize window
+    holds no newline; pr_cmd_read sleeps 250ms per strike and gives up once
+    the counter passes its limit. The close then lands on unread pipelined
+    bytes and the kernel emits RST instead of FIN (reproduced 2026-11-20 on
+    the pinned image: 16408 = 4*(4096+7-1) consecutive no-newline bytes close
+    the session, 16407 do not). The give-up boundary and retry schedule are
+    re-derived from the source by proftpd_overlong_source_policy and the
+    executable is behaviorally probed before this exception can authorize
+    anything. """
+    policy = (replay_policy or {}).get("overlong_close") or {}
+    minimum = policy.get("give_up_bytes")
+    payloads = ledger.get("sent_payloads") if ledger else None
+    if (not isinstance(payloads, list) or not payloads or
+            not all(isinstance(payload, bytes) for payload in payloads)):
+        return False
+    return bool(policy.get("verified") is True and
+                policy.get("exception_enabled") is True and
+                isinstance(minimum, int) and minimum > 0 and
+                replay.get("harness_shutdown_requested") is not True and
+                overlong_close_trigger_frame(payloads, minimum, b"\n",
+                                             telnet_iac=True) is not None and
+                ftp_overlong_close_gates(replay, reset, ledger))
+
+
+def lightftp_oversized_command_close_expected(replay, reset, ledger, policy):
+    payloads = ledger.get("sent_payloads") if ledger else None
+    if not isinstance(payloads, list) or not payloads:
+        return False
+    if not all(isinstance(payload, bytes) for payload in payloads):
+        return False
+    minimum = policy.get("max_bytes_without_crlf") if policy else None
+    if not (policy and policy.get("verified") is True and
+            isinstance(minimum, int) and minimum > 0):
+        return False
+    stream = b"".join(payloads)
+    command_bytes = stream.rsplit(b"\r\n", 1)[-1]
+    # v11: recvcmd also abandons mid-stream when one frame alone fills the
+    # PATH_MAX command buffer without any CRLF, leaving every later frame
+    # unread by construction (reproduced 2026-11-20: 4096 bytes reset, 4095
+    # close cleanly, 4094 keep waiting). The historical tail shape (one
+    # unterminated command running to end of input) stays accepted.
+    midstream = overlong_close_trigger_frame(payloads, minimum, b"\r\n") is not None
+    return bool(policy.get("exception_enabled") is True and
+                ftp_overlong_close_gates(replay, reset, ledger) and
+                (midstream or len(command_bytes) >= minimum))
+
+
+def verify_lightftp_replay_policy(policy, source_root, object_root,
+                                  artifact_root=None):
+    source = Path(source_root) / "ftpserv.c"
+    header = Path(source_root) / "ftpserv.h"
+    binary = Path(object_root) / "fftp" if object_root else None
+    if (not source.is_file() or not header.is_file() or binary is None or
+            not binary.is_file() or not os.access(binary, os.X_OK)):
+        return False
+    source_bytes = source.read_bytes()
+    header_bytes = header.read_bytes()
+    markers = (
+        b"int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)",
+        b"--buffer_size;", b"while (buffer_size > 0)",
+        b"if ( p >= 2 )", b"(buffer[p-2] == '\\r') && (buffer[p-1] == '\\n')",
+        b"if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) )", b"close(ctx.ControlSocket);",
+    )
+    header_verified = b"#include <limits.h>" in header_bytes
+    buffer_verified = re.search(rb"rcvbuf\s*\[\s*PATH_MAX\s*\]",
+                                source_bytes) is not None
+    try:
+        macros = subprocess.run(
+            ["cc", "-dM", "-E", "-x", "c", "-"], input=b"#include <limits.h>\n",
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10)
+        macro = re.search(rb"(?m)^#define PATH_MAX ([0-9]+)$", macros.stdout)
+        path_max = int(macro.group(1)) if macros.returncode == 0 and macro else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        path_max = None
+    command_buffer_size = path_max
+    structure = bool(header_verified and buffer_verified and
+                     all(marker in source_bytes for marker in markers))
+    identity = bool(policy and
+                    policy.get("source_sha256") == digest_file(source) and
+                    policy.get("header_sha256") == digest_file(header) and
+                    policy.get("binary_sha256") == digest_file(binary) and
+                    policy.get("source_structure_verified") is True and
+                    policy.get("path_max") == path_max and
+                    policy.get("command_buffer_size") == command_buffer_size and
+                    policy.get("max_bytes_without_crlf") == command_buffer_size - 1 and
+                    re.fullmatch(r"[0-9a-f]{64}", policy.get("binary_sha256", "")))
+    if policy and policy.get("name") == "lightftp-gcov-path-max-stream-close-v5":
+        # v5 authorizes the protocol-close exception through the recorded
+        # reproducible-build record and behavioral probe: verify the archived
+        # artifacts by hash and require both records' verified shape against
+        # this source identity.
+        probe = policy.get("overlong_probe") or {}
+        build = policy.get("build_record") or {}
+        probe_dir = Path(artifact_root) / "overlong-close-probe" if artifact_root else None
+        artifacts_ok = False
+        if probe_dir is not None and probe_dir.is_dir():
+            ledger_path = probe_dir / str(probe.get("probe_ledger_file") or "")
+            log_path = probe_dir / str(probe.get("probe_log_file") or "")
+            input_path = probe_dir / "probe-input"
+            rebuild_log = probe_dir / str(build.get("rebuild_log_file") or "")
+            artifacts_ok = bool(
+                probe.get("verified") is True and
+                probe.get("minimum_bytes") == command_buffer_size - 1 and
+                build.get("verified") is True and
+                build.get("binary_sha256") == digest_file(binary) and
+                build.get("disassembly_identical") is True and
+                isinstance(build.get("objects_unexpected_difference"), list) and
+                not build["objects_unexpected_difference"] and
+                input_path.is_file() and
+                probe.get("probe_input_sha256") == digest_file(input_path) and
+                ledger_path.is_file() and
+                probe.get("probe_ledger_sha256") == digest_file(ledger_path) and
+                log_path.is_file() and
+                probe.get("probe_log_sha256") == digest_file(log_path) and
+                rebuild_log.is_file() and
+                isinstance(build.get("rebuild_log_sha256"), str) and
+                build["rebuild_log_sha256"] == digest_file(rebuild_log))
+        return bool(policy.get("verified") is True and
+                    policy.get("exception_enabled") is True and
+                    policy.get("source_binary_build_association") ==
+                    "reproducible-rebuild-and-behavioral-probe" and
+                    structure and identity and artifacts_ok)
+    # This verifier validates the recorded disabled-policy identity. It does
+    # not enable the close exception: that requires a separately auditable
+    # source-to-binary build association, which the current image does not
+    # provide.
+    return bool(policy and policy.get("name") == "lightftp-gcov-path-max-stream-close-v4" and
+                policy.get("verified") is False and
+                policy.get("exception_enabled") is False and
+                policy.get("source_binary_build_association") == "not-established" and
+                identity and structure)
+
+
+def replay_policy_verified_for_completeness(target, policy, source_root, object_root):
+    """Require a verified policy, or a verified disabled LightFTP policy."""
+    if policy is None or policy.get("verified") is True:
+        return True
+    return (target == "lightftp" and
+            verify_lightftp_replay_policy(policy, source_root, object_root))
 
 
 def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_version=1):
@@ -817,6 +1727,11 @@ def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_versi
                 ledger.get("frames_unattempted") > 0 and
                 ((ledger.get("peer_closed") and ledger.get("stop_reason") in
                   ("peer-closed-before-input-end", "peer-closed-before-frame")) or
+                 (policy_version >= 4 and
+                  ledger.get("stop_reason") == "protocol-close-after-quit" and
+                  ledger.get("peer_closed") is True and
+                  ledger.get("last_attempted_frame_is_quit") is True and
+                  ledger.get("last_attempted_post_recv_ok") is True) or
                  (policy_version >= 3 and not ledger.get("peer_closed") and
                   ledger.get("stop_reason") == "client-recv-post-send-failed" and
                   ledger.get("prior_post_recv_ok") is True and
@@ -1045,11 +1960,47 @@ def verify_bftpd_replay_events(events, replay_plan, directory, replay_input_root
                                      directory, index, planned_path)
 
 
-def protocol_end_expected(target, replay, reset, ledger, replay_log):
-    """Accept only a proven target-initiated, protocol-requested control close."""
-    if target not in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_version=4,
+                          replay_policy=None):
+    """Accept only a proven target-initiated protocol control close."""
+    targets = (("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim", "proftpd")
+               if policy_version >= 8 else
+               ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim")
+               if policy_version >= 5 else
+               ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"))
+    if target not in targets:
         return False
-    if not (replay.get("server_exit_code") == 0 and
+    server_code = replay.get("server_exit_code")
+    if policy_version >= 5 and target == "pure-ftpd":
+        normal_exit = server_code == 0 or server_code in (251, 252)
+    else:
+        normal_exit = server_code == 0
+    stopped_at_close = bool(ledger and (
+        (ledger.get("peer_closed") and ledger.get("stop_reason") in
+         ("peer-closed-before-input-end", "peer-closed-before-frame")) or
+        (policy_version >= 5 and
+         ledger.get("stop_reason") == "client-recv-post-send-failed" and
+         ledger.get("peer_closed") is False and
+         ledger.get("prior_post_recv_ok") and
+         ledger.get("last_attempted_post_recv_ok") is False and
+         ledger.get("last_attempted_post_recv_errno") == errno.ECONNRESET) or
+        (policy_version >= 11 and
+         # The same policy reset landing between frames fails the NEXT
+         # frame's pre-recv instead; the evidence lives in the never-sent
+         # frame's row (reproduced 2026-11-20, id:000259 v11b). The last
+         # sent frame's own post-recv must have returned cleanly, else the
+         # stop would have classified as the post-send variant.
+         ledger.get("stop_reason") == "client-recv-pre-send-failed" and
+         ledger.get("peer_closed") is False and
+         ledger.get("prior_post_recv_ok") and
+         ledger.get("last_attempted_post_recv_ok") is True and
+         ledger.get("next_unattempted_pre_recv_errno") == errno.ECONNRESET) or
+        (policy_version >= 6 and
+         ledger.get("stop_reason") == "protocol-close-after-quit" and
+         ledger.get("peer_closed") is True and
+         ledger.get("last_attempted_frame_is_quit") and
+         ledger.get("last_attempted_post_recv_ok") is True)))
+    if not (normal_exit and
             replay.get("client_exit_code") == 2 and
             replay.get("server_ready") is True and
             replay.get("client_timed_out") is False and
@@ -1058,10 +2009,41 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log):
             not replay.get("session_coverage_missing") and
             ledger and ledger.get("prefix_sent_complete") and
             isinstance(ledger.get("frames_unattempted"), int) and
-            ledger["frames_unattempted"] > 0 and
-            ledger.get("peer_closed") and ledger.get("stop_reason") in
-            ("peer-closed-before-input-end", "peer-closed-before-frame")):
+            ledger["frames_unattempted"] > 0 and stopped_at_close):
         return False
+    if policy_version >= 5:
+        if target == "pure-ftpd":
+            reply = pureftpd_final_reply_code(replay_log)
+            return bool(replay.get("imported_gcda") and
+                        reply in (221, 421) and
+                        (server_code == 0 or reply == 421))
+        if not replay.get("session_gcda_touched"):
+            return False
+        if target == "lightftp":
+            return (lightftp_final_reply_code(replay_log) in (221, 421) or
+                    (policy_version >= 6 and lightftp_oversized_command_close_expected(
+                        replay, reset, ledger, replay_policy)))
+        if target == "exim":
+            return smtp_final_close_reply(
+                replay_log, trailing_noise_ok=policy_version >= 12) is not None or \
+                bool(policy_version >= 12 and
+                     exim_error_limit_close_expected(replay, reset, ledger,
+                                                     replay_log))
+        if target == "proftpd":
+            return bool(not replay.get("harness_shutdown_requested") and
+                        ledger.get("last_attempted_frame_is_quit") and
+                        pureftpd_final_reply_code(replay_log) == 221) or \
+                bool(policy_version >= 11 and
+                     proftpd_overlong_close_expected(replay, reset, ledger,
+                                                     replay_policy))
+        return http_final_close_response_complete(replay_log, ledger.get("sent_payloads")) or \
+            bool(policy_version >= 12 and
+                 # v12: the server itself announced the close in the final
+                 # response (Connection: close, length-complete), e.g. lighttpd
+                 # after a 200/404/501; the ledger already proved the FIN and
+                 # the outer gates proved the prefix, process, and reset
+                 # evidence (2026-11-20: 110 lighttpd1 inputs).
+                 http_response_announced_close_complete(replay_log))
     if target == "pure-ftpd":
         return bool(replay.get("imported_gcda") and
                     ledger.get("last_attempted_frame_is_quit") and
@@ -1070,14 +2052,57 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log):
         return False
     if target == "lightftp":
         return bool(ledger.get("last_attempted_frame_is_quit") and
-                    pureftpd_final_reply_code(replay_log) == 221)
+                    lightftp_final_reply_code(replay_log) == 221)
     return bool(ledger.get("last_attempted_frame_is_http_close") and
                 http_close_response_complete(replay_log))
 
 
+def exim_error_limit_close_expected(replay, reset, ledger, replay_log):
+    """Exim drops the session after syntax/protocol errors pile up.
+
+    src/smtp_in.c:2734 (and the BDAT path :3872) sets yield=1 once
+    ++synprot_error_count exceeds smtp_max_synprot_errors — globals.c:1517
+    defaults it to 3 — so a session that keeps offending is dropped, and
+    the drop can cut the in-flight reply. The observable contract: the
+    connection FINs mid-input, the FINAL complete reply is a 4xx/5xx, and
+    the session accumulated more than the limit's worth of error replies
+    (the counter resets on some valid commands, so the trailing visible
+    run can be shorter than the limit; the total is the robust witness).
+    The state sequence line is one atomic write (v12 replayer), so trailing
+    noise from the daemon's debug stream cannot corrupt it. """
+    ledger = ledger or {}
+    if ledger.get("stop_reason") not in ("peer-closed-before-input-end",
+                                         "peer-closed-before-frame") or \
+            ledger.get("peer_closed") is not True:
+        return False
+    try:
+        raw = Path(replay_log).read_bytes()
+    except OSError:
+        return False
+    sequence = re.search(rb"(?m)^Responses from server:0((?:-[0-9]{3})+)-", raw)
+    if not sequence:
+        return False
+    codes = [int(code) for code in re.findall(rb"-([0-9]{3})", sequence.group(1))]
+    errors = [code for code in codes if 400 <= code <= 599]
+    if not codes or not (400 <= codes[-1] <= 599) or len(errors) < 4:
+        return False
+    return bool(replay.get("server_exit_code") == 0 and
+                replay.get("client_exit_code") == 2 and
+                replay.get("server_ready") is True and
+                replay.get("client_timed_out") is False and
+                not replay.get("session_coverage_missing") and
+                bool(replay.get("session_gcda_touched")) and
+                reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
+                ledger.get("prefix_sent_complete") and
+                isinstance(ledger.get("frames_unattempted"), int) and
+                ledger["frames_unattempted"] > 0 and
+                ledger.get("prior_post_recv_ok") is True)
+
+
 def verify_target_frame_replay(event, planned, directory, index, target,
                                replay_input_root=None, gcno=None,
-                               protocol_end_required=False):
+                               protocol_end_required=False, policy_version=4,
+                               replay_policy=None):
     """Recompute a non-BFTPD input's send evidence from its archived bytes."""
     replay, reset = event.get("replay", {}), event.get("reset", {})
     filename, planned_path = planned.get("filename"), planned.get("path")
@@ -1132,12 +2157,18 @@ def verify_target_frame_replay(event, planned, directory, index, target,
         if replay.get(field) != value:
             raise CoverageError("frame ledger classification mismatch at input %d: %s" %
                                 (index, field))
-    if protocol_end_required and target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+    if protocol_end_required and target in (("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim", "proftpd")
+                                                if policy_version >= 8 else
+                                                ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim")
+                                                if policy_version >= 5 else
+                                                ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1")):
         ended = protocol_end_expected(target, replay, reset, ledger,
-                                      directory / replay["replay_log_file"])
+                                      directory / replay["replay_log_file"], policy_version,
+                                      replay_policy)
         if (replay.get("protocol_end_expected") is not ended or
-                replay.get("last_attempted_frame_is_http_close") is not
-                ledger["last_attempted_frame_is_http_close"]):
+                (target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1") and
+                 replay.get("last_attempted_frame_is_http_close") is not
+                 ledger["last_attempted_frame_is_http_close"])):
             raise CoverageError("protocol end evidence mismatch at input %d" % index)
         if ended:
             flags = classify_replay_exit(replay.get("server_exit_code"),
@@ -1339,6 +2370,13 @@ def verify_proftpd_replay_evidence(replay, reset, artifact_dir, index, require_f
                                                   packets_sent=packets_sent,
                                                   ledger_send_complete=ledger_send_complete,
                                                   session_gcda_touched=session_gcda_touched)
+    if "protocol_end_expected" in replay:
+        # The generic frame audit already recomputed and matched this label
+        # against the archived ledger before the policy audit runs; mirror
+        # its post-acceptance clearing exactly as run_one_replay recorded it.
+        expected["protocol_end_expected"] = replay["protocol_end_expected"]
+        if replay["protocol_end_expected"] is True:
+            expected.update(replay_anomaly=False, anomaly_kind="")
     for field in ("server_crashed", "server_anomalous_exit", "client_anomalous_exit",
                   "client_aborted_on_crash", "replay_anomaly", "anomaly_kind",
                   "proftpd_shutdown_exit_expected", "proftpd_shutdown_exit_evidence"):
@@ -1347,7 +2385,14 @@ def verify_proftpd_replay_evidence(replay, reset, artifact_dir, index, require_f
     incomplete_state = dict(expected, session_coverage_missing=replay.get("session_coverage_missing"),
                             client_timed_out=replay.get("client_timed_out"),
                             server_ready=replay.get("server_ready"),
-                            helper_ready=replay.get("helper_ready"))
+                            helper_ready=replay.get("helper_ready"),
+                            protocol_end_expected=replay.get("protocol_end_expected"))
+    if require_frames:
+        # Do not trust the cached completeness label: derive it from the
+        # hash-checked frame ledger parsed above. The target-frame audit also
+        # checks it against the archived input bytes when available.
+        incomplete_state["send_completeness"] = (
+            "complete" if ledger_send_complete is True else "incomplete")
     expected_incomplete = replay_incompleteness(incomplete_state)
     if replay.get("incomplete_reasons") != expected_incomplete:
         errors.append("incomplete-reasons-mismatch")
@@ -1785,6 +2830,16 @@ def loopfuzz_replayer():
         usage = probe.stdout + probe.stderr
         if ("local_port" not in usage or "follow-up_resp_timeout(ms)" not in usage):
             raise CoverageError("configured aflnet-replay lacks the LoopFuzz local_port/poll/socket-timeout ABI")
+        try:
+            capabilities = subprocess.run(
+                [str(path), "--capabilities"], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=5, check=False)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            raise CoverageError("cannot validate LoopFuzz replayer capabilities: " + str(error)) from error
+        if (capabilities.returncode != 0 or
+                "peer-reset-after-input-end-v1" not in capabilities.stdout.split() or
+                "terminal-quit-reply-v6" not in capabilities.stdout.split()):
+            raise CoverageError("configured aflnet-replay lacks verified terminal-QUIT handling")
         _VERIFIED_LOOPFUZZ_REPLAYERS[str(path)] = identity
     return str(path)
 
@@ -1815,7 +2870,7 @@ def wait_bound_port(process, port, protocol, timeout=5.0):
 
 
 def run_supervised_session(target, client_command, server_command, record,
-                           mode, port, cwd, env, log):
+                           mode, port, cwd, env, log, server_log=None):
     """Supervise targets needing readiness, full client, and gcov shutdown.
 
     The old UDP connect succeeded before Kamailio bound its socket, so replay
@@ -1840,8 +2895,14 @@ def run_supervised_session(target, client_command, server_command, record,
     helper_ready = None
     timed_out = False
     shutdown_requested = False
+    # The server's own stdout/stderr (exim -d debug flows, daemon teardown
+    # lines) must never share the client's evidence stream: per-write
+    # interleaving previously corrupted the transcript mid-section
+    # (2026-11-20 exim). A separate file keeps the replay log pure while
+    # retaining the server-side evidence, hash-pinned in the replay record.
+    server_stream = server_log if server_log is not None else log
     try:
-        server = subprocess.Popen(command, cwd=cwd, env=env, stdout=log,
+        server = subprocess.Popen(command, cwd=cwd, env=env, stdout=server_stream,
                                   stderr=subprocess.STDOUT, start_new_session=True)
         ready = wait_bound_port(server, port, "udp" if target == "kamailio" else "tcp")
         if ready and target == "kamailio":
@@ -1992,7 +3053,7 @@ def run_reset(record, cwd, replay_log, allow_unverified):
 
 
 def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
-                   object_root, reset=None):
+                   object_root, reset=None, replay_policy=None):
     client_command, server_command = replay_commands(target, record["path"], port, mode, cwd, workdir)
     env, remote = os.environ.copy(), None
     exit_trace = Path(str(replay_log) + ".exit-trace")
@@ -2039,11 +3100,13 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
                 for p in sorted(object_root.rglob("*.gcda")) if p.is_file()}
 
     gcda_inventory_before = gcda_inventory() if target in ACCUMULATING_GCDA_TARGETS else {}
-    with Path(replay_log).open("wb") as log:
+    server_log_path = Path(str(replay_log).rsplit(".", 1)[0] + "-server.log")
+    with Path(replay_log).open("wb") as log, \
+            server_log_path.open("wb") as server_log:
         try:
             if target in TARGET_PROTOCOLS:
                 supervised = run_supervised_session(target, client_command, server_command,
-                    record, mode, port, cwd, env, log)
+                    record, mode, port, cwd, env, log, server_log=server_log)
                 server_code, client_code = (supervised["server_exit_code"],
                                              supervised["client_exit_code"])
             else:
@@ -2054,14 +3117,14 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
             # future unsupervised dispatch; otherwise this started a second
             # server after the supervised run and polluted replay state.
             if target == "forked-daapd" and supervised is None:
-                server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=log,
+                server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=server_log,
                                           stderr=subprocess.STDOUT, start_new_session=True)
                 time.sleep(1)
             if supervised is None:
                 client = subprocess.Popen(client_command, cwd=cwd, env=env, stdout=log,
                                           stderr=subprocess.STDOUT, start_new_session=True)
                 if server is None:
-                    server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=log,
+                    server = subprocess.Popen(server_command, cwd=cwd, env=env, stdout=server_log,
                                               stderr=subprocess.STDOUT, start_new_session=True)
                 server_code = server.wait(timeout=15)
                 try:
@@ -2138,6 +3201,8 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
                 replay_elapsed_ns=time.monotonic_ns() - started, imported_gcda=imported,
                 replay_log_file=Path(replay_log).name,
                 replay_log_sha256=digest_file(replay_log),
+                server_log_file=server_log_path.name,
+                server_log_sha256=digest_file(server_log_path),
                 client_command=client_command, server_command=server_command)
     if supervised:
         result.update(supervised)
@@ -2166,6 +3231,11 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
                       frames_attempted=frame_ledger_result["frames_attempted"],
                       frames_sent_complete=frame_ledger_result["frames_sent_complete"],
                       last_attempted_frame_is_quit=frame_ledger_result["last_attempted_frame_is_quit"],
+                      peer_closed=frame_ledger_result.get("peer_closed"),
+                      close_initiator=frame_ledger_result.get("close_initiator"),
+                      close_kind=frame_ledger_result.get("close_kind"),
+                      last_reply_code=frame_ledger_result.get("last_reply_code"),
+                      last_reply_terminated=frame_ledger_result.get("last_reply_terminated"),
                       send_stop_reason=frame_ledger_result["stop_reason"],
                       send_completeness="complete" if frame_ledger_result["send_complete"] else "incomplete")
         if target == "bftpd":
@@ -2183,12 +3253,14 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
         result["final_ftp_reply_code"] = bftpd_final_reply_code(replay_log)
         result["bftpd_protocol_end_expected"] = bftpd_protocol_end_expected(
             result, frame_ledger_result, result["final_ftp_reply_code"], reset or {},
-            policy_version=3)
+            policy_version=4)
         if result["bftpd_protocol_end_expected"]:
             result.update(replay_anomaly=False, anomaly_kind="")
-    if target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1"):
+    if target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim", "proftpd"):
         result["protocol_end_expected"] = protocol_end_expected(
-            target, result, reset or {}, frame_ledger_result, replay_log)
+            target, result, reset or {}, frame_ledger_result, replay_log,
+            policy_version=replay_policy_version(REPLAY_HARNESS_VERSION),
+            replay_policy=replay_policy)
         if result["protocol_end_expected"]:
             result.update(replay_anomaly=False, anomaly_kind="")
     result["incomplete_reasons"] = replay_incompleteness(result)
@@ -2268,7 +3340,6 @@ def run_replay(args):
     source_root, object_root = profile_paths(args.target, cwd)
     allow_incomplete = getattr(args, "allow_incomplete", False)
     replay_policy = (bftpd_exit_policy(cwd, allow_incomplete) if args.target == "bftpd" else
-                     proftpd_replay_policy() if args.target == "proftpd" else
                      pureftpd_replay_policy(cwd, allow_incomplete) if args.target == "pure-ftpd" else
                      forked_daapd_replay_policy() if args.target == "forked-daapd" else None)
     search_roots = source_search_roots(args.target, cwd, source_root)
@@ -2301,6 +3372,53 @@ def run_replay(args):
         # the coverage endpoint must disclose what the union does NOT include.
         write_json(directory / "unreplayable-ledger-entries.json",
                    dict(count=len(unreplayable), filenames=unreplayable))
+    if args.target in ("proftpd", "lightftp"):
+        if args.mode == 1:
+            # v11: the overlong-close exception requires the source-derived
+            # boundary AND a live probe of the measured executable. The probe
+            # runs before the baseline reset below, so its gcda cannot leak
+            # into the measurement.
+            if args.target == "proftpd":
+                configured = os.environ.get("COVERAGE_V4_TARGET_CONFIG")
+                conf_path = (Path(configured) if configured else workdir / "basic.conf")
+                source_policy = proftpd_overlong_source_policy(source_root, object_root,
+                                                               conf_path)
+                overlong = None
+                if source_policy.get("verified"):
+                    probe = probe_ftp_overlong_close(
+                        args.target, args.port, cwd, workdir, directory,
+                        source_policy, allow_incomplete)
+                    if probe.get("verified"):
+                        overlong = dict(source_policy, exception_enabled=True,
+                                        overlong_probe=probe)
+                elif not allow_incomplete:
+                    raise CoverageError("ProFTPD overlong-close source policy is unverifiable")
+                replay_policy = proftpd_replay_policy(overlong_close=overlong)
+            else:
+                base_policy = lightftp_replay_policy(source_root, object_root,
+                                                     allow_incomplete)
+                replay_policy = base_policy
+                if base_policy.get("source_structure_verified") and \
+                        base_policy.get("binary_sha256"):
+                    probe_dir = directory / "overlong-close-probe"
+                    if not probe_dir.is_dir():
+                        probe_dir.mkdir()
+                    build = lightftp_build_record(source_root, object_root, probe_dir)
+                    if not build.get("verified") and not allow_incomplete:
+                        raise CoverageError(
+                            "LightFTP reproducible-build record is unverifiable: %s" %
+                            build.get("reason", "rebuild divergence"))
+                    probe = probe_ftp_overlong_close(
+                        args.target, args.port, cwd, workdir, directory,
+                        base_policy, allow_incomplete)
+                    if probe.get("verified") and build.get("verified"):
+                        replay_policy = lightftp_replay_policy(
+                            source_root, object_root, allow_incomplete,
+                            overlong_probe=probe, build_record=build)
+        else:
+            replay_policy = (proftpd_replay_policy() if args.target == "proftpd"
+                             else lightftp_replay_policy(source_root, object_root,
+                                                         allow_incomplete))
     gcovr_version = subprocess.check_output([args.gcovr, "--version"], text=True).strip()
     gcov_version = subprocess.check_output(["gcov", "--version"], text=True).splitlines()[0]
     # Delete through gcovr, then independently verify a zero baseline.
@@ -2340,6 +3458,12 @@ def run_replay(args):
     unexpected_drop = False
     anomaly_kinds = {}
     incomplete_replays = []
+    # Every mid-input stop stays listed here whether or not a policy accepts
+    # it: accepting a server-initiated close must never silently swallow the
+    # input from view. This inventory is the durable record of "problem
+    # places" (close kind, final reply, unattempted frames, acceptance
+    # basis) and the audit recomputes it from the archived evidence.
+    protocol_close_inventory = []
     policy_replay_events = []
     all_resets_verified = True
     ledger_name = "replay-ledger.jsonl" if sampled else "checkpoints.jsonl"
@@ -2357,10 +3481,24 @@ def run_replay(args):
             all_resets_verified &= bool(reset.get("command_succeeded"))
             replay = run_one_replay(args.target, record, args.port, args.mode, cwd, workdir,
                                     directory / ("replay-%06d.log" % index), object_root,
-                                    reset=reset)
+                                    reset=reset, replay_policy=replay_policy)
             incomplete = replay_incompleteness(replay)
             if incomplete:
                 incomplete_replays.append(dict(filename=record["filename"], reasons=incomplete))
+            if replay.get("send_stop_reason") not in ("eof", None):
+                protocol_close_inventory.append(dict(
+                    idx=index, filename=record["filename"],
+                    stop_reason=replay.get("send_stop_reason"),
+                    peer_closed=replay.get("peer_closed"),
+                    close_initiator=replay.get("close_initiator"),
+                    close_kind=replay.get("close_kind"),
+                    last_reply_code=replay.get("last_reply_code"),
+                    last_reply_terminated=replay.get("last_reply_terminated"),
+                    frames_unattempted=replay.get("frames_unattempted"),
+                    accepted=replay.get("protocol_end_expected") is True,
+                    accepted_by=(replay_policy or {}).get("name")
+                    if replay.get("protocol_end_expected") is True else None,
+                    incomplete_reasons=incomplete))
             if replay.get("replay_anomaly"):
                 anomaly_kinds[replay["anomaly_kind"]] = anomaly_kinds.get(replay["anomaly_kind"], 0) + 1
             if instrument_identity(object_root) != notes:
@@ -2428,7 +3566,8 @@ def run_replay(args):
     if counts["terminal_branches"] != len(union.covered):
         raise CoverageError("terminal aggregate disagrees with branch-ID union")
     measurement_complete = (not replay_truncated and not incomplete_replays and not unreplayable and all_resets_verified and
-                            (replay_policy is None or replay_policy["verified"]))
+                            replay_policy_verified_for_completeness(
+                                args.target, replay_policy, source_root, object_root))
     # Preserve a replay-verifiable witness for every input.  The witness is
     # the queue identity plus the content and snapshot hashes; audit_artifacts
     # recomputes these joins instead of trusting the aggregate count.
@@ -2441,6 +3580,16 @@ def run_replay(args):
                              snapshot_sha256=e.get("snapshot_sha256"))
                         for e in (json.loads(line) for line in
                                   (directory / ledger_name).read_text().splitlines())])
+    # Durable, human-greppable record of every mid-input stop (accepted or
+    # not): the audit recomputes and compares it, so an acceptance change
+    # can never make problem inputs vanish from the archive silently.
+    write_json(directory / "protocol-close-inventory.json",
+               dict(schema_version="protocol-close-inventory-v1",
+                     n_closes=len(protocol_close_inventory),
+                     n_accepted=sum(1 for row in protocol_close_inventory
+                                    if row["accepted"]),
+                     policy=(replay_policy or {}).get("name"),
+                     entries=protocol_close_inventory))
     write_json(directory / "terminal.json", dict(
         schema_version=schema, scope_sha256=manifest["scope_sha256"],
         covered_branch_ids=sorted(union.covered), covered_line_ids=sorted(union.covered_lines),
@@ -2450,10 +3599,17 @@ def run_replay(args):
         n_seed_replayed=(len(seed_indices) if sampled else len(union.seed_events)),
         executed_input_witnesses=input_witnesses,
         n_replayed=len(plan), fixed_execution_coordinates_valid=bool(coordinates),
+        accepted_protocol_closes=[dict(
+            filename=event["filename"],
+            frames_unattempted=event["replay"]["frames_unattempted"],
+            send_stop_reason=event["replay"]["send_stop_reason"])
+            for event in policy_replay_events
+            if event["replay"].get("protocol_end_expected") is True],
         planned_n_replayed=planned_n_replayed,
         replay_input_limit=max_replay_inputs,
         replay_truncated=replay_truncated,
         smoke_mode=smoke,
+        protocol_close_inventory=protocol_close_inventory,
         coverage_capture_mode="sampled-step-plus-terminal" if sampled else "every-input",
         sampled_checkpoint_input_indices=sorted(checkpoint_indices) if sampled else None,
         n_coverage_checkpoints=len(union.events),
@@ -2619,6 +3775,7 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
         raise CoverageError("reconstructed scope disagrees with saved scope")
     terminal = json.loads((directory / "terminal.json").read_text())
     pureftpd_policy_audit_verified = False
+    lightftp_policy_audit_verified = False
     if manifest.get("target") == "pure-ftpd":
         policy = manifest.get("replay_policy", {})
         if policy.get("name") == "pure-ftpd-gcov-die-421-exit-251-252-v2":
@@ -2652,6 +3809,13 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
             pureftpd_policy_audit_verified = True
         elif terminal.get("coverage_complete") is True:
             raise CoverageError("legacy Pure-FTPd policy cannot certify a complete replay")
+    if manifest.get("target") == "lightftp":
+        lightftp_policy_audit_verified = verify_lightftp_replay_policy(
+            manifest.get("replay_policy", {}), root, manifest.get("object_root"),
+            artifact_root=directory)
+        if (manifest.get("replay_policy", {}).get("verified") is True and
+                not lightftp_policy_audit_verified):
+            raise CoverageError("LightFTP source or replay policy identity mismatch")
     proftpd_policy_audit_verified = False
     bftpd_policy_audit = None
     if manifest.get("target") == "proftpd":
@@ -2659,13 +3823,46 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
         policy_name = policy.get("name")
         if policy_name in ("proftpd-ready-client-graceful-exit-v2",
                            "proftpd-ready-client-graceful-exit-v3",
-                           "proftpd-ready-client-graceful-exit-v4"):
+                           "proftpd-ready-client-graceful-exit-v4",
+                           "proftpd-ready-client-graceful-exit-v5",
+                           "proftpd-ready-client-graceful-exit-v6"):
             require_frames = policy_name in ("proftpd-ready-client-graceful-exit-v3",
-                                             "proftpd-ready-client-graceful-exit-v4")
+                                             "proftpd-ready-client-graceful-exit-v4",
+                                             "proftpd-ready-client-graceful-exit-v5",
+                                             "proftpd-ready-client-graceful-exit-v6")
             if (policy.get("verified") is not True or
                     policy.get("handled_shutdown_exit_signal") != -signal.SIGSEGV or
                     policy.get("handled_harness_shutdown_signal") != "SIGTERM"):
                 raise CoverageError("ProFTPD replay policy identity disagrees with the shutdown audit")
+            if policy_name == "proftpd-ready-client-graceful-exit-v6":
+                overlong = policy.get("overlong_close") or {}
+                probe = overlong.get("overlong_probe") or {}
+                probe_dir = directory / "overlong-close-probe"
+                probe_input = probe_dir / "probe-input"
+                probe_ledger = probe_dir / str(probe.get("probe_ledger_file") or "")
+                probe_log = probe_dir / str(probe.get("probe_log_file") or "")
+                if (overlong.get("verified") is not True or
+                        overlong.get("exception_enabled") is not True or
+                        not isinstance(overlong.get("give_up_bytes"), int) or
+                        overlong.get("give_up_bytes") <= 0 or
+                        probe.get("verified") is not True or
+                        probe.get("minimum_bytes") != overlong.get("give_up_bytes") or
+                        probe.get("trigger_frame") != 1 or
+                        not probe_input.is_file() or
+                        probe.get("probe_input_sha256") != digest_file(probe_input) or
+                        not probe_ledger.is_file() or
+                        probe.get("probe_ledger_sha256") != digest_file(probe_ledger) or
+                        not probe_log.is_file() or
+                        probe.get("probe_log_sha256") != digest_file(probe_log)):
+                    raise CoverageError("ProFTPD overlong-close policy evidence mismatch")
+                for name, key in (("src/main.c", "main_c_sha256"),
+                                  ("src/netio.c", "netio_c_sha256"),
+                                  ("proftpd", "binary_sha256")):
+                    recorded = overlong.get(key)
+                    live = manifest.get("source_root") and \
+                        Path(manifest["source_root"]) / name
+                    if recorded and live and live.is_file() and digest_file(live) != recorded:
+                        raise CoverageError("ProFTPD overlong-close source identity mismatch: " + name)
             if len(policy_events) != terminal.get("n_replayed"):
                 raise CoverageError("ProFTPD policy audit lacks a per-input checkpoint")
             for index, event in enumerate(policy_events, 1):
@@ -2692,7 +3889,8 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
         if (manifest.get("target") == "bftpd" and session_policy in
                 ("bftpd-client-lifetime-protocol-end-v1",
                  "bftpd-client-lifetime-protocol-end-v2",
-                 "bftpd-client-lifetime-protocol-end-v3")):
+                 "bftpd-client-lifetime-protocol-end-v3",
+                 "bftpd-client-lifetime-protocol-end-v4")):
             bftpd_policy_audit = verify_bftpd_replay_events(
                 evidence_events, replay_plan, directory, replay_input_root,
                 policy_version=int(session_policy.rsplit("-v", 1)[1]))
@@ -2702,12 +3900,14 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
             if len(replay_plan) != len(evidence_events):
                 raise CoverageError("target frame audit lacks a complete replay plan")
             for index, (event, planned) in enumerate(zip(evidence_events, replay_plan), 1):
-                verify_target_frame_replay(event, planned, directory, index,
-                                           manifest["target"], replay_input_root,
-                                           manifest.get("gcno") if manifest.get("replay_harness_version") ==
-                                           REPLAY_HARNESS_VERSION else None,
-                                           manifest.get("replay_harness_version") ==
-                                           REPLAY_HARNESS_VERSION)
+                version = manifest.get("replay_harness_version")
+                strict_end = version in FRAME_AUDIT_HARNESS_VERSIONS[4:]
+                verify_target_frame_replay(
+                    event, planned, directory, index, manifest["target"],
+                    replay_input_root, manifest.get("gcno") if strict_end else None,
+                    strict_end,
+                    replay_policy_version(version),
+                    replay_policy)
         replay_truncated = terminal.get("replay_truncated", False)
         if not isinstance(replay_truncated, bool):
             raise CoverageError("terminal replay_truncated must be boolean")
@@ -2725,13 +3925,54 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
                                    if event["replay"]["incomplete_reasons"]]
             if terminal.get("incomplete_replays") != expected_incomplete:
                 raise CoverageError("terminal incomplete replay list disagrees with input evidence")
+        if manifest.get("replay_harness_version") in FRAME_AUDIT_HARNESS_VERSIONS[5:]:
+            expected_closes = [dict(
+                filename=event["filename"],
+                frames_unattempted=event["replay"]["frames_unattempted"],
+                send_stop_reason=event["replay"]["send_stop_reason"])
+                for event in recomputed_events
+                if event["replay"].get("protocol_end_expected") is True]
+            if terminal.get("accepted_protocol_closes") != expected_closes:
+                raise CoverageError("accepted protocol closes disagree with input evidence")
+        # v12: the close inventory must list EVERY mid-input stop, accepted
+        # or not, and match the archived per-input evidence exactly — an
+        # acceptance widening can no longer make problem inputs disappear.
+        if manifest.get("replay_harness_version") in FRAME_AUDIT_HARNESS_VERSIONS[10:]:
+            expected_inventory = [dict(
+                idx=index, filename=event["filename"],
+                stop_reason=event["replay"].get("send_stop_reason"),
+                peer_closed=event["replay"].get("peer_closed"),
+                close_initiator=event["replay"].get("close_initiator"),
+                close_kind=event["replay"].get("close_kind"),
+                last_reply_code=event["replay"].get("last_reply_code"),
+                last_reply_terminated=event["replay"].get("last_reply_terminated"),
+                frames_unattempted=event["replay"].get("frames_unattempted"),
+                accepted=event["replay"].get("protocol_end_expected") is True,
+                accepted_by=(replay_policy or {}).get("name")
+                if event["replay"].get("protocol_end_expected") is True else None,
+                incomplete_reasons=event["replay"].get("incomplete_reasons"))
+                for index, event in enumerate(recomputed_events, 1)
+                if event["replay"].get("send_stop_reason") not in ("eof", None)]
+            inventory_file = directory / "protocol-close-inventory.json"
+            recorded = terminal.get("protocol_close_inventory")
+            if (recorded != expected_inventory or not inventory_file.is_file() or
+                    canonical(json.loads(inventory_file.read_text())) != canonical(
+                        dict(schema_version="protocol-close-inventory-v1",
+                             n_closes=len(expected_inventory),
+                             n_accepted=sum(1 for row in expected_inventory
+                                            if row["accepted"]),
+                             policy=(replay_policy or {}).get("name"),
+                             entries=expected_inventory))):
+                raise CoverageError("protocol close inventory disagrees with input evidence")
         recomputed_complete = (not any(replay_incompleteness(event.get("replay", {}))
                                        for event in recomputed_events)
                                and not terminal.get("n_unreplayable_ledger_entries", 0)
                                and all(event.get("reset", {}).get("command_succeeded")
                                        for event in recomputed_events)
                                and not replay_truncated
-                               and (replay_policy is None or replay_policy.get("verified"))
+                               and replay_policy_verified_for_completeness(
+                                   manifest.get("target"), replay_policy, root,
+                                   manifest.get("object_root"))
                                and (manifest.get("target") != "pure-ftpd" or
                                     pureftpd_policy_audit_verified)
                                and (manifest.get("target") != "proftpd" or

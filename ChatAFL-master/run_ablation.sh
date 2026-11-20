@@ -101,6 +101,22 @@ if [[ ! "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] || (( TIMEOUT > 10080 )); then
   echo "[ERROR] TIMEOUT must be integer minutes in [1, 10080]" >&2
   exit 2
 fi
+# Startup deadline semantics (2026-11-20 fix): this is the maximum IDLE
+# window during startup, not a since-launch wallclock budget. Every
+# completed LLM attempt and every calibrated seed slides the window, so
+# healthy-but-slow setups (grammar/enrichment up to ~25 min, slow-target
+# dry runs) proceed until the run.sh process timeout; the campaign budget
+# counts only post-activation fuzzing time. A setup that goes truly silent
+# still expires.
+CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC="${CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC:-360}"
+if [[ ! "$CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]] ||
+   (( CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC > 604800 )); then
+  echo "[ERROR] CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC must be an integer in [1, 604800]" >&2
+  exit 2
+fi
+export CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC
+WALLCLOCK_STARTUP_MIN=$(((CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC + 59) / 60))
+WALLCLOCK_SHUTDOWN_MARGIN_MIN=2
 Q1_COMMON_CALL_BUDGET="${Q1_COMMON_CALL_BUDGET:-${ABLATION_CALL_BUDGET_OVERRIDE:-}}"
 if [[ -n "$Q1_COMMON_CALL_BUDGET" ]]; then
   if [[ ! "$Q1_COMMON_CALL_BUDGET" =~ ^(0|[1-9][0-9]*)$ ]] ||
@@ -377,7 +393,7 @@ run_queued_groups() {
         # 会从父环境静漏进名义臂。改为模式清扫：unset 所有 CHATAFL_*，
         # 仅保留跨臂基础设施允许清单（网关/mock/超时/token，对全部臂公平）。
         # 臂专属变量在清扫之后由组规格重新 export，因此顺序保证语义。
-        local _iso_v _iso_allow=" CHATAFL_MOCK_LLM CHATAFL_LLM_BASE CHATAFL_NO_LLM CHATAFL_LLM_TOTAL_CALL_CAP CHATAFL_TOKEN_CAP CHATAFL_MAX_TOKENS CHATAFL_LLM_TIMEOUT_MS CHATAFL_LLM_CONNECT_TIMEOUT CHATAFL_ENRICH_TIMEOUT CHATAFL_LLM_MODEL CHATAFL_EVENT_LOG CHATAFL_EXECUTION_LOG "
+        local _iso_v _iso_allow=" CHATAFL_MOCK_LLM CHATAFL_LLM_BASE CHATAFL_NO_LLM CHATAFL_LLM_TOTAL_CALL_CAP CHATAFL_TOKEN_CAP CHATAFL_MAX_TOKENS CHATAFL_LLM_TIMEOUT_MS CHATAFL_LLM_CONNECT_TIMEOUT CHATAFL_ENRICH_TIMEOUT CHATAFL_LLM_MODEL CHATAFL_EVENT_LOG CHATAFL_EXECUTION_LOG CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC "
         while IFS= read -r _iso_v; do
           [[ -z "$_iso_v" ]] && continue
           [[ "$_iso_allow" == *" $_iso_v "* ]] && continue
@@ -420,7 +436,8 @@ run_queued_groups() {
 
         cd "$BASE_DIR" || exit 1
         run_timeout="$TIMEOUT"
-        [[ "$ABLATION_STOP_MODE" == "wallclock" ]] && run_timeout=$((TIMEOUT + 6))
+        [[ "$ABLATION_STOP_MODE" == "wallclock" ]] && \
+          run_timeout=$((TIMEOUT + WALLCLOCK_STARTUP_MIN + WALLCLOCK_SHUTDOWN_MARGIN_MIN))
         ./run_dev.sh "$RUNS" "$run_timeout" "$TARGET" loopfuzz
         rc=$?
         if [[ $rc -ne 0 ]]; then

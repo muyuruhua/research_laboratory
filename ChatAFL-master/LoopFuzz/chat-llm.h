@@ -88,6 +88,10 @@ void chat_llm_global_init(void);
 /* Set once in the original process before workers/forks. Epoch milliseconds;
  * zero disables the campaign deadline. Applies to every class and retry. */
 void chat_llm_set_campaign_deadline(unsigned long long epoch_ms);
+/* Defined strongly in afl-fuzz.c: slides the startup deadline on every
+ * completed attempt. Referenced weakly here so standalone tool builds
+ * (llm_preflight links chat-llm.c without afl-fuzz.c) still link. */
+void campaign_startup_progress(void);
 /* Must be called once after all LLM calls are done */
 void chat_llm_global_cleanup(void);
 

@@ -84,7 +84,8 @@ else:
         self.write_executable(self.directory / "run_dev.sh", """
 import json, os, pathlib, sys
 keys = ('CHATAFL_CAMPAIGN_CALL_BUDGET', 'CHATAFL_CAMPAIGN_STOP_MODE',
-        'CHATAFL_CAMPAIGN_DURATION_SEC', 'CHATAFL_ABLATION_THRESHOLD',
+        'CHATAFL_CAMPAIGN_DURATION_SEC', 'CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC',
+        'CHATAFL_ABLATION_THRESHOLD',
         'CHATAFL_Q1_DIRECT_SERVICE', 'CHATAFL_Q1_NO_REFLOW',
         'CHATAFL_Q1_REFLOW', 'CHATAFL_CODE_RETAIN', 'CHATAFL_NO_LLM', 'TIMESTAMP')
 with open(os.environ['TEST_CHILDREN'], 'a') as output:
@@ -261,10 +262,11 @@ sys.exit(%d)
                 children = self.recorded_children()
                 self.assertEqual(len(children), 1)
                 child = children[0]
-                self.assertEqual(child["argv"], ["3", str(minutes + 6), "bftpd", "loopfuzz"])
+                self.assertEqual(child["argv"], ["3", str(minutes + 8), "bftpd", "loopfuzz"])
                 self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_STOP_MODE"], "wallclock")
                 self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_CALL_BUDGET"], "0")
                 self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_DURATION_SEC"], str(minutes * 60))
+                self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC"], "360")
                 self.assertEqual(child["environment"]["CHATAFL_Q1_REFLOW"], "1")
                 commands = {row["command"] for row in self.recorded_effects()}
                 self.assertNotIn("python3", commands)
@@ -277,9 +279,22 @@ sys.exit(%d)
                               "Q1_COMMON_CALL_BUDGET": "321987"}, dry_run=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         child = self.recorded_children()[0]
-        self.assertEqual(child["argv"], ["3", "31", "exim", "loopfuzz"])
+        self.assertEqual(child["argv"], ["3", "33", "exim", "loopfuzz"])
         self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_CALL_BUDGET"], "321987")
         self.assertEqual(child["environment"]["CHATAFL_Q1_DIRECT_SERVICE"], "1")
+
+    def test_wallclock_outer_timeout_tracks_startup_budget_and_shutdown_margin(self):
+        for startup_seconds, extra_minutes in ((90, 4), (360, 8), (601, 13)):
+            with self.subTest(startup_seconds=startup_seconds):
+                result = self.launch(["bftpd", "3", "25", "-g", "q1c512"],
+                                     {"KEY": "offline-test-placeholder",
+                                      "CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC": str(startup_seconds)},
+                                     dry_run=False)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                child = self.recorded_children()[0]
+                self.assertEqual(child["argv"], ["3", str(25 + extra_minutes), "bftpd", "loopfuzz"])
+                self.assertEqual(child["environment"]["CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC"],
+                                 str(startup_seconds))
 
     def test_call_budget_child_keeps_dose_mode_without_wallclock_grace(self):
         result = self.launch(["bftpd", "3", "25", "-g", "q1d512"],
@@ -320,7 +335,7 @@ sys.exit(%d)
         ]])
         self.assertTrue(all(Path(path).is_dir() for path in directories))
         self.assertTrue(all(str(path) not in auditor_calls[0] for path in old_directories))
-        self.assertTrue(all(row["argv"][1] == "31" for row in children))
+        self.assertTrue(all(row["argv"][1] == "33" for row in children))
         audit_log = self.directory / "ablation" / f"wallclock-audit-bftpd-{batch}.log"
         self.assertEqual(audit_log.read_text().strip(), "offline auditor result")
 
@@ -335,7 +350,7 @@ sys.exit(%d)
         self.assertEqual(len(auditor_calls), 1)
         arguments = auditor_calls[0]
         self.assertEqual(arguments[arguments.index("--timeout-min") + 1], "1440")
-        self.assertEqual(self.recorded_children()[0]["argv"][1], "1446")
+        self.assertEqual(self.recorded_children()[0]["argv"][1], "1448")
         self.assertIn("offline auditor result", result.stdout)
 
     def test_explicit_audit_opt_out_skips_auditor_after_successful_launch(self):

@@ -135,6 +135,7 @@ STATUS_DIR="${SAVETO}/.sample_status"
 FORENSICS_DIR="${SAVETO}/.forensics"
 COLLECTION_DONE=0
 COLLECTION_COMPLETE=0
+COLLECTION_STATUS=0
 CLEANUP_DONE=0
 RUN_COMPLETED=0
 WATCHDOG_DONE=0
@@ -368,7 +369,7 @@ collect_results_with_recovery() {
   local delete_flag=""
 
   if [[ $COLLECTION_DONE -eq 1 ]]; then
-    return 0
+    return "$COLLECTION_STATUS"
   fi
   COLLECTION_DONE=1
 
@@ -384,16 +385,18 @@ collect_results_with_recovery() {
     bash "$RECOVERY_HELPER" "$SAVETO" ${delete_flag:+$delete_flag}
     helper_status=$?
     if [[ $helper_status -ne 0 ]]; then
-      printf "\n${LOG_TAG}: [WARN] Recovery helper reported missing outputs; containers are kept for manual inspection"
+      COLLECTION_STATUS=$helper_status
+      printf "\n${LOG_TAG}: [ERROR] Recovery helper failed (exit ${helper_status}); containers are kept for manual inspection\n" >&2
     else
       COLLECTION_COMPLETE=1
     fi
   else
-    printf "\n${LOG_TAG}: [WARN] Recovery helper or manifest missing; skipping result collection"
+    COLLECTION_STATUS=1
+    printf "\n${LOG_TAG}: [ERROR] Recovery helper or manifest missing; result collection was skipped\n" >&2
   fi
 
   fix_result_permissions "${SAVETO}"
-  return 0
+  return "$COLLECTION_STATUS"
 }
 
 cleanup_mqtt_resources() {
@@ -1074,6 +1077,7 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_CAMPAIGN_CALL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_CALL_BUDGET=${CHATAFL_CAMPAIGN_CALL_BUDGET}"
   [[ -n "${CHATAFL_CAMPAIGN_STOP_MODE:-}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_STOP_MODE=${CHATAFL_CAMPAIGN_STOP_MODE}"
   [[ -n "${CHATAFL_CAMPAIGN_DURATION_SEC:-}" ]]  && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_DURATION_SEC=${CHATAFL_CAMPAIGN_DURATION_SEC}"
+  [[ -n "${CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC=${CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC}"
   [[ -n "${CHATAFL_MUTATION_CALL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_MUTATION_CALL_BUDGET=${CHATAFL_MUTATION_CALL_BUDGET}"
   [[ -n "${CHATAFL_REQUEST_GATE:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_REQUEST_GATE=${CHATAFL_REQUEST_GATE}"
   [[ -n "${CHATAFL_REQUEST_GATE_WINDOW:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_REQUEST_GATE_WINDOW=${CHATAFL_REQUEST_GATE_WINDOW}"
@@ -1452,3 +1456,14 @@ if [[ -n "${MQTT_AUTO_NETWORK:-}" ]] && docker network inspect "$MQTT_AUTO_NETWO
 fi
 
 printf "\n${LOG_TAG}: I am done!\n"
+RUN_EXIT_STATUS=0
+for archive_name in "${archive_names[@]}"; do
+  if [[ "$(read_sample_status_value "$archive_name" status)" != "completed" ]]; then
+    RUN_EXIT_STATUS=1
+  fi
+done
+if [[ "$COLLECTION_STATUS" -ne 0 ]]; then
+  RUN_EXIT_STATUS=1
+fi
+trap - EXIT INT TERM
+exit "$RUN_EXIT_STATUS"

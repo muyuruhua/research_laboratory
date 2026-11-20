@@ -21,13 +21,20 @@ a clean exit with no fresh coverage is incomplete. BFTPD and Pure-FTPd import
 per-session `.gcda` from their chroot mirrors instead.
 
 A protocol-requested control close may leave later framed input unreachable.
-The v4 policy accepts this only for observed LightFTP/Pure-FTPd `QUIT` + final
-`221`, or forked-daapd/Lighttpd1 HTTP `Connection: close` requests with a
-matching, complete close response. It additionally requires a fully sent
-prefix, peer-close stop in the frame ledger, normal server exit, successful
-reset, and fresh session coverage. Other early closes, truncated responses,
-timeouts and missing frames remain `coverage_incomplete`. ProFTPD, Exim,
-Live555 and Kamailio have no protocol-end exemption under this policy.
+The versioned replay policy accepts only evidence-backed closes: LightFTP and
+Pure-FTPd `QUIT` + final `221`; LightFTP's source-verified command-buffer
+exhaustion on a CRLF-free stream prefix; Exim's terminal SMTP close reply;
+forked-daapd/Lighttpd1 HTTP `Connection: close` with a complete response; and
+Pure-FTPd's separately verified `421` path. These paths require a fully sent
+prefix, normal server exit, successful reset, and fresh session coverage. The
+LightFTP buffer rule is tied to `rcvbuf[PATH_MAX]`, the compiler-resolved
+`PATH_MAX` (4095 bytes before the reserved NUL on the target image), the exact
+source/header and executable hashes, and the cumulative
+sent bytes since the last CRLF. Exim replay waits briefly for the `221` reply
+to a terminal `QUIT` before deciding whether later frames are unreachable.
+Other early closes, truncated responses, timeouts and missing frames remain
+`coverage_incomplete`. ProFTPD, Live555 and Kamailio have no protocol-end
+exemption under this policy.
 BFTPD has its own versioned `QUIT`/`221` policy. Its v3 rule also accepts a
 last-frame `ECONNRESET` after a complete send when earlier receives succeeded,
 the server exited normally, and per-session gcda was imported. A reset with

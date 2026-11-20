@@ -11,6 +11,35 @@ strstr() {
   return 0
 }
 
+POSTPROCESS_STATUS=0
+record_postprocess_failure() {
+  local step="$1" rc="$2"
+  if [ "$rc" -ne 0 ]; then
+    echo "[ERROR] ${step} failed (exit ${rc})" >&2
+    [ "$POSTPROCESS_STATUS" -ne 0 ] || POSTPROCESS_STATUS=$rc
+  fi
+}
+
+validate_loopfuzz_terminal() {
+  [ "$FUZZER" = "loopfuzz" ] || return 0
+  local output_dir="$1" terminal="" candidate count=0
+  for candidate in "$output_dir/cov_over_time.csv.v4/terminal.json" \
+                   "$output_dir/cov_over_time.csv.v5/terminal.json"; do
+    if [ -e "$candidate" ]; then
+      terminal="$candidate"
+      count=$((count + 1))
+    fi
+  done
+  [ "$count" -eq 1 ] && [ -s "$terminal" ] || {
+    echo "[ERROR] expected exactly one non-empty LoopFuzz v4/v5 terminal under: $output_dir" >&2
+    return 1
+  }
+  python3 -c 'import json,sys; p=sys.argv[1]; v=5 if "/cov_over_time.csv.v5/" in p else 4; s="loopfuzz-coverage-v5-sampled-checkpoints" if v == 5 else "loopfuzz-coverage-v4"; t=json.load(open(p)); sys.exit(0 if isinstance(t,dict) and t.get("schema_version")==s and t.get("coverage_complete") is True and t.get("acceptance")=="complete" else 1)' "$terminal" || {
+    echo "[ERROR] LoopFuzz terminal is incomplete: $terminal" >&2
+    return 1
+  }
+}
+
 FUZZER_DIR="$FUZZER"
 if [ "$FUZZER" = "loopfuzz" ]; then
   FUZZER_DIR="loopfuzz"
@@ -37,7 +66,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
-  cd $WORKDIR/${TARGET_DIR}
+  cd "$WORKDIR/${TARGET_DIR}" || { echo "[ERROR] missing fuzz working directory" >&2; exit 2; }
   CLEANUP="${WORKDIR}/clean"
   if [ "$FUZZER" = "loopfuzz" ]; then
     CLEANUP="bash /tmp/coverage-v4-src/fuzz_runtime/proftpd.sh"
@@ -49,7 +78,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
   #Step-2. Collect code coverage over time
   #Move to gcov folder
-  cd $WORKDIR/proftpd-gcov
+  if cd "$WORKDIR/proftpd-gcov"; then
 
   #The last argument passed to cov_script should be 0 if the fuzzer is afl/nwe and it should be 1 if the fuzzer is based on aflnet
   #0: the test case is a concatenated message sequence -- there is no message boundary
@@ -58,16 +87,38 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
     cov_script ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/ 21 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_over_time.csv 0
   else
     cov_script ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/ 21 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_over_time.csv 1
-  fi
+  fi > "${WORKDIR}/${TARGET_DIR}/${OUTDIR}/coverage.log" 2>&1
+  COVERAGE_STATUS=$?
+  cat "${WORKDIR}/${TARGET_DIR}/${OUTDIR}/coverage.log"
+  record_postprocess_failure "coverage replay" "$COVERAGE_STATUS"
+  validate_loopfuzz_terminal "${WORKDIR}/${TARGET_DIR}/${OUTDIR}"
+  TERMINAL_STATUS=$?
+  record_postprocess_failure "coverage terminal validation" "$TERMINAL_STATUS"
 
   gcovr -r . --html --html-details -o index.html
-  mkdir ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/
-  cp *.html ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/
+  GCOVR_STATUS=$?
+  record_postprocess_failure "gcovr report" "$GCOVR_STATUS"
+  mkdir -p "${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/"
+  MKDIR_STATUS=$?
+  record_postprocess_failure "coverage report directory creation" "$MKDIR_STATUS"
+  cp *.html "${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/"
+  COPY_STATUS=$?
+  record_postprocess_failure "coverage report copy" "$COPY_STATUS"
+  else
+    COVERAGE_STATUS=$?
+    record_postprocess_failure "coverage working-directory change" "$COVERAGE_STATUS"
+  fi
 
   #Step-3. Save the result to the ${WORKDIR} folder
   #Tar all results to a file
-  cd ${WORKDIR}/${TARGET_DIR}
-  tar -zcvf ${WORKDIR}/${OUTDIR}.tar.gz ${OUTDIR}
+  if cd "$WORKDIR/${TARGET_DIR}"; then
+    tar -zcvf "${WORKDIR}/${OUTDIR}.tar.gz" "$OUTDIR"
+    TAR_STATUS=$?
+  else
+    TAR_STATUS=$?
+  fi
+  record_postprocess_failure "result archive" "$TAR_STATUS"
 
-  exit $STATUS
+  [ "$STATUS" -ne 0 ] || STATUS=$POSTPROCESS_STATUS
+  exit "$STATUS"
 fi

@@ -1,5 +1,6 @@
 """Actual replay client checks against TCP peers and malformed framed files."""
 import json
+import errno
 import os
 from pathlib import Path
 import socket
@@ -7,6 +8,7 @@ import struct
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 
 
@@ -18,11 +20,11 @@ def framed(*payloads):
 
 
 class ReplayClientContract(unittest.TestCase):
-    def invoke(self, root, data, port):
+    def invoke(self, root, data, port, protocol="FTP", poll_timeout_ms=50):
         packet, ledger = root / "input.raw", root / "frames.jsonl"
         packet.write_bytes(data)
         result = subprocess.run(
-            [str(BINARY), str(packet), "FTP", str(port), "0", "50", "10000"],
+            [str(BINARY), str(packet), protocol, str(port), "0", str(poll_timeout_ms), "10000"],
             env={**os.environ, "LOOPFUZZ_REPLAY_LEDGER": str(ledger)},
             capture_output=True, timeout=5,
         )
@@ -58,6 +60,9 @@ class ReplayClientContract(unittest.TestCase):
                                 connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
                                 return
                             connection.sendall(b"200 OK\r\n")
+                            if mode == "final-reset" and index == 1:
+                                connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                                return
                             if mode == "early-fin":
                                 connection.shutdown(socket.SHUT_WR)
                                 # Drain any forbidden sends after FIN, so their absence is tested.
@@ -107,6 +112,184 @@ class ReplayClientContract(unittest.TestCase):
         self.assertEqual(rows[-1]["stop_reason"], "client-recv-post-send-failed")
         self.assertEqual(rows[1]["post_recv_errno"], 104)
         self.assertEqual(received, [b"NOOP\r\n"])
+
+    def test_reset_after_final_send_keeps_full_send_evidence(self):
+        result, rows, received = self.conversation("final-reset")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(rows[-1]["stop_reason"], "peer-reset-after-input-end")
+        self.assertEqual(rows[-1]["frames_total"], 2)
+        self.assertEqual(rows[-2]["sent_bytes"], rows[-2]["len"])
+        self.assertEqual(rows[-2]["post_recv_errno"], errno.ECONNRESET)
+        self.assertEqual(received, [b"NOOP\r\n", b"QUIT\r\n"])
+
+    def test_delayed_quit_reply_stops_before_suffix(self):
+        for protocol in ("FTP", "SMTP"):
+            with self.subTest(protocol=protocol):
+                received = []
+                with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+                    listener.bind(("127.0.0.1", 0))
+                    listener.listen(1)
+                    def peer():
+                        with listener:
+                            connection, _ = listener.accept()
+                            with connection:
+                                connection.settimeout(2)
+                                connection.sendall(b"220 ready\r\n")
+                                received.append(connection.recv(64))
+                                time.sleep(0.15)
+                                connection.sendall(b"221 closing connection\r\n")
+                                connection.shutdown(socket.SHUT_WR)
+                                received.append(connection.recv(64))
+                    worker = threading.Thread(target=peer, daemon=True)
+                    worker.start()
+                    result, rows = self.invoke(
+                        Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                        listener.getsockname()[1], protocol)
+                    worker.join(3)
+                    self.assertFalse(worker.is_alive())
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertEqual(rows[-1]["stop_reason"], "protocol-close-after-quit")
+                    self.assertEqual(rows[-1]["frames_total"], 1)
+                    self.assertEqual(received, [b"QUIT\r\n", b""])
+
+    def test_221_inside_multiline_reply_does_not_certify_quit_close(self):
+        received = []
+        with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            def peer():
+                with listener:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(2)
+                        connection.sendall(b"220 ready\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(
+                            b"211-Features follow\r\n"
+                            b"221 this is multiline text\r\n"
+                            b"211 End\r\n")
+                        connection.shutdown(socket.SHUT_WR)
+                        received.append(connection.recv(64))
+            worker = threading.Thread(target=peer, daemon=True)
+            worker.start()
+            result, rows = self.invoke(
+                Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                listener.getsockname()[1], "FTP")
+            worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(rows[-1]["stop_reason"], "peer-closed-before-input-end")
+            self.assertEqual(rows[-1]["frames_total"], 1)
+            self.assertEqual(received, [b"QUIT\r\n", b""])
+
+    def test_nonfinal_221_does_not_certify_quit_close(self):
+        received = []
+        with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            def peer():
+                with listener:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(2)
+                        connection.sendall(b"220 ready\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(b"221 stale reply\r\n500 final reply\r\n")
+                        connection.shutdown(socket.SHUT_WR)
+                        received.append(connection.recv(64))
+            worker = threading.Thread(target=peer, daemon=True)
+            worker.start()
+            result, rows = self.invoke(
+                Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                listener.getsockname()[1], "FTP")
+            worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(rows[-1]["stop_reason"], "peer-closed-before-input-end")
+            self.assertEqual(rows[-1]["frames_total"], 1)
+            self.assertEqual(received, [b"QUIT\r\n", b""])
+
+    def test_ftp_quit_reply_does_not_stop_open_session(self):
+        received = []
+        with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            def peer():
+                with listener:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(4)
+                        connection.sendall(b"220 ready\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(b"221 closing connection\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(b"200 continued\r\n")
+            worker = threading.Thread(target=peer, daemon=True)
+            worker.start()
+            result, rows = self.invoke(
+                Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                listener.getsockname()[1], "FTP")
+            worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(rows[-1]["stop_reason"], "eof")
+            self.assertEqual(received, [b"QUIT\r\n", b"NOOP\r\n"])
+
+    def test_old_221_before_quit_does_not_certify_quit(self):
+        received = []
+        with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            def peer():
+                with listener:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(2)
+                        connection.sendall(b"221 stale reply\r\n")
+                        received.append(connection.recv(64))
+                        connection.shutdown(socket.SHUT_WR)
+            worker = threading.Thread(target=peer, daemon=True)
+            worker.start()
+            result, rows = self.invoke(
+                Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                listener.getsockname()[1], "SMTP")
+            worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(rows[-1]["stop_reason"], "peer-closed-before-input-end")
+            self.assertEqual(rows[-1]["frames_total"], 1)
+            self.assertEqual(received, [b"QUIT\r\n"])
+
+    def test_quit_reply_wait_respects_two_second_deadline(self):
+        received = []
+        with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            def peer():
+                with listener:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(4)
+                        connection.sendall(b"220 ready\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(b"500 no close\r\n")
+                        received.append(connection.recv(64))
+                        connection.sendall(b"200 continued\r\n")
+                        connection.shutdown(socket.SHUT_WR)
+            worker = threading.Thread(target=peer, daemon=True)
+            worker.start()
+            started = time.monotonic()
+            result, rows = self.invoke(
+                Path(directory), framed(b"QUIT\r\n", b"NOOP\r\n"),
+                listener.getsockname()[1], "SMTP", poll_timeout_ms=10000)
+            elapsed = time.monotonic() - started
+            worker.join(4)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(rows[-1]["frames_total"], 2)
+            self.assertEqual(received, [b"QUIT\r\n", b"NOOP\r\n"])
+            self.assertGreaterEqual(elapsed, 1.8)
+            self.assertLess(elapsed, 3.0)
 
     def assert_invalid_without_connect(self, data, reason):
         with socket.socket() as listener, tempfile.TemporaryDirectory() as directory:

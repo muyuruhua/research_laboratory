@@ -424,6 +424,11 @@ static int chat_llm_reserve_call(const char *request, const char *model,
     return allowed;
 }
 
+/* Weak reference: strong definition lives in afl-fuzz.c (slides the startup
+ * deadline). Standalone tool builds link chat-llm.c without afl-fuzz.c, so
+ * the symbol may be absent here. */
+void campaign_startup_progress(void) __attribute__((weak));
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     /* Keep the public signature: the campaign model is resolved at init. */
@@ -555,6 +560,10 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         unsigned long long started = chat_llm_now_ms();
         CURLcode res = curl_easy_perform(curl);
         long latency = (long)(chat_llm_now_ms() - started);
+        /* Any completed attempt (success or transport error) is startup
+         * liveness: slide the startup window so healthy-but-slow grammar /
+         * enrichment phases are not aborted by a fixed since-launch budget. */
+        if (campaign_startup_progress) campaign_startup_progress();
         long http_status = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
         snprintf(g_llm_last_resp, sizeof(g_llm_last_resp), "%s", chunk.memory);

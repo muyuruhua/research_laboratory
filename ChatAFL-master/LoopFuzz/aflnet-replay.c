@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <limits.h>
 #include <time.h>
 #include <unistd.h>
 #include "alloc-inl.h"
@@ -7,6 +8,7 @@
 #define server_wait_usecs 10000
 
 #include <errno.h>
+#include <poll.h>
 #include <sys/stat.h>
 
 /* Per-frame send ledger (2026-11-16, GLM53 plan section 2.1): machine-readable
@@ -20,6 +22,7 @@
 static FILE *g_ledger = NULL;
 static const char *g_stop_reason = "eof";
 static int g_peer_closed = 0;
+static int g_skip_next_pre_recv_wait = 0;
 
 /* net_recv is shared with the fuzzer and treats orderly EOF as an empty
  * successful read. Replay must distinguish it before sending another frame.
@@ -39,13 +42,119 @@ static int replay_recv(int fd, struct timeval timeout, int poll_timeout,
   return 0;
 }
 
-static void finish_ledger(unsigned int frames)
+static int terminal_221_seen(const char *response, unsigned int start,
+                             unsigned int length)
 {
+  if (!response || start > length) return 0;
+  int multiline_code = -1;
+  unsigned int multiline_start = 0;
+  int final_reply_code = -1;
+  unsigned int final_reply_start = 0;
+  unsigned int final_reply_end = 0;
+
+  for (unsigned int line_start = 0; line_start + 1 < length;) {
+    unsigned int line_end = line_start;
+    while (line_end + 1 < length &&
+           !(response[line_end] == '\r' && response[line_end + 1] == '\n'))
+      line_end++;
+    if (line_end + 1 >= length) break;
+
+    unsigned int line_size = line_end - line_start;
+    int has_code = line_size >= 4 && response[line_start] >= '0' &&
+                   response[line_start] <= '9' && response[line_start + 1] >= '0' &&
+                   response[line_start + 1] <= '9' && response[line_start + 2] >= '0' &&
+                   response[line_start + 2] <= '9' &&
+                   (response[line_start + 3] == ' ' || response[line_start + 3] == '-');
+    int code = has_code ? (response[line_start] - '0') * 100 +
+                          (response[line_start + 1] - '0') * 10 +
+                          response[line_start + 2] - '0' : -1;
+
+    if (multiline_code >= 0) {
+      if (has_code && code == multiline_code && response[line_start + 3] == ' ') {
+        final_reply_code = code;
+        final_reply_start = multiline_start;
+        final_reply_end = line_end + 2;
+        multiline_code = -1;
+      }
+    } else if (has_code && response[line_start + 3] == '-') {
+      multiline_code = code;
+      multiline_start = line_start;
+    } else if (has_code) {
+      final_reply_code = code;
+      final_reply_start = line_start;
+      final_reply_end = line_end + 2;
+    }
+
+    line_start = line_end + 2;
+  }
+
+  return final_reply_code == 221 && final_reply_start >= start &&
+         final_reply_end == length;
+}
+
+static int replay_recv_until_deadline(int fd, struct timespec deadline,
+                                      char **response, unsigned int *response_size)
+{
+  for (;;) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long long remaining_ns = (long long)(deadline.tv_sec - now.tv_sec) * 1000000000LL +
+                             deadline.tv_nsec - now.tv_nsec;
+    if (remaining_ns <= 0) return 0;
+    int remaining_ms = (int)((remaining_ns + 999999LL) / 1000000LL);
+    struct pollfd pfd = {fd, POLLIN, 0};
+    int ready = poll(&pfd, 1, remaining_ms);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      return 1;
+    }
+    if (!ready) return 0;
+    for (;;) {
+      char chunk[1000];
+      ssize_t received = recv(fd, chunk, sizeof(chunk), MSG_DONTWAIT);
+      if (received > 0) {
+        if (*response_size > UINT_MAX - (unsigned int)received) {
+          errno = EOVERFLOW;
+          return 1;
+        }
+        *response = (char *)ck_realloc(*response, *response_size + received + 1);
+        memcpy(*response + *response_size, chunk, received);
+        *response_size += (unsigned int)received;
+        (*response)[*response_size] = '\0';
+        continue;
+      }
+      if (!received) { g_peer_closed = 1; errno = 0; return 2; }
+      if (errno == EINTR) continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK) { errno = 0; return 0; }
+      return 1;
+    }
+  }
+}
+
+/* Structured close evidence recorded at the socket layer, where the truth
+ * is known, instead of reconstructing it later from the human-readable
+ * transcript (which the server's own stderr stream can interleave with or
+ * truncate). Acceptance predicates read these fields; the printed
+ * transcript stays for humans only. */
+static void finish_ledger(unsigned int frames, int last_reply_code,
+                          unsigned int response_bytes,
+                          int last_reply_terminated)
+{
+  const char *local_stops[] = {"truncated-frame-header", "truncated-frame-payload",
+                               "input-read-failed", NULL};
+  const char *initiator = "peer";
   if (!g_ledger) return;
+  for (int i = 0; local_stops[i]; i++)
+    if (!strcmp(g_stop_reason, local_stops[i])) initiator = "local";
   fprintf(g_ledger,
           "{\"event\":\"session_end\",\"frames_total\":%u,\"stop_reason\":\"%s\","
-          "\"peer_closed\":%s}\n", frames, g_stop_reason,
-          g_peer_closed ? "true" : "false");
+          "\"peer_closed\":%s,\"close_initiator\":\"%s\",\"close_kind\":\"%s\","
+          "\"last_reply_code\":%d,\"response_bytes\":%u,"
+          "\"last_reply_terminated\":%s}\n",
+          frames, g_stop_reason, g_peer_closed ? "true" : "false",
+          initiator, g_peer_closed ? "fin" : "reset",
+          last_reply_code, response_bytes,
+          last_reply_terminated ? "true" : "false");
   fclose(g_ledger);
   g_ledger = NULL;
 }
@@ -99,12 +208,16 @@ int main(int argc, char* argv[])
   struct sockaddr_in local_serv_addr;
 
   char* buf = NULL, *response_buf = NULL;
-  int response_buf_size = 0;
+  unsigned int response_buf_size = 0;
   unsigned int size, i, state_count, packet_count = 0;
   unsigned int *state_sequence;
   unsigned int socket_timeout = 1000;
   unsigned int poll_timeout = 1;
 
+  if (argc == 2 && !strcmp(argv[1], "--capabilities")) {
+    puts("loopfuzz-replay-frame-ledger-v1 peer-reset-after-input-end-v1 terminal-quit-reply-v6");
+    return 0;
+  }
 
   if (argc < 5) {
     PFATAL("Usage: ./aflnet-client packet_file protocol port local_port [first_resp_timeout(us) [follow-up_resp_timeout(ms)]]");
@@ -137,7 +250,7 @@ int main(int argc, char* argv[])
   if (!validate_input(fp)) {
     fprintf(stderr, "[AFLNet-replay] Invalid framed input: %s\n", g_stop_reason);
     fclose(fp);
-    finish_ledger(0);
+    finish_ledger(0, -1, 0, 0);
     return 2;
   }
 
@@ -250,10 +363,14 @@ int main(int argc, char* argv[])
       }
 
       errno = 0;
-      int pre_recv = replay_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size, stream);
+      int pre_recv_timeout = g_skip_next_pre_recv_wait ? 0 : poll_timeout;
+      g_skip_next_pre_recv_wait = 0;
+      int pre_recv = replay_recv(sockfd, timeout, pre_recv_timeout,
+                                 &response_buf, &response_buf_size, stream);
       int pre_recv_errno = pre_recv ? errno : 0;
       int sent = -2; /* -2 = not attempted */
       int send_errno = 0;
+      unsigned int response_before_send = response_buf_size;
       if (pre_recv) {
         g_stop_reason = pre_recv == 2 ? "peer-closed-before-frame" : "client-recv-pre-send-failed";
       } else {
@@ -264,14 +381,63 @@ int main(int argc, char* argv[])
       int post_recv = 0;
       int post_recv_errno = 0;
       if (sent == (int)size) {
+        int next = fgetc(fp);
+        if (next != EOF) ungetc(next, fp);
+        int has_suffix = next != EOF;
+        int ftp_quit = !strcmp(argv[2], "FTP");
+        int terminal_quit = stream && has_suffix && size == 6 &&
+                            !memcmp(buf, "QUIT\r\n", 6) &&
+                            (ftp_quit || !strcmp(argv[2], "SMTP"));
+        struct timespec quit_deadline = {0, 0};
+        if (terminal_quit) {
+          clock_gettime(CLOCK_MONOTONIC, &quit_deadline);
+          quit_deadline.tv_sec += 2;
+        }
         errno = 0;
-        post_recv = replay_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size, stream);
+        post_recv = terminal_quit ?
+            replay_recv_until_deadline(sockfd, quit_deadline,
+                                       &response_buf, &response_buf_size) :
+            replay_recv(sockfd, timeout, poll_timeout, &response_buf,
+                        &response_buf_size, stream);
         post_recv_errno = post_recv ? errno : 0;
-        if (post_recv == 1) g_stop_reason = "client-recv-post-send-failed";
+        if (terminal_quit) {
+          while (post_recv == 0 &&
+                 !terminal_221_seen(response_buf, response_before_send,
+                                    response_buf_size)) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (now.tv_sec > quit_deadline.tv_sec ||
+                (now.tv_sec == quit_deadline.tv_sec &&
+                 now.tv_nsec >= quit_deadline.tv_nsec)) break;
+            errno = 0;
+            post_recv = replay_recv_until_deadline(sockfd, quit_deadline,
+                                                   &response_buf, &response_buf_size);
+            post_recv_errno = post_recv ? errno : 0;
+          }
+          if (post_recv == 0 &&
+              terminal_221_seen(response_buf, response_before_send,
+                                 response_buf_size)) {
+            errno = 0;
+            post_recv = replay_recv_until_deadline(sockfd, quit_deadline,
+                                                   &response_buf, &response_buf_size);
+            post_recv_errno = post_recv ? errno : 0;
+          }
+          if (post_recv == 2 &&
+              terminal_221_seen(response_buf, response_before_send,
+                                response_buf_size))
+            g_stop_reason = "protocol-close-after-quit";
+          else if (post_recv == 0)
+            g_skip_next_pre_recv_wait = 1;
+        }
+        if (post_recv == 1) {
+          int saved_errno = post_recv_errno;
+          if (!has_suffix && !ferror(fp) && saved_errno == ECONNRESET)
+            g_stop_reason = "peer-reset-after-input-end";
+          else if (strcmp(g_stop_reason, "protocol-close-after-quit"))
+            g_stop_reason = "client-recv-post-send-failed";
+        }
         if (post_recv == 2) {
-          int next = fgetc(fp);
-          if (next != EOF) {
-            ungetc(next, fp);
+          if (has_suffix && strcmp(g_stop_reason, "protocol-close-after-quit")) {
             g_stop_reason = "peer-closed-before-input-end";
           } else if (ferror(fp)) g_stop_reason = "input-read-failed";
           /* A FIN after the final complete frame is normal protocol shutdown. */
@@ -291,6 +457,7 @@ int main(int argc, char* argv[])
       }
       if (pre_recv) break;
       if (sent != (int)size) break;
+      if (!strcmp(g_stop_reason, "protocol-close-after-quit")) break;
       if (post_recv) break;
     }
   }
@@ -302,29 +469,49 @@ int main(int argc, char* argv[])
   //Extract response codes
   state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
 
-  fprintf(stderr,"\n--------------------------------");
-  fprintf(stderr,"\nResponses from server:");
-
-  for (i = 0; i < state_count; i++) {
-    fprintf(stderr,"%d-",state_sequence[i]);
+  /* Emit each transcript section with ONE write. The supervised harness
+   * streams the server's stderr into this same log; per-code/per-character
+   * fprintf calls let that flow interleave mid-section and corrupt the
+   * state line or the response body (observed 2026-11-20 on exim: daemon
+   * debug lines spliced into the middle of the sequence line). A single
+   * write per section keeps interleaving between sections, where the
+   * parsers already tolerate trailing noise. */
+  {
+    size_t capacity = 64 + state_count * 8;
+    char *section = ck_alloc(capacity);
+    size_t used = 0;
+    int rc = snprintf(section, capacity, "\nResponses from server:");
+    if (rc > 0) used += (size_t)rc;
+    for (i = 0; i < state_count; i++) {
+      rc = snprintf(section + used, capacity - used, "%d-", state_sequence[i]);
+      if (rc > 0) used += (size_t)rc;
+    }
+    fprintf(stderr, "\n--------------------------------");
+    fwrite(section, 1, used, stderr);
+    fprintf(stderr, "\n++++++++++++++++++++++++++++++++\nResponses in details:\n");
+    fwrite(response_buf, 1, response_buf_size, stderr);
+    fprintf(stderr, "\n--------------------------------");
+    ck_free(section);
   }
 
-  fprintf(stderr,"\n++++++++++++++++++++++++++++++++\nResponses in details:\n");
-  for (i=0; i < response_buf_size; i++) {
-    fprintf(stderr,"%c",response_buf[i]);
+  {
+    int last_reply_code = state_count ? (int)state_sequence[state_count - 1] : -1;
+    int last_reply_terminated = response_buf_size >= 2 &&
+        response_buf[response_buf_size - 2] == '\r' &&
+        response_buf[response_buf_size - 1] == '\n';
+    finish_ledger(packet_count, last_reply_code, response_buf_size,
+                 last_reply_terminated);
   }
-  fprintf(stderr,"\n--------------------------------");
 
   //Free memory
   ck_free(state_sequence);
   if (buf) ck_free(buf);
   ck_free(response_buf);
 
-  finish_ledger(packet_count);
-
   /* A clean process exit is not evidence that replay finished. Preserve the
    * frame/session ledger above, then expose receive/send failures to callers
    * instead of silently returning success for an incomplete conversation. */
-  return strcmp(g_stop_reason, "eof") == 0 ? 0 : 2;
+  return (strcmp(g_stop_reason, "eof") == 0 ||
+          strcmp(g_stop_reason, "peer-reset-after-input-end") == 0) ? 0 : 2;
 }
 

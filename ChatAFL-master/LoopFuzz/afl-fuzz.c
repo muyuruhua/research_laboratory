@@ -930,6 +930,8 @@ static u64  provisional_event_seq = 0;
 static u64  episode_seq = 0;
 static u64  bug_event_seq = 0;
 static u64  run_start_time_ms = 0;
+static u64  campaign_active_start_time_ms = 0;
+static u64  campaign_startup_deadline_ms = 0;
 static u64  ec_rng_seed_value = 0;
 static u8 fixed_rng_seed_enabled = 0;
 static u32 afl_rng_seed_value = 0;
@@ -1174,7 +1176,16 @@ static u8  campaign_budget_exhausted = 0;
 static u8  campaign_budget_stop_reported = 0;
 static u64 campaign_budget_exhausted_time_ms = 0;
 static u8  campaign_wallclock_mode = 0;     /* call cap is optional */
-static u64 campaign_duration_sec = 0;       /* includes grammar/enrichment */
+static u64 campaign_duration_sec = 0;       /* scheduler wallclock budget */
+static u64 campaign_startup_timeout_sec = 360;
+static u8  campaign_startup_expired = 0;
+/* Startup liveness is activity-based: every completed LLM attempt and every
+ * calibrated seed slides the startup window. A fixed budget since process
+ * start aborted healthy runs whose setup legitimately runs long (the
+ * grammar/enrichment phase alone reached 25 minutes on bftpd, Sep-05; the
+ * 2026-11-20 batch lost 8 containers to exit 71 during grammar or dry-run
+ * calibration). volatile: enrichment worker threads report progress too. */
+static volatile u64 campaign_startup_last_progress_ms = 0;
 static u8  campaign_wallclock_expired = 0;
 static u8  q1_no_reflow = 0;                /* CHATAFL_Q1_NO_REFLOW */
 static u8  q1_reflow = 0;                   /* CHATAFL_Q1_REFLOW */
@@ -4166,11 +4177,24 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "campaign_resource_basis",
       json_object_new_string(campaign_resource_basis()));
   admission_json_add_u64(j, "campaign_duration_sec", campaign_duration_sec);
+  admission_json_add_u64(j, "campaign_startup_timeout_sec",
+                         campaign_startup_timeout_sec);
+  admission_json_add_u64(j, "campaign_startup_deadline_ms",
+                         campaign_startup_deadline_ms);
+  admission_json_add_u64(j, "campaign_startup_last_progress_ms",
+                         campaign_startup_last_progress_ms);
+  json_object_object_add(j, "campaign_startup_expired",
+      json_object_new_boolean(campaign_startup_expired));
   admission_json_add_u64(j, "campaign_budget_exhausted_time_ms",
                          campaign_budget_exhausted_time_ms);
   admission_json_add_u64(j, "run_start_time_ms", run_start_time_ms);
   admission_json_add_u64(j, "campaign_elapsed_ms", run_start_time_ms ?
       get_cur_time() - run_start_time_ms : 0);
+  admission_json_add_u64(j, "campaign_active_start_time_ms",
+                         campaign_active_start_time_ms);
+  admission_json_add_u64(j, "campaign_active_elapsed_ms",
+      campaign_active_start_time_ms ?
+          get_cur_time() - campaign_active_start_time_ms : 0);
   json_object_object_add(j, "campaign_budget_censored",
       json_object_new_boolean(campaign_wallclock_mode && campaign_budget_exhausted));
   json_object_object_add(j, "witness_tomb", json_object_new_boolean(1));
@@ -4908,6 +4932,10 @@ void setup_llm_grammars()
   for (int iter = 0; iter < TEMPLATE_CONSISTENCY_COUNT; iter++)
   {
     if (campaign_deadline_reached()) break;
+    /* Each grammar round is startup liveness (LLM attempts also slide the
+     * window from chat-llm.c, but rounds that finish parsing offline work
+     * count too). */
+    campaign_startup_progress();
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, LLM_DEFAULT_MODEL, GRAMMAR_RETRIES, 0.5);
@@ -7961,13 +7989,51 @@ static u64 get_cur_time(void)
   return (tv.tv_sec * 1000ULL) + (tv.tv_usec / 1000);
 }
 
-/* The deadline is independent of invocation rate and call counters. It is
- * checked during scheduler progress as well as before target admissions. */
-static u8 campaign_deadline_reached(void) {
-  if (!campaign_wallclock_mode || !run_start_time_ms) return 0;
+/* Report startup liveness: a completed LLM attempt or a calibrated seed
+ * proves the setup phase is alive, so both the scheduler-side startup check
+ * and the LLM dispatch deadline slide by one full startup window. The
+ * sliding deadline never extends past the campaign's total wallclock budget,
+ * preserving the pre-startup-deadline behavior for healthy-but-slow setups.
+ * Defined here (strong); chat-llm.c references it weakly so standalone
+ * tool builds (llm_preflight) still link. */
+void campaign_startup_progress(void) {
   u64 now = get_cur_time();
-  if (now < run_start_time_ms ||
-      now - run_start_time_ms < campaign_duration_sec * 1000ULL) return 0;
+  campaign_startup_last_progress_ms = now;
+  if (campaign_wallclock_mode && !campaign_active_start_time_ms &&
+      campaign_startup_timeout_sec) {
+    chat_llm_set_campaign_deadline(now + campaign_startup_timeout_sec * 1000ULL);
+  }
+}
+
+/* The deadline is independent of invocation rate and call counters. It is
+ * checked during scheduler progress as well as before target admissions.
+ * Startup expiry means the setup went IDLE for the whole window (no
+ * completed LLM attempt, no calibrated seed). The campaign budget itself
+ * starts counting only at scheduler activation — corpus loading, grammar,
+ * enrichment, and the dry run are startup work and do not consume it; the
+ * run.sh process timeout is the hard outer bound for a healthy-but-slow
+ * setup (2026-11-20: exim/lighttpd1 burned 20 min of budget on a slow
+ * gateway's grammar phase and were killed by the budget cap). */
+static u8 campaign_deadline_reached(void) {
+  u64 now = get_cur_time();
+  if (!campaign_wallclock_mode || !run_start_time_ms) return 0;
+  if (!campaign_active_start_time_ms) {
+    u64 idle_base;
+    if (!campaign_startup_deadline_ms) return 0;
+    idle_base = campaign_startup_last_progress_ms ?
+        campaign_startup_last_progress_ms : run_start_time_ms;
+    if (now < idle_base + campaign_startup_timeout_sec * 1000ULL)
+      return 0;
+    campaign_startup_expired = 1;
+    stop_soon = 2;
+    WARNF("Startup deadline reached (setup idle for %llu s, window %llu s); "
+          "scheduler will not start",
+          (unsigned long long)((now - idle_base) / 1000ULL),
+          (unsigned long long)campaign_startup_timeout_sec);
+    return 1;
+  }
+  if (now < campaign_active_start_time_ms ||
+      now - campaign_active_start_time_ms < campaign_duration_sec * 1000ULL) return 0;
   campaign_wallclock_expired = 1;
   stop_soon = 2;
   return 1;
@@ -9332,6 +9398,11 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
+
+    /* Seed-collection rounds are startup liveness for the same reason as
+     * the dry run: the enrichment phase legitimately runs tens of minutes
+     * on slow targets (bftpd enrichment measured at 25 min). */
+    campaign_startup_progress();
 
     seeds_processed++;
     ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
@@ -12593,6 +12664,10 @@ static void perform_dry_run(char **argv)
     u8 *use_mem;
     u8 res;
     s32 fd;
+
+    /* Slow-target calibration is startup liveness: each calibrated seed
+     * slides the startup window (bftpd's dry run alone exceeds 360 s). */
+    campaign_startup_progress();
 
     q->is_initial_seed = 1;
 
@@ -23644,6 +23719,14 @@ static void evidence_env_parse(void) {
         FATAL("CHATAFL_CAMPAIGN_DURATION_SEC must be in [1, 604800]");
       campaign_duration_sec = (u64)duration;
     }
+    const char *startup = getenv("CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC");
+    if (startup && *startup) {
+      char *end = NULL;
+      unsigned long long timeout = strtoull(startup, &end, 10);
+      if (*end || *startup == '-' || !timeout || timeout > 604800ULL)
+        FATAL("CHATAFL_CAMPAIGN_STARTUP_TIMEOUT_SEC must be in [1, 604800]");
+      campaign_startup_timeout_sec = (u64)timeout;
+    }
     if (getenv("CHATAFL_Q1_NO_REFLOW") &&
         strcmp(getenv("CHATAFL_Q1_NO_REFLOW"), "0") != 0) q1_no_reflow = 1;
     if (getenv("CHATAFL_Q1_REFLOW") &&
@@ -24397,12 +24480,13 @@ int main(int argc, char **argv)
    * protocol argument (target hash silently "unknown") and out_dir could
    * be unset. */
   evidence_env_parse();
-  chat_llm_set_campaign_deadline(campaign_wallclock_mode ?
-      run_start_time_ms + campaign_duration_sec * 1000ULL : 0);
   /* Initialize curl, sampling, and the shared campaign budget BEFORE grammar
    * requests, enrichment threads, or plateau forks. The run-config start
    * record must carry these effective limits. */
   chat_llm_global_init();
+  campaign_startup_deadline_ms = campaign_wallclock_mode ?
+      run_start_time_ms + campaign_startup_timeout_sec * 1000ULL : 0;
+  chat_llm_set_campaign_deadline(campaign_startup_deadline_ms);
   /* v3 (P0-2): pin binary/corpus/config identity into the run-config, and
    * register the per-call LLM ledger so every gateway call (starting with
    * the grammar phase below) is recorded. */
@@ -24480,7 +24564,9 @@ int main(int argc, char **argv)
 
     setup_llm_grammars();
     chat_llm_set_channel("other");   /* grammar scope ends with setup */
+    if (campaign_deadline_reached()) goto stop_fuzzing;
     enrich_testcases();
+    if (campaign_deadline_reached()) goto stop_fuzzing;
   }
   if (!run_config_logged) {
     /* protocol_selected == 0 edge: still record the run config (no LLM
@@ -24877,6 +24963,16 @@ int main(int argc, char **argv)
     }
   }
 
+  /* Startup has a separate hard deadline. A run that cannot finish setup
+   * within it is incomplete and must not enter the scheduler. */
+  if (campaign_deadline_reached()) goto stop_fuzzing;
+
+  /* The requested wallclock budget is active fuzzing time. Corpus loading,
+   * binary checks, and the dry run are startup work and do not consume it. */
+  campaign_active_start_time_ms = get_cur_time();
+  chat_llm_set_campaign_deadline(campaign_wallclock_mode ?
+      campaign_active_start_time_ms + campaign_duration_sec * 1000ULL : 0);
+
 retry_state_aware:
   if (state_aware_mode && state_ids_count > 0)
   {
@@ -25257,11 +25353,13 @@ stop_fuzzing:
   if (run_config_logged) {
     const char *reason =
         scheduler_integrity_failed ? "scheduler-integrity-failure" :
+        campaign_startup_expired ? "startup-deadline" :
         campaign_wallclock_mode && campaign_wallclock_expired ? "wallclock-duration" :
         campaign_budget_exhausted ?
             campaign_budget_termination_reason() :
         campaign_wallclock_mode && (
-            (run_start_time_ms && get_cur_time() - run_start_time_ms >=
+            (campaign_active_start_time_ms &&
+             get_cur_time() - campaign_active_start_time_ms >=
              campaign_duration_sec * 1000ULL)) ? "wallclock-duration" :
         stop_soon == 2 ? "exit_1" :
         (unique_crashes && !queue_cycle ? "early-crash" : "signal-or-timeout");
@@ -25308,7 +25406,7 @@ stop_fuzzing:
 
   OKF("We're done here. Have a nice day!\n");
 
-  _exit(scheduler_integrity_failed ? 70 : 0);
+  _exit(scheduler_integrity_failed ? 70 : campaign_startup_expired ? 71 : 0);
 }
 
 #endif /* !AFL_LIB */

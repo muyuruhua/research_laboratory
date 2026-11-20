@@ -29,6 +29,7 @@ class CoverageFixtureTests(unittest.TestCase):
         self.replayer.write_text(
             "#!/bin/sh\n"
             "# LOOPFUZZ_REPLAY_LEDGER\n"
+            "if [ \"$1\" = --capabilities ]; then echo 'peer-reset-after-input-end-v1 terminal-quit-reply-v6'; exit 0; fi\n"
             "echo 'Usage: aflnet-replay packet_file protocol port local_port [first_resp_timeout(us) [follow-up_resp_timeout(ms)]]' >&2\n"
             "exit 1\n")
         self.replayer.chmod(0o755)
@@ -301,6 +302,19 @@ class CoverageFixtureTests(unittest.TestCase):
         # client failure on a crashed server is part of the crash finding
         f2 = cov.classify_replay_exit(-15, 1)
         self.assertFalse(f2["replay_anomaly"])
+
+    def test_replay_policy_version_tracks_harness_revision(self):
+        self.assertEqual(cov.replay_policy_version(
+            "20261119-verified-peer-close-and-final-send-v5"), 5)
+        self.assertEqual(cov.replay_policy_version(
+            "20261119-ftp-quit-proftpd-bftpd-audit-v9"), 9)
+        self.assertEqual(cov.replay_policy_version(
+            "20261120-final-221-multiline-aware-replay-v10"), 10)
+        self.assertEqual(cov.replay_policy_version(
+            "20261120-verified-overlong-policy-close-v11"), 11)
+        self.assertEqual(cov.replay_policy_version(cov.REPLAY_HARNESS_VERSION), 12)
+        with self.assertRaisesRegex(cov.CoverageError, "unknown replay harness version"):
+            cov.replay_policy_version("unknown")
 
     def test_disjoint_bftpd_snapshots_are_unioned_not_maxed(self):
         union = cov.CoverageUnion(self.baseline, self.manifest)
@@ -584,6 +598,34 @@ class CoverageFixtureTests(unittest.TestCase):
                 cov.replay_commands("live555", "input", 8554, 1,
                                     self.root / "testProgs", self.root)
 
+    def test_strict_replay_rejects_replayer_without_final_reset_capability(self):
+        stale = self.root / "stale-aflnet-replay"
+        stale.write_text(
+            "#!/bin/sh\n"
+            "# LOOPFUZZ_REPLAY_LEDGER\n"
+            "echo 'Usage: aflnet-replay packet_file protocol port local_port "
+            "[first_resp_timeout(us) [follow-up_resp_timeout(ms)]]' >&2\n"
+            "exit 1\n")
+        stale.chmod(0o755)
+        with mock.patch.dict(os.environ, {cov.LOOPFUZZ_REPLAYER_ENV: str(stale)}):
+            with self.assertRaisesRegex(cov.CoverageError, "terminal-QUIT handling"):
+                cov.loopfuzz_replayer()
+
+    def test_strict_replay_rejects_old_terminal_quit_capability(self):
+        stale = self.root / "old-terminal-quit-aflnet-replay"
+        stale.write_text(
+            "#!/bin/sh\n"
+            "# LOOPFUZZ_REPLAY_LEDGER\n"
+            "if [ \"$1\" = --capabilities ]; then "
+            "echo 'peer-reset-after-input-end-v1 terminal-quit-reply-v5'; exit 0; fi\n"
+            "echo 'Usage: aflnet-replay packet_file protocol port local_port "
+            "[first_resp_timeout(us) [follow-up_resp_timeout(ms)]]' >&2\n"
+            "exit 1\n")
+        stale.chmod(0o755)
+        with mock.patch.dict(os.environ, {cov.LOOPFUZZ_REPLAYER_ENV: str(stale)}):
+            with self.assertRaisesRegex(cov.CoverageError, "terminal-QUIT handling"):
+                cov.loopfuzz_replayer()
+
     def test_proftpd_v4_replay_requires_a_complete_frame_ledger(self):
         incomplete = dict(harness_policy="proftpd-ready-client-graceful-exit-v4",
                           send_completeness="unknown")
@@ -770,6 +812,24 @@ class CoverageFixtureTests(unittest.TestCase):
         ledger["peer_closed"] = False
         self.assertFalse(cov.bftpd_protocol_end_expected(replay, ledger, 221, reset))
 
+    def test_bftpd_protocol_close_after_quit_requires_peer_closed_ledger(self):
+        replay = dict(server_exit_code=0, client_exit_code=2,
+                      server_ready=True, client_timed_out=False,
+                      harness_shutdown_requested=False,
+                      imported_gcda=["main.gcda"], session_coverage_missing=False)
+        reset = dict(command_succeeded=True, exit_code=0)
+        ledger = dict(prefix_sent_complete=True, peer_closed=False,
+                      frames_unattempted=1, frames_attempted=1, frames_total=1,
+                      sent_prefix_has_bftpd_quit=True,
+                      last_attempted_frame_is_quit=True,
+                      last_attempted_post_recv_ok=True,
+                      stop_reason="protocol-close-after-quit")
+        self.assertFalse(cov.bftpd_protocol_end_expected(
+            replay, ledger, 221, reset, policy_version=4))
+        ledger["peer_closed"] = True
+        self.assertTrue(cov.bftpd_protocol_end_expected(
+            replay, ledger, 221, reset, policy_version=4))
+
     def test_bftpd_v2_quit_matches_its_real_command_parser(self):
         for stream in (b"QUIT\xffyyPASS ubuntu\r\n",
                        b"SYST\nQUIT\x10XMK\r\n",
@@ -935,6 +995,743 @@ class CoverageFixtureTests(unittest.TestCase):
         self.assertFalse(cov.http_close_response_complete(http_log))
         self.assertFalse(cov.http_close_request(
             b"GET / HTTP/1.1\r\nConnection: keep-alive\r\n\r\n"))
+
+    def test_v5_protocol_close_requires_terminal_reply_and_fresh_coverage(self):
+        http_log = self.root / "http-v5.log"
+        http_log.write_bytes(
+            b"Responses from server:0-200-405-\nResponses in details:\n"
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+            b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n"
+            b"Content-Length: 4\r\n\r\nBODY\n--------------------------------")
+        smtp_log = self.root / "smtp-v5.log"
+        smtp_log.write_bytes(b"Responses from server:0-220-421-\nResponses in details:\n"
+                             b"220 ready\r\n421 Too many errors\r\n\n--------------------------------")
+        ftp_log = self.root / "ftp-v5.log"
+        ftp_log.write_bytes(b"Responses from server:0-220-221-\nResponses in details:\n"
+                            b"220 ready\r\n221 closing\r\n\n--------------------------------")
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["main.gcda"], imported_gcda=["main.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=2,
+                      peer_closed=True, stop_reason="peer-closed-before-input-end")
+        for target, log in (("lighttpd1", http_log), ("forked-daapd", http_log),
+                            ("lightftp", ftp_log), ("pure-ftpd", ftp_log),
+                            ("exim", smtp_log)):
+            with self.subTest(target=target):
+                self.assertTrue(cov.protocol_end_expected(
+                    target, replay, reset, ledger, log, policy_version=5))
+                self.assertFalse(cov.protocol_end_expected(
+                    target, replay, reset, dict(ledger, frames_unattempted=0),
+                    log, policy_version=5))
+                self.assertFalse(cov.protocol_end_expected(
+                    target, dict(replay, session_coverage_missing=True), reset,
+                    ledger, log, policy_version=5))
+        self.assertTrue(cov.http_final_close_response_complete(http_log))
+        http_log.write_bytes(http_log.read_bytes().replace(b"Content-Length: 4", b"Content-Length: 5"))
+        self.assertFalse(cov.http_final_close_response_complete(http_log))
+        self.assertFalse(cov.protocol_end_expected(
+            "lighttpd1", replay, reset, ledger, http_log, policy_version=5))
+        self.assertEqual(cov.smtp_final_close_reply(smtp_log), 421)
+        reset_ledger = dict(
+            ledger, peer_closed=False, stop_reason="client-recv-post-send-failed",
+            prior_post_recv_ok=True, last_attempted_post_recv_ok=False,
+            last_attempted_post_recv_errno=errno.ECONNRESET)
+        self.assertTrue(cov.protocol_end_expected(
+            "exim", replay, reset, reset_ledger, smtp_log, policy_version=5))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset,
+            dict(reset_ledger, last_attempted_post_recv_ok=True),
+            smtp_log, policy_version=5))
+        smtp_log.write_bytes(smtp_log.read_bytes().replace(
+            b"421 Too many errors", b"503 Too many syntax or protocol errors"))
+        self.assertTrue(cov.protocol_end_expected(
+            "exim", replay, reset, ledger, smtp_log, policy_version=5))
+        smtp_log.write_bytes(smtp_log.read_bytes().replace(
+            b"503 Too many syntax or protocol errors", b"500 syntax error"))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, ledger, smtp_log, policy_version=5))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset,
+            dict(ledger, peer_closed=False, stop_reason="client-recv-post-send-failed",
+                 prior_post_recv_ok=True, last_attempted_post_recv_errno=errno.ETIMEDOUT),
+            smtp_log, policy_version=5))
+
+    def test_v5_final_reset_is_full_send_only_without_a_suffix(self):
+        ledger_path = self.root / "reset-ledger.jsonl"
+        rows = [dict(event="session_begin", schema="loopfuzz-replay-frame-ledger-v1"),
+                dict(event="frame", frame=1, len=4, read_complete=True,
+                     pre_recv_ok=True, send_attempt=True, sent_bytes=4,
+                     send_errno=0, post_recv_ok=False,
+                     post_recv_errno=errno.ECONNRESET),
+                dict(event="session_end", frames_total=1,
+                     stop_reason="peer-reset-after-input-end", peer_closed=False)]
+        ledger_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        framed = struct.pack("<I", 4) + b"NOOP"
+        self.assertTrue(cov.read_frame_ledger(ledger_path, framed)["send_complete"])
+        self.assertFalse(cov.read_frame_ledger(
+            ledger_path, framed + struct.pack("<I", 4) + b"QUIT")["send_complete"])
+        rows[1]["post_recv_errno"] = errno.ETIMEDOUT
+        ledger_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        self.assertFalse(cov.read_frame_ledger(ledger_path, framed)["send_complete"])
+        rows[1]["post_recv_errno"] = errno.ECONNRESET
+        rows[1]["post_recv_ok"] = True
+        ledger_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        self.assertFalse(cov.read_frame_ledger(ledger_path, framed)["send_complete"])
+
+    def test_v5_http_close_rejects_ambiguous_or_truncated_response(self):
+        log = self.root / "http-invalid-v5.log"
+        prefix = b"Responses from server:0-200-\nResponses in details:\n"
+        footer = b"\n--------------------------------"
+        valid = (b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
+                 b"Content-Length: 2\r\n\r\nOK")
+        log.write_bytes(prefix + valid + footer)
+        self.assertTrue(cov.http_final_close_response_complete(log))
+        invalid = (
+            valid.replace(b"HTTP/1.1 200 OK", b"not a status line"),
+            valid.replace(b"Content-Length: 2\r\n", b""),
+            valid.replace(b"Content-Length: 2\r\n",
+                          b"Content-Length: 2\r\nContent-Length: 2\r\n"),
+            valid.replace(b"Content-Length: 2\r\n",
+                          b"Content-Length: 2\r\nTransfer-Encoding: chunked\r\n"),
+            valid.replace(b"Content-Length: 2", b"Content-Length: 3"),
+            valid.replace(b"Connection: close", b"Connection: keep-alive"),
+            valid + b"HTTP/1.1 200 OK\r\nConnection: close\r\n",
+        )
+        for response in invalid:
+            with self.subTest(response=response):
+                log.write_bytes(prefix + response + footer)
+                self.assertFalse(cov.http_final_close_response_complete(log))
+
+    def test_http_close_requires_summary_detail_status_sequence_match(self):
+        log = self.root / "http-status-sequence.log"
+        footer = b"\n--------------------------------"
+        first = (b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+        closing = (b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n"
+                   b"Content-Length: 3\r\n\r\nBAD")
+        reordered_first = (b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 3\r\n"
+                           b"\r\nBAD")
+        final_close = (b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
+                       b"Content-Length: 2\r\n\r\nOK")
+
+        cases = (
+            (b"0-200-405-", first + closing, True),
+            (b"0-200-", first + closing, False),
+            (b"0-200-405-", final_close, False),
+            (b"0-200-405-", reordered_first + final_close, False),
+        )
+        for sequence, details, expected in cases:
+            with self.subTest(sequence=sequence, expected=expected):
+                log.write_bytes(b"Responses from server:" + sequence +
+                                b"\nResponses in details:\n" + details + footer)
+                self.assertEqual(cov.http_final_close_response_complete(log), expected)
+
+    def test_http_close_accepts_complete_unknown_minor_version(self):
+        log = self.root / "http-unknown-minor.log"
+        prefix = b"Responses from server:0-400-\nResponses in details:\n"
+        response = (b"HTTP/1.5 400 Bad Request\r\nConnection: close\r\n"
+                    b"Content-Length: 4\r\n\r\nbody")
+        footer = b"\n--------------------------------"
+        log.write_bytes(prefix + response + footer)
+        self.assertTrue(cov.http_final_close_response_complete(log))
+        log.write_bytes(prefix + response[:-1] + footer)
+        self.assertFalse(cov.http_final_close_response_complete(log))
+
+    def test_v5_http_head_response_has_no_body_despite_content_length(self):
+        log = self.root / "http-head-v5.log"
+        prefix = b"Responses from server:0-200-400-\nResponses in details:\n"
+        footer = b"\n--------------------------------"
+        head_reply = (b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n")
+        close_reply = (b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n"
+                       b"Content-Length: 2\r\n\r\nOK")
+        frames = [b"HEAD /x HTTP/1.1\r\nHost: localhost\r\n\r\n",
+                  b"GET /x HTTP/1.1\r\nHost: localhost\r\n\r\n"]
+        log.write_bytes(prefix + head_reply + close_reply + footer)
+        self.assertFalse(cov.http_final_close_response_complete(log))
+        self.assertTrue(cov.http_final_close_response_complete(log, frames))
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["main.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=1,
+                      peer_closed=True, stop_reason="peer-closed-before-input-end",
+                      sent_payloads=frames)
+        self.assertTrue(cov.protocol_end_expected(
+            "lighttpd1", replay, reset, ledger, log, policy_version=5))
+        self.assertFalse(cov.http_final_close_response_complete(
+            log, [frames[0].replace(b"HEAD ", b"XGET "), frames[1]]))
+        self.assertFalse(cov.protocol_end_expected(
+            "lighttpd1", replay, reset,
+            dict(ledger, sent_payloads=[frames[0].replace(b"HEAD ", b"XGET "),
+                                        frames[1]]), log, policy_version=5))
+        log.write_bytes(prefix + head_reply + close_reply[:-2] + footer)
+        self.assertFalse(cov.http_final_close_response_complete(log, frames))
+
+    def test_v6_exim_quit_close_and_lightftp_buffer_boundary(self):
+        smtp_log = self.root / "smtp-quit-v6.log"
+        smtp_log.write_bytes(
+            b"Responses from server:0-220-221-\nResponses in details:\n"
+            b"220 ready\r\n221 closing connection\r\n\n--------------------------------")
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["smtp_in.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        quit_ledger = dict(prefix_sent_complete=True, frames_unattempted=2,
+                           peer_closed=True, stop_reason="protocol-close-after-quit",
+                           last_attempted_frame_is_quit=True,
+                           last_attempted_post_recv_ok=True)
+        self.assertTrue(cov.protocol_end_expected(
+            "exim", replay, reset, quit_ledger, smtp_log, policy_version=6))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, dict(quit_ledger, last_attempted_frame_is_quit=False),
+            smtp_log, policy_version=6))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, dict(quit_ledger, stop_reason="client-recv-post-send-failed"),
+            smtp_log, policy_version=6))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, dict(quit_ledger, peer_closed=False),
+            smtp_log, policy_version=6))
+
+        source_root, object_root = self.root / "Source", self.root / "Release"
+        source_root.mkdir()
+        object_root.mkdir()
+        source = source_root / "ftpserv.c"
+        source.write_bytes(b'#include "ftpserv.h"\n'
+                           b"char *cmd, *params, rcvbuf[PATH_MAX]; "
+                           b"int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size) "
+                           b"--buffer_size; while (buffer_size > 0) if ( p >= 2 ) "
+                           b"(buffer[p-2] == '\\r') && (buffer[p-1] == '\\n') "
+                           b"if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) ) break; "
+                           b"WorkerThreadCleanup(&ctx); close(ctx.ControlSocket);")
+        (source_root / "ftpserv.h").write_bytes(b"#include <limits.h>\n")
+        binary = object_root / "fftp"
+        binary.write_text("fixture executable\n")
+        binary.chmod(0o755)
+        policy = cov.lightftp_replay_policy(source_root, object_root)
+        self.assertFalse(policy["verified"])
+        self.assertFalse(policy["exception_enabled"])
+        self.assertEqual(policy["source_binary_build_association"], "not-established")
+        self.assertTrue(cov.verify_lightftp_replay_policy(policy, source_root, object_root))
+        self.assertTrue(cov.replay_policy_verified_for_completeness(
+            "lightftp", policy, source_root, object_root))
+        enabled_policy = dict(policy, verified=True, exception_enabled=True,
+                              source_binary_build_association="verified")
+        self.assertFalse(cov.verify_lightftp_replay_policy(
+            enabled_policy, source_root, object_root))
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=4,
+                      peer_closed=False,
+                      stop_reason="client-recv-post-send-failed",
+                      prior_post_recv_ok=True,
+                      last_attempted_post_recv_ok=False,
+                      last_attempted_post_recv_errno=errno.ECONNRESET,
+                      sent_payloads=[b"NOOP\r\n", b"X" * 3000,
+                                     b"Y" * (policy["max_bytes_without_crlf"] - 3000)])
+        lightftp_replay = dict(replay, session_gcda_touched=["ftpserv.gcda"])
+        ftp_log = self.root / "no-ftp-reply.log"
+        ftp_log.write_bytes(b"Responses from server:0-230-\nResponses in details:\n"
+                            b"230 User logged in, proceed.\r\n\n--------------------------------")
+        self.assertFalse(cov.protocol_end_expected(
+            "lightftp", lightftp_replay, reset, ledger, ftp_log,
+            policy_version=6, replay_policy=policy))
+        self.assertEqual(policy["command_buffer_size"], policy["path_max"])
+        quit_log = self.root / "quit-reply.log"
+        quit_log.write_bytes(
+            b"Responses from server:0-220-221-\nResponses in details:\n"
+            b"220 FTP server ready.\r\n221 Goodbye.\r\n\n--------------------------------")
+        quit_ledger = dict(prefix_sent_complete=True, frames_unattempted=1,
+                           peer_closed=True, stop_reason="protocol-close-after-quit",
+                           last_attempted_frame_is_quit=True,
+                           last_attempted_post_recv_ok=True)
+        self.assertTrue(cov.protocol_end_expected(
+            "lightftp", lightftp_replay, reset, quit_ledger, quit_log,
+            policy_version=6, replay_policy=policy))
+        original_source = source.read_bytes()
+        source.write_bytes(b"changed")
+        self.assertFalse(cov.verify_lightftp_replay_policy(policy, source_root, object_root))
+        self.assertFalse(cov.replay_policy_verified_for_completeness(
+            "lightftp", policy, source_root, object_root))
+        source.write_bytes(original_source)
+        binary.write_text("changed executable\n")
+        self.assertFalse(cov.verify_lightftp_replay_policy(policy, source_root, object_root))
+        self.assertFalse(cov.replay_policy_verified_for_completeness(
+            "lightftp", policy, source_root, object_root))
+
+    def test_overlong_close_trigger_frame_boundaries(self):
+        payloads_ok = [b"USER x\r\n", b"PASS x\r\n", b"A" * 5000, b"NOOP\r\n"]
+        self.assertEqual(cov.overlong_close_trigger_frame(payloads_ok, 2048, b"\n"), 3)
+        self.assertEqual(cov.overlong_close_trigger_frame(payloads_ok, 4095, b"\r\n"), 3)
+        # First frame starts a fresh command after the banner.
+        self.assertEqual(cov.overlong_close_trigger_frame(
+            [b"A" * 5000, b"NOOP\r\n"], 4095, b"\r\n"), 1)
+        # Below the derived minimum: the server is still within its budget.
+        self.assertIsNone(cov.overlong_close_trigger_frame(
+            payloads_ok[:2] + [b"A" * 2047], 2048, b"\n"))
+        # A newline inside the window lets the server resynchronize.
+        self.assertIsNone(cov.overlong_close_trigger_frame(
+            payloads_ok[:2] + [b"A" * 1500 + b"\n" + b"A" * 1500], 2048, b"\n"))
+        # The overlong frame must start at a command boundary: a partial
+        # command before it means the server is mid-command, not at frame start.
+        self.assertIsNone(cov.overlong_close_trigger_frame(
+            [b"USE", b"A" * 3000], 2048, b"\n"))
+        # Telnet IAC escapes compress the stream: the raw window must grow by
+        # three bytes per 0xFF so the processed window still exceeds the
+        # minimum without a newline.
+        self.assertEqual(cov.overlong_close_trigger_frame(
+            payloads_ok[:2] + [b"A" * 2049 + b"\xff" + b"A" * 20], 2048, b"\n",
+            telnet_iac=True), 3)
+        self.assertIsNone(cov.overlong_close_trigger_frame(
+            payloads_ok[:2] + [b"\xff" * 800 + b"A" * 1800], 2048, b"\n",
+            telnet_iac=True))
+        # Without the telnet bound the same payload would falsely trigger.
+        self.assertEqual(cov.overlong_close_trigger_frame(
+            payloads_ok[:2] + [b"\xff" * 800 + b"A" * 1800], 2048, b"\n"), 3)
+
+    def _overlong_replay_and_reset(self, **overrides):
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["src/main.gcda"],
+                      harness_shutdown_requested=False)
+        reset = dict(command_succeeded=True, exit_code=0)
+        replay.update(overrides)
+        return replay, reset
+
+    def test_proftpd_overlong_close_expected_gate_matrix(self):
+        policy = dict(overlong_close=dict(
+            verified=True, exception_enabled=True, give_up_bytes=16408))
+        ledger = dict(
+            prefix_sent_complete=True, frames_unattempted=4,
+            prior_post_recv_ok=True, stop_reason="client-recv-post-send-failed",
+            last_attempted_post_recv_errno=errno.ECONNRESET,
+            sent_payloads=[b"USER ubuntu\r\n", b"PASS ubuntu\r\n",
+                           b"A" * 18940, b"ACCT\r\n", b"NOOP\r\n"])
+        replay, reset = self._overlong_replay_and_reset()
+        self.assertTrue(cov.proftpd_overlong_close_expected(replay, reset, ledger, policy))
+        self.assertFalse(cov.proftpd_overlong_close_expected(
+            replay, reset, ledger,
+            dict(policy, overlong_close=dict(policy["overlong_close"], verified=False))))
+        self.assertFalse(cov.proftpd_overlong_close_expected(
+            replay, reset, ledger,
+            dict(policy, overlong_close=dict(policy["overlong_close"],
+                                             exception_enabled=False))))
+        # Pre-send variant: the reset surfaced in the next unattempted frame's
+        # pre-recv, and the never-sent big frame is absent from sent_payloads.
+        pre_send = dict(
+            ledger, stop_reason="client-recv-pre-send-failed",
+            last_attempted_post_recv_errno=0,
+            next_unattempted_pre_recv_errno=errno.ECONNRESET,
+            sent_payloads=[b"USER ubuntu\r\n", b"PASS ubuntu\r\n", b"A" * 27286,
+                           b"SYST\r\n", b"CDUPF\r\n"])
+        self.assertTrue(cov.proftpd_overlong_close_expected(replay, reset, pre_send, policy))
+        self.assertFalse(cov.proftpd_overlong_close_expected(
+            replay, reset,
+            dict(pre_send, next_unattempted_pre_recv_errno=0), policy))
+        for field, value in (("harness_shutdown_requested", True),
+                             ("server_exit_code", 124),
+                             ("client_exit_code", 0),
+                             ("client_timed_out", True),
+                             ("session_gcda_touched", [])):
+            broken_replay, broken_reset = self._overlong_replay_and_reset(**{field: value})
+            self.assertFalse(cov.proftpd_overlong_close_expected(
+                broken_replay, broken_reset, ledger, policy), field)
+        self.assertFalse(cov.proftpd_overlong_close_expected(
+            replay, dict(reset, exit_code=1), ledger, policy))
+        for field, value in (("stop_reason", "send-short-or-error"),
+                             ("last_attempted_post_recv_errno", errno.EPIPE),
+                             ("prior_post_recv_ok", False),
+                             ("prefix_sent_complete", False),
+                             ("frames_unattempted", 0)):
+            self.assertFalse(cov.proftpd_overlong_close_expected(
+                replay, reset, dict(ledger, **{field: value}), policy), field)
+        # An input whose largest no-newline frame stays inside the budget
+        # never reaches the E2BIG give-up and must not be accepted.
+        self.assertFalse(cov.proftpd_overlong_close_expected(
+            replay, reset,
+            dict(ledger, sent_payloads=[b"USER x\r\n", b"A" * 16000]), policy))
+
+    def test_lightftp_oversized_command_close_expected_shapes(self):
+        enabled = dict(verified=True, exception_enabled=True,
+                       max_bytes_without_crlf=4095)
+        disabled = dict(enabled, exception_enabled=False)
+        midstream = dict(
+            prefix_sent_complete=True, frames_unattempted=7,
+            prior_post_recv_ok=True, stop_reason="client-recv-post-send-failed",
+            last_attempted_post_recv_errno=errno.ECONNRESET,
+            sent_payloads=[b"USER anonymous\r\n", b"PASS x\r\n", b"LIST\r\n",
+                           b"Q" * 17521])
+        tail = dict(
+            midstream, sent_payloads=[b"NOOP\r\n", b"X" * 3000,
+                                      b"Y" * (4095 - 3000)])
+        replay, reset = self._overlong_replay_and_reset(
+            session_gcda_touched=["ftpserv.gcda"])
+        self.assertTrue(cov.lightftp_oversized_command_close_expected(
+            replay, reset, midstream, enabled))
+        self.assertTrue(cov.lightftp_oversized_command_close_expected(
+            replay, reset, tail, enabled))
+        self.assertFalse(cov.lightftp_oversized_command_close_expected(
+            replay, reset, midstream, disabled))
+        # A CRLF inside the first 4095 bytes does not rescue the session:
+        # recvcmd tests only the accumulated tail, so the buffer still fills
+        # and the close happens (tail shape covers it here).
+        self.assertTrue(cov.lightftp_oversized_command_close_expected(
+            replay, reset,
+            dict(midstream, sent_payloads=[b"USER x\r\n",
+                                           b"A" * 4000 + b"\r\n" + b"A" * 14000]),
+            enabled))
+
+    def test_protocol_end_expected_proftpd_overlong_is_v11_gated(self):
+        policy = dict(overlong_close=dict(
+            verified=True, exception_enabled=True, give_up_bytes=16408))
+        ledger = dict(
+            prefix_sent_complete=True, frames_unattempted=4,
+            prior_post_recv_ok=True, stop_reason="client-recv-post-send-failed",
+            last_attempted_post_recv_ok=False, peer_closed=False,
+            last_attempted_post_recv_errno=errno.ECONNRESET,
+            sent_payloads=[b"USER ubuntu\r\n", b"PASS ubuntu\r\n",
+                           b"A" * 18940, b"ACCT\r\n"])
+        replay, reset = self._overlong_replay_and_reset()
+        log = self.root / "proftpd-overlong.log"
+        log.write_bytes(b"Responses from server:0-220-331-230-\n"
+                        b"Responses in details:\n220 ready\r\n331 pass\r\n230 ok\r\n"
+                        b"\n--------------------------------")
+        self.assertFalse(cov.protocol_end_expected(
+            "proftpd", replay, reset, ledger, log, policy_version=10,
+            replay_policy=policy))
+        self.assertTrue(cov.protocol_end_expected(
+            "proftpd", replay, reset, ledger, log, policy_version=11,
+            replay_policy=policy))
+        # The reset can land between frames (v11b id:000259): the stop is the
+        # next frame's pre-recv and the errno evidence moves to the
+        # never-sent row; v10's outer gate must keep rejecting it.
+        pre_send = dict(
+            ledger, stop_reason="client-recv-pre-send-failed",
+            last_attempted_post_recv_ok=True, last_attempted_post_recv_errno=0,
+            next_unattempted_pre_recv_errno=errno.ECONNRESET,
+            sent_payloads=[b"USER ubuntu\r\n", b"PASS ubuntu\r\n",
+                           b"A" * 22311, b"ACCT\r\n", b"REIN\r\n"])
+        self.assertFalse(cov.protocol_end_expected(
+            "proftpd", replay, reset, pre_send, log, policy_version=10,
+            replay_policy=policy))
+        self.assertTrue(cov.protocol_end_expected(
+            "proftpd", replay, reset, pre_send, log, policy_version=11,
+            replay_policy=policy))
+        for field, value in (("next_unattempted_pre_recv_errno", errno.EPIPE),
+                             ("last_attempted_post_recv_ok", False),
+                             ("prior_post_recv_ok", False)):
+            self.assertFalse(cov.protocol_end_expected(
+                "proftpd", replay, reset, dict(pre_send, **{field: value}), log,
+                policy_version=11, replay_policy=policy), field)
+        accepted = cov.replay_incompleteness(
+            dict(replay, replay_anomaly=False, anomaly_kind="",
+                 send_completeness="incomplete", protocol_end_expected=True))
+        self.assertEqual(accepted, [])
+
+    def test_read_frame_ledger_exposes_pre_send_reset_errno(self):
+        rows = [
+            dict(event="session_begin", schema="loopfuzz-replay-frame-ledger-v1",
+                 input_file="x", input_size=0, protocol="FTP"),
+            dict(event="frame", frame=1, len=6, read_complete=True,
+                 pre_recv_ok=True, send_attempt=True, sent_bytes=6,
+                 send_errno=0, post_recv_ok=True, pre_recv_errno=0,
+                 post_recv_errno=0, peer_closed=False),
+            dict(event="frame", frame=2, len=6, read_complete=True,
+                 pre_recv_ok=False, send_attempt=False, sent_bytes=-2,
+                 send_errno=0, post_recv_ok=False, pre_recv_errno=errno.ECONNRESET,
+                 post_recv_errno=0, peer_closed=False),
+            dict(event="session_end", frames_total=2,
+                 stop_reason="client-recv-pre-send-failed", peer_closed=False),
+        ]
+        ledger_path = self.root / "pre-send-ledger.jsonl"
+        framed = (struct.pack("<I", 6) + b"NOOP\r\n") * 2
+        ledger_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        ledger = cov.read_frame_ledger(ledger_path, framed)
+        self.assertEqual(ledger["next_unattempted_pre_recv_errno"], errno.ECONNRESET)
+        self.assertEqual(ledger["frames_attempted"], 1)
+        self.assertEqual(ledger["frames_unattempted"], 1)
+
+    def test_proftpd_overlong_source_policy_derives_boundary(self):
+        source_root = self.root / "proftpd-gcov"
+        (source_root / "src").mkdir(parents=True)
+        main_c = source_root / "src" / "main.c"
+        main_c.write_bytes(
+            b"#define PR_DEFAULT_CMD_BUFSZ\t(PR_TUNABLE_PATH_MAX + 7)\n"
+            b"int pr_cmd_read(void) { if (errno == E2BIG) {\n"
+            b"too_large_count++;\n"
+            b"pr_timer_usleep(250 * 1000);\n"
+            b"if (too_large_count > 3) { return -1; } } }\n")
+        (source_root / "src" / "netio.c").write_bytes(
+            b"if (saw_newline == FALSE) { errno = E2BIG; return -1; }\n")
+        binary = source_root / "proftpd"
+        binary.write_text("fixture\n")
+        binary.chmod(0o755)
+        conf = self.root / "basic.conf"
+        conf.write_bytes(b"ServerName test\nPort 21\n")
+        policy = cov.proftpd_overlong_source_policy(source_root, source_root, conf)
+        self.assertTrue(policy["verified"])
+        self.assertFalse(policy["exception_enabled"])
+        self.assertEqual(policy["command_buffer_size_source"], "source-default")
+        self.assertEqual(policy["command_buffer_size_effective"], 4096 + 7)
+        self.assertEqual(policy["give_up_bytes"], 4 * (4096 + 7 - 1))
+        self.assertEqual(policy["probe_min_close_delay_ms"], 1000)
+        # The fuzzing run.sh injects CommandBufferSize 65535; the boundary
+        # must follow the effective value, never the source default.
+        conf.write_bytes(b"ServerName test\nPort 21\nCommandBufferSize\t65535\n")
+        policy = cov.proftpd_overlong_source_policy(source_root, source_root, conf)
+        self.assertTrue(policy["verified"])
+        self.assertEqual(policy["command_buffer_size_source"], "conf-directive")
+        self.assertEqual(policy["command_buffer_size_effective"], 65535)
+        self.assertEqual(policy["give_up_bytes"], 4 * (65535 - 1))
+        self.assertEqual(policy["command_buffer_size_default"], 4096 + 7)
+
+    def test_lightftp_v5_policy_requires_probe_and_artifacts(self):
+        source_root, object_root = self.root / "Source", self.root / "Release"
+        source_root.mkdir()
+        object_root.mkdir()
+        (source_root / "ftpserv.c").write_bytes(
+            b'#include "ftpserv.h"\nchar rcvbuf[PATH_MAX]; '
+            b"int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size) "
+            b"--buffer_size; while (buffer_size > 0) if ( p >= 2 ) "
+            b"(buffer[p-2] == '\\r') && (buffer[p-1] == '\\n') "
+            b"if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) ) break; "
+            b"close(ctx.ControlSocket);")
+        (source_root / "ftpserv.h").write_bytes(b"#include <limits.h>\n")
+        binary = object_root / "fftp"
+        binary.write_text("fixture\n")
+        binary.chmod(0o755)
+        probe = dict(verified=False, minimum_bytes=4095,
+                     probe_ledger_file="probe-frame-ledger.jsonl",
+                     probe_log_file="probe.log")
+        build = dict(verified=False)
+        policy = cov.lightftp_replay_policy(source_root, object_root,
+                                            overlong_probe=probe, build_record=build)
+        self.assertFalse(policy["verified"])
+        self.assertEqual(policy["name"], "lightftp-gcov-path-max-stream-close-v4")
+        probe_dir = self.root / "overlong-close-probe"
+        probe_dir.mkdir()
+        (probe_dir / "probe-input").write_bytes(b"fixture input")
+        (probe_dir / "probe-frame-ledger.jsonl").write_text("{}\n")
+        (probe_dir / "probe.log").write_text("fixture log\n")
+        (probe_dir / "lightftp-rebuild.log").write_text("fixture rebuild log\n")
+        probe.update(verified=True,
+                     probe_input_sha256=cov.digest_file(probe_dir / "probe-input"),
+                     probe_ledger_sha256=cov.digest_file(probe_dir / "probe-frame-ledger.jsonl"),
+                     probe_log_sha256=cov.digest_file(probe_dir / "probe.log"))
+        # Probe alone is not enough: the exception also needs the
+        # reproducible-build record bound to the running binary.
+        policy = cov.lightftp_replay_policy(source_root, object_root,
+                                            overlong_probe=probe, build_record=build)
+        self.assertFalse(policy["verified"])
+        self.assertEqual(policy["name"], "lightftp-gcov-path-max-stream-close-v4")
+        build.update(verified=True,
+                     rebuild_log_file="lightftp-rebuild.log",
+                     binary_sha256=cov.digest_file(binary),
+                     disassembly_identical=True,
+                     objects_unexpected_difference=[],
+                     rebuild_log_sha256=cov.digest_file(probe_dir / "lightftp-rebuild.log"))
+        policy = cov.lightftp_replay_policy(source_root, object_root,
+                                            overlong_probe=probe, build_record=build)
+        self.assertTrue(policy["verified"])
+        self.assertTrue(policy["exception_enabled"])
+        self.assertEqual(policy["name"], "lightftp-gcov-path-max-stream-close-v5")
+        self.assertTrue(cov.verify_lightftp_replay_policy(
+            policy, source_root, object_root, artifact_root=self.root))
+        self.assertFalse(cov.verify_lightftp_replay_policy(
+            policy, source_root, object_root))  # no artifact root -> fail closed
+        tampered = dict(build, binary_sha256="0" * 64)
+        broken = cov.lightftp_replay_policy(source_root, object_root,
+                                            overlong_probe=probe, build_record=tampered)
+        # The builder itself refuses a build record whose binary hash does
+        # not match the executable beside the source.
+        self.assertFalse(broken["verified"])
+        self.assertEqual(broken["name"], "lightftp-gcov-path-max-stream-close-v4")
+        # A tampered archived log hash passes the builder (it cannot see the
+        # artifact) but the audit rejects it against the archived bytes.
+        tampered_log = dict(build, rebuild_log_sha256="0" * 64)
+        stale = cov.lightftp_replay_policy(source_root, object_root,
+                                           overlong_probe=probe, build_record=tampered_log)
+        self.assertTrue(stale["verified"])
+        self.assertFalse(cov.verify_lightftp_replay_policy(
+            stale, source_root, object_root, artifact_root=self.root))
+
+    def test_proftpd_replay_policy_v6_carries_overlong_exception(self):
+        base = cov.proftpd_replay_policy()
+        self.assertEqual(base["name"], "proftpd-ready-client-graceful-exit-v5")
+        self.assertNotIn("overlong_close", base)
+        v6 = cov.proftpd_replay_policy(overlong_close=dict(
+            verified=True, exception_enabled=True, give_up_bytes=16408))
+        self.assertEqual(v6["name"], "proftpd-ready-client-graceful-exit-v6")
+        self.assertTrue(v6["overlong_close"]["exception_enabled"])
+        self.assertIn("verified-overlong-behavior-probe", v6["acceptance_requires"])
+
+    def test_smtp_final_close_reply_tolerates_trailing_noise(self):
+        head = (b"Responses from server:0-220-221-\n"
+                b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+                b"220 ready\r\n221 bye\r\n")
+        footer = b"\n--------------------------------"
+        noise = b"87643 daemon forked for daemon-del-pidfile: 87655\n" \
+                b"87643 >>>>>>>>>> Exim pid=87643 terminating with rc=0 >>>>>>>>\n"
+        log = self.root / "smtp-noise.log"
+        log.write_bytes(head + footer + b"\n" + noise)
+        # Noise after the section footer never affected the strict parser;
+        # the strict gap was the truncated-details case below.
+        self.assertEqual(cov.smtp_final_close_reply(log), 221)
+        self.assertEqual(cov.smtp_final_close_reply(log, trailing_noise_ok=True), 221)
+        # Any SMTP reply after the 221 invalidates the close (and the state
+        # sequence, being derived from the complete buffer, shows it too).
+        later = self.root / "smtp-later-reply.log"
+        later.write_bytes(head.replace(
+            b"Responses from server:0-220-221-", b"Responses from server:0-220-221-250-"
+        ).replace(b"221 bye", b"221 bye\r\n250 late") + footer + b"\n")
+        self.assertIsNone(cov.smtp_final_close_reply(later, trailing_noise_ok=True))
+        # A truncated details print still closes when the atomic state
+        # sequence line ends in 221 (observed 2026-11-20 on exim).
+        truncated = self.root / "smtp-truncated.log"
+        truncated.write_bytes(
+            b"Responses from server:0-220-250-221-\n"
+            b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+            b"220 ready\r\n250 OK\r\n250 Acc" + footer + b"\n" + noise)
+        self.assertEqual(cov.smtp_final_close_reply(truncated, trailing_noise_ok=True), 221)
+        # A non-close final code never qualifies, even with the fallback.
+        truncated_250 = self.root / "smtp-truncated-250.log"
+        truncated_250.write_bytes(
+            b"Responses from server:0-220-250-\n"
+            b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+            b"220 ready\r\n250 OK\r\n250 Acc" + footer + b"\n")
+        self.assertIsNone(cov.smtp_final_close_reply(truncated_250, trailing_noise_ok=True))
+
+    def test_lighttpd1_announced_close_accepted_at_v12(self):
+        body = b"<html>not found</html>"
+        # Real shape (2026-11-20): several responses share the connection,
+        # the LAST one carries Connection: close and a matching body length,
+        # while the HTTP state line records only the final status code —
+        # which is why the v5..v11 summary-vs-details equality rejected
+        # every multi-response close.
+        head = (b"Responses from server:0-404-\n"
+                b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+                b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n"
+                b"Content-Length: %d\r\n\r\n" % len(body) + body)
+        log = self.root / "lighttpd1-close.log"
+        log.write_bytes(head + b"\n--------------------------------")
+        self.assertTrue(cov.http_response_announced_close_complete(log))
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=3,
+                      prior_post_recv_ok=True, peer_closed=True,
+                      stop_reason="peer-closed-before-input-end")
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["src/lighttpd.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        self.assertTrue(cov.protocol_end_expected(
+            "lighttpd1", replay, reset, ledger, log, policy_version=12))
+        self.assertFalse(cov.protocol_end_expected(
+            "lighttpd1", replay, reset, ledger, log, policy_version=11))
+        # Truncated body, missing close header, or a later partial response
+        # must never qualify.
+        short = self.root / "lighttpd1-short.log"
+        short.write_bytes(head[:len(head) - 5] + b"\n--------------------------------")
+        self.assertFalse(cov.http_response_announced_close_complete(short))
+        noclose = self.root / "lighttpd1-noclose.log"
+        noclose.write_bytes(head.replace(b"Connection: close\r\n", b"") +
+                            b"\n--------------------------------")
+        self.assertFalse(cov.http_response_announced_close_complete(noclose))
+        trailing = self.root / "lighttpd1-trailing.log"
+        trailing.write_bytes(head + b"HTTP/1.1 200 OK\r\nBro" +
+                             b"\n--------------------------------")
+        self.assertFalse(cov.http_response_announced_close_complete(trailing))
+
+    def test_exim_error_limit_close_accepted_at_v12(self):
+        # globals.c: smtp_max_synprot_errors = 3; smtp_in.c:2734 drops the
+        # session once the counter exceeds it. The counter resets on some
+        # valid commands, so the trailing visible run can be shorter than
+        # the limit while the session total exceeds it (observed shapes:
+        # ...-503-500-500-250-501-501 close, ...-503-500-500-503-503 close).
+        body = (b"Responses from server:0-220-250-503-500-500-250-501-501-\n"
+                b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+                b"220 ready\r\n250 OK\r\n503 bad\r\n500 bad\r\n500 bad\r\n"
+                b"250 OK\r\n501 bad\r\n501 bad\r\n")
+        log = self.root / "exim-error-close.log"
+        log.write_bytes(body + b"\n--------------------------------")
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=6,
+                      prior_post_recv_ok=True, peer_closed=True,
+                      stop_reason="peer-closed-before-input-end")
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["smtp_in.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        self.assertTrue(cov.protocol_end_expected(
+            "exim", replay, reset, ledger, log, policy_version=12))
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, ledger, log, policy_version=11))
+        # A close whose final reply is a success code never qualifies, and
+        # neither does a lone trailing error without the error pile-up.
+        healthy = self.root / "exim-healthy-close.log"
+        healthy.write_bytes(body.replace(b"-501-501-", b"-501-250-") +
+                            b"\n--------------------------------")
+        ledger_healthy = dict(ledger, stop_reason="peer-closed-before-input-end")
+        self.assertFalse(cov.exim_error_limit_close_expected(
+            replay, reset, ledger_healthy, healthy))
+        sparse = self.root / "exim-sparse-error.log"
+        sparse.write_bytes(
+            b"Responses from server:0-220-250-501-\n"
+            b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+            b"220 ready\r\n250 OK\r\n501 bad\r\n"
+            b"\n--------------------------------")
+        self.assertFalse(cov.exim_error_limit_close_expected(
+            replay, reset, ledger, sparse))
+        # Missing process evidence fails closed.
+        self.assertFalse(cov.exim_error_limit_close_expected(
+            dict(replay, server_exit_code=124), reset, ledger, log))
+        self.assertFalse(cov.exim_error_limit_close_expected(
+            replay, dict(reset, exit_code=1), ledger, log))
+
+    def test_lightftp_quit_accepts_only_known_interleaved_thread_exit(self):
+        log = self.root / "lightftp-thread-exit.log"
+        summary = (b"Responses from server:0-220-331-230-215-257-200-150-451-"
+                   b"19-11-2026 18:53:11 S-id=1 : <- Thread exit. "
+                   b"Thread counter g_threads=0\nResponses in details:\n")
+        details = (b"220 ready\r\n331 password required\r\n"
+                   b"230 logged in\r\n215 UNIX Type: L8\r\n"
+                   b"257 current directory\r\n200 command okay\r\n"
+                   b"150 opening data connection\r\n451 local error\r\n"
+                   b"500 syntax error\r\n257 directory created\r\n"
+                   b"550 permission denied\r\n200 chmod okay\r\n221 \r\n")
+        footer = b"\n--------------------------------"
+        log.write_bytes(summary + details + footer)
+
+        self.assertEqual(cov.lightftp_final_reply_code(log), 221)
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, session_coverage_missing=False,
+                      session_gcda_touched=["ftpserv.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=1,
+                      peer_closed=True, stop_reason="protocol-close-after-quit",
+                      last_attempted_frame_is_quit=True,
+                      last_attempted_post_recv_ok=True)
+        self.assertTrue(cov.protocol_end_expected(
+            "lightftp", replay, reset, ledger, log, policy_version=6))
+
+        log.write_bytes(summary.replace(b"Thread counter g_threads=0",
+                                        b"Thread counter g_threads=1") + details + footer)
+        self.assertIsNone(cov.lightftp_final_reply_code(log))
+        self.assertFalse(cov.protocol_end_expected(
+            "lightftp", replay, reset, ledger, log, policy_version=6))
+
+        body_221 = (b"211-Features\r\n221 not a closing reply\r\n"
+                    b"211 End\r\n")
+        log.write_bytes(
+            b"Responses from server:0-211-"
+            b"19-11-2026 18:53:11 S-id=1 : <- Thread exit. "
+            b"Thread counter g_threads=0\nResponses in details:\n" +
+            body_221 + footer)
+        self.assertIsNone(cov.lightftp_final_reply_code(log))
+
+        nonfinal_221 = (b"220 ready\r\n221 premature close\r\n"
+                        b"200 later reply\r\n")
+        log.write_bytes(
+            b"Responses from server:0-220-221-200-"
+            b"19-11-2026 18:53:11 S-id=1 : <- Thread exit. "
+            b"Thread counter g_threads=0\nResponses in details:\n" +
+            nonfinal_221 + footer)
+        self.assertIsNone(cov.lightftp_final_reply_code(log))
 
     def test_bftpd_audit_rejects_missing_or_misaligned_replay_plan(self):
         with self.assertRaisesRegex(cov.CoverageError, "requires replay-plan.json"):
@@ -1216,6 +2013,57 @@ class CoverageFixtureTests(unittest.TestCase):
         replay["coverage_complete"] = not replay["incomplete_reasons"]
         self.assertEqual(cov.verify_proftpd_replay_evidence(
             replay, reset, artifact_dir, 1, require_frames=True), [])
+
+        ledger_path.write_text(
+            "{\"event\":\"session_begin\",\"schema\":\"loopfuzz-replay-frame-ledger-v1\","
+            "\"input_file\":\"framed-input.raw\",\"input_size\":10,\"protocol\":\"FTP\"}\n"
+            "{\"event\":\"frame\",\"frame\":1,\"len\":2,\"read_complete\":true,"
+            "\"pre_recv_ok\":true,\"send_attempt\":true,\"sent_bytes\":2,"
+            "\"send_errno\":0,\"post_recv_ok\":true}\n"
+            "{\"event\":\"session_end\",\"frames_total\":1,"
+            "\"stop_reason\":\"peer-closed-before-frame\",\"peer_closed\":true}\n")
+        incomplete_flags = cov.apply_proftpd_shutdown_exit_policy(
+            cov.classify_replay_exit(0, 2), 0, 2,
+            dict(server_ready=True, client_timed_out=False,
+                 harness_shutdown_requested=False, harness_shutdown_signal=None),
+            True, frames_expected=2, packets_sent=2,
+            ledger_send_complete=False, session_gcda_touched=["src/main.gcda"])
+        incomplete = dict(incomplete_flags,
+                          client_command=replay["client_command"],
+                          frame_ledger_file=ledger_path.name,
+                          frame_ledger_sha256=cov.digest_file(ledger_path),
+                          server_exit_code=0, client_exit_code=2,
+                          server_ready=True, client_timed_out=False,
+                          harness_shutdown_requested=False,
+                          harness_shutdown_signal=None, helper_ready=None,
+                          session_coverage_missing=False,
+                          session_gcda_touched=["src/main.gcda"],
+                          replay_log_file=replay_path.name,
+                          replay_log_sha256=cov.digest_file(replay_path),
+                          send_completeness="incomplete",
+                          protocol_end_expected=False)
+        incomplete["incomplete_reasons"] = cov.replay_incompleteness(incomplete)
+        incomplete["coverage_complete"] = False
+        self.assertIn("frame-ledger-incomplete", incomplete["incomplete_reasons"])
+        self.assertEqual(cov.verify_proftpd_replay_evidence(
+            incomplete, reset, artifact_dir, 1, require_frames=True), [])
+
+        forged_incomplete = dict(incomplete, send_completeness="complete",
+                                 incomplete_reasons=[])
+        errors = cov.verify_proftpd_replay_evidence(
+            forged_incomplete, reset, artifact_dir, 1, require_frames=True)
+        self.assertIn("incomplete-reasons-mismatch", errors)
+
+        ledger_path.write_text(
+            "{\"event\":\"session_begin\",\"schema\":\"loopfuzz-replay-frame-ledger-v1\","
+            "\"input_file\":\"framed-input.raw\",\"input_size\":10,\"protocol\":\"FTP\"}\n"
+            "{\"event\":\"frame\",\"frame\":1,\"len\":2,\"read_complete\":true,"
+            "\"pre_recv_ok\":true,\"send_attempt\":true,\"sent_bytes\":2,"
+            "\"send_errno\":0,\"post_recv_ok\":true}\n"
+            "{\"event\":\"frame\",\"frame\":2,\"len\":0,\"read_complete\":true,"
+            "\"pre_recv_ok\":true,\"send_attempt\":true,\"sent_bytes\":0,"
+            "\"send_errno\":0,\"post_recv_ok\":true}\n"
+            "{\"event\":\"session_end\",\"frames_total\":2,\"stop_reason\":\"eof\"}\n")
 
         forged = dict(replay, proftpd_shutdown_exit_expected=False)
         errors = cov.verify_proftpd_replay_evidence(
@@ -1703,7 +2551,7 @@ class RealGcovTests(unittest.TestCase):
                                       allow_unverified_reset=False)
 
             def local_replay(target, record, port, mode, cwd, workdir, replay_log, object_root,
-                             reset=None):
+                             reset=None, replay_policy=None):
                 cov.collect_report(root, root, delete=True)
                 arguments = [] if record["queue_id"] == 1 else ["right"]
                 subprocess.run([str(root / "probe"), *arguments], cwd=root, check=True,
@@ -1820,12 +2668,12 @@ class RealGcovTests(unittest.TestCase):
             (campaign / "queue-checkpoints.jsonl").write_text(
                 "".join(json.dumps(record) + "\n" for record in ledger))
             output = root / "sampled.csv"
-            args = argparse.Namespace(folder=campaign, output=output, target="lightftp", port=0,
+            args = argparse.Namespace(folder=campaign, output=output, target="forked-daapd", port=0,
                                       mode=1, step=2, require_coordinates=True, gcovr="gcovr",
                                       allow_unverified_reset=False, sampled_checkpoints=True)
 
             def local_replay(target, record, port, mode, cwd, workdir, replay_log, object_root,
-                             reset=None):
+                             reset=None, replay_policy=None):
                 arguments = [] if record["queue_id"] == 1 else ["right"]
                 subprocess.run([str(root / "probe"), *arguments], cwd=root, check=True,
                                stdout=subprocess.DEVNULL)
