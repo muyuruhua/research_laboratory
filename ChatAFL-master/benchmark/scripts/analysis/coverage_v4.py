@@ -1398,16 +1398,54 @@ def lightftp_build_record(source_root, object_root, artifact_dir):
 
     The Dockerfile builds the gcov tree with
     ``make CFLAGS=-fprofile-arcs -ftest-coverage ... clean all``. Rebuilding
-    with the same command reproduces every object byte-for-byte except
-    GCC's 4-byte random gcov stamp per object, and a linked binary whose
-    disassembly (objdump -d) is instruction-identical to the image binary;
-    the only differing bytes sit in the GNU build-id / aggregated stamp
-    metadata. The originals are restored and hash-verified afterwards, and
-    any surprise (dirty git tree, restore mismatch, non-stamp object
-    differences) fails closed. Together with the live behavioral probe
-    this ties the bounded-command policy to the exact executable the
-    formal replay drives, not merely to source markers and PATH_MAX.
+    with the same command at the same path reproduces every object
+    byte-for-byte except GCC's 4-byte random gcov stamp per object, and a
+    linked binary whose disassembly (objdump -d) is instruction-identical
+    to the image binary; the only differing bytes sit in the GNU build-id /
+    aggregated stamp metadata. A divergence observed once in a live
+    fuzzing container (2026-11-20 22:09 lightftp arm) did not reproduce on
+    the frozen filesystem, so the record retries once and, on final
+    failure, persists per-object diff counts and both disassemblies into
+    the artifact directory for post-hoc diagnosis instead of leaving an
+    unreproducible verdict. The originals are restored and hash-verified
+    afterwards, and any surprise (dirty git state, restore mismatch,
+    non-stamp object differences) fails closed.
     """
+    record = _lightftp_build_record_once(source_root, object_root, artifact_dir)
+    if not record.get("verified"):
+        record["retried"] = True
+        retry = _lightftp_build_record_once(source_root, object_root, artifact_dir)
+        retry["retried"] = True
+        if not retry.get("verified"):
+            try:
+                write_json(Path(artifact_dir) / "lightftp-rebuild-divergence.json",
+                           dict(
+                               schema_version="lightftp-rebuild-divergence-v1",
+                               first_attempt={k: record.get(k) for k in
+                                              ("git_head", "gcov_patch_sha256",
+                                               "gcov_patch_reverse_appliable",
+                                               "tracked_modifications_sorted",
+                                               "tracked_modifications_confined_to_patch",
+                                               "binary_sha256", "rebuilt_binary_sha256",
+                                               "disassembly_identical", "objects_total",
+                                               "objects_byte_identical",
+                                               "objects_stamp_only_difference",
+                                               "objects_unexpected_difference",
+                                               "make_exit_code")},
+                               second_attempt={k: retry.get(k) for k in
+                                               ("binary_sha256", "rebuilt_binary_sha256",
+                                                "disassembly_identical", "objects_total",
+                                                "objects_byte_identical",
+                                                "objects_stamp_only_difference",
+                                                "objects_unexpected_difference",
+                                                "make_exit_code")}))
+            except OSError:
+                pass
+        return retry
+    return record
+
+
+def _lightftp_build_record_once(source_root, object_root, artifact_dir):
     source_root, object_root = Path(source_root), Path(object_root)
     record = dict(name="lightftp-reproducible-rebuild-record-v1",
                   compile_command=["make"] + list(LIGHTFTP_GCOV_FLAGS) + ["clean", "all"],
@@ -1531,6 +1569,34 @@ def overlong_close_trigger_frame(payloads, minimum, terminator, telnet_iac=False
                 return index + 1
         prefix += payload if isinstance(payload, bytes) else b""
     return None
+
+
+def lightftp_command_line_extracts_quit(payloads):
+    """Whether LightFTP's command parser extracts QUIT from the sent stream.
+
+    ftpserv.c's loop skips leading non-alpha bytes of the (CRLF-terminated)
+    line and then strncasecmp-matches the alpha run against known command
+    names, so a garbage frame without a trailing newline glued in front of
+    a bare ``QUIT\\r\\n`` frame still executes as QUIT (observed 2026-11-20:
+    205 bytes of 0xF2 filler + QUIT closed the session with 221). Only the
+    final line matters — recvcmd returns once the accumulated tail ends in
+    CRLF. """
+    stream = b"".join(payloads)
+    if stream.endswith(b"\n"):
+        stream = stream[:-1]
+    line = stream.rsplit(b"\n", 1)[-1]
+    # C isalpha() in the default locale is ASCII-only; Python's isalpha()
+    # would treat 0xF2 as a letter and diverge from the target's parser.
+    def c_isalpha(byte):
+        return 65 <= byte <= 90 or 97 <= byte <= 122
+    index = 0
+    while index < len(line) and not c_isalpha(line[index]):
+        index += 1
+    run = bytearray()
+    while index < len(line) and c_isalpha(line[index]):
+        run.append(line[index])
+        index += 1
+    return bytes(run).upper() == b"QUIT"
 
 
 def ftp_overlong_close_gates(replay, reset, ledger):
@@ -1972,7 +2038,14 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
         return False
     server_code = replay.get("server_exit_code")
     if policy_version >= 5 and target == "pure-ftpd":
-        normal_exit = server_code == 0 or server_code in (251, 252)
+        # Pure-FTPd's die() encodes its syslog priority into the exit code
+        # via _EXIT(-priority - 1): 252=LOG_ERR, 251=LOG_WARNING,
+        # 250=LOG_NOTICE, 249=LOG_INFO. The audited 251/252 pair was the
+        # observed subset; the whole family is the same die() policy path
+        # (2026-11-20: a deterministic unknown-command session closed FIN
+        # with a complete 500 reply and exited 249).
+        die_exits = (251, 252) if policy_version < 12 else (249, 250, 251, 252)
+        normal_exit = server_code == 0 or server_code in die_exits
     else:
         normal_exit = server_code == 0
     stopped_at_close = bool(ledger and (
@@ -1998,7 +2071,12 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
         (policy_version >= 6 and
          ledger.get("stop_reason") == "protocol-close-after-quit" and
          ledger.get("peer_closed") is True and
-         ledger.get("last_attempted_frame_is_quit") and
+         (ledger.get("last_attempted_frame_is_quit") or
+          (target == "lightftp" and policy_version >= 12 and
+           # LightFTP extracts the command name after skipping non-alpha
+           # bytes, so garbage glued before a bare QUIT still closes.
+           isinstance(ledger.get("sent_payloads"), list) and
+           lightftp_command_line_extracts_quit(ledger["sent_payloads"]))) and
          ledger.get("last_attempted_post_recv_ok") is True)))
     if not (normal_exit and
             replay.get("client_exit_code") == 2 and
@@ -2016,7 +2094,15 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
             reply = pureftpd_final_reply_code(replay_log)
             return bool(replay.get("imported_gcda") and
                         reply in (221, 421) and
-                        (server_code == 0 or reply == 421))
+                        (server_code == 0 or reply == 421)) or \
+                bool(policy_version >= 12 and
+                     # die() exits with the priority-encoded code; the final
+                     # reply is whatever die() emitted — a complete error
+                     # reply plus FIN (observed: 500 unknown-command, 530
+                     # auth-denied), so restrict to 4xx/5xx finals.
+                     server_code in (249, 250, 251, 252) and
+                     reply is not None and 400 <= reply <= 599 and
+                     replay.get("imported_gcda"))
         if not replay.get("session_gcda_touched"):
             return False
         if target == "lightftp":

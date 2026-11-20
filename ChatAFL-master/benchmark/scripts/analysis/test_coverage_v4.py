@@ -1683,6 +1683,78 @@ class CoverageFixtureTests(unittest.TestCase):
         self.assertFalse(cov.exim_error_limit_close_expected(
             replay, dict(reset, exit_code=1), ledger, log))
 
+    def test_pureftpd_die_family_exit_accepted_at_v12(self):
+        # _EXIT(-priority - 1): 249=LOG_INFO .. 252=LOG_ERR. A deterministic
+        # unknown-command session (2026-11-20 id:000258) closed FIN with a
+        # complete 500 reply and exited 249.
+        head = (b"Responses from server:0-220-331-215-530-500-\n"
+                b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+                b"220 welcome\r\n331 password\r\n215 UNIX\r\n"
+                b"530 not logged in\r\n500 HTTP command: [post]\r\n")
+        log = self.root / "pureftpd-die-close.log"
+        log.write_bytes(head + b"\n--------------------------------")
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=23,
+                      prior_post_recv_ok=True, peer_closed=True,
+                      stop_reason="peer-closed-before-input-end")
+        replay = dict(server_exit_code=249, client_exit_code=2,
+                      server_ready=True, client_timed_out=False,
+                      session_coverage_missing=False,
+                      imported_gcda=["src/ftpd.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        self.assertTrue(cov.protocol_end_expected(
+            "pure-ftpd", replay, reset, ledger, log, policy_version=12))
+        self.assertFalse(cov.protocol_end_expected(
+            "pure-ftpd", replay, reset, ledger, log, policy_version=11))
+        # A success-family final reply with a die exit, or a die exit
+        # without coverage evidence, never qualifies.
+        healthy = self.root / "pureftpd-die-230.log"
+        healthy.write_bytes(head.replace(b"-331-215-530-500", b"-331-230")
+                            .replace(b"530 not logged in\r\n", b"")
+                            .replace(b"500 HTTP command: [post]", b"230 ok")
+                            + b"\n--------------------------------")
+        self.assertFalse(cov.protocol_end_expected(
+            "pure-ftpd", replay, reset, ledger, healthy, policy_version=12))
+        self.assertFalse(cov.protocol_end_expected(
+            "pure-ftpd", dict(replay, imported_gcda=[]), reset, ledger,
+            log, policy_version=12))
+
+    def test_lightftp_lenient_quit_extraction_at_v12(self):
+        # ftpserv.c skips non-alpha bytes before matching the command name,
+        # so a newline-less garbage frame glued before a bare QUIT still
+        # executes as QUIT (observed 2026-11-20: 205 bytes of 0xF2 + QUIT
+        # closed the session with 221 after the strict stream check
+        # rejected it).
+        self.assertTrue(cov.lightftp_command_line_extracts_quit(
+            [b"\xf2" * 205 + b"%", b"QUIT\r\n"]))
+        self.assertTrue(cov.lightftp_command_line_extracts_quit(
+            [b"NOOP\r\n", b"QUIT\r\n"]))
+        self.assertFalse(cov.lightftp_command_line_extracts_quit([b"QUITX\r\n"]))
+        self.assertFalse(cov.lightftp_command_line_extracts_quit([b"LIST\r\n"]))
+        head = (b"Responses from server:0-220-331-230-221-\n"
+                b"++++++++++++++++++++++++++++++++\nResponses in details:\n"
+                b"220 ready\r\n331 pass\r\n230 ok\r\n221 \r\n")
+        log = self.root / "lightftp-lenient-quit.log"
+        log.write_bytes(head + b"\n--------------------------------")
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=1,
+                      prior_post_recv_ok=True, peer_closed=True,
+                      stop_reason="protocol-close-after-quit",
+                      last_attempted_post_recv_ok=True,
+                      last_attempted_frame_is_quit=False,
+                      sent_payloads=[b"\xf2" * 205 + b"%", b"QUIT\r\n"])
+        replay = dict(server_exit_code=0, client_exit_code=2,
+                      server_ready=True, client_timed_out=False,
+                      session_coverage_missing=False,
+                      session_gcda_touched=["ftpserv.gcda"])
+        reset = dict(command_succeeded=True, exit_code=0)
+        self.assertTrue(cov.protocol_end_expected(
+            "lightftp", replay, reset, ledger, log, policy_version=12))
+        self.assertFalse(cov.protocol_end_expected(
+            "lightftp", replay, reset, ledger, log, policy_version=11))
+        # The lenient path is lightftp-only: the same glued-QUIT ledger must
+        # not open the gate for another FTP target's strict quit check.
+        self.assertFalse(cov.protocol_end_expected(
+            "exim", replay, reset, ledger, log, policy_version=12))
+
     def test_lightftp_quit_accepts_only_known_interleaved_thread_exit(self):
         log = self.root / "lightftp-thread-exit.log"
         summary = (b"Responses from server:0-220-331-230-215-257-200-150-451-"

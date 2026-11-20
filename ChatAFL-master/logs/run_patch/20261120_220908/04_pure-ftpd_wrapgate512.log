@@ -1,0 +1,118 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261120T220909
+║  本批身份:       timed-20261120T220909-3306717
+║  结果目录模式:   ablation/results-pure-ftpd_ablation_<label>_timed-20261120T220909-3306717/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~43 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 1 run = 6 容器
+  SKIPCOUNT=100
+  Docker images required: pure-ftpd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: wrapgate512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: pure-ftpd  每组重复: 1  时长: 20 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: wrapgate512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-pure-ftpd_ablation_<label>_timed-20261120T220909-3306717/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 5 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 1 容器/组 = 1 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~9 GB (可用: ~43 GB)
+  ✓ 内存充足，安全余量 ~34 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 wrapgate512 (PID=3307734)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:wrapgate512] 启动 → ablation/results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-3307741.ZDx6lg
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_wrapgate512_timed-20261120T220909-3306717
+║  预期结果路径:   benchmark/results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717
+║  查找命令:       ls -d benchmark/results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 1
+# TIMEOUT: 1680 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: pure-ftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON pure-ftpd (Volume Mode) *****
+
+
+LOOPFUZZ(pure-ftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/PureFTPD
+[RUN_IDENTITY] arm=out-pure-ftpd-loopfuzz run=1 campaign=lf-7a310700f22277c801cab2d4638d3d27 rng=0x3ee8f41bc7d40ab5
+
+LOOPFUZZ(pure-ftpd): Fuzzing in progress ...
+LOOPFUZZ(pure-ftpd): Waiting for the following containers to stop: 84f909bb6871
+LOOPFUZZ(pure-ftpd): You can check logs by: docker logs -f 84f909bb6871
+LOOPFUZZ(pure-ftpd): You can stop all containers by: docker stop 84f909bb6871
+
+LOOPFUZZ(pure-ftpd): Collecting results and save them to ../ablation/results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717[recover] collecting out-pure-ftpd-loopfuzz_1.tar.gz from 84f909bb6871
+[recover] collected out-pure-ftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-pure-ftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-pure-ftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "coverage_incomplete",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(pure-ftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(pure-ftpd): [KEEP]   pure-ftpd-loopfuzz-run1-1120-220911-ablation_wrapgate512_timed-20261120T2209-3307870-25815  (docker logs pure-ftpd-loopfuzz-run1-1120-220911-ablation_wrapgate512_timed-20261120T2209-3307870-25815 ; docker cp pure-ftpd-loopfuzz-run1-1120-220911-ablation_wrapgate512_timed-20261120T2209-3307870-25815:<path> .)
+LOOPFUZZ(pure-ftpd): [KEEP] remove them with:  docker rm -f 84f909bb68718d1ba2eced4d96b36aebf9a8e6ab124cea8a2d331aa0b165cdc5
+LOOPFUZZ(pure-ftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(pure-ftpd): I am done!
+[ERROR] Background exec job (pid=3307870) FAILED (exit=1)
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-pure-ftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-pure-ftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "coverage_incomplete",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:wrapgate512] 失败 (run_dev.sh exit=1)
+[ABLATION] wrapgate512 失败 (exit=1)
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-pure-ftpd_ablation_wrapgate512_timed-20261120T220909-3306717: clean
+[POSTRUN] Diagnostics complete.
