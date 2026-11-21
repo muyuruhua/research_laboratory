@@ -1,0 +1,161 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T023551
+║  本批身份:       timed-20261122T023551-1883687
+║  结果目录模式:   ablation/results-bftpd_ablation_<label>_timed-20261122T023551-1883687/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~49 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: bftpd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: cal_ewma512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: bftpd  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: cal_ewma512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-bftpd_ablation_<label>_timed-20261122T023551-1883687/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~49 GB)
+  ✓ 内存充足，安全余量 ~28 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 cal_ewma512 (PID=1884944)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:cal_ewma512] 启动 → ablation/results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=1 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-1884968.OKVJhK
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_cal_ewma512_timed-20261122T023551-1883687
+║  预期结果路径:   benchmark/results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687
+║  查找命令:       ls -d benchmark/results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: bftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON bftpd (Volume Mode) *****
+
+
+LOOPFUZZ(bftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/BFTPD
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=1 campaign=lf-17e96e3003ffb229ab9e120c4ff8ead4 rng=0xa27c7cdf307663b3
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=2 campaign=lf-ebea8d2f5d74dabd991fc29abff3410b rng=0xfdaa07db5f22dfe6
+[RUN_IDENTITY] arm=out-bftpd-loopfuzz run=3 campaign=lf-b12524533a8d2a9e2ca29e5fd66e6d6b rng=0x8153ca0bf7ef340c
+
+LOOPFUZZ(bftpd): Fuzzing in progress ...
+LOOPFUZZ(bftpd): Waiting for the following containers to stop: 50002c64f84e 61ae7c3e9adf 739bf4be167e
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 50002c64f84e
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 61ae7c3e9adf
+LOOPFUZZ(bftpd): You can check logs by: docker logs -f 739bf4be167e
+LOOPFUZZ(bftpd): You can stop all containers by: docker stop 50002c64f84e 61ae7c3e9adf 739bf4be167e
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 50002c64f84e
+[recover] failed to collect out-bftpd-loopfuzz_1.tar.gz from 50002c64f84e
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 61ae7c3e9adf
+[recover] failed to collect out-bftpd-loopfuzz_2.tar.gz from 61ae7c3e9adf
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 739bf4be167e
+[recover] failed to collect out-bftpd-loopfuzz_3.tar.gz from 739bf4be167e
+[
+  {
+    "archive": "out-bftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  },
+  {
+    "archive": "out-bftpd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  },
+  {
+    "archive": "out-bftpd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  }
+]
+
+LOOPFUZZ(bftpd): [ERROR] Recovery helper failed (exit 1); containers are kept for manual inspection
+
+LOOPFUZZ(bftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418  (docker logs bftpd-loopfuzz-run1-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418 ; docker cp bftpd-loopfuzz-run1-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run2-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418  (docker logs bftpd-loopfuzz-run2-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418 ; docker cp bftpd-loopfuzz-run2-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418:<path> .)
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run3-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418  (docker logs bftpd-loopfuzz-run3-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418 ; docker cp bftpd-loopfuzz-run3-1122-023554-ablation_cal_ewma512_timed-20261122T0235-1885165-3418:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 50002c64f84e84f6c92b5109efe850dde46e87b4259d622b7bcbabc83b31219e 61ae7c3e9adf4892f5f75d319c18a2fcb54346f569da4687632f1ec0d5ecd588 739bf4be167ee5c68d6d1cc9fbaa73be3449cf991cc517ec8a2ebafce12a0530
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): I am done!
+[ERROR] Background exec job (pid=1885165) FAILED (exit=1)
+[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 50002c64f84e
+[recover] failed to collect out-bftpd-loopfuzz_1.tar.gz from 50002c64f84e
+[recover] collecting out-bftpd-loopfuzz_2.tar.gz from 61ae7c3e9adf
+[recover] failed to collect out-bftpd-loopfuzz_2.tar.gz from 61ae7c3e9adf
+[recover] collecting out-bftpd-loopfuzz_3.tar.gz from 739bf4be167e
+[recover] failed to collect out-bftpd-loopfuzz_3.tar.gz from 739bf4be167e
+[
+  {
+    "archive": "out-bftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  },
+  {
+    "archive": "out-bftpd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  },
+  {
+    "archive": "out-bftpd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_1",
+    "exit_code": "1"
+  }
+]
+[ERROR] Recovery pass failed for ../ablation/results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687 (exit 1)
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:cal_ewma512] 失败 (run_dev.sh exit=1)
+[ABLATION] cal_ewma512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-bftpd-timed-20261122T023551-1883687.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ⚠️  results-bftpd_ablation_cal_ewma512_timed-20261122T023551-1883687:  ABNORMAL_EXIT(1:out-bftpd-loopfuzz_1.tar.gz)  ABNORMAL_EXIT(1:out-bftpd-loopfuzz_2.tar.gz)  ABNORMAL_EXIT(1:out-bftpd-loopfuzz_3.tar.gz)
+[POSTRUN] Diagnostics complete.
