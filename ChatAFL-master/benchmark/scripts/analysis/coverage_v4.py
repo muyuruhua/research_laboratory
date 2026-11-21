@@ -286,8 +286,8 @@ def bftpd_exit_policy(cwd, allow_incomplete=False):
                                       else "legacy-unverified-passive-fd-ownership"),
                 data_socket_lifecycle=(BFTPD_DATA_SOCKET_LIFECYCLE_MARKER if verified
                                        else "legacy-unverified-data-socket-lifecycle"),
-                session_policy="bftpd-client-lifetime-protocol-end-v4",
-                completeness="all-frames-sent-or-audited-bftpd-quit-221-control-close-or-reset",
+                session_policy="bftpd-client-lifetime-protocol-end-v5",
+                completeness="all-frames-sent-or-audited-bftpd-2xx-control-close-or-reset",
                 verified=verified, binary_sha256=digest_file(binary) if binary.is_file() else None,
                 scope="coverage replay build only; fuzz target unchanged")
 
@@ -1625,6 +1625,42 @@ def ftp_overlong_close_gates(replay, reset, ledger):
                 (post_send_reset or pre_send_reset))
 
 
+def proftpd_cross_protocol_close_expected(replay, reset, ledger, server_log_path):
+    """ProFTPD drops clients that speak another wire protocol (Bug#4143).
+
+    src/main.c cmd_loop disconnects with PR_SESS_DISCONNECT_BAD_PROTOCOL as
+    soon as pr_cmd_read classifies a command as non-FTP (SMTP verbs HELO/
+    EHLO/MAIL/RCPT/DATA/RSET/VRFY, HTTP verbs GET/POST/PUT/... — src/cmd.c
+    http_ids/smtp_ids). The teardown runs through pr_session_end, which
+    _exit()s without the gcov atexit flush — so a zero-gcda session with
+    exit 0 is the EXPECTED artifact of this policy, not a flush failure
+    (observed 2026-11-21: "client sent SMTP command 'HELO', disconnecting"
+    in the separated server log, 0 touched gcda). The acceptance therefore
+    keys on the server-log line itself, plus the full process gates. """
+    if ledger is None:
+        return False
+    if ledger.get("stop_reason") != "peer-closed-before-input-end" or \
+            ledger.get("peer_closed") is not True:
+        return False
+    try:
+        raw = Path(server_log_path).read_bytes()
+    except OSError:
+        return False
+    witnessed = re.search(
+        rb"client sent (?:SMTP|HTTP) command '[^']*', disconnecting", raw)
+    return bool(witnessed and
+                replay.get("server_exit_code") == 0 and
+                replay.get("client_exit_code") == 2 and
+                replay.get("server_ready") is True and
+                replay.get("client_timed_out") is False and
+                replay.get("harness_shutdown_requested") is not True and
+                reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
+                ledger.get("prefix_sent_complete") and
+                isinstance(ledger.get("frames_unattempted"), int) and
+                ledger["frames_unattempted"] > 0 and
+                ledger.get("prior_post_recv_ok") is True)
+
+
 def proftpd_overlong_close_expected(replay, reset, ledger, replay_policy):
     """ProFTPD's pr_cmd_read abandons a session after its E2BIG retry budget.
 
@@ -1776,7 +1812,15 @@ def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_versi
     parser over the sent TCP prefix. V3 additionally recognizes a final
     ECONNRESET when BFTPD sends 221 and closes with unread fuzzed bytes.
     Unexplained resets, timeouts and non-221 replies remain incomplete.
+    V5 widens the final-reply restriction to any complete 2xx success: every
+    exit(0) path runs end_child(), which close(2)s stdin/out/err without
+    shutdown(), so unread pipelined bytes turn ANY bftpd normal-exit close
+    into an RST — observed 2026-11-21 after "226 Directory list has been
+    submitted." (q1c id:000376); 4xx/5xx finals stay incomplete.
     """
+    reply_ok = final_reply == 221 or (
+        policy_version >= 5 and isinstance(final_reply, int) and
+        200 <= final_reply <= 299)
     return bool(replay.get("server_exit_code") == 0 and
                 replay.get("client_exit_code") == 2 and
                 replay.get("server_ready") is True and
@@ -1784,7 +1828,7 @@ def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_versi
                 not replay.get("harness_shutdown_requested") and
                 reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
                 replay.get("imported_gcda") and
-                not replay.get("session_coverage_missing") and final_reply == 221 and
+                not replay.get("session_coverage_missing") and reply_ok and
                 ledger and ledger.get("prefix_sent_complete") and
                 isinstance(ledger.get("frames_unattempted"), int) and
                 ledger.get("frames_attempted", 0) > 0 and
@@ -1796,7 +1840,8 @@ def bftpd_protocol_end_expected(replay, ledger, final_reply, reset, policy_versi
                  (policy_version >= 4 and
                   ledger.get("stop_reason") == "protocol-close-after-quit" and
                   ledger.get("peer_closed") is True and
-                  ledger.get("last_attempted_frame_is_quit") is True and
+                  ledger.get("sent_prefix_has_bftpd_quit" if policy_version >= 2
+                             else "last_attempted_frame_is_quit") is True and
                   ledger.get("last_attempted_post_recv_ok") is True) or
                  (policy_version >= 3 and not ledger.get("peer_closed") and
                   ledger.get("stop_reason") == "client-recv-post-send-failed" and
@@ -2084,7 +2129,15 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
             replay.get("client_timed_out") is False and
             replay.get("helper_ready") is not False and
             reset.get("command_succeeded") is True and reset.get("exit_code") == 0 and
-            not replay.get("session_coverage_missing") and
+            (not replay.get("session_coverage_missing") or
+             # ProFTPD's cross-protocol guard tears the session down through
+             # pr_session_end, whose non-DEVEL build _exit()s and thereby
+             # skips the gcov atexit flush: zero touched gcda is the
+             # documented artifact of that policy, not a flush failure
+             # (src/session.c pr_session_end; Bug#4143, observed 2026-11-21).
+             (policy_version >= 12 and target == "proftpd" and
+              proftpd_cross_protocol_close_expected(
+                  replay, reset, ledger, replay.get("server_log_witness")))) and
             ledger and ledger.get("prefix_sent_complete") and
             isinstance(ledger.get("frames_unattempted"), int) and
             ledger["frames_unattempted"] > 0 and stopped_at_close):
@@ -2103,7 +2156,13 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
                      server_code in (249, 250, 251, 252) and
                      reply is not None and 400 <= reply <= 599 and
                      replay.get("imported_gcda"))
-        if not replay.get("session_gcda_touched"):
+        if not replay.get("session_gcda_touched") and not (
+                # ProFTPD's cross-protocol teardown _exit()s past the gcov
+                # flush (src/session.c pr_session_end; Bug#4143): zero gcda
+                # is the expected artifact of that policy close.
+                policy_version >= 12 and target == "proftpd" and
+                proftpd_cross_protocol_close_expected(
+                    replay, reset, ledger, replay.get("server_log_witness"))):
             return False
         if target == "lightftp":
             return (lightftp_final_reply_code(replay_log) in (221, 421) or
@@ -2121,7 +2180,11 @@ def protocol_end_expected(target, replay, reset, ledger, replay_log, policy_vers
                         pureftpd_final_reply_code(replay_log) == 221) or \
                 bool(policy_version >= 11 and
                      proftpd_overlong_close_expected(replay, reset, ledger,
-                                                     replay_policy))
+                                                     replay_policy)) or \
+                bool(policy_version >= 12 and
+                     proftpd_cross_protocol_close_expected(
+                         replay, reset, ledger,
+                         replay.get("server_log_witness")))
         return http_final_close_response_complete(replay_log, ledger.get("sent_payloads")) or \
             bool(policy_version >= 12 and
                  # v12: the server itself announced the close in the final
@@ -2225,6 +2288,14 @@ def verify_target_frame_replay(event, planned, directory, index, target,
         if (record.get(name_key) != stem or not path.is_file() or
                 record.get(hash_key) != digest_file(path)):
             raise CoverageError("replay evidence mismatch: " + stem)
+    server_log_path = directory / ("replay-%06d-server.log" % index)
+    server_log_witness = None
+    if replay.get("server_log_file"):
+        if (replay.get("server_log_file") != server_log_path.name or
+                not server_log_path.is_file() or
+                replay.get("server_log_sha256") != digest_file(server_log_path)):
+            raise CoverageError("replay evidence mismatch: " + server_log_path.name)
+        server_log_witness = server_log_path
     ledger_path = directory / replay["frame_ledger_file"]
     ledger = read_frame_ledger(ledger_path, input_path.read_bytes())
     with ledger_path.open() as source:
@@ -2248,7 +2319,9 @@ def verify_target_frame_replay(event, planned, directory, index, target,
                                                 ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim")
                                                 if policy_version >= 5 else
                                                 ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1")):
-        ended = protocol_end_expected(target, replay, reset, ledger,
+        ended = protocol_end_expected(target, dict(replay,
+                                                   server_log_witness=server_log_witness),
+                                      reset, ledger,
                                       directory / replay["replay_log_file"], policy_version,
                                       replay_policy)
         if (replay.get("protocol_end_expected") is not ended or
@@ -3339,12 +3412,13 @@ def run_one_replay(target, record, port, mode, cwd, workdir, replay_log,
         result["final_ftp_reply_code"] = bftpd_final_reply_code(replay_log)
         result["bftpd_protocol_end_expected"] = bftpd_protocol_end_expected(
             result, frame_ledger_result, result["final_ftp_reply_code"], reset or {},
-            policy_version=4)
+            policy_version=5)
         if result["bftpd_protocol_end_expected"]:
             result.update(replay_anomaly=False, anomaly_kind="")
     if target in ("lightftp", "pure-ftpd", "forked-daapd", "lighttpd1", "exim", "proftpd"):
         result["protocol_end_expected"] = protocol_end_expected(
-            target, result, reset or {}, frame_ledger_result, replay_log,
+            target, dict(result, server_log_witness=server_log_path),
+            reset or {}, frame_ledger_result, replay_log,
             policy_version=replay_policy_version(REPLAY_HARNESS_VERSION),
             replay_policy=replay_policy)
         if result["protocol_end_expected"]:
@@ -3581,7 +3655,8 @@ def run_replay(args):
                     last_reply_code=replay.get("last_reply_code"),
                     last_reply_terminated=replay.get("last_reply_terminated"),
                     frames_unattempted=replay.get("frames_unattempted"),
-                    accepted=replay.get("protocol_end_expected") is True,
+                    accepted=(replay.get("protocol_end_expected") is True or
+                              replay.get("bftpd_protocol_end_expected") is True),
                     accepted_by=(replay_policy or {}).get("name")
                     if replay.get("protocol_end_expected") is True else None,
                     incomplete_reasons=incomplete))
@@ -3976,7 +4051,8 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
                 ("bftpd-client-lifetime-protocol-end-v1",
                  "bftpd-client-lifetime-protocol-end-v2",
                  "bftpd-client-lifetime-protocol-end-v3",
-                 "bftpd-client-lifetime-protocol-end-v4")):
+                 "bftpd-client-lifetime-protocol-end-v4",
+                 "bftpd-client-lifetime-protocol-end-v5")):
             bftpd_policy_audit = verify_bftpd_replay_events(
                 evidence_events, replay_plan, directory, replay_input_root,
                 policy_version=int(session_policy.rsplit("-v", 1)[1]))
@@ -4033,9 +4109,11 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
                 last_reply_code=event["replay"].get("last_reply_code"),
                 last_reply_terminated=event["replay"].get("last_reply_terminated"),
                 frames_unattempted=event["replay"].get("frames_unattempted"),
-                accepted=event["replay"].get("protocol_end_expected") is True,
+                accepted=(event["replay"].get("protocol_end_expected") is True or
+                          event["replay"].get("bftpd_protocol_end_expected") is True),
                 accepted_by=(replay_policy or {}).get("name")
-                if event["replay"].get("protocol_end_expected") is True else None,
+                if (event["replay"].get("protocol_end_expected") is True or
+                    event["replay"].get("bftpd_protocol_end_expected") is True) else None,
                 incomplete_reasons=event["replay"].get("incomplete_reasons"))
                 for index, event in enumerate(recomputed_events, 1)
                 if event["replay"].get("send_stop_reason") not in ("eof", None)]

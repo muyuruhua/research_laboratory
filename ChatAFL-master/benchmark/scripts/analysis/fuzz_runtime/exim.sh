@@ -53,15 +53,23 @@ stop_exim_pid() {
     sleep 0.1
   done
   kill -9 "$pid" 2>/dev/null || fuzz_reset_fail "cannot force-stop $label exim pid $pid"
-  for _ in 1 2 3 4 5; do
+  # A daemon that sits in uninterruptible I/O (D state, e.g. spool/db fsync)
+  # cannot act on SIGKILL until the syscall returns; 0.5 s was observed to
+  # be too tight once (2026-11-21: pid survived, afl-fuzz aborted the whole
+  # campaign). Give D-state exits a 10 s ceiling; only a still-runnable
+  # process after that is a genuine anomaly.
+  local post_kill_state=""
+  for _ in $(seq 1 100); do
     fuzz_reset_pid_stopped "$pid"; stopped_rc=$?
     [ "$stopped_rc" -eq 0 ] && return 0
     [ "$stopped_rc" -eq 1 ] || fuzz_reset_fail "cannot inspect $label exim pid $pid after SIGKILL"
-    sleep 0.1
+    post_kill_state=$(fuzz_reset_pid_state "$pid" 2>/dev/null || true)
+    case "$post_kill_state" in
+      D) sleep 0.1 ;;
+      *) sleep 0.1 ;;
+    esac
   done
-  fuzz_reset_pid_stopped "$pid"; stopped_rc=$?
-  [ "$stopped_rc" -eq 0 ] && return 0
-  fuzz_reset_fail "$label exim pid $pid survives SIGKILL"
+  fuzz_reset_fail "$label exim pid $pid survives SIGKILL (state=$post_kill_state)"
 }
 
 if [ -f "$PIDFILE" ]; then

@@ -1755,6 +1755,35 @@ class CoverageFixtureTests(unittest.TestCase):
         self.assertFalse(cov.protocol_end_expected(
             "exim", replay, reset, ledger, log, policy_version=12))
 
+    def test_bftpd_v5_accepts_complete_2xx_final_reply_reset(self):
+        # end_child() close(2)s stdin/out/err without shutdown(): unread
+        # pipelined bytes turn ANY exit(0) close into an RST, not only the
+        # QUIT/221 path (2026-11-21 q1c: "226 Directory list has been
+        # submitted." then ECONNRESET with 12 unattempted frames).
+        ledger = dict(prefix_sent_complete=True, frames_unattempted=12,
+                      frames_attempted=25, prior_post_recv_ok=True,
+                      peer_closed=False, sent_prefix_has_bftpd_quit=True,
+                      stop_reason="client-recv-post-send-failed",
+                      last_attempted_post_recv_ok=False,
+                      last_attempted_post_recv_errno=errno.ECONNRESET)
+        replay = dict(server_exit_code=0, client_exit_code=2, server_ready=True,
+                      client_timed_out=False, harness_shutdown_requested=False,
+                      imported_gcda=["src/ftpd.gcda"], session_coverage_missing=False)
+        reset = dict(command_succeeded=True, exit_code=0)
+        self.assertTrue(cov.bftpd_protocol_end_expected(
+            replay, ledger, 226, reset, policy_version=5))
+        self.assertTrue(cov.bftpd_protocol_end_expected(
+            ledger and dict(replay), dict(ledger, peer_closed=True,
+                                          stop_reason="peer-closed-before-input-end"),
+            250, reset, policy_version=5))
+        # v4 keeps the 221-only rule; error finals never qualify.
+        self.assertFalse(cov.bftpd_protocol_end_expected(
+            replay, ledger, 226, reset, policy_version=4))
+        self.assertFalse(cov.bftpd_protocol_end_expected(
+            replay, ledger, 500, reset, policy_version=5))
+        self.assertFalse(cov.bftpd_protocol_end_expected(
+            dict(replay, imported_gcda=[]), ledger, 226, reset, policy_version=5))
+
     def test_lightftp_quit_accepts_only_known_interleaved_thread_exit(self):
         log = self.root / "lightftp-thread-exit.log"
         summary = (b"Responses from server:0-220-331-230-215-257-200-150-451-"

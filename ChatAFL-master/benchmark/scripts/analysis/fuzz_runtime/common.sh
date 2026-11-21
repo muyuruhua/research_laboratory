@@ -35,6 +35,23 @@ fuzz_reset_pid_stopped() {
   return 1
 }
 
+fuzz_reset_read_comm() {
+  # /proc entries can vanish between the -r test and the read (observed
+  # 2026-11-21: "cat: /proc/<pid>/comm: No such file"). Retry briefly;
+  # return empty only if the pid truly disappeared (caller decides whether
+  # that is stopped or a dead forkserver).
+  local pid="$1" comm=""
+  for _ in 1 2 3 4 5; do
+    if comm=$(cat "/proc/$pid/comm" 2>/dev/null); then
+      printf '%s\n' "$comm"
+      return 0
+    fi
+    fuzz_reset_pid_stopped "$pid" && return 1
+    sleep 0.05
+  done
+  return 1
+}
+
 fuzz_reset_check_processes() {
   local comm="$1" executable="$2" allowed="${PHASE2_ALLOWED_FORKSERVER_PID:-0}"
   case "$allowed" in ''|*[!0-9]*) fuzz_reset_fail "invalid allowed forkserver pid '$allowed'" ;; esac
@@ -45,7 +62,9 @@ fuzz_reset_check_processes() {
     case "$allowed_state" in
       Z|X) fuzz_reset_fail "idle forkserver pid $allowed is stopped (state=$allowed_state)" ;;
     esac
-    actual_comm=$(cat "/proc/$allowed/comm")
+    actual_comm=$(fuzz_reset_read_comm "$allowed") || \
+      fuzz_reset_fail "idle forkserver pid $allowed vanished during inspection"
+    [ -n "$actual_comm" ] || fuzz_reset_fail "idle forkserver pid $allowed comm unreadable"
     actual_exe_path=$(readlink -f "/proc/$allowed/exe" 2>/dev/null || true)
     [ "$actual_comm" = "$comm" ] || fuzz_reset_fail "allowed pid $allowed comm=$actual_comm, expected $comm"
     if [[ "$executable" == */* ]]; then

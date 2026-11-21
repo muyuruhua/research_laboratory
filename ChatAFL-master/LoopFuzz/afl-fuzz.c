@@ -11432,20 +11432,31 @@ static u8 phase2_target_reset(const char *stage, u64 attempt_id) {
     PFATAL("Unable to declare idle forkserver for reset validation");
   /* system() ignores SIGINT in the caller while waiting. Keep the fuzzer's
    * stop handler active and allow the reset child to finish before shutdown. */
-  pid_t reset_pid = fork();
-  if (reset_pid < 0) PFATAL("Unable to start target reset");
-  if (!reset_pid) {
-    signal(SIGINT, SIG_DFL);
-    signal(SIGTERM, SIG_DFL);
-    execl("/bin/sh", "sh", "-c", (char *)cleanup_script, (char *)NULL);
-    _exit(127);
-  }
   int reset_status = 0;
   pid_t waited;
-  do {
-    waited = waitpid(reset_pid, &reset_status, 0);
-  } while (waited < 0 && errno == EINTR);
-  if (waited < 0) PFATAL("Unable to wait for target reset");
+  /* A reset can fail once on an environment hiccup the validator cannot
+   * wait out from inside its single invocation (observed 2026-11-21: an
+   * exim daemon sat in uninterruptible I/O past the script's SIGKILL
+   * grace and one reset failure aborted a 40-minute campaign). The reset
+   * contract is idempotent, so retry it a bounded number of times before
+   * treating the environment as genuinely broken. */
+  int reset_attempt;
+  for (reset_attempt = 0; reset_attempt < 3; reset_attempt++) {
+    if (reset_attempt > 0) usleep(2 * 1000 * 1000);
+    pid_t reset_pid = fork();
+    if (reset_pid < 0) PFATAL("Unable to start target reset");
+    if (!reset_pid) {
+      signal(SIGINT, SIG_DFL);
+      signal(SIGTERM, SIG_DFL);
+      execl("/bin/sh", "sh", "-c", (char *)cleanup_script, (char *)NULL);
+      _exit(127);
+    }
+    do {
+      waited = waitpid(reset_pid, &reset_status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) PFATAL("Unable to wait for target reset");
+    if (reset_status == 0) break;
+  }
   struct json_object *reset = json_object_new_object();
   json_object_object_add(reset, "event", json_object_new_string("target_reset"));
   admission_json_add_u64(reset, "schema_version", EC_SCHEMA_VERSION);
@@ -11461,7 +11472,8 @@ static u8 phase2_target_reset(const char *stage, u64 attempt_id) {
   json_object_put(reset);
   unsetenv("PHASE2_ALLOWED_FORKSERVER_PID");
   if (reset_status != 0 && !stop_soon)
-    FATAL("Target reset failed before execution (status %d)", reset_status);
+    FATAL("Target reset failed before execution (status %d, attempts %d)",
+          reset_status, reset_attempt);
   return !stop_soon;
 }
 
