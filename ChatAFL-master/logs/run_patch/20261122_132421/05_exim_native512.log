@@ -69,3 +69,47 @@ LOOPFUZZ(exim): Fuzzing in progress ...
 LOOPFUZZ(exim): Waiting for the following containers to stop: 845f0653783c
 LOOPFUZZ(exim): You can check logs by: docker logs -f 845f0653783c
 LOOPFUZZ(exim): You can stop all containers by: docker stop 845f0653783c
+
+LOOPFUZZ(exim): Collecting results and save them to ../ablation/results-exim_ablation_native512_timed-20261122T132421-1322482[recover] collecting out-exim-loopfuzz_1.tar.gz from 845f0653783c
+[recover] collected out-exim-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-exim-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-exim-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(exim): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(exim): [KEEP]   exim-loopfuzz-run1-1122-132424-ablation_native512_timed-20261122T132421-1324163-32468  (docker logs exim-loopfuzz-run1-1122-132424-ablation_native512_timed-20261122T132421-1324163-32468 ; docker cp exim-loopfuzz-run1-1122-132424-ablation_native512_timed-20261122T132421-1324163-32468:<path> .)
+LOOPFUZZ(exim): [KEEP] remove them with:  docker rm -f 845f0653783cff262498139423788151ac7f1f56eaf43b6e69944b55e5af1dc4
+LOOPFUZZ(exim): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(exim): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-exim-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-exim-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:native512] 完成
+[ABLATION] native512 成功结束
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-exim_ablation_native512_timed-20261122T132421-1322482
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-exim_ablation_native512_timed-20261122T132421-1322482: clean
+[POSTRUN] Diagnostics complete.

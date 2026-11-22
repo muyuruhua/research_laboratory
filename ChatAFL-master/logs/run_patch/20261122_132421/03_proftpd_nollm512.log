@@ -69,3 +69,49 @@ LOOPFUZZ(proftpd): Fuzzing in progress ...
 LOOPFUZZ(proftpd): Waiting for the following containers to stop: 0b8411b78536
 LOOPFUZZ(proftpd): You can check logs by: docker logs -f 0b8411b78536
 LOOPFUZZ(proftpd): You can stop all containers by: docker stop 0b8411b78536
+
+LOOPFUZZ(proftpd): Collecting results and save them to ../ablation/results-proftpd_ablation_nollm512_timed-20261122T132421-1322440[recover] collecting out-proftpd-loopfuzz_1.tar.gz from 0b8411b78536
+[recover] collected out-proftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-proftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+LOOPFUZZ(proftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run1-1122-132424-ablation_nollm512_timed-20261122T132421--1324912-4407  (docker logs proftpd-loopfuzz-run1-1122-132424-ablation_nollm512_timed-20261122T132421--1324912-4407 ; docker cp proftpd-loopfuzz-run1-1122-132424-ablation_nollm512_timed-20261122T132421--1324912-4407:<path> .)
+LOOPFUZZ(proftpd): [KEEP] remove them with:  docker rm -f 0b8411b78536da3650ef3d5555ce69f1a769e5ffcb9bbc5913af78bbdb7131b3
+LOOPFUZZ(proftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(proftpd): I am done!
+[ERROR] Background exec job (pid=1324912) FAILED (exit=1)
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-proftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:nollm512] 失败 (run_dev.sh exit=1)
+[ABLATION] nollm512 失败 (exit=1)
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-proftpd_ablation_nollm512_timed-20261122T132421-1322440
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ⚠️  results-proftpd_ablation_nollm512_timed-20261122T132421-1322440:  ABNORMAL_EXIT(2:out-proftpd-loopfuzz_1.tar.gz)
+[POSTRUN] Diagnostics complete.

@@ -90,3 +90,28 @@ LOOPFUZZ(lighttpd1): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove 
 LOOPFUZZ(lighttpd1): I am done!
 [ERROR] Background exec job (pid=1323788) FAILED (exit=1)
 [recover] ✓ archive files complete (coverage acceptance=incomplete): out-lighttpd1-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-lighttpd1-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "coverage_incomplete",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:ordmatch512] 失败 (run_dev.sh exit=1)
+[ABLATION] ordmatch512 失败 (exit=1)
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-lighttpd1_ablation_ordmatch512_timed-20261122T132421-1322630
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-lighttpd1_ablation_ordmatch512_timed-20261122T132421-1322630: clean
+[POSTRUN] Diagnostics complete.

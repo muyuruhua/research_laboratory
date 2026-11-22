@@ -69,3 +69,47 @@ LOOPFUZZ(bftpd): Fuzzing in progress ...
 LOOPFUZZ(bftpd): Waiting for the following containers to stop: 4e15daf374f7
 LOOPFUZZ(bftpd): You can check logs by: docker logs -f 4e15daf374f7
 LOOPFUZZ(bftpd): You can stop all containers by: docker stop 4e15daf374f7
+
+LOOPFUZZ(bftpd): Collecting results and save them to ../ablation/results-bftpd_ablation_q1d512_timed-20261122T132421-1322956[recover] collecting out-bftpd-loopfuzz_1.tar.gz from 4e15daf374f7
+[recover] collected out-bftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-bftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-bftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(bftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(bftpd): [KEEP]   bftpd-loopfuzz-run1-1122-132424-ablation_q1d512_timed-20261122T132421-13-1323642-6853  (docker logs bftpd-loopfuzz-run1-1122-132424-ablation_q1d512_timed-20261122T132421-13-1323642-6853 ; docker cp bftpd-loopfuzz-run1-1122-132424-ablation_q1d512_timed-20261122T132421-13-1323642-6853:<path> .)
+LOOPFUZZ(bftpd): [KEEP] remove them with:  docker rm -f 4e15daf374f7c3a8f2804df242c07382d7e3dfbfc4b0c078de39fee8761be742
+LOOPFUZZ(bftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(bftpd): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-bftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-bftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:q1d512] 完成
+[ABLATION] q1d512 成功结束
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-bftpd_ablation_q1d512_timed-20261122T132421-1322956
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-bftpd_ablation_q1d512_timed-20261122T132421-1322956: clean
+[POSTRUN] Diagnostics complete.

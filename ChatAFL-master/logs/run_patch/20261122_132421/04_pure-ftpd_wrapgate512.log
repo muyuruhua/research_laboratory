@@ -69,3 +69,47 @@ LOOPFUZZ(pure-ftpd): Fuzzing in progress ...
 LOOPFUZZ(pure-ftpd): Waiting for the following containers to stop: 315c12d8521d
 LOOPFUZZ(pure-ftpd): You can check logs by: docker logs -f 315c12d8521d
 LOOPFUZZ(pure-ftpd): You can stop all containers by: docker stop 315c12d8521d
+
+LOOPFUZZ(pure-ftpd): Collecting results and save them to ../ablation/results-pure-ftpd_ablation_wrapgate512_timed-20261122T132421-1322461[recover] collecting out-pure-ftpd-loopfuzz_1.tar.gz from 315c12d8521d
+[recover] collected out-pure-ftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-pure-ftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-pure-ftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(pure-ftpd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(pure-ftpd): [KEEP]   pure-ftpd-loopfuzz-run1-1122-132424-ablation_wrapgate512_timed-20261122T1324-1324281-12059  (docker logs pure-ftpd-loopfuzz-run1-1122-132424-ablation_wrapgate512_timed-20261122T1324-1324281-12059 ; docker cp pure-ftpd-loopfuzz-run1-1122-132424-ablation_wrapgate512_timed-20261122T1324-1324281-12059:<path> .)
+LOOPFUZZ(pure-ftpd): [KEEP] remove them with:  docker rm -f 315c12d8521df5965e184975e7d557823bb1bc1446956dc15dd2cf9d8909aed3
+LOOPFUZZ(pure-ftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(pure-ftpd): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-pure-ftpd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-pure-ftpd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:wrapgate512] 完成
+[ABLATION] wrapgate512 成功结束
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-pure-ftpd_ablation_wrapgate512_timed-20261122T132421-1322461
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-pure-ftpd_ablation_wrapgate512_timed-20261122T132421-1322461: clean
+[POSTRUN] Diagnostics complete.
