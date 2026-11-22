@@ -84,7 +84,6 @@ RUN mkdir $WORKDIR
 
 COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
 COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
-COPY --chown=ubuntu:ubuntu coverage-exit.patch ${WORKDIR}/coverage-exit.patch
 
 # Set up environment variables for ASAN
 env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
@@ -104,7 +103,6 @@ RUN cd ${WORKDIR} && \
     tar -zxvf bftpd-6.1.tar.gz -C ${WORKDIR}/bftpd-gcov --strip-components=1 && \
     cd ${WORKDIR}/bftpd-gcov && \
     patch -p1 < ${WORKDIR}/gcov.patch && \
-    patch -p1 < ${WORKDIR}/coverage-exit.patch && \
     make $MAKE_OPT
 
 

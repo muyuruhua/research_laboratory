@@ -1,0 +1,34 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T132421
+║  本批身份:       timed-20261122T132421-1322503
+║  结果目录模式:   ablation/results-live555_ablation_<label>_timed-20261122T132421-1322503/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~48 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 1 run = 6 容器
+  SKIPCOUNT=100
+  Docker images required: live555 (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: calibrated512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: live555  每组重复: 1  时长: 30 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: calibrated512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-live555_ablation_<label>_timed-20261122T132421-1322503/
+========================================================
+
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 1 容器/组 = 1 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~9 GB (可用: ~48 GB)
+  ✓ 内存充足，安全余量 ~39 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM] Transport error (curl=28, HTTP=0): Connection timed out after 30001 milliseconds
+[LLM preflight] FAIL
+[ERROR] LLM 预检失败；未启动本批消融实验。请核对当前 KEY、LLM_MODEL 和 CHATAFL_LLM_BASE。
