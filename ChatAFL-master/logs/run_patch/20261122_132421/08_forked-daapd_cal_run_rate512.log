@@ -69,3 +69,47 @@ LOOPFUZZ(forked-daapd): Fuzzing in progress ...
 LOOPFUZZ(forked-daapd): Waiting for the following containers to stop: a5021842ffbe
 LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f a5021842ffbe
 LOOPFUZZ(forked-daapd): You can stop all containers by: docker stop a5021842ffbe
+
+LOOPFUZZ(forked-daapd): Collecting results and save them to ../ablation/results-forked-daapd_ablation_cal_run_rate512_timed-20261122T132421-1322562[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from a5021842ffbe
+[recover] collected out-forked-daapd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-forked-daapd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(forked-daapd): [KEEP] 1 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run1-1122-132424-ablation_cal_run_rate512_timed-20261122T-1323859-3700  (docker logs forked-daapd-loopfuzz-run1-1122-132424-ablation_cal_run_rate512_timed-20261122T-1323859-3700 ; docker cp forked-daapd-loopfuzz-run1-1122-132424-ablation_cal_run_rate512_timed-20261122T-1323859-3700:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP] remove them with:  docker rm -f a5021842ffbe3403058fbca942ddaa5726a56cbd38b8254343f3b1a194ee2698
+LOOPFUZZ(forked-daapd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(forked-daapd): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-forked-daapd-loopfuzz_1.tar.gz
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:cal_run_rate512] 完成
+[ABLATION] cal_run_rate512 成功结束
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-forked-daapd_ablation_cal_run_rate512_timed-20261122T132421-1322562
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-forked-daapd_ablation_cal_run_rate512_timed-20261122T132421-1322562: clean
+[POSTRUN] Diagnostics complete.

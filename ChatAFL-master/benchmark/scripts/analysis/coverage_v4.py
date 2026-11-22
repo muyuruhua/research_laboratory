@@ -1524,7 +1524,11 @@ def _lightftp_build_record_once(source_root, object_root, artifact_dir):
             difference = _file_diff_byte_count(product, backup / product.name)
             if difference == 0:
                 identical += 1
-            elif difference == 4:
+            elif difference <= 4:
+                # GCC's gcov stamp is a random 32-bit value: any 1-4 of its
+                # bytes can differ between builds (observed 2026-11-22: the
+                # rebuilt image's stamp coincided in one byte, producing a
+                # 3-byte diff that the ==4 check rejected as unexpected).
                 stamp_only += 1
             else:
                 unexpected.append(product.name)
