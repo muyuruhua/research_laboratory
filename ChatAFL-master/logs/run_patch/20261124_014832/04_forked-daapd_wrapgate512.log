@@ -1,0 +1,156 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261124T014832
+║  本批身份:       timed-20261124T014832-2299735
+║  结果目录模式:   ablation/results-forked-daapd_ablation_<label>_timed-20261124T014832-2299735/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~44 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 10, actual usage ≈4 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: forked-daapd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: wrapgate512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: forked-daapd  每组重复: 3  时长: 25 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: wrapgate512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-forked-daapd_ablation_<label>_timed-20261124T014832-2299735/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~44 GB)
+  ✓ 内存充足，安全余量 ~23 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 wrapgate512 (PID=2303125)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:wrapgate512] 启动 → ablation/results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-2303130.VznhFn
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_wrapgate512_timed-20261124T014832-2299735
+║  预期结果路径:   benchmark/results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735
+║  查找命令:       ls -d benchmark/results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 1980 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: forked-daapd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON forked-daapd (Volume Mode) *****
+
+
+LOOPFUZZ(forked-daapd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/DAAP/forked-daapd
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=1 campaign=lf-da34a8b5a809a88fa381a40dfe93ecf3 rng=0x7a6101f83083a6b1
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=2 campaign=lf-f790ed0865d240ede8f218972a49ad02 rng=0x1282e1eecf09acc2
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=3 campaign=lf-de175f23f9d19cd99d6177b34d37a07b rng=0x4fbc6aa2483d768f
+
+LOOPFUZZ(forked-daapd): Fuzzing in progress ...
+LOOPFUZZ(forked-daapd): Waiting for the following containers to stop: 41b109e8b92b 0cbb7aa85a36 e6a9dab5173d
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f 41b109e8b92b
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f 0cbb7aa85a36
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f e6a9dab5173d
+LOOPFUZZ(forked-daapd): You can stop all containers by: docker stop 41b109e8b92b 0cbb7aa85a36 e6a9dab5173d
+
+LOOPFUZZ(forked-daapd): Collecting results and save them to ../ablation/results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from 41b109e8b92b
+[recover] collected out-forked-daapd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-forked-daapd-loopfuzz_1.tar.gz
+[recover] collecting out-forked-daapd-loopfuzz_2.tar.gz from 0cbb7aa85a36
+[recover] collected out-forked-daapd-loopfuzz_2.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-forked-daapd-loopfuzz_2.tar.gz
+[recover] collecting out-forked-daapd-loopfuzz_3.tar.gz from e6a9dab5173d
+[recover] collected out-forked-daapd-loopfuzz_3.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-forked-daapd-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(forked-daapd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run1-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758  (docker logs forked-daapd-loopfuzz-run1-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758 ; docker cp forked-daapd-loopfuzz-run1-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run2-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758  (docker logs forked-daapd-loopfuzz-run2-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758 ; docker cp forked-daapd-loopfuzz-run2-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run3-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758  (docker logs forked-daapd-loopfuzz-run3-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758 ; docker cp forked-daapd-loopfuzz-run3-1124-014834-ablation_wrapgate512_timed-20261124T0148-2303192-19758:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP] remove them with:  docker rm -f 41b109e8b92b68d578e46c213c84f518b53130fe850dfa37960690707ca863e0 0cbb7aa85a36e58d43bb154a5802804097dca3ac2a95bcd753e8ab8bf6f48a97 e6a9dab5173d79674d53e37a9ca26fcea5eb6efcbc237c4d737008d59e512ce7
+LOOPFUZZ(forked-daapd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(forked-daapd): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-forked-daapd-loopfuzz_1.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-forked-daapd-loopfuzz_2.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-forked-daapd-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:wrapgate512] 完成
+[ABLATION] wrapgate512 成功结束
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-forked-daapd-timed-20261124T014832-2299735.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-forked-daapd_ablation_wrapgate512_timed-20261124T014832-2299735: clean
+[POSTRUN] Diagnostics complete.

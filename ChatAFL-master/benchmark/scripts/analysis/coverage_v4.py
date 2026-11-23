@@ -44,6 +44,7 @@ FRAME_AUDIT_HARNESS_VERSIONS = (
     "20261120-final-221-multiline-aware-replay-v10",
     "20261120-verified-overlong-policy-close-v11",
     "20261120-http-announced-close-smtp-final-reply-v12",
+    "20261124-verified-load-truncation-retry-v13",
 )
 REPLAY_HARNESS_VERSION = FRAME_AUDIT_HARNESS_VERSIONS[-1]
 LOOPFUZZ_REPLAYER_ENV = "COVERAGE_V4_LOOPFUZZ_REPLAYER"
@@ -3652,6 +3653,53 @@ def run_replay(args):
             replay = run_one_replay(args.target, record, args.port, args.mode, cwd, workdir,
                                     directory / ("replay-%06d.log" % index), object_root,
                                     reset=reset, replay_policy=replay_policy)
+            # Load-shaped truncation retry (2026-11-24): under multi-container
+            # replay storms forked-daapd can reset the connection mid-input
+            # (close_kind="reset", client-recv-{pre,post}-send-failed,
+            # pre/post_recv_errno 104=ECONNRESET) although the same input
+            # replays to eof on a quiet host: the exact 34-input corpus that
+            # truncated 8 sessions under 36-way replay concurrency replayed
+            # to eof when re-run quiet (response_bytes identical). Refusing
+            # the whole terminal for an environmental truncation discards
+            # real campaign coverage; blanket-accepting a truncation would
+            # silently undercount it. Retry the session once from a fresh
+            # reset and judge the retry by the same acceptance policy, so a
+            # deterministic target-side reset still refuses. Artifacts land
+            # at the final names only on success (originals restored from
+            # backup otherwise), keeping the archive hashes self-consistent.
+            retried_close = False
+            if (replay.get("close_kind") == "reset" and
+                    replay.get("send_stop_reason") in
+                    ("client-recv-pre-send-failed", "client-recv-post-send-failed")):
+                index_str = "%06d" % index
+                backups = {}
+                for artifact in ("replay-%s.log" % index_str,
+                                 "replay-%s-frame-ledger.jsonl" % index_str,
+                                 "replay-%s-server.log" % index_str,
+                                 "reset-%s.log" % index_str):
+                    source = directory / artifact
+                    if source.is_file():
+                        backup = directory / (artifact + ".retry-bak")
+                        shutil.move(str(source), str(backup))
+                        backups[artifact] = backup
+                try:
+                    retry_reset = run_reset(record, cwd,
+                                            directory / ("reset-%s.log" % index_str),
+                                            args.allow_unverified_reset)
+                    retry_replay = run_one_replay(args.target, record, args.port, args.mode,
+                                                  cwd, workdir,
+                                                  directory / ("replay-%s.log" % index_str),
+                                                  object_root,
+                                                  reset=retry_reset, replay_policy=replay_policy)
+                    for backup in backups.values():
+                        backup.unlink()
+                    reset = retry_reset
+                    replay = retry_replay
+                    retried_close = True
+                    all_resets_verified &= bool(retry_reset.get("command_succeeded"))
+                except (CoverageError, OSError, subprocess.SubprocessError):
+                    for artifact, backup in backups.items():
+                        shutil.move(str(backup), str(directory / artifact))
             incomplete = replay_incompleteness(replay)
             if incomplete:
                 incomplete_replays.append(dict(filename=record["filename"], reasons=incomplete))
@@ -3669,6 +3717,7 @@ def run_replay(args):
                               replay.get("bftpd_protocol_end_expected") is True),
                     accepted_by=(replay_policy or {}).get("name")
                     if replay.get("protocol_end_expected") is True else None,
+                    retried_close=retried_close,
                     incomplete_reasons=incomplete))
             if replay.get("replay_anomaly"):
                 anomaly_kinds[replay["anomaly_kind"]] = anomaly_kinds.get(replay["anomaly_kind"], 0) + 1
@@ -3704,7 +3753,8 @@ def run_replay(args):
                 # from this first collected snapshot.
                 write_json(directory / "scope.json", manifest)
                 event.update(replay_input_idx=index, replay=replay, reset=reset,
-                             gcovr_stderr=stderr, snapshot_file=snapshot_path.name)
+                             gcovr_stderr=stderr, snapshot_file=snapshot_path.name,
+                             replay_retry_attempted=retried_close)
                 events.write(canonical(event) + "\n")
                 events.flush()
                 ledger_record.update(coverage_event_idx=event["idx"],
@@ -4109,7 +4159,15 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
         # v12: the close inventory must list EVERY mid-input stop, accepted
         # or not, and match the archived per-input evidence exactly — an
         # acceptance widening can no longer make problem inputs disappear.
+        # v13: each entry additionally carries retried_close, the recorded
+        # load-truncation retry flag. The flag is measurement-process
+        # metadata (the retry is judged by the same acceptance policy and
+        # cannot widen acceptance); it is read from the recorded per-input
+        # event, not recomputed, because a successful retry leaves no
+        # distinguishing trace in the session artifacts by design.
         if manifest.get("replay_harness_version") in FRAME_AUDIT_HARNESS_VERSIONS[10:]:
+            _inventory_with_retry = (
+                manifest.get("replay_harness_version") == FRAME_AUDIT_HARNESS_VERSIONS[-1])
             expected_inventory = [dict(
                 idx=index, filename=event["filename"],
                 stop_reason=event["replay"].get("send_stop_reason"),
@@ -4124,7 +4182,9 @@ def audit_artifacts(output, source_root=None, replay_input_root=None):
                 accepted_by=(replay_policy or {}).get("name")
                 if (event["replay"].get("protocol_end_expected") is True or
                     event["replay"].get("bftpd_protocol_end_expected") is True) else None,
-                incomplete_reasons=event["replay"].get("incomplete_reasons"))
+                incomplete_reasons=event["replay"].get("incomplete_reasons"),
+                **({"retried_close": bool(event.get("replay_retry_attempted"))}
+                   if _inventory_with_retry else {}))
                 for index, event in enumerate(recomputed_events, 1)
                 if event["replay"].get("send_stop_reason") not in ("eof", None)]
             inventory_file = directory / "protocol-close-inventory.json"

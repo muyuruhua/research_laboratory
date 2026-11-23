@@ -141,8 +141,35 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
     done
     STATUS=0
   else
-    timeout -k 30s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS "${RESET_ARGS[@]}" ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
-    STATUS=$?
+    # forked-daapd loopfuzz: restart loop (same pattern as the stateafl branch
+    # above). Under multi-container load the startup dry run can still lose
+    # every seed to timeouts even with the fuzz_runtime pre-warm + pristine-db
+    # restore (probabilistic race, 2026-11-24 batches: 2/36 and 11/36
+    # containers); afl-fuzz then aborts with "All test cases time out". Retry
+    # in place until the wallclock budget is spent — the pristine library DB
+    # and -i- resume keep state, only the lost startup time is paid.
+    END_AT=$(( $(date +%s) + TIMEOUT ))
+    FIRST=1
+    STATUS=0
+    while [ "$(date +%s)" -lt "$END_AT" ]; do
+      REMAIN=$(( END_AT - $(date +%s) ))
+      if [ "$FIRST" = "1" ]; then
+        SEED_ARG="-i ${INPUTS}"; FIRST=0
+      elif [ -n "$(ls -A ${WORKDIR}/${OUTDIR}/queue 2>/dev/null)" ]; then
+        SEED_ARG="-i-"
+      else
+        # aborted before any queue entry: clean slate so -i is accepted again
+        rm -rf "${WORKDIR}/${OUTDIR}"
+        SEED_ARG="-i ${INPUTS}"
+      fi
+      timeout -k 360s --preserve-status $REMAIN /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d ${SEED_ARG} -o $OUTDIR -N tcp://127.0.0.1/3689 $OPTIONS "${RESET_ARGS[@]}" ${WORKDIR}/${TARGET_DIR}/src/forked-daapd -d 0 -c ${WORKDIR}/forked-daapd.conf -f
+      STATUS=$?
+      [ "$STATUS" = "0" ] && break
+      # 143/137 = our own timeout SIGTERM/SIGKILL at budget expiry: stop
+      [ "$STATUS" = "143" ] || [ "$STATUS" = "137" ] && break
+      pkill -x forked-daapd 2>/dev/null
+      sleep 2
+    done
   fi
 
   #Step-2. Collect code coverage over time

@@ -1,0 +1,158 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T170550
+║  本批身份:       timed-20261122T170550-2076558
+║  结果目录模式:   ablation/results-lighttpd1_ablation_<label>_timed-20261122T170550-2076558/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~42 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 156, actual usage ≈8 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: lighttpd1 (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: q1c512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: lighttpd1  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: q1c512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-lighttpd1_ablation_<label>_timed-20261122T170550-2076558/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~42 GB)
+  ✓ 内存充足，安全余量 ~21 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 q1c512 (PID=2142775)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:q1c512] 启动 → ablation/results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-2142831.0pB3xA
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_q1c512_timed-20261122T170550-2076558
+║  预期结果路径:   benchmark/results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558
+║  查找命令:       ls -d benchmark/results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: lighttpd1
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON lighttpd1 (Volume Mode) *****
+
+
+LOOPFUZZ(lighttpd1): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/HTTP/Lighttpd1
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=1 campaign=lf-34f1639072c22c849d7a8c52025d5ffa rng=0xcffc56cd4e9232f4
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=2 campaign=lf-e15170861426c05eecb5724c324830fc rng=0xc66d80b6520f4d71
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=3 campaign=lf-ab6fceb8cc26063fee04b550fd1439a1 rng=0x7d66482f6e933522
+
+LOOPFUZZ(lighttpd1): Fuzzing in progress ...
+LOOPFUZZ(lighttpd1): Waiting for the following containers to stop: e29c3784b13e 5aa5a4d6418a 5c58fcc42cf8
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f e29c3784b13e
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f 5aa5a4d6418a
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f 5c58fcc42cf8
+LOOPFUZZ(lighttpd1): You can stop all containers by: docker stop e29c3784b13e 5aa5a4d6418a 5c58fcc42cf8
+
+LOOPFUZZ(lighttpd1): Collecting results and save them to ../ablation/results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558[recover] collecting out-lighttpd1-loopfuzz_1.tar.gz from e29c3784b13e
+[recover] collected out-lighttpd1-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-lighttpd1-loopfuzz_1.tar.gz
+[recover] collecting out-lighttpd1-loopfuzz_2.tar.gz from 5aa5a4d6418a
+[recover] collected out-lighttpd1-loopfuzz_2.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-lighttpd1-loopfuzz_2.tar.gz
+[recover] collecting out-lighttpd1-loopfuzz_3.tar.gz from 5c58fcc42cf8
+[recover] collected out-lighttpd1-loopfuzz_3.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-lighttpd1-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lighttpd1-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "coverage_incomplete",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(lighttpd1): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run1-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466  (docker logs lighttpd1-loopfuzz-run1-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466 ; docker cp lighttpd1-loopfuzz-run1-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run2-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466  (docker logs lighttpd1-loopfuzz-run2-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466 ; docker cp lighttpd1-loopfuzz-run2-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run3-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466  (docker logs lighttpd1-loopfuzz-run3-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466 ; docker cp lighttpd1-loopfuzz-run3-1122-170556-ablation_q1c512_timed-20261122T170550-20-2144468-21466:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP] remove them with:  docker rm -f e29c3784b13e68988e056ab174552cc90869f7e7c1f49d838d99e7b07311f886 5aa5a4d6418a68c44bc54a96f64fd0eece737db6d56a0789e01b30f783f36a29 5c58fcc42cf86d429cfccedf85ba1c1a1d4c1e272b44071cf0107c0f5ce0ce56
+LOOPFUZZ(lighttpd1): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(lighttpd1): I am done!
+[ERROR] Background exec job (pid=2144468) FAILED (exit=1)
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-lighttpd1-loopfuzz_1.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-lighttpd1-loopfuzz_2.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-lighttpd1-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lighttpd1-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "coverage_incomplete",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:q1c512] 失败 (run_dev.sh exit=1)
+[ABLATION] q1c512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-lighttpd1-timed-20261122T170550-2076558.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-lighttpd1_ablation_q1c512_timed-20261122T170550-2076558: clean
+[POSTRUN] Diagnostics complete.

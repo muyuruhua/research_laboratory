@@ -1,0 +1,156 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T170550
+║  本批身份:       timed-20261122T170550-2074958
+║  结果目录模式:   ablation/results-lighttpd1_ablation_<label>_timed-20261122T170550-2074958/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~42 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 156, actual usage ≈8 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: lighttpd1 (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: cal_ewma512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: lighttpd1  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: cal_ewma512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-lighttpd1_ablation_<label>_timed-20261122T170550-2074958/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~42 GB)
+  ✓ 内存充足，安全余量 ~21 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 cal_ewma512 (PID=2128087)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:cal_ewma512] 启动 → ablation/results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=1 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-2128137.R6aA9k
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_cal_ewma512_timed-20261122T170550-2074958
+║  预期结果路径:   benchmark/results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958
+║  查找命令:       ls -d benchmark/results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: lighttpd1
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON lighttpd1 (Volume Mode) *****
+
+
+LOOPFUZZ(lighttpd1): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/HTTP/Lighttpd1
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=1 campaign=lf-63eccce5eb23068633f274729cccaa31 rng=0x0e6a34a045a4bb49
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=2 campaign=lf-aa0798ef229e28d1413259da5ba198bb rng=0xafa42c92d3623f45
+[RUN_IDENTITY] arm=out-lighttpd1-loopfuzz run=3 campaign=lf-cb084e15216cc33a16a5410c16fc190d rng=0xdf3e01025e3e9f69
+
+LOOPFUZZ(lighttpd1): Fuzzing in progress ...
+LOOPFUZZ(lighttpd1): Waiting for the following containers to stop: 83e5fc349d98 f0d1409a75e4 ec6be1faa50a
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f 83e5fc349d98
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f f0d1409a75e4
+LOOPFUZZ(lighttpd1): You can check logs by: docker logs -f ec6be1faa50a
+LOOPFUZZ(lighttpd1): You can stop all containers by: docker stop 83e5fc349d98 f0d1409a75e4 ec6be1faa50a
+
+LOOPFUZZ(lighttpd1): Collecting results and save them to ../ablation/results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958[recover] collecting out-lighttpd1-loopfuzz_1.tar.gz from 83e5fc349d98
+[recover] collected out-lighttpd1-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-lighttpd1-loopfuzz_1.tar.gz
+[recover] collecting out-lighttpd1-loopfuzz_2.tar.gz from f0d1409a75e4
+[recover] collected out-lighttpd1-loopfuzz_2.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-lighttpd1-loopfuzz_2.tar.gz
+[recover] collecting out-lighttpd1-loopfuzz_3.tar.gz from ec6be1faa50a
+[recover] collected out-lighttpd1-loopfuzz_3.tar.gz
+[recover] archive files complete after collection (coverage acceptance=complete): out-lighttpd1-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lighttpd1-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+LOOPFUZZ(lighttpd1): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run1-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557  (docker logs lighttpd1-loopfuzz-run1-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557 ; docker cp lighttpd1-loopfuzz-run1-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run2-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557  (docker logs lighttpd1-loopfuzz-run2-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557 ; docker cp lighttpd1-loopfuzz-run2-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP]   lighttpd1-loopfuzz-run3-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557  (docker logs lighttpd1-loopfuzz-run3-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557 ; docker cp lighttpd1-loopfuzz-run3-1122-170555-ablation_cal_ewma512_timed-20261122T1705-2129189-2557:<path> .)
+LOOPFUZZ(lighttpd1): [KEEP] remove them with:  docker rm -f 83e5fc349d981c25ba2a794a1aa3477481f7577c0346c3f4e2b33f3918a274da f0d1409a75e41ed60dedc8beceac3014d70198a12ee4441d68315bc721fc8e5e ec6be1faa50afe2f3710bbcf44b6803ed9901e3bdca1e44e5bc0a480e937fdf7
+LOOPFUZZ(lighttpd1): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(lighttpd1): I am done!
+[recover] ✓ archive files complete (coverage acceptance=complete): out-lighttpd1-loopfuzz_1.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-lighttpd1-loopfuzz_2.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=complete): out-lighttpd1-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lighttpd1-loopfuzz_1.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_2.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  },
+  {
+    "archive": "out-lighttpd1-loopfuzz_3.tar.gz",
+    "status": "completed",
+    "reason": "completed",
+    "exit_code": "0"
+  }
+]
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================
+[ABLATION:cal_ewma512] 完成
+[ABLATION] cal_ewma512 成功结束
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-lighttpd1-timed-20261122T170550-2074958.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  结果目录：
+results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-lighttpd1_ablation_cal_ewma512_timed-20261122T170550-2074958: clean
+[POSTRUN] Diagnostics complete.

@@ -462,6 +462,11 @@ do
 
 ##### DAAP #####
 
+        # forked-daapd：每次执行的启动（sqlite+avahi 初始化+媒体库扫描）在
+        # 多容器负载下可达 5-10 s，5 s 超时会把种子整批判超时并在 dry run
+        # 处中止（2026-11-23 两批 36/36 复现；与下方 stateafl_target_config
+        # 同理，全部 fuzzer 臂统一 4 倍执行超时）。
+
         if [[ $TARGET == "forked-daapd" ]] || [[ $TARGET == "all" ]]
         then
 
@@ -473,27 +478,27 @@ do
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-forked-daapd-aflnet "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-forked-daapd-aflnet "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t $((TEST_TIMEOUT * 4))+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
             fi
 
             if [[ $FUZZER == "chatafl" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-forked-daapd-chatafl "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-forked-daapd-chatafl "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t $((TEST_TIMEOUT * 4))+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
             fi
 
             if [[ $FUZZER == "chatafl-cl1" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-forked-daapd-chatafl_cl1 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-forked-daapd-chatafl_cl1 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t $((TEST_TIMEOUT * 4))+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
             fi
 
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-forked-daapd-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-forked-daapd-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t $((TEST_TIMEOUT * 4))+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
             fi
 
             if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-forked-daapd-loopfuzz "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-forked-daapd-loopfuzz "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t $((TEST_TIMEOUT * 4))+" $TIMEOUT $SKIPCOUNT & EXEC_PIDS+=("$!")
             fi
 
         fi

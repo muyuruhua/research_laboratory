@@ -27,9 +27,27 @@ stop_process() {
 stop_process forked-daapd
 
 [ -d "$DB_DIR" ] || mkdir -p "$DB_DIR" || fail "cannot create $DB_DIR"
-rm -f "$DB_DIR/songs3.db" "$DB_DIR/cache.db" "$LOG" || fail "cannot remove db/log state"
 # Journal/WAL sidecars of the sqlite databases.
 rm -f "$DB_DIR"/*.db-wal "$DB_DIR"/*.db-shm 2>/dev/null
+
+# Match the fuzz-time per-invocation reset semantics (fuzz_runtime/forked-daapd.sh):
+# when a pristine library DB was built by the pre-warm boot, restore it instead
+# of forcing a cold MP3 re-scan per replayed input, so the replayed target state
+# (and therefore the replayed coverage coordinates) matches the campaign.
+PRISTINE="$DB_DIR/songs3.db.pristine"
+if [ -f "$PRISTINE" ]; then
+  rm -f "$DB_DIR/songs3.db" "$DB_DIR/cache.db" "$LOG" || fail "cannot remove db/log state"
+  cp -- "$PRISTINE" "$DB_DIR/songs3.db" || fail "cannot restore pristine library db"
+  [ -s "$DB_DIR/songs3.db" ] || fail "pristine restore produced empty songs3.db"
+  [ ! -e "$DB_DIR/cache.db" ] || fail "cache.db still exists"
+  [ ! -e "$LOG" ] || fail "logfile still exists"
+  [ -w "$DB_DIR" ] || fail "db dir not writable"
+  [ -f "$EXP/forked-daapd.conf" ] || fail "missing forked-daapd.conf"
+  log "ok (no forked-daapd process; pristine library db restored; cache db + log cleared) input=${COVERAGE_V4_INPUT:-unset}"
+  exit 0
+fi
+
+rm -f "$DB_DIR/songs3.db" "$DB_DIR/cache.db" "$LOG" || fail "cannot remove db/log state"
 
 [ ! -e "$DB_DIR/songs3.db" ] || fail "songs3.db still exists"
 [ ! -e "$DB_DIR/cache.db" ] || fail "cache.db still exists"

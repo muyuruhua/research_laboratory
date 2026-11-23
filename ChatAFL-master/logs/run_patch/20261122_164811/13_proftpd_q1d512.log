@@ -1,0 +1,158 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T164812
+║  本批身份:       timed-20261122T164812-3977750
+║  结果目录模式:   ablation/results-proftpd_ablation_<label>_timed-20261122T164812-3977750/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~44 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 78, actual usage ≈4 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: proftpd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: q1d512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: proftpd  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: q1d512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-proftpd_ablation_<label>_timed-20261122T164812-3977750/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~44 GB)
+  ✓ 内存充足，安全余量 ~23 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 q1d512 (PID=4011371)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:q1d512] 启动 → ablation/results-proftpd_ablation_q1d512_timed-20261122T164812-3977750/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-4011398.BdmN1f
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_q1d512_timed-20261122T164812-3977750
+║  预期结果路径:   benchmark/results-proftpd_ablation_q1d512_timed-20261122T164812-3977750
+║  查找命令:       ls -d benchmark/results-proftpd_ablation_q1d512_timed-20261122T164812-3977750
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: proftpd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON proftpd (Volume Mode) *****
+
+
+LOOPFUZZ(proftpd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/ProFTPD
+[RUN_IDENTITY] arm=out-proftpd-loopfuzz run=1 campaign=lf-23379e0a54c6190b9ff3d8a5c3171c09 rng=0xfa56347c5c0fbda2
+[RUN_IDENTITY] arm=out-proftpd-loopfuzz run=2 campaign=lf-73f73aecee8756b25ff385be0b1fb41f rng=0x53ec71cc58b4abdb
+[RUN_IDENTITY] arm=out-proftpd-loopfuzz run=3 campaign=lf-6eaccb0ac807d9d7d9dc4a9999bc086b rng=0xe7f5cc148fcb3b14
+
+LOOPFUZZ(proftpd): Fuzzing in progress ...
+LOOPFUZZ(proftpd): Waiting for the following containers to stop: 2f9af1eeba4e 61ccf53c9f7a a974fee3a569
+LOOPFUZZ(proftpd): You can check logs by: docker logs -f 2f9af1eeba4e
+LOOPFUZZ(proftpd): You can check logs by: docker logs -f 61ccf53c9f7a
+LOOPFUZZ(proftpd): You can check logs by: docker logs -f a974fee3a569
+LOOPFUZZ(proftpd): You can stop all containers by: docker stop 2f9af1eeba4e 61ccf53c9f7a a974fee3a569
+
+LOOPFUZZ(proftpd): Collecting results and save them to ../ablation/results-proftpd_ablation_q1d512_timed-20261122T164812-3977750[recover] collecting out-proftpd-loopfuzz_1.tar.gz from 2f9af1eeba4e
+[recover] collected out-proftpd-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-proftpd-loopfuzz_1.tar.gz
+[recover] collecting out-proftpd-loopfuzz_2.tar.gz from 61ccf53c9f7a
+[recover] collected out-proftpd-loopfuzz_2.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-proftpd-loopfuzz_2.tar.gz
+[recover] collecting out-proftpd-loopfuzz_3.tar.gz from a974fee3a569
+[recover] collected out-proftpd-loopfuzz_3.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-proftpd-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-proftpd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-proftpd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+LOOPFUZZ(proftpd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run1-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304  (docker logs proftpd-loopfuzz-run1-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304 ; docker cp proftpd-loopfuzz-run1-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304:<path> .)
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run2-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304  (docker logs proftpd-loopfuzz-run2-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304 ; docker cp proftpd-loopfuzz-run2-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304:<path> .)
+LOOPFUZZ(proftpd): [KEEP]   proftpd-loopfuzz-run3-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304  (docker logs proftpd-loopfuzz-run3-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304 ; docker cp proftpd-loopfuzz-run3-1122-164815-ablation_q1d512_timed-20261122T164812-39-4012196-30304:<path> .)
+LOOPFUZZ(proftpd): [KEEP] remove them with:  docker rm -f 2f9af1eeba4e9694ce3a8debf06b0107eca6000051273e03c1e4fc625fd1d8be 61ccf53c9f7ac10b8a0ea008e82f2e58a06850b8fc09254ac2d9103f907358f8 a974fee3a569c6ac4b4931e8f919da46282de96f4b3672cd6a98b4c3b87329b5
+LOOPFUZZ(proftpd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(proftpd): I am done!
+[ERROR] Background exec job (pid=4012196) FAILED (exit=1)
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-proftpd-loopfuzz_1.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-proftpd-loopfuzz_2.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-proftpd-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-proftpd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-proftpd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-proftpd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:q1d512] 失败 (run_dev.sh exit=1)
+[ABLATION] q1d512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-proftpd-timed-20261122T164812-3977750.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-proftpd_ablation_q1d512_timed-20261122T164812-3977750
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ⚠️  results-proftpd_ablation_q1d512_timed-20261122T164812-3977750:  ABNORMAL_EXIT(2:out-proftpd-loopfuzz_1.tar.gz)  ABNORMAL_EXIT(2:out-proftpd-loopfuzz_2.tar.gz)  ABNORMAL_EXIT(2:out-proftpd-loopfuzz_3.tar.gz)
+[POSTRUN] Diagnostics complete.

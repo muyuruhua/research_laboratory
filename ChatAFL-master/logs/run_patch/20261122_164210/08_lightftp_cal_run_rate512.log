@@ -1,0 +1,158 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261122T164210
+║  本批身份:       timed-20261122T164210-1080631
+║  结果目录模式:   ablation/results-lightftp_ablation_<label>_timed-20261122T164210-1080631/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~46 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 39, actual usage ≈2 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: lightftp (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: cal_run_rate512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: lightftp  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: cal_run_rate512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-lightftp_ablation_<label>_timed-20261122T164210-1080631/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~46 GB)
+  ✓ 内存充足，安全余量 ~25 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 cal_run_rate512 (PID=1100003)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:cal_run_rate512] 启动 → ablation/results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=1 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-1100067.mDsvG1
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_cal_run_rate512_timed-20261122T164210-1080631
+║  预期结果路径:   benchmark/results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631
+║  查找命令:       ls -d benchmark/results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: lightftp
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON lightftp (Volume Mode) *****
+
+
+LOOPFUZZ(lightftp): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/FTP/LightFTP
+[RUN_IDENTITY] arm=out-lightftp-loopfuzz run=1 campaign=lf-2a023297f63836e36deb9bc8b496e09d rng=0xe423637affd6915d
+[RUN_IDENTITY] arm=out-lightftp-loopfuzz run=2 campaign=lf-5d0a442ba00f99a6517e4cfb3266d453 rng=0x2301736ec60fa257
+[RUN_IDENTITY] arm=out-lightftp-loopfuzz run=3 campaign=lf-e6074dd2991c736e4464a5d156a2fda4 rng=0xd6ddb92909fb9ae7
+
+LOOPFUZZ(lightftp): Fuzzing in progress ...
+LOOPFUZZ(lightftp): Waiting for the following containers to stop: 34d7b0deadff 7490dabd1cf1 abb2862d11d5
+LOOPFUZZ(lightftp): You can check logs by: docker logs -f 34d7b0deadff
+LOOPFUZZ(lightftp): You can check logs by: docker logs -f 7490dabd1cf1
+LOOPFUZZ(lightftp): You can check logs by: docker logs -f abb2862d11d5
+LOOPFUZZ(lightftp): You can stop all containers by: docker stop 34d7b0deadff 7490dabd1cf1 abb2862d11d5
+
+LOOPFUZZ(lightftp): Collecting results and save them to ../ablation/results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631[recover] collecting out-lightftp-loopfuzz_1.tar.gz from 34d7b0deadff
+[recover] collected out-lightftp-loopfuzz_1.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-lightftp-loopfuzz_1.tar.gz
+[recover] collecting out-lightftp-loopfuzz_2.tar.gz from 7490dabd1cf1
+[recover] collected out-lightftp-loopfuzz_2.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-lightftp-loopfuzz_2.tar.gz
+[recover] collecting out-lightftp-loopfuzz_3.tar.gz from abb2862d11d5
+[recover] collected out-lightftp-loopfuzz_3.tar.gz
+[recover] archive files complete after collection (coverage acceptance=incomplete): out-lightftp-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lightftp-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-lightftp-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-lightftp-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+LOOPFUZZ(lightftp): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(lightftp): [KEEP]   lightftp-loopfuzz-run1-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258  (docker logs lightftp-loopfuzz-run1-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258 ; docker cp lightftp-loopfuzz-run1-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258:<path> .)
+LOOPFUZZ(lightftp): [KEEP]   lightftp-loopfuzz-run2-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258  (docker logs lightftp-loopfuzz-run2-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258 ; docker cp lightftp-loopfuzz-run2-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258:<path> .)
+LOOPFUZZ(lightftp): [KEEP]   lightftp-loopfuzz-run3-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258  (docker logs lightftp-loopfuzz-run3-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258 ; docker cp lightftp-loopfuzz-run3-1122-164213-ablation_cal_run_rate512_timed-20261122T-1100423-11258:<path> .)
+LOOPFUZZ(lightftp): [KEEP] remove them with:  docker rm -f 34d7b0deadffdc1617312740b8f36f6ef18cb3ad90215faabe8b84da59df85a3 7490dabd1cf12679950a6d56de15ccff1bdd9a71a1c9b9d467800db595c71e11 abb2862d11d50a3d405e2e98c6b395248fcee799ceb1405e4ddcce1994facbb9
+LOOPFUZZ(lightftp): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(lightftp): I am done!
+[ERROR] Background exec job (pid=1100423) FAILED (exit=1)
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-lightftp-loopfuzz_1.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-lightftp-loopfuzz_2.tar.gz
+[recover] ✓ archive files complete (coverage acceptance=incomplete): out-lightftp-loopfuzz_3.tar.gz
+[
+  {
+    "archive": "out-lightftp-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-lightftp-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  },
+  {
+    "archive": "out-lightftp-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_2",
+    "exit_code": "2"
+  }
+]
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:cal_run_rate512] 失败 (run_dev.sh exit=1)
+[ABLATION] cal_run_rate512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-lightftp-timed-20261122T164210-1080631.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ⚠️  results-lightftp_ablation_cal_run_rate512_timed-20261122T164210-1080631:  ABNORMAL_EXIT(2:out-lightftp-loopfuzz_1.tar.gz)  ABNORMAL_EXIT(2:out-lightftp-loopfuzz_2.tar.gz)  ABNORMAL_EXIT(2:out-lightftp-loopfuzz_3.tar.gz)
+[POSTRUN] Diagnostics complete.
