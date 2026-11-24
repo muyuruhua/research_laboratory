@@ -1,0 +1,182 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261124T033459
+║  本批身份:       timed-20261124T033459-1178738
+║  结果目录模式:   ablation/results-forked-daapd_ablation_<label>_timed-20261124T033459-1178738/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~50 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 0, actual usage ≈0 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: forked-daapd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: q1a512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: forked-daapd  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: q1a512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-forked-daapd_ablation_<label>_timed-20261124T033459-1178738/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~50 GB)
+  ✓ 内存充足，安全余量 ~29 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM preflight] PASS
+
+  [ABLATION] === 批次 1: 启动 0-0 / 1 组 === 
+[ABLATION] 已启动 q1a512 (PID=1179685)
+  [ABLATION] 等待批次 1 完成...
+[ABLATION:q1a512] 启动 → ablation/results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738/
+  HYP=1 NO_REF=0 NO_FRONT=0 NO_ADAPT=1 NO_SP=0 NO_ADM=0 MODE=gate PROV=1 SHADOW=1 ADM_LOG=1 THR=512 CAL=0 GAMMA=0.995 PROV_BUDGET=64
+[EXEC-SNAPSHOT] 固定执行脚本版本: /tmp/loopfuzz-exec-snapshot-1179697.n12mVA
+[✓] KEY 已设置 (长度=51)
+
+╔══════════════════════════════════════════════════════════════╗
+║  结果目录时间戳: ablation_q1a512_timed-20261124T033459-1178738
+║  预期结果路径:   benchmark/results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738
+║  查找命令:       ls -d benchmark/results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738
+╚══════════════════════════════════════════════════════════════╝
+
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 3
+# TIMEOUT: 90480 s
+# SKIPCOUNT: 100
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: forked-daapd
+# FUZZER LIST: loopfuzz
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING loopfuzz ON forked-daapd (Volume Mode) *****
+
+
+LOOPFUZZ(forked-daapd): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/DAAP/forked-daapd
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=1 campaign=lf-79029f9cdaefc0f45c920bcfd5f47ed7 rng=0x826a286357f6e492
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=2 campaign=lf-d381a73f6fb5859415198f7665b25a51 rng=0xca810dd33e151796
+[RUN_IDENTITY] arm=out-forked-daapd-loopfuzz run=3 campaign=lf-a4b7e002d4c7270d60896999b6f488be rng=0x1a70b8a8188b2472
+
+LOOPFUZZ(forked-daapd): Fuzzing in progress ...
+LOOPFUZZ(forked-daapd): Waiting for the following containers to stop: 61f3638815d8 3517d93228f5 c6398a102b0e
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f 61f3638815d8
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f 3517d93228f5
+LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f c6398a102b0e
+LOOPFUZZ(forked-daapd): You can stop all containers by: docker stop 61f3638815d8 3517d93228f5 c6398a102b0e
+
+LOOPFUZZ(forked-daapd): Collecting results and save them to ../ablation/results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from 61f3638815d8
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_1.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_1.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[recover] collecting out-forked-daapd-loopfuzz_2.tar.gz from 3517d93228f5
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_2.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_2.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[recover] collecting out-forked-daapd-loopfuzz_3.tar.gz from c6398a102b0e
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_3.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_3.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  }
+]
+
+LOOPFUZZ(forked-daapd): [ERROR] Recovery helper failed (exit 1); containers are kept for manual inspection
+
+LOOPFUZZ(forked-daapd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run1-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627  (docker logs forked-daapd-loopfuzz-run1-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627 ; docker cp forked-daapd-loopfuzz-run1-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run2-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627  (docker logs forked-daapd-loopfuzz-run2-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627 ; docker cp forked-daapd-loopfuzz-run2-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   forked-daapd-loopfuzz-run3-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627  (docker logs forked-daapd-loopfuzz-run3-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627 ; docker cp forked-daapd-loopfuzz-run3-1124-033502-ablation_q1a512_timed-20261124T033459-11-1179844-4627:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP] remove them with:  docker rm -f 61f3638815d876b4ac4c92aca520d602fc2a99f62c395bf75bd462a0dbfed60b 3517d93228f5d97364da6c1557a0cb8d80c6228ca1c79aa6620e215165e526c6 c6398a102b0eadfc039c34f35be8d9c9444882839fd19a00b05e7f979bff798a
+LOOPFUZZ(forked-daapd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(forked-daapd): I am done!
+[ERROR] Background exec job (pid=1179844) FAILED (exit=1)
+[recover] [WARN] out-forked-daapd-loopfuzz_1.tar.gz is incomplete (required result or v4/v5 terminal artifacts missing/invalid), fetching replacement...
+[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from 61f3638815d8
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_1.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_1.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_1.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[recover] [WARN] out-forked-daapd-loopfuzz_2.tar.gz is incomplete (required result or v4/v5 terminal artifacts missing/invalid), fetching replacement...
+[recover] collecting out-forked-daapd-loopfuzz_2.tar.gz from 3517d93228f5
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_2.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_2.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_2.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[recover] [WARN] out-forked-daapd-loopfuzz_3.tar.gz is incomplete (required result or v4/v5 terminal artifacts missing/invalid), fetching replacement...
+[recover] collecting out-forked-daapd-loopfuzz_3.tar.gz from c6398a102b0e
+[recover] [WARN] raw-dir fallback also missing required files
+[recover] collected out-forked-daapd-loopfuzz_3.tar.gz
+[recover] [WARN] out-forked-daapd-loopfuzz_3.tar.gz is incomplete after collection
+[recover] [WARN] out-forked-daapd-loopfuzz_3.tar.gz still lacks valid archive artifacts including a v4/v5 terminal; no terminal was synthesized or patched
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "status": "failed",
+    "reason": "exit_code_137",
+    "exit_code": "137"
+  }
+]
+[ERROR] Recovery pass failed for ../ablation/results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738 (exit 1)
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:q1a512] 失败 (run_dev.sh exit=1)
+[ABLATION] q1a512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-forked-daapd-timed-20261124T033459-1178738.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ⚠️  results-forked-daapd_ablation_q1a512_timed-20261124T033459-1178738:  EXIT_137_SIGKILL(oomkilled=false,sigkill-after-timeout-or-grace:out-forked-daapd-loopfuzz_1.tar.gz)  EXIT_137_SIGKILL(oomkilled=false,sigkill-after-timeout-or-grace:out-forked-daapd-loopfuzz_2.tar.gz)  EXIT_137_SIGKILL(oomkilled=false,sigkill-after-timeout-or-grace:out-forked-daapd-loopfuzz_3.tar.gz)  NO_COV_HTML(out-forked-daapd-loopfuzz_1.tar.gz)  NO_COV_HTML(out-forked-daapd-loopfuzz_2.tar.gz)  NO_COV_HTML(out-forked-daapd-loopfuzz_3.tar.gz)
+[POSTRUN] Diagnostics complete.

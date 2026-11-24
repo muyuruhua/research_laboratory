@@ -98,6 +98,7 @@ struct chat_llm_shared_budget {
 static struct chat_llm_shared_budget *llm_budget;
 static int llm_budget_init_attempted;
 static long llm_cap_total_calls = -1;           /* CHATAFL_LLM_TOTAL_CALL_CAP */
+static int llm_quota_exhausted = 0;              /* 403 quota circuit breaker */
 static long llm_cap_total_tokens = -1;          /* CHATAFL_TOKEN_CAP */
 #include <sys/time.h>
 static __thread char g_llm_last_req[65536];   /* last POST body (this thread) */
@@ -442,6 +443,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     if (no_llm && *no_llm && strcmp(no_llm, "0") != 0) return NULL;
     if (chat_llm_channel_disabled()) return NULL;
     if (tries <= 0 || !isfinite(temperature)) return NULL;
+    /* Quota circuit breaker (2026-11-24): the gateway's 403
+     * insufficient_user_quota is a deterministic account-level error.
+     * Retrying it cannot succeed, and the startup/hypothesis retry loops
+     * previously burned thousands of gateway attempts on it (q1a512:
+     * 2100+ calls in 6.5h with execs frozen). Once tripped, every
+     * subsequent call short-circuits until process restart. */
+    if (llm_quota_exhausted) {
+        fprintf(stderr, "[LLM] quota circuit breaker open; call skipped\n");
+        return NULL;
+    }
 
     const char *env_base = getenv("CHATAFL_LLM_BASE");
     const char *url = (env_base && *env_base) ? env_base
@@ -601,6 +612,14 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
             json_object *api_error = NULL;
             int has_error = is_object && json_object_object_get_ex(response, "error", &api_error) && api_error;
+            if (http_status == 403) {
+                /* Deterministic account-level rejection (insufficient quota,
+                 * invalid key): open the circuit breaker instead of letting
+                 * caller retry loops hammer the gateway. */
+                llm_quota_exhausted = 1;
+                fprintf(stderr, "[LLM] HTTP 403: quota circuit breaker OPENED; "
+                                "all further LLM calls will short-circuit\n");
+            }
             if (http_status < 200 || http_status >= 300 || has_error) {
                 call_status = "api-error";
                 fprintf(stderr, "[LLM] API error (HTTP=%ld): %s\n", http_status, chunk.memory);

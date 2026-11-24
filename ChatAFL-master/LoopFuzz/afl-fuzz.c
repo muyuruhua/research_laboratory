@@ -9415,23 +9415,48 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     FILE *nl_file = fopen(nl_file_path, "r");
     if (nl_file == NULL)
     {
-      printf("Error in opening the file %s\n", nl_file_path);
-      exit(1);
+      /* Resume-robustness (2026-11-24): a stale/corrupt resume state must
+       * not kill the fuzzer — exit(1) here turned every subsequent
+       * session-resume into a crash-restart loop that re-ran the full
+       * startup LLM sequence each time (q1a512: 233 lives, quota drained). */
+      fprintf(stderr, "[enrich] WARN: cannot open %s; skipping seed\n", nl_file_path);
+      free(nl_file_path);
+      continue;
     }
 
     // read the whole file into a buffer
     fseek(nl_file, 0, SEEK_END);
-    size_t fsize = ftell(nl_file);
+    long fsz = ftell(nl_file);
+    if (fsz < 0 || fsz > 64 * 1024 * 1024)
+    {
+      /* A directory or a truncated mid-write resume artifact reports a
+       * nonsense size; malloc(fsize+1) then fails and the fwrite below
+       * segfaulted (q1a512 resume repro at afl-fuzz.c:9428). */
+      fprintf(stderr, "[enrich] WARN: bad size %ld for %s; skipping seed\n",
+              fsz, nl_file_path);
+      fclose(nl_file);
+      free(nl_file_path);
+      continue;
+    }
+    size_t fsize = (size_t)fsz;
     fseek(nl_file, 0, SEEK_SET);
     char *nl_file_content = malloc(fsize + 1);
-    fread(nl_file_content, fsize, 1, nl_file);
-    nl_file_content[fsize] = '\0';
-    // printf("## File content:\n %s\n", nl_file_content);
+    if (nl_file_content == NULL)
+    {
+      fprintf(stderr, "[enrich] WARN: malloc(%zu) failed for %s; skipping seed\n",
+              fsize + 1, nl_file_path);
+      fclose(nl_file);
+      free(nl_file_path);
+      continue;
+    }
+    size_t nread = fread(nl_file_content, 1, fsize, nl_file);
     fclose(nl_file);
+    nl_file_content[nread] = '\0';
+    // printf("## File content:\n %s\n", nl_file_content);
     free(nl_file_path);
 
     u32 region_count = 0;
-    region_t *regions = (*extract_requests)(nl_file_content, fsize, &region_count);
+    region_t *regions = (*extract_requests)(nl_file_content, nread, &region_count);
 
     khash_t(strSet) *messages = duplicate_hash(message_types_set); // duplicate the message set
 
@@ -12503,13 +12528,22 @@ static void validate_hypothesis_sampled(
  * any non-hot-path location (plateau handler, main-loop tail). */
 static void periodic_hypothesis_refinement(void)
 {
+  /* Livelock guard (2026-11-24): the modulo gate below re-fires on every
+   * plateau iteration when hypothesis_validation_count stops advancing,
+   * because the refinement call itself blocks the fuzzer loop (each refine
+   * is ~10 gateway calls; q1a512 burned 2000+ quota calls in 3.5h this way
+   * with execs frozen at 8017). Require the count to have ADVANCED past the
+   * last refinement before the gate can fire again. */
+  static u32 last_refinement_validation_count = 0;
   if (!hypothesis_mode || !hypothesis_ctx)
     return;
 
   /* Only check every HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations */
   if (hypothesis_validation_count == 0 ||
+      hypothesis_validation_count == last_refinement_validation_count ||
       hypothesis_validation_count % HYPOTHESIS_REFINEMENT_CHECK_INTERVAL != 0)
     return;
+  last_refinement_validation_count = hypothesis_validation_count;
 
   fprintf(stderr,
           "[hypothesis-refine] Checking refinement (validations=%u)\n",
