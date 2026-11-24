@@ -2394,8 +2394,19 @@ message_set_list message_combinations(khash_t(strSet)* sequence, int size)
 {
     message_set_list res;
     kv_init(res);
-    const char* data[size];
-    make_combination(sequence,data, &res, kh_begin(sequence), kh_end(sequence), 0, size);
+    /* Enrichment-combination fix (2026-11-24): the generator previously
+     * emitted ONLY size-N combinations (N = MAX_ENRICHMENT_MESSAGE_TYPES).
+     * When a seed was missing fewer than N message types — the common case
+     * (e.g. two daapd seeds covering all but one discovered type) — the
+     * missing set had no size-N subsets, so every seed yielded 0 combos,
+     * 0 enrichment tasks and the whole enrichment channel was a silent
+     * no-op. Generate all subset sizes 1..min(|missing|, N) instead. */
+    int have = kh_size(sequence);
+    int max_size = have < size ? have : size;
+    for (int sz = 1; sz <= max_size; sz++) {
+        const char* data[sz];
+        make_combination(sequence, data, &res, kh_begin(sequence), kh_end(sequence), 0, sz);
+    }
     return res;
 }
 

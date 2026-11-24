@@ -74,3 +74,78 @@ LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f c707f3027b9b
 LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f 9748c46cae09
 LOOPFUZZ(forked-daapd): You can check logs by: docker logs -f c8d1d17c4113
 LOOPFUZZ(forked-daapd): You can stop all containers by: docker stop c707f3027b9b 9748c46cae09 c8d1d17c4113
+
+LOOPFUZZ(forked-daapd): Collecting results and save them to ../ablation/results-forked-daapd_ablation_calibrated512_timed-20261124T033459-1178539[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from c707f3027b9b
+[recover] failed to collect out-forked-daapd-loopfuzz_1.tar.gz from c707f3027b9b
+[recover] collecting out-forked-daapd-loopfuzz_2.tar.gz from 9748c46cae09
+[recover] failed to collect out-forked-daapd-loopfuzz_2.tar.gz from 9748c46cae09
+[recover] collecting out-forked-daapd-loopfuzz_3.tar.gz from c8d1d17c4113
+[recover] failed to collect out-forked-daapd-loopfuzz_3.tar.gz from c8d1d17c4113
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "error": "container unavailable"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "error": "container unavailable"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "error": "container unavailable"
+  }
+]
+[recover] failed to reconcile sample status with Docker state
+
+LOOPFUZZ(forked-daapd): [ERROR] Recovery helper failed (exit 1); containers are kept for manual inspection
+
+LOOPFUZZ(forked-daapd): [KEEP] 3 fuzz container(s) STOPPED but RETAINED for post-mortem:
+LOOPFUZZ(forked-daapd): [KEEP]   c707f3027b9be156fd2f10410100e086dad0f05a20ba7dac90d33e2cbf1d2059  (docker logs c707f3027b9be156fd2f10410100e086dad0f05a20ba7dac90d33e2cbf1d2059 ; docker cp c707f3027b9be156fd2f10410100e086dad0f05a20ba7dac90d33e2cbf1d2059:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   9748c46cae09e2e4d2242be85dd382002a71f00fb4c0f2a88ba9a19ab11635c0  (docker logs 9748c46cae09e2e4d2242be85dd382002a71f00fb4c0f2a88ba9a19ab11635c0 ; docker cp 9748c46cae09e2e4d2242be85dd382002a71f00fb4c0f2a88ba9a19ab11635c0:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP]   c8d1d17c411314e0c0116ac679cdce4cd148375d6fb95519f542a89a93e4bbfa  (docker logs c8d1d17c411314e0c0116ac679cdce4cd148375d6fb95519f542a89a93e4bbfa ; docker cp c8d1d17c411314e0c0116ac679cdce4cd148375d6fb95519f542a89a93e4bbfa:<path> .)
+LOOPFUZZ(forked-daapd): [KEEP] remove them with:  docker rm -f c707f3027b9be156fd2f10410100e086dad0f05a20ba7dac90d33e2cbf1d2059 9748c46cae09e2e4d2242be85dd382002a71f00fb4c0f2a88ba9a19ab11635c0 c8d1d17c411314e0c0116ac679cdce4cd148375d6fb95519f542a89a93e4bbfa
+LOOPFUZZ(forked-daapd): [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.
+
+LOOPFUZZ(forked-daapd): I am done!
+[ERROR] Background exec job (pid=1181007) FAILED (exit=1)
+[recover] collecting out-forked-daapd-loopfuzz_1.tar.gz from c707f3027b9b
+[recover] failed to collect out-forked-daapd-loopfuzz_1.tar.gz from c707f3027b9b
+[recover] collecting out-forked-daapd-loopfuzz_2.tar.gz from 9748c46cae09
+[recover] failed to collect out-forked-daapd-loopfuzz_2.tar.gz from 9748c46cae09
+[recover] collecting out-forked-daapd-loopfuzz_3.tar.gz from c8d1d17c4113
+[recover] failed to collect out-forked-daapd-loopfuzz_3.tar.gz from c8d1d17c4113
+[
+  {
+    "archive": "out-forked-daapd-loopfuzz_1.tar.gz",
+    "error": "container unavailable"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_2.tar.gz",
+    "error": "container unavailable"
+  },
+  {
+    "archive": "out-forked-daapd-loopfuzz_3.tar.gz",
+    "error": "container unavailable"
+  }
+]
+[recover] failed to reconcile sample status with Docker state
+[ERROR] Recovery pass failed for ../ablation/results-forked-daapd_ablation_calibrated512_timed-20261124T033459-1178539 (exit 1)
+
+==========================================
+❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）
+==========================================
+[ABLATION:calibrated512] 失败 (run_dev.sh exit=1)
+[ABLATION] calibrated512 失败 (exit=1)
+[POSTRUN] elapsed-time evidence audit: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/wallclock-audit-forked-daapd-timed-20261124T033459-1178539.log
+python3: can't open file '/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/q123_repair_smoke_20261114/audit_smoke.py': [Errno 2] No such file or directory
+
+========================================================
+  [ABLATION] 预设 core 全部完成！
+  ⚠️  WARNING: 1 组子进程返回非零退出码，请检查日志
+  结果目录：
+results-forked-daapd_ablation_calibrated512_timed-20261124T033459-1178539
+========================================================
+
+[POSTRUN] Scanning for anomalies in ablation results...
+  ✓ results-forked-daapd_ablation_calibrated512_timed-20261124T033459-1178539: clean
+[POSTRUN] Diagnostics complete.

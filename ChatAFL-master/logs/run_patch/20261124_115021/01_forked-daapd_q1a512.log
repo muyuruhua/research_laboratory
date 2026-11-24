@@ -1,0 +1,47 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║  批次启动时间戳: 20261124T115021
+║  本批身份:       timed-20261124T115021-1774057
+║  结果目录模式:   ablation/results-forked-daapd_ablation_<label>_timed-20261124T115021-1774057/
+╚══════════════════════════════════════════════════════════════╝
+
+
+[PREFLIGHT] System resource check:
+  Docker memory limit per fuzzer container: 6g
+  Host total/available memory: ~62 GB / ~47 GB, fuzz budget: 46 GB (by actual usage)
+  Already-running containers: 36, actual usage ≈4 GB (caps NOT counted)
+  ✓ 本批次计划并发 6 组 × 3 run = 18 容器
+  SKIPCOUNT=100
+  Docker images required: forked-daapd (and brokers if MQTT)
+
+[CUSTOM] 已入队 1 组: q1a512
+========================================================
+  [ABLATION] 消融实验（批次执行）
+  目标: forked-daapd  每组重复: 3  时长: 1500 min
+  预设: core  批次大小: 6 组/批
+  说明: 自定义消融组: q1a512
+  结果目录: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ablation/results-forked-daapd_ablation_<label>_timed-20261124T115021-1774057/
+========================================================
+
+  [ABLATION] 硬性内存准入：6 → 2 组/批（按每容器 6GB 上限保留）
+  [ABLATION] 1 组已入队，分 1 批执行
+  [ABLATION] 实际最大并发: 1 组 × 3 容器/组 = 3 fuzzer 容器
+  [ABLATION] 估算总内存需求: ~21 GB (可用: ~47 GB)
+  ✓ 内存充足，安全余量 ~26 GB
+
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM] HTTP 403: quota circuit breaker OPENED; all further LLM calls will short-circuit
+[LLM] API error (HTTP=403): {"error":{"message":"用户额度不足, 剩余额度: MOP-0.000066 (request id: 202611240350216619388318268d9d67Ygyigf6)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}
+[LLM preflight] FAIL
+[LLM preflight] attempt 1/1 failed
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM] HTTP 403: quota circuit breaker OPENED; all further LLM calls will short-circuit
+[LLM] API error (HTTP=403): {"error":{"message":"用户额度不足, 剩余额度: MOP-0.000066 (request id: 202611240350267148497118268d9d6DwOr8HOr)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}
+[LLM preflight] FAIL
+[LLM preflight] attempt 2/2 failed
+[LLM preflight] endpoint=https://ai-apigateway.must.edu.mo/openhub/v1/chat/completions model=gpt-4o-mini key_bytes=51 max_tokens=4096 top_p=1
+[LLM] HTTP 403: quota circuit breaker OPENED; all further LLM calls will short-circuit
+[LLM] API error (HTTP=403): {"error":{"message":"用户额度不足, 剩余额度: MOP-0.000066 (request id: 202611240350317789644418268d9d6PxAuE5bL)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}
+[LLM preflight] FAIL
+[LLM preflight] attempt 3/3 failed
+[ERROR] LLM 预检失败；未启动本批消融实验。请核对当前 KEY、LLM_MODEL 和 CHATAFL_LLM_BASE。
